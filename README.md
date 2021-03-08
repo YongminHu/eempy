@@ -1,6 +1,6 @@
 # Fluorescence_toolkit
 
-Author: Yongmin Hu (yongmin.hu@eawag, yongminhu@outlook.com)
+Author: Yongmin Hu (yongmin.hu@eawag； yongminhu@outlook.com)
 
 Last update: 2021-03-07
 
