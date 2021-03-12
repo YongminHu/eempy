@@ -15,7 +15,7 @@ from scipy.ndimage import gaussian_filter
 from skimage.feature import peak_local_max
 from scipy import interpolate
 from datetime import datetime, timedelta
-from tensorly.decomposition import parafac
+from tensorly.decomposition import parafac, non_negative_parafac
 import pandas as pd
 from IPython.display import display
 import itertools
@@ -145,7 +145,7 @@ def EEMs_cutting(EEMstack, Em_range, Ex_range, Em_min=250, Em_max=810, Ex_min=23
     return EEMstack_cut, Em_range_cut, Ex_range_cut
 
 
-def EEMs_scattering_correction(EEMstack, Em_range, Ex_range, scattering_interpolation='linear2',
+def EEMs_scattering_correction(EEMstack, Em_range, Ex_range, scattering_interpolation='zero',
                                tolerance=10):
     EEMstack_r = np.zeros(EEMstack.shape)
     for i in range(EEMstack.shape[0]):
@@ -213,7 +213,7 @@ def detect_local_peak(intensity, min_distance=20, plot=False):
     return coordinates
 
 
-def EEM_random_selection(EEMstack):
+def EEMs_random_selection(EEMstack):
     i = random.randrange(EEMstack.shape[0])
     EEM_selected = EEMstack[i]
     return EEM_selected
@@ -266,9 +266,17 @@ class EEMstack:
         variance = np.var(self.intensities, axis=0)
         return variance
 
-    def rel_std(self):
+    def rel_std(self, threshold=0.05):
         coef_variation = stats.variation(self.intensities, axis=0)
-        return abs(coef_variation)
+        rel_std = abs(coef_variation)
+        if threshold:
+            mean = np.mean(self.intensities, axis=0)
+            # mask = EEM_mask(mean, Em_range=self.Em_range, Ex_range=self.Ex_range,
+            #          ref_matrix=coef_variation, threshold=threshold, residual='big')
+            qualified_pixel_proportion = np.count_nonzero(rel_std<threshold) / np.count_nonzero(~np.isnan(rel_std))
+            print("The proportion of pixels with relative STD < {t}: ".format(t=threshold),
+                  qualified_pixel_proportion)
+        return rel_std
 
     def std(self):
         return np.std(self.intensities, axis=0)
@@ -293,7 +301,7 @@ class EEMstack:
         if output:
             table = pd.DataFrame(y)
             table.index = x
-            table.columns = ['Intensity (Ex/Em = {ex}/{em})'.format(ex=Ex_ref, em=Em_ref)]
+            table.columns = ['Intensity (Ex/Em = {ex}/{em})'.format(ex=cod[1], em=cod[0])]
             display(table)
         if plot:
             plt.figure(figsize=(15, 5))
@@ -494,7 +502,7 @@ def EEM_to_uint8(intensity):
     return intensity_scaled
 
 
-def rayleigh_masking(intensity, Em_range, Ex_range, tolerance=15, interpolation=False):
+def rayleigh_masking(intensity, Em_range, Ex_range, tolerance=15, interpolation='zero'):
     intensity_masked = np.array(intensity)
     rayleigh_mask = np.zeros(intensity.shape)
     tol_pixel = tolerance # [nm]
@@ -639,10 +647,13 @@ def load_EEMstack_interact(filedir, scattering_correction=False, Em_range_displa
     return EEMstack, Em_range_cut, Ex_range_cut, datlist_pem
 
 
-def parafac_interact(EEMstack, Em_range, Ex_range, rank, timestamp):
+def decomposition_interact(EEMstack, Em_range, Ex_range, rank, timestamp, decomposition_method='parafac'):
     plt.close()
     try:
-        factors = parafac(EEMstack, rank=rank)
+        if decomposition_method=='parafac':
+            factors = parafac(EEMstack, rank=rank)
+        if decomposition_method=='non_negative_parafac':
+            factors = non_negative_parafac(EEMstack, rank=rank)
     except ArpackError:
         print("Please check if there's blank space in the fluorescence footprint in 'section 2. Fluorescence preview "
               "and parameter selection'. If yes, please adjust the excitation wavelength range to avoid excessive "
@@ -675,7 +686,8 @@ def parafac_interact(EEMstack, Em_range, Ex_range, rank, timestamp):
         plt.ylabel('Standardized loading')
     plt.legend(legend)
 
-def parafac_reconstruction_interact(I, J, K, intensity, Em_range, Ex_range, datlist, data_to_view, crange=[0,1000]):
+
+def decomposition_reconstruction_interact(I, J, K, intensity, Em_range, Ex_range, datlist, data_to_view, crange=[0,1000]):
     idx = datlist.index(data_to_view)
     rank = I.shape[1]
     for r in range(rank):
