@@ -647,13 +647,14 @@ def load_EEMstack_interact(filedir, scattering_correction=False, Em_range_displa
     return EEMstack, Em_range_cut, Ex_range_cut, datlist_pem
 
 
-def decomposition_interact(EEMstack, Em_range, Ex_range, rank, timestamp, decomposition_method='parafac'):
+def decomposition_interact(EEMstack, Em_range, Ex_range, rank, index=[], decomposition_method='parafac',
+                           score_normalization=False):
     plt.close()
     try:
         if decomposition_method=='parafac':
-            factors = parafac(EEMstack, rank=rank)
+            factors = parafac(EEMstack, rank=rank, orthogonalise=True)
         if decomposition_method=='non_negative_parafac':
-            factors = non_negative_parafac(EEMstack, rank=rank)
+            factors = non_negative_parafac(EEMstack, rank=rank, orthogonalise=True)
     except ArpackError:
         print("Please check if there's blank space in the fluorescence footprint in 'section 2. Fluorescence preview "
               "and parameter selection'. If yes, please adjust the excitation wavelength range to avoid excessive "
@@ -671,16 +672,20 @@ def decomposition_interact(EEMstack, Em_range, Ex_range, rank, timestamp, decomp
             I[:,r] = -I[:,r]
         plot3DEEM(component, Em_range, Ex_range, autoscale=True, title=component_label)
         # component[np.where(abs(component)<abs(component).max()*quantile)] = 0
-    parafac_table = pd.DataFrame(I)
+    if score_normalization:
+        parafac_table = pd.DataFrame(I/I.mean(axis=0))
+    else:
+        parafac_table = pd.DataFrame(I)
     parafac_table.columns = column_labels
-    parafac_table.index = timestamp[:]
+    if index:
+        parafac_table.index = index[:]
     display(parafac_table)
     I_standardized = I/np.mean(I, axis=0)
     plt.figure(figsize=(15, 5))
     legend = []
     marker = itertools.cycle(('o', 'v', '^', 's', 'D'))
     for r in range(rank):
-        plt.plot(timestamp, I_standardized[:, r], marker=next(marker), markersize=13)
+        plt.plot(index, I_standardized[:, r], marker=next(marker), markersize=13)
         legend.append('component {rank}'.format(rank=r+1))
         plt.xlabel('Time')
         plt.ylabel('Standardized loading')
