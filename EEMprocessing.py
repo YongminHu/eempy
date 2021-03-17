@@ -354,7 +354,9 @@ class EEMstack:
             p = np.array([x.min(), x.max()])
             q = w[0] * p + b
             plt.plot(p, q)
-            plt.title('(Em, Ex) = {cod}'.format(cod=cod))
+            plt.title('(Em, Ex) = {cod}'.format(cod=cod), fontdict={"size":18})
+            plt.xlabel('Time', fontdict={"size":14})
+            plt.ylabel('Intensity [a.u.]', fontdict={"size":14})
             # plt.text(p.min() + 0.1 * (p.max() - p.min()), q.max() - 0.1 * (p.max() - p.min()),
             #          "$R^2$={r2}".format(r2=round(r2, 5)))
             plt.show()
@@ -657,7 +659,7 @@ def decomposition_interact(EEMstack, Em_range, Ex_range, rank, index=[], decompo
             factors = non_negative_parafac(EEMstack, rank=rank, orthogonalise=True)
     except ArpackError:
         print("Please check if there's blank space in the fluorescence footprint in 'section 2. Fluorescence preview "
-              "and parameter selection'. If yes, please adjust the excitation wavelength range to avoid excessive "
+              "and parameter selection'. If so, please adjust the excitation wavelength range to avoid excessive "
               "inner filter effect")
     I = factors[1][0]
     J = factors[1][1]
