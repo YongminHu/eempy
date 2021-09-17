@@ -607,9 +607,15 @@ def plot3DEEM_interact(filedir, filename, autoscale=False, crange=[0, 3000], sca
     filepath = filedir + '/' + filename
     intensity, Em_range, Ex_range = readEEM(filepath)
     if inner_filter_effect:
-        absorbance, Ex_range2 = readABS(filepath[0:-7] + 'ABS.dat')
-        intensity = EEM_inner_filter_effect(intensity, Em_range=Em_range, Ex_range=Ex_range, absorbance=absorbance,
-                                            Ex_range2=Ex_range2)
+        try:
+            absorbance, Ex_range2 = readABS(filepath[0:-7] + 'ABS.dat')
+            intensity = EEM_inner_filter_effect(intensity, Em_range=Em_range, Ex_range=Ex_range, absorbance=absorbance,
+                                                Ex_range2=Ex_range2)
+        except FileNotFoundError:
+            print('Absorbance data missing. Please make sure the file names of the EEM and '
+                  'absorbance data are consistent, except the suffix "ABS.dat" and "PEM.dat /" '
+                  'If there is no absorbance data, please deselect "Inner filter effect" and "plot absorbance" in '
+                  'the parameter selection')
     if gaussian_smoothing:
         intensity = gaussian_filter(intensity, sigma=sigma, truncate=truncate)
     if scattering_correction:
@@ -631,8 +637,11 @@ def plot3DEEM_interact(filedir, filename, autoscale=False, crange=[0, 3000], sca
                                        ts_end_position=ts_end_position)
         plt.title(tstitle)
     if plot_abs:
-        absorbance, Ex_range2 = readABS(filepath[0:-7] + 'ABS.dat')
-        plotABS(absorbance, Ex_range2, ABSxmax)
+        try:
+            absorbance, Ex_range2 = readABS(filepath[0:-7] + 'ABS.dat')
+            plotABS(absorbance, Ex_range2, ABSxmax)
+        except FileNotFoundError:
+            pass
     if show_maximum:
         print("maximum intensity: ", np.amax(intensity))
 
