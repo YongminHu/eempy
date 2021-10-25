@@ -805,24 +805,16 @@ def decomposition_reconstruction_interact(I, J, K, intensity, Em_range, Ex_range
 def export_parafac(filepath, I_df, J_df, K_df, name, creator, date, email='', doi='', reference='', unit='', toolbox='',
                    fluorometer='', nSample='', decomposition_method='', validation='', dataset_calibration='',
                    preprocess='', sources='', description=''):
+    # use dictionary in the future!
+    info_dict = {'name':name, 'creator': creator, 'email': email, 'doi ISBN': doi, 'reference': reference,
+                 'unit': unit, 'toolbox': toolbox, 'date': date, 'fluorometer': fluorometer, 'nSample': nSample,
+                 'dateset_calibration': dataset_calibration, 'preprocess': preprocess, 'decomposition_method': decomposition_method,
+                 'validation': validation, 'sources': sources, 'description': description}
     with open(filepath, 'w') as f:
         f.write('# \n# Fluorescence model \n# \n')
-        f.write('name \t' + name + '\n')
-        f.write('creator \t' + creator + '\n')
-        f.write('email \t' + email + '\n')
-        f.write('doi ISBN \t' + doi + '\n')
-        f.write('reference \t' + reference + '\n')
-        f.write('unit \t' + unit + '\n')
-        f.write('toolbox \t' + toolbox + '\n')
-        f.write('date \t' + date + '\n')
-        f.write('fluorometer \t' + fluorometer + '\n')
-        f.write('nSample \t' + nSample + '\n')
-        f.write('dataset_calibration \t' + dataset_calibration + '\n')
-        f.write('preprocess \t' + preprocess + '\n')
-        f.write('decomposition_method \t' + decomposition_method + '\n')
-        f.write('validation \t' + validation + '\n')
-        f.write('sources \t' + sources + '\n')
-        f.write('description \t' + description + '\n')
+        for key, value in info_dict.items():
+            f.write(key + '\t' + value)
+            f.write('\n')
         f.write('# \n# Excitation/Emission (Ex, Em), wavelength [nm], component_n [loading] \n# \n')
         f.close()
     with pd.option_context('display.multi_sparse', False):
@@ -832,3 +824,4 @@ def export_parafac(filepath, I_df, J_df, K_df, name, creator, date, email='', do
         f.write('# \n# timestamp, component_n [intensity] \n# \n')
         f.close()
     I_df.to_csv(filepath, mode='a', sep="\t", header=None)
+    return info_dict

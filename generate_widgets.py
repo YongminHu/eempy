@@ -412,6 +412,3 @@ class Widgets6:
                         ipywidgets.Box([self.button_output_interact], layout=form_item_layout),
                         ]
         return output_items
-
-    # return filepath_i, name_i, creator_i, email_i, date_i, sources_i, fluorometer_i, nSample_i, dataset_calibration_i, \
-    #        preprocess_i, decomposition_method_i, validation_i, description_i
