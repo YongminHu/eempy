@@ -1,7 +1,7 @@
 """
 Functions for fluorescence python toolkit
 Author: Yongmin Hu (yongmin.hu@eawag.ch, yongminhu@outlook.com)
-Last update: 2021-03-07
+Last update: 2021-09-08
 """
 
 from read_data import *
@@ -68,11 +68,13 @@ def mask_low_values(EEMstack, threshold, interpolation):
     EEMstack[EEMstack < threshold] = interpolation
     return EEMstack
 
+
 def euclidean_dist_for_tuple(t1, t2):
     dist = 0
     for x1, x2 in zip(t1, t2):
         dist += (x1 - x2) ** 2
     return dist ** 0.5
+
 
 def dichotomy_search(nums, target):
     start = 0
@@ -134,7 +136,8 @@ def EEM_cutting(intensity, Em_range, Ex_range, Em_min, Em_max, Ex_min, Ex_max):
     Em_max_idx = dichotomy_search(Em_range, Em_max)
     Ex_min_idx = dichotomy_search(Ex_range, Ex_min)
     Ex_max_idx = dichotomy_search(Ex_range, Ex_max)
-    intensity_cut = intensity[Ex_range.shape[0] - Ex_max_idx - 1:Ex_range.shape[0] - Ex_min_idx, Em_min_idx:Em_max_idx]
+    intensity_cut = intensity[Ex_range.shape[0] - Ex_max_idx - 1:Ex_range.shape[0] - Ex_min_idx,
+                    Em_min_idx:Em_max_idx + 1]
     Em_range_cut = Em_range[Em_min_idx:Em_max_idx + 1]
     Ex_range_cut = Ex_range[Ex_min_idx:Ex_max_idx + 1]
     return intensity_cut, Em_range_cut, Ex_range_cut
@@ -603,7 +606,7 @@ def plot3DEEM_interact(filedir, filename, autoscale=False, crange=[0, 3000], sca
                        Ex_range_display=[200, 500], contour_mask=False, gaussian_smoothing=True, sigma=1,
                        truncate=3, otsu=True, binary_threshold=50, tolerance=15, scattering_interpolation='linear2',
                        inner_filter_effect=True, ts_format='%Y-%m-%d-%H-%M-%S', ts_start_position=0,
-                       ts_end_position=19, show_maximum = False):
+                       ts_end_position=19, show_maximum=False):
     filepath = filedir + '/' + filename
     intensity, Em_range, Ex_range = readEEM(filepath)
     if inner_filter_effect:
@@ -673,9 +676,10 @@ def load_EEMstack_interact(filedir, scattering_correction=False, Em_range_displa
 
 
 def decomposition_interact(EEMstack, Em_range, Ex_range, rank, index=[], decomposition_method='parafac',
-                           score_normalization=False, component_normalization=False, component_contour_threshold=0,
-                           plot_component=True, display_score=True, component_cmin=0, component_cmax=1, component_autoscale=False,
-                           title=True, cbar=True, cmap="jet"):
+                           score_normalization=False, loadings_normalization=True, component_normalization=False,
+                           component_contour_threshold=0, plot_loadings=True, plot_components=True, display_score=True,
+                           component_cmin=0, component_cmax=1, component_autoscale=False, title=True, cbar=True,
+                           cmap="jet"):
     plt.close()
     try:
         if decomposition_method == 'parafac':
@@ -695,12 +699,21 @@ def decomposition_interact(EEMstack, Em_range, Ex_range, rank, index=[], decompo
     contours = []
     max_idx_r = []
     for r in range(rank):
+        if I[:, r].sum() < 0:
+            I[:, r] = -I[:, r]
+            if J[:, r].sum() < 0:
+                J[:, r] = -J[:, r]
+            elif K[:, r].sum() < 0:
+                K[:, r] = -K[:, r]
+        if loadings_normalization:
+            stdj = J[:, r].std()
+            stdk = K[:, r].std()
+            J[:, r] = J[:, r] / stdj
+            K[:, r] = K[:, r] / stdj
+            I[:, r] = I[:, r] * stdj * stdk
         component = np.array([J[:, r]]).T.dot(np.array([K[:, r]]))
         component_label = 'component {rank}'.format(rank=r + 1)
         column_labels.append(component_label)
-        if I[:, r].sum() < 0:
-            component = -component
-            I[:, r] = -I[:, r]
         if component_normalization:
             w = 1 / component.max()
             component = component * w
@@ -711,7 +724,7 @@ def decomposition_interact(EEMstack, Em_range, Ex_range, rank, index=[], decompo
             contours.append(contour)
             max_idx = np.unravel_index(np.argmax(component, axis=None), component.shape)
             max_idx_r.append((max_idx[1], max_idx[0]))
-        if plot_component:
+        if plot_components:
             if not title:
                 component_label = False
             plot3DEEM(component, Em_range, Ex_range, cmin=component_cmin,
@@ -724,10 +737,31 @@ def decomposition_interact(EEMstack, Em_range, Ex_range, rank, index=[], decompo
     else:
         parafac_table = pd.DataFrame(I)
     parafac_table.columns = column_labels
+    J_df = pd.DataFrame(np.flip(J), index=Ex_range)
+    K_df = pd.DataFrame(K, index=Em_range)
+    Ex_column = ["Ex" for i in range(Ex_range.shape[0])]
+    Em_column = ["Em" for i in range(Em_range.shape[0])]
+    Ex_loading_index = pd.MultiIndex.from_tuples(list(zip(*[Ex_column, Ex_range.tolist()])),
+                                                 names=('Type', 'wavelength'))
+    Em_loading_index = pd.MultiIndex.from_tuples(list(zip(*[Em_column, Em_range.tolist()])),
+                                                 names=('Type', 'wavelength'))
+    J_df.index = Ex_loading_index
+    K_df.index = Em_loading_index
     if index:
         parafac_table.index = index[:]
     if display_score:
         display(parafac_table)
+    if plot_loadings:
+        fig_ex = J_df.unstack(level=0).plot.line()
+        handles_ex, labels_ex = fig_ex.get_legend_handles_labels()
+        plt.legend(handles_ex, labels_ex)
+        plt.xlim([Ex_range[0], Em_range[-1]])
+        plt.xlabel("Wavelength [nm]")
+        fig_em = K_df.unstack(level=0).plot.line()
+        handles_em, labels_em = fig_em.get_legend_handles_labels()
+        plt.legend(handles_em, labels_em)
+        plt.xlim([Ex_range[0], Em_range[-1]])
+        plt.xlabel("Wavelength [nm]")
     I_standardized = I / np.mean(I, axis=0)
     plt.figure(figsize=(15, 5))
     legend = []
@@ -738,7 +772,7 @@ def decomposition_interact(EEMstack, Em_range, Ex_range, rank, index=[], decompo
         plt.xlabel('Time')
         plt.ylabel('Standardized loading')
     plt.legend(legend)
-    return parafac_table, component_stack, contours, max_idx_r
+    return parafac_table, component_stack, contours, max_idx_r, J_df, K_df
 
 
 def decomposition_reconstruction_interact(I, J, K, intensity, Em_range, Ex_range, datlist, data_to_view,
@@ -758,12 +792,43 @@ def decomposition_reconstruction_interact(I, J, K, intensity, Em_range, Ex_range
         # reconstruction_error = np.linalg.norm(sample_r - EEMstack[idx])
         if plot:
             plot3DEEM(sample_r, Em_range, Ex_range, autoscale=False, cmin=crange[0], cmax=crange[1], figure_size=(8, 8),
-                  title='Accumulate to component {rank}'.format(rank=r + 1))
+                      title='Accumulate to component {rank}'.format(rank=r + 1))
     if rmse:
-        error = np.sqrt(np.mean((sample_r-intensity)**2))
-        #print("MSE of the final reconstructed EEM: ", error)
+        error = np.sqrt(np.mean((sample_r - intensity) ** 2))
+        # print("MSE of the final reconstructed EEM: ", error)
     if plot:
         plot3DEEM(intensity, Em_range, Ex_range, autoscale=False, cmin=crange[0], cmax=crange[1],
-              title='Original footprint')
+                  title='Original footprint')
     return sample_r, error
 
+
+def export_parafac(filepath, I_df, J_df, K_df, name, creator, date, email='', doi='', reference='', unit='', toolbox='',
+                   fluorometer='', nSample='', decomposition_method='', validation='', dataset_calibration='',
+                   preprocess='', sources='', description=''):
+    with open(filepath, 'w') as f:
+        f.write('# \n# Fluorescence model \n# \n')
+        f.write('name \t' + name + '\n')
+        f.write('creator \t' + creator + '\n')
+        f.write('email \t' + email + '\n')
+        f.write('doi ISBN \t' + doi + '\n')
+        f.write('reference \t' + reference + '\n')
+        f.write('unit \t' + unit + '\n')
+        f.write('toolbox \t' + toolbox + '\n')
+        f.write('date \t' + date + '\n')
+        f.write('fluorometer \t' + fluorometer + '\n')
+        f.write('nSample \t' + nSample + '\n')
+        f.write('dataset_calibration \t' + dataset_calibration + '\n')
+        f.write('preprocess \t' + preprocess + '\n')
+        f.write('decomposition_method \t' + decomposition_method + '\n')
+        f.write('validation \t' + validation + '\n')
+        f.write('sources \t' + sources + '\n')
+        f.write('description \t' + description + '\n')
+        f.write('# \n# Excitation/Emission (Ex, Em), wavelength [nm], component_n [loading] \n# \n')
+        f.close()
+    with pd.option_context('display.multi_sparse', False):
+        J_df.to_csv(filepath, mode='a', sep="\t", header=None)
+        K_df.to_csv(filepath, mode='a', sep="\t", header=None)
+    with open(filepath, 'a') as f:
+        f.write('# \n# timestamp, component_n [intensity] \n# \n')
+        f.close()
+    I_df.to_csv(filepath, mode='a', sep="\t", header=None)
