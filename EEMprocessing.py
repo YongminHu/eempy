@@ -737,7 +737,7 @@ def decomposition_interact(EEMstack, Em_range, Ex_range, rank, index=[], decompo
     else:
         parafac_table = pd.DataFrame(I)
     parafac_table.columns = column_labels
-    J_df = pd.DataFrame(np.flip(J), index=Ex_range)
+    J_df = pd.DataFrame(np.flipud(J), index=Ex_range)
     K_df = pd.DataFrame(K, index=Em_range)
     Ex_column = ["Ex" for i in range(Ex_range.shape[0])]
     Em_column = ["Em" for i in range(Em_range.shape[0])]
@@ -754,13 +754,13 @@ def decomposition_interact(EEMstack, Em_range, Ex_range, rank, index=[], decompo
     if plot_loadings:
         fig_ex = J_df.unstack(level=0).plot.line()
         handles_ex, labels_ex = fig_ex.get_legend_handles_labels()
-        plt.legend(handles_ex, labels_ex)
-        plt.xlim([Ex_range[0], Em_range[-1]])
+        plt.legend(handles_ex, labels_ex, prop={'size': 6})
+        plt.xticks(np.arange(Ex_range[0], Ex_range[-1] + 1, 50))
         plt.xlabel("Wavelength [nm]")
         fig_em = K_df.unstack(level=0).plot.line()
         handles_em, labels_em = fig_em.get_legend_handles_labels()
-        plt.legend(handles_em, labels_em)
-        plt.xlim([Ex_range[0], Em_range[-1]])
+        plt.legend(handles_em, labels_em, prop={'size': 6})
+        plt.xticks(np.arange(Ex_range[0], Em_range[-1], 50))
         plt.xlabel("Wavelength [nm]")
     I_standardized = I / np.mean(I, axis=0)
     plt.figure(figsize=(15, 5))
