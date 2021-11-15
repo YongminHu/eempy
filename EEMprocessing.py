@@ -746,7 +746,9 @@ def decomposition_interact(EEMstack, Em_range, Ex_range, rank, index=[], decompo
     Em_loading_index = pd.MultiIndex.from_tuples(list(zip(*[Em_column, Em_range.tolist()])),
                                                  names=('Type', 'wavelength'))
     J_df.index = Ex_loading_index
+    J_df.columns = column_labels
     K_df.index = Em_loading_index
+    K_df.columns = column_labels
     if index:
         parafac_table.index = index[:]
     if display_score:
@@ -754,12 +756,12 @@ def decomposition_interact(EEMstack, Em_range, Ex_range, rank, index=[], decompo
     if plot_loadings:
         fig_ex = J_df.unstack(level=0).plot.line()
         handles_ex, labels_ex = fig_ex.get_legend_handles_labels()
-        plt.legend(handles_ex, labels_ex, prop={'size': 6})
+        plt.legend(handles_ex, labels_ex, prop={'size': 10})
         plt.xticks(np.arange(Ex_range[0], Ex_range[-1] + 1, 50))
         plt.xlabel("Wavelength [nm]")
         fig_em = K_df.unstack(level=0).plot.line()
         handles_em, labels_em = fig_em.get_legend_handles_labels()
-        plt.legend(handles_em, labels_em, prop={'size': 6})
+        plt.legend(handles_em, labels_em, prop={'size': 10})
         plt.xticks(np.arange(Ex_range[0], Em_range[-1], 50))
         plt.xlabel("Wavelength [nm]")
     I_standardized = I / np.mean(I, axis=0)
