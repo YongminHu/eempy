@@ -101,12 +101,12 @@ def read_reference_from_text(filepath):
     return reference_data, header
 
 
-def plotABS(absorbance, Ex_range, xmax=0.05):
-    plt.figure(figsize=(8, 2))
-    font = {
-            'size': 16}
-    plt.plot(Ex_range, absorbance)
-    plt.xlim([200, 800])
+def plotABS(absorbance, ex_range, xmax=0.05, ex_range_display=(200, 800)):
+    plt.figure(figsize=(6.5, 2))
+    font = {'size': 18}
+    plt.rc('font', **font)
+    plt.plot(ex_range, absorbance)
+    plt.xlim(ex_range_display)
     plt.ylim([0, xmax])
     plt.xlabel('Wavelength [nm]')
     plt.ylabel('Absorbance [a.u.]')
@@ -125,8 +125,7 @@ def plot3DEEM(intensity, Em_range, Ex_range, autoscale=False, cmax=6000, cmin=-2
     if new_figure:
         plt.figure(figsize=figure_size)
     #plt.figure()
-    font = {
-            'size': fontsize}
+    font = {'size': fontsize}
     plt.rc('font', **font)
     if autoscale == False:
         plt.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, vmin=cmin, vmax=cmax,
@@ -145,7 +144,7 @@ def plot3DEEM(intensity, Em_range, Ex_range, autoscale=False, cmax=6000, cmin=-2
     return
 
 
-def SavePlot(datdir, datname, autoscale, cmax_fig, cmin_fig, savedir, savename):
+def saveplot(datdir, datname, autoscale, cmax_fig, cmin_fig, savedir, savename):
     datpath = datdir + '/' + datname
     savepath = savedir + '/' + savename
     intensity, Em_range, Ex_range = readEEM(datpath)

@@ -2,8 +2,8 @@ import ipywidgets
 from datetime import date
 from ipywidgets import Layout, Label, interactive
 from read_data import read_reference_from_text, string_to_float_list
-from EEMprocessing import EEMstack, EEM_statistics, decomposition_interact, decomposition_reconstruction_interact,\
-    export_parafac
+from EEMprocessing import EEMstack, eem_statistics, plot_eem_interact, decomposition_interact, \
+    decomposition_reconstruction_interact, export_parafac, load_eem_stack_interact
 from tensorly.decomposition import parafac, non_negative_parafac
 
 
@@ -11,8 +11,270 @@ form_item_layout = Layout(display='flex',
                           flex_flow='row',
                           justify_content='space-between')
 
+# ----------------------Part 1. Specify data directory and filename format-----------------------
 
-# ----------------------Part 5. Data stack analysis-----------------------
+class Widgets1:
+    def __init__(self, filedir_default):
+        self.filedir_default = filedir_default
+        self.dir_selection = ipywidgets.Text(
+            value=self.filedir_default,
+            description='File directory',
+            layout=Layout(width='100%')
+        )
+        self.ts_read_from_filename = ipywidgets.Checkbox(
+            value=True,
+            description='Do you want to read timestamps from filenames?',
+            style={'description_width': 'initial'},
+            layout=Layout(width='50%')
+        )
+        self.ts_format = ipywidgets.Text(
+            value='%Y-%m-%d-%H-%M',
+            decription='Format of time in the filenames',
+            layout=Layout(width='30%')
+        )
+        self.ts_start_position = ipywidgets.IntText(
+            value=1,
+            decription='The start position of time in the filename (count from zero)',
+            layout=Layout(width='10%')
+        )
+        self.ts_end_position = ipywidgets.IntText(
+            value=16,
+            decription='The start position of time in the filename (count from zero)',
+            layout=Layout(width='10%')
+        )
+
+    def generate_widgets(self):
+
+        ts_widget = ipywidgets.Box([self.ts_format, self.ts_start_position, self.ts_end_position])
+        caption0 = ipywidgets.VBox(
+            [Label(value='Pleae specify the directory of fluorescence data in the text box below. Example:'),
+             Label(value='../../data/introduction/ (relative path)'),
+             Label(value='OR'),
+             Label(value='C:/Users/Alice/MasterThesis/data/introduction (absolute path)'),
+             Label(value='The directory would change automatically after entering new path.')])
+        caption1 = ipywidgets.Label(
+            value='If you want to read the timestamps from the filename, please specify the time format, start and end '
+                  'positions of time in the filename:')
+        caption2 = ipywidgets.Label(value='Time format reference: https://strftime.org/')
+        caption3 = ipywidgets.VBox([Label(value='Example: "2020-12-02-22-00-00_R2PEM.dat"'),
+                                    Label(value='Time format = %Y-%m-%d-%H-%M-%S'),
+                                    Label(value='start position = 1'),
+                                    Label(value='end position = 19')])
+
+        data_selection_items = [caption0, self.dir_selection, caption1, self.ts_read_from_filename, ts_widget, caption2, caption3]
+        data_selection = ipywidgets.Box(data_selection_items, layout=Layout(
+            display='flex',
+            flex_flow='column',
+            border=None,
+            align_items='stretch',
+            width='100%'
+        ))
+        return data_selection
+
+
+# ----------------------Part 2&3. Data preview, parameter selection, and data stacking-----------------------
+
+class Widgets2and3:
+    def __init__(self, intensity_range, em_range, ex_range, datdir, datlist, ts_format, ts_start_position,
+                 ts_end_position):
+
+        # --------Part2 tab 1------------
+        self.autoscale = ipywidgets.Checkbox(value=False,
+                                        description='Autoscale')
+        self.inner_filter_effect = ipywidgets.Checkbox(value=True, description='Inner filter effect')
+        self.scattering_correction = ipywidgets.Checkbox(value=True,
+                                                    description='Scattering correction')
+        self.contour_mask = ipywidgets.Checkbox(value=False,
+                                           description='Contour detection')
+        self.gaussian_smoothing = ipywidgets.Checkbox(value=True,
+                                                 description='Gaussian smoothing')
+        self.scattering_interpolation = ipywidgets.Dropdown(options=['zero', 'linear', 'linear2'],
+                                                       description='Scattering interpolation method',
+                                                       style={'description_width': 'initial'})
+        self.crange_cw = ipywidgets.IntRangeSlider(
+            value=[0, 800],
+            min=intensity_range[0],
+            max=intensity_range[1],
+            step=intensity_range[2],
+            description='Intensity',
+            continuous_update=False,
+            style={'description_width': 'initial'})
+
+        self.em_range_display = ipywidgets.IntRangeSlider(
+            value=em_range[0:2],
+            min=em_range[0],
+            max=em_range[1],
+            step=em_range[2],
+            description='Emission',
+            continuous_update=False,
+            style={'description_width': 'initial'})
+
+        self.ex_range_display = ipywidgets.IntRangeSlider(
+            value=ex_range[0:2],
+            min=ex_range[0],
+            max=ex_range[1],
+            step=ex_range[2],
+            description='Excitation',
+            continuous_update=False,
+            style={'description_width': 'initial'})
+
+        self.filedir = ipywidgets.fixed(datdir)
+
+        self.plot_abs = ipywidgets.Checkbox(value=True,
+                                       description='Plot absorbance')
+
+        self.filename = ipywidgets.Dropdown(options=datlist,
+                                       description='Filename',
+                                       style={'description_width': 'initial'},
+                                       layout={'width': 'max-content'})
+
+        self.title = ipywidgets.Checkbox(value=False,
+                                    description='Figure title (time)')
+
+        self.ABSxmax = ipywidgets.fixed(0.1)
+
+        # --------Part2 tab 2------------
+
+        self.gaussian_sigma = ipywidgets.FloatText(value=1, description='gaussian smoothing sigma',
+                                              style={'description_width': 'initial'})
+        self.gaussian_truncate = ipywidgets.IntText(value=3, description='gaussian smoothing truncate',
+                                               style={'description_width': 'initial'})
+        self.contour_otsu = ipywidgets.Checkbox(value=True, description='OTSU automatic thresholding',
+                                           style={'description_width': 'initial'})
+        self.contour_binary_threshold = ipywidgets.IntText(value=50, description='Mannual thresholding (0-255)',
+                                                      style={'description_width': 'initial'})
+        self.scattering_width = ipywidgets.IntText(value=15, description='Rayleigh scattering width [nm]',
+                                              style={'description_width': 'initial'})
+        self.ts_format_plot = ipywidgets.fixed(value=ts_format)
+        self.ts_start_position_plot = ipywidgets.fixed(value=ts_start_position-1)
+        self.ts_end_position_plot = ipywidgets.fixed(value=ts_end_position)
+
+    def generate_widgets(self):
+        form_item_layout = Layout(
+            display='flex',
+            flex_flow='row',
+            justify_content='space-between'
+        )
+        readdata_items = [
+            ipywidgets.Box([self.filename], layout=form_item_layout),
+            ipywidgets.Box([self.em_range_display, self.ex_range_display, self.crange_cw], layout=form_item_layout),
+            #    ipywidgets.Box([scattering_correction, scattering_interpolation],layout=form_item_layout),
+            ipywidgets.Box([self.gaussian_smoothing, self.inner_filter_effect, self.scattering_correction], layout=form_item_layout),
+            ipywidgets.Box([self.contour_mask, self.title, self.plot_abs], layout=form_item_layout)
+        ]
+        readdata = ipywidgets.Box(readdata_items, layout=Layout(
+            display='flex',
+            flex_flow='column',
+            border='solid 2px',
+            align_items='stretch',
+            width='100%'
+        ))
+        parameters_items = [
+            ipywidgets.Box([self.gaussian_sigma, self.gaussian_truncate]),
+            ipywidgets.Box([self.scattering_width, self.scattering_interpolation]),
+            ipywidgets.Box([self.contour_otsu, self.contour_binary_threshold])
+        ]
+        parameters = ipywidgets.Box(parameters_items, layout=Layout(
+            display='flex',
+            flex_flow='column',
+            border='solid 2px',
+            align_items='stretch',
+            width='100%'
+        ))
+        tab2 = ipywidgets.Tab()
+        tab2.children = [readdata, parameters]
+        tab2.set_title(0, 'Read data')
+        tab2.set_title(1, 'Parameters')
+
+        out_parameters = ipywidgets.interactive_output(plot_eem_interact,
+                                                       {'filedir': self.filedir, 'filename': self.filename,
+                                                        'autoscale': self.autoscale,
+                                                        'crange': self.crange_cw,
+                                                        'scattering_correction': self.scattering_correction,
+                                                        'inner_filter_effect': self.inner_filter_effect,
+                                                        'plot_abs': self.plot_abs, 'abs_xmax': self.ABSxmax, 'title': self.title,
+                                                        'em_range_display': self.em_range_display,
+                                                        'ex_range_display': self.ex_range_display,
+                                                        'contour_mask': self.contour_mask,
+                                                        'gaussian_smoothing': self.gaussian_smoothing,
+                                                        'scattering_interpolation': self.scattering_interpolation,
+                                                        'sigma': self.gaussian_sigma, 'truncate': self.gaussian_truncate,
+                                                        'otsu': self.contour_otsu,
+                                                        'binary_threshold': self.contour_binary_threshold,
+                                                        'tolerance': self.scattering_width,
+                                                        'ts_format': self.ts_format_plot,
+                                                        'ts_start_position': self.ts_start_position_plot,
+                                                        'ts_end_position': self.ts_end_position_plot
+                                                        })
+        note_step2 = ipywidgets.VBox([ipywidgets.Label(value="If you see blank space in the short excitation wavelength region,\
+        it's likely that the inner filter effect is too strong."),
+                                      ipywidgets.Label(
+                                          value="Please consider adjust the excitation wavelength range.")])
+
+        stacking_interact = interactive(
+            load_eem_stack_interact,
+            {'manual': True, 'manual_name': 'Stack data'},
+            filedir=ipywidgets.fixed(value=self.filedir.value),
+            scattering_correction=ipywidgets.fixed(value=self.scattering_correction.value),
+            em_range_display=ipywidgets.fixed(value=self.em_range_display.value),
+            ex_range_display=ipywidgets.fixed(value=self.ex_range_display.value),
+            gaussian_smoothing=ipywidgets.fixed(value=self.gaussian_smoothing.value),
+            inner_filter_effect=ipywidgets.fixed(value=self.inner_filter_effect.value),
+            sigma=ipywidgets.fixed(value=self.gaussian_sigma.value),
+            truncate=ipywidgets.fixed(value=self.gaussian_truncate.value),
+            otsu=ipywidgets.fixed(value=self.contour_otsu.value),
+            binary_threshold=ipywidgets.fixed(value=self.contour_binary_threshold.value),
+            tolerance=ipywidgets.fixed(value=self.scattering_width.value),
+            scattering_interpolation=ipywidgets.fixed(value=self.scattering_interpolation.value),
+            contour_mask=ipywidgets.fixed(value=self.contour_mask.value),
+            keyword_pem=ipywidgets.Text(
+                value='PEM.dat',
+                style={'description_width': 'initial'},
+                description='Filename searching keyword: '
+            ),
+            existing_datlist=ipywidgets.fixed(value=[])
+
+        )
+
+        return tab2, note_step2, out_parameters, stacking_interact
+
+# ----------------------Part 4. Remove unwanted data from the data stack-----------------------
+
+class Widgets41:
+    def __init__(self, datlist_all, eem_preview):
+        self.datlist_all = datlist_all
+        self.datlist_filtered = datlist_all.copy()
+        self.idx2remove = []
+        self.filelist_preview = ipywidgets.Dropdown(options=self.datlist_all,
+                                               style={'description_width': 'initial'},
+                                               layout={'width': 'max-content'})
+        self.eem_preview = eem_preview # widgets from Widgets2and3
+
+    def update_filelist(self, foo):
+        self.idx2remove.append(self.datlist_all.index(self.filelist_preview.value))
+        self.datlist_filtered.remove(self.filelist_preview.value)
+        print('"' + self.filelist_preview.value + '"' + " has been removed")
+
+    def generate_widgets(self):
+        button_update = ipywidgets.Button(description="Remove data")
+
+        button_update.on_click(self.update_filelist)
+
+        manual_cleaning_items = [
+            ipywidgets.Box([self.eem_preview], layout=form_item_layout),
+            ipywidgets.Box([self.filelist_preview, button_update], layout=form_item_layout)
+        ]
+
+        manual_cleaning = ipywidgets.Box(manual_cleaning_items, layout=Layout(
+            display='flex',
+            flex_flow='column',
+            border='solid 2px',
+            align_items='stretch',
+            width='100%'
+        ))
+        return manual_cleaning
+
+    # ----------------------Part 5. Data stack analysis-----------------------
 
 # -------Tab1: File range selection----------
 
@@ -70,20 +332,20 @@ class Widgets52:
                                      self.Em_range_cw, self.Ex_range_cw)
         if self.property_pixel.value == 'Timeseries analysis':
             if self.timestamps_cw:
-                EEMstack_class_cw.pixel_rel_std(Em=self.em_pixel.value, Ex=self.ex_pixel.value, plot=True,
+                EEMstack_class_cw.pixel_rel_std(em=self.em_pixel.value, ex=self.ex_pixel.value, plot=True,
                                                 timestamp=self.timestamps_cw[self.datlist_cw.index(self.range1.value):
                                                                              self.datlist_cw.index(
                                                                                  self.range2.value) + 1],
                                                 baseline=False, output=True)
             else:
-                EEMstack_class_cw.pixel_rel_std(Em=self.em_pixel.value, Ex=self.ex_pixel.value, plot=True,
+                EEMstack_class_cw.pixel_rel_std(em=self.em_pixel.value, ex=self.ex_pixel.value, plot=True,
                                                 timestamp=False, baseline=False, output=True)
         if self.property_pixel.value == 'Correlation analysis':
             if self.checkbox_reference_filepath_pixel.value:
                 reference = read_reference_from_text(self.reference_filepath_pixel.value)
             if self.checkbox_reference_mannual_input_pixel.value:
                 reference = string_to_float_list(self.reference_mannual_input_pixel.value)
-            EEMstack_class_cw.pixel_linreg(Em=self.em_pixel.value, Ex=self.ex_pixel.value, x=reference)
+            EEMstack_class_cw.pixel_linreg(em=self.em_pixel.value, ex=self.ex_pixel.value, x=reference)
 
     def update_mannual(self, change):
         self.checkbox_reference_mannual_input_pixel.value = not change.new
@@ -144,7 +406,7 @@ class Widgets53:
     def update_filepath(self, change):
         self.checkbox_reference_filepath_eem.value = not change.new
 
-    def EEM_statistics_interact(self, foo):
+    def eem_statistics_interact(self, foo):
         EEMstack_class_cw = EEMstack(self.EEMstack_cw[self.datlist_cw.index(self.range1.value):
                                                       self.datlist_cw.index(self.range2.value) + 1],
                                      self.Em_range_cw, self.Ex_range_cw)
@@ -156,13 +418,13 @@ class Widgets53:
                 reference, header = read_reference_from_text(self.reference_filepath_eem.value)
             if self.checkbox_reference_mannual_input_eem.value:
                 reference = string_to_float_list(self.reference_mannual_input_eem.value)
-        EEM_statistics(EEMstack_class_cw, term=self.property_eem.value, title=self.title_eem_statistics.value,
+        eem_statistics(EEMstack_class_cw, term=self.property_eem.value, title=self.title_eem_statistics.value,
                        reference=reference, crange=self.crange_cw.value, reference_label=header)
 
     def generate_widgets(self):
         self.checkbox_reference_filepath_eem.observe(self.update_manual, 'value')
         self.checkbox_reference_mannual_input_eem.observe(self.update_filepath, 'value')
-        self.button_eem_statistics.on_click(self.EEM_statistics_interact)
+        self.button_eem_statistics.on_click(self.eem_statistics_interact)
         eem_statistics_items = [ipywidgets.Box([self.property_eem]),
                                 ipywidgets.Box([self.caption_eem_statistics], layout=form_item_layout),
                                 ipywidgets.Box([self.checkbox_reference_filepath_eem, self.reference_filepath_eem],
