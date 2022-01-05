@@ -654,8 +654,7 @@ def load_eem_stack_interact(filedir, scattering_correction=False, em_range_displ
                            sigma=1, truncate=3, otsu=True, binary_threshold=50, tolerance=15,
                            scattering_interpolation='linear2', contour_mask=True, keyword_pem='PEM.dat',
                            existing_datlist=[]):
-    eem_stack, em_range, ex_range_pem, datlist_pem = stackDat(filedir, kw=keyword_pem,
-                                                             existing_datlist=existing_datlist)
+    eem_stack, em_range, ex_range_pem, datlist_pem = stackDat(filedir, kw=keyword_pem, existing_datlist=existing_datlist)
     if inner_filter_effect:
         datlist_abs = [dat[0:-7] + 'ABS.dat' for dat in datlist_pem]
         abs_stack, ex_range_abs, datlist_abs = stackABS(filedir, datlist=datlist_abs)

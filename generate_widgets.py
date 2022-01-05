@@ -149,6 +149,26 @@ class Widgets2and3:
         self.ts_start_position_plot = ipywidgets.fixed(value=ts_start_position-1)
         self.ts_end_position_plot = ipywidgets.fixed(value=ts_end_position)
 
+        self.preview_parameter_dict = {'filedir': self.filedir, 'filename': self.filename,
+                                                        'autoscale': self.autoscale,
+                                                        'crange': self.crange_cw,
+                                                        'scattering_correction': self.scattering_correction,
+                                                        'inner_filter_effect': self.inner_filter_effect,
+                                                        'plot_abs': self.plot_abs, 'abs_xmax': self.ABSxmax, 'title': self.title,
+                                                        'em_range_display': self.em_range_display,
+                                                        'ex_range_display': self.ex_range_display,
+                                                        'contour_mask': self.contour_mask,
+                                                        'gaussian_smoothing': self.gaussian_smoothing,
+                                                        'scattering_interpolation': self.scattering_interpolation,
+                                                        'sigma': self.gaussian_sigma, 'truncate': self.gaussian_truncate,
+                                                        'otsu': self.contour_otsu,
+                                                        'binary_threshold': self.contour_binary_threshold,
+                                                        'tolerance': self.scattering_width,
+                                                        'ts_format': self.ts_format_plot,
+                                                        'ts_start_position': self.ts_start_position_plot,
+                                                        'ts_end_position': self.ts_end_position_plot
+                                                        }
+
     def generate_widgets(self):
         form_item_layout = Layout(
             display='flex',
@@ -186,26 +206,8 @@ class Widgets2and3:
         tab2.set_title(0, 'Read data')
         tab2.set_title(1, 'Parameters')
 
-        out_parameters = ipywidgets.interactive_output(plot_eem_interact,
-                                                       {'filedir': self.filedir, 'filename': self.filename,
-                                                        'autoscale': self.autoscale,
-                                                        'crange': self.crange_cw,
-                                                        'scattering_correction': self.scattering_correction,
-                                                        'inner_filter_effect': self.inner_filter_effect,
-                                                        'plot_abs': self.plot_abs, 'abs_xmax': self.ABSxmax, 'title': self.title,
-                                                        'em_range_display': self.em_range_display,
-                                                        'ex_range_display': self.ex_range_display,
-                                                        'contour_mask': self.contour_mask,
-                                                        'gaussian_smoothing': self.gaussian_smoothing,
-                                                        'scattering_interpolation': self.scattering_interpolation,
-                                                        'sigma': self.gaussian_sigma, 'truncate': self.gaussian_truncate,
-                                                        'otsu': self.contour_otsu,
-                                                        'binary_threshold': self.contour_binary_threshold,
-                                                        'tolerance': self.scattering_width,
-                                                        'ts_format': self.ts_format_plot,
-                                                        'ts_start_position': self.ts_start_position_plot,
-                                                        'ts_end_position': self.ts_end_position_plot
-                                                        })
+        out_parameters = ipywidgets.interactive_output(plot_eem_interact, self.preview_parameter_dict)
+
         note_step2 = ipywidgets.VBox([ipywidgets.Label(value="If you see blank space in the short excitation wavelength region,\
         it's likely that the inner filter effect is too strong."),
                                       ipywidgets.Label(
@@ -232,23 +234,21 @@ class Widgets2and3:
                 style={'description_width': 'initial'},
                 description='Filename searching keyword: '
             ),
-            existing_datlist=ipywidgets.fixed(value=[])
-
-        )
+            existing_datlist=ipywidgets.fixed(value=[]))
 
         return tab2, note_step2, out_parameters, stacking_interact
 
 # ----------------------Part 4. Remove unwanted data from the data stack-----------------------
 
 class Widgets41:
-    def __init__(self, datlist_all, eem_preview):
+    def __init__(self, datlist_all, eem_preview_parameters):
         self.datlist_all = datlist_all
         self.datlist_filtered = datlist_all.copy()
         self.idx2remove = []
         self.filelist_preview = ipywidgets.Dropdown(options=self.datlist_all,
                                                style={'description_width': 'initial'},
                                                layout={'width': 'max-content'})
-        self.eem_preview = eem_preview # widgets from Widgets2and3
+        self.preview_parameter_dict = eem_preview_parameters # from Widgets2and3
 
     def update_filelist(self, foo):
         self.idx2remove.append(self.datlist_all.index(self.filelist_preview.value))
@@ -257,11 +257,14 @@ class Widgets41:
 
     def generate_widgets(self):
         button_update = ipywidgets.Button(description="Remove data")
+        self.preview_parameter_dict['filename'] = self.filelist_preview
 
         button_update.on_click(self.update_filelist)
 
+        eem_preview = ipywidgets.interactive_output(plot_eem_interact, self.preview_parameter_dict)
+
         manual_cleaning_items = [
-            ipywidgets.Box([self.eem_preview], layout=form_item_layout),
+            ipywidgets.Box([eem_preview], layout=form_item_layout),
             ipywidgets.Box([self.filelist_preview, button_update], layout=form_item_layout)
         ]
 
@@ -562,16 +565,17 @@ class Widgets56:
 # ----------------------Part 6. Save PARAFAC result-----------------------
 
 class Widgets6:
-    def __init__(self, I_df, J_df, K_df, inner_filter_effect, scattering_correction, gaussian_smoothing, decomposition_method_list):
+    def __init__(self, I_df, J_df, K_df, filedir_default, inner_filter_effect, scattering_correction, gaussian_smoothing, decomposition_method_list):
         self.I_df = I_df
         self.J_df = J_df
         self.K_df = K_df
+        self.filedir_default = filedir_default + '/parafac_output.txt'
         self.inner_filter_effect = inner_filter_effect
         self.scattering_correction = scattering_correction
         self.gaussian_smoothing = gaussian_smoothing
         self.decomposition_method_list = decomposition_method_list
         self.filepath_i = ipywidgets.Text(
-            value='C:/Users/YongminHu/Documents/PhD/Fluo-detect/_data/GW_RT_MT/GW_RT_P3.txt',
+            value=self.filedir_default,
             description='file save path*',
             style={'description_width': 'initial'},
             layout=Layout(width='100%'))
