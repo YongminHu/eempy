@@ -735,21 +735,23 @@ def decomposition_interact(eem_stack, em_range, ex_range, rank, index=[], decomp
         parafac_table = pd.DataFrame(I / I.mean(axis=0))
     else:
         parafac_table = pd.DataFrame(I)
-    parafac_table.columns = column_labels
     J_df = pd.DataFrame(np.flipud(J), index=ex_range)
     K_df = pd.DataFrame(K, index=em_range)
     ex_column = ["Ex" for i in range(ex_range.shape[0])]
     em_column = ["Em" for i in range(em_range.shape[0])]
-    ex_loading_index = pd.MultiIndex.from_tuples(list(zip(*[ex_column, ex_range.tolist()])),
+    score_column = ["Score" for i in range(parafac_table.shape[0])]
+    J_df.index = pd.MultiIndex.from_tuples(list(zip(*[ex_column, ex_range.tolist()])),
                                                  names=('type', 'wavelength'))
-    em_loading_index = pd.MultiIndex.from_tuples(list(zip(*[em_column, em_range.tolist()])),
+    K_df.index = pd.MultiIndex.from_tuples(list(zip(*[em_column, em_range.tolist()])),
                                                  names=('type', 'wavelength'))
-    J_df.index = ex_loading_index
     J_df.columns = column_labels
-    K_df.index = em_loading_index
     K_df.columns = column_labels
     if index:
-        parafac_table.index = index[:]
+        parafac_table.index = pd.MultiIndex.from_tuples(list(zip(*[score_column, index])),
+                                                names=('type', 'wavelength'))
+    else:
+        parafac_table.index = score_column
+    parafac_table.columns = column_labels
     if display_score:
         display(parafac_table)
     if plot_loadings:
@@ -822,7 +824,9 @@ def export_parafac(filepath, I_df, J_df, K_df, name, creator, date, email='', do
         J_df.to_csv(filepath, mode='a', sep="\t", header=None)
         K_df.to_csv(filepath, mode='a', sep="\t", header=None)
     with open(filepath, 'a') as f:
-        f.write('# \n# timestamp, component_n [intensity] \n# \n')
+        f.write('# \n# timestamp, component_n [Score] \n# \n')
         f.close()
     I_df.to_csv(filepath, mode='a', sep="\t", header=None)
+    with open(filepath, 'a') as f:
+        f.write('# end #')
     return info_dict

@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import re
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 
 def readEEM(filepath):
@@ -158,12 +158,6 @@ def get_filelist(filedir, extension):
     return datlist
 
 
-def dir_update(filedir):
-    filelist = os.listdir(filedir)
-    global datlist
-    datlist = [file for file in filelist if '.dat' in file]
-
-
 def ts_reshape(ts, timezone_correction=1):
     ts_reshaped = ts.drop_duplicates(subset=['time'], keep='last')
     ts_reshaped["time"] = pd.to_datetime(ts_reshaped.time) + timedelta(hours=timezone_correction)
@@ -227,3 +221,65 @@ def find_filtration_phase(mbr2press, transition_time=9, timezone_correction=1):
     return filtration_start, filtration_end, filtration_duration, flow_rate
 
 
+def read_parafac_result(filepath):
+    with open(filepath, 'r') as f:
+        line = f.readline().strip()
+        line_count = 0
+        while '#' in line:
+            if "Fluorescence" in line:
+                print("Reading fluorescence measurement info...")
+            line = f.readline().strip()
+            line_count += 1
+        info_dict = {}
+        while '#' not in line:
+            phrase = line.split(sep='\t')
+            if len(phrase) > 1:
+                info_dict[phrase[0]] = phrase[1]
+            else:
+                info_dict[phrase[0]] = ''
+            line = f.readline().strip()
+            line_count += 1
+        while '#' in line:
+            if "Excitation" in line:
+                print("Reading Ex/Em loadings...")
+            line = f.readline().strip()
+            line_count_spectra_start = line_count
+            line_count += 1
+        while "Ex" in line:
+            line = f.readline().strip()
+            line_count += 1
+        line_count_ex = line_count
+        ex_df = pd.read_csv(filepath, sep="\t", header=None, index_col=[0, 1],
+                           skiprows=line_count_spectra_start + 1, nrows=line_count_ex - line_count_spectra_start - 1)
+        component_label = ['component {rank}'.format(rank=r + 1) for r in range(ex_df.shape[1])]
+        ex_df.columns = component_label
+        ex_df.index.names = ['type', 'wavelength']
+        while "Em" in line:
+            line = f.readline().strip()
+            line_count += 1
+        line_count_em = line_count
+        em_df = pd.read_csv(filepath, sep='\t', header=None, index_col=[0, 1],
+                           skiprows=line_count_ex, nrows=line_count_em - line_count_ex)
+        em_df.columns = component_label
+        em_df.index.names = ['type', 'wavelength']
+        score_df = None
+        while '#' in line:
+            if "Score" in line:
+                print("Reading component scores...")
+            line = f.readline().strip()
+            line_count += 1
+        line_count_score = line_count
+        while 'Score' in line:
+            line = f.readline().strip()
+            line_count += 1
+        while '#' in line:
+            if 'end' in line:
+                line_count_end = line_count
+                score_df = pd.read_csv(filepath, sep="\t", header=None, index_col=[0, 1],
+                                            skiprows=line_count_score, nrows=line_count_end - line_count_score)
+                score_df.columns = component_label
+                score_df.index.names = ['type', 'time']
+                print('Reading complete')
+                line = f.readline().strip()
+        f.close()
+    return ex_df, em_df, score_df, info_dict

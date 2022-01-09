@@ -213,6 +213,9 @@ class Widgets2and3:
                                       ipywidgets.Label(
                                           value="Please consider adjust the excitation wavelength range.")])
 
+        return tab2, note_step2, out_parameters
+
+    def generate_widgets2(self):
         stacking_interact = interactive(
             load_eem_stack_interact,
             {'manual': True, 'manual_name': 'Stack data'},
@@ -236,7 +239,7 @@ class Widgets2and3:
             ),
             existing_datlist=ipywidgets.fixed(value=[]))
 
-        return tab2, note_step2, out_parameters, stacking_interact
+        return stacking_interact
 
 # ----------------------Part 4. Remove unwanted data from the data stack-----------------------
 
@@ -304,13 +307,13 @@ class Widgets51:
 # --------Tab2: Pixel statistics------------------
 
 class Widgets52:
-    def __init__(self, EEMstack_cw, datlist_cw, range1, range2, Em_range_cw, Ex_range_cw, timestamps_cw):
-        self.EEMstack_cw = EEMstack_cw
+    def __init__(self, eem_stack_cw, datlist_cw, range1, range2, em_range_cw, ex_range_cw, timestamps_cw):
+        self.eem_stack_cw = eem_stack_cw
         self.datlist_cw = datlist_cw
         self.range1 = range1
         self.range2 = range2
-        self.Em_range_cw = Em_range_cw
-        self.Ex_range_cw = Ex_range_cw
+        self.em_range_cw = em_range_cw
+        self.ex_range_cw = ex_range_cw
         self.timestamps_cw = timestamps_cw
         self.property_pixel = ipywidgets.Dropdown(options=['Timeseries analysis', 'Correlation analysis'],
                                                   description='Property')
@@ -330,9 +333,9 @@ class Widgets52:
         self.button_pixel_statistics = ipywidgets.Button(description='Calculate')
 
     def pixel_statistics_interact(self, foo):
-        EEMstack_class_cw = EEMstack(self.EEMstack_cw[self.datlist_cw.index(self.range1.value):
+        EEMstack_class_cw = EEMstack(self.eem_stack_cw[self.datlist_cw.index(self.range1.value):
                                                       self.datlist_cw.index(self.range2.value) + 1],
-                                     self.Em_range_cw, self.Ex_range_cw)
+                                     self.em_range_cw, self.ex_range_cw)
         if self.property_pixel.value == 'Timeseries analysis':
             if self.timestamps_cw:
                 EEMstack_class_cw.pixel_rel_std(em=self.em_pixel.value, ex=self.ex_pixel.value, plot=True,
@@ -375,13 +378,13 @@ class Widgets52:
 # ----------Tab3: EEM statistics---------
 
 class Widgets53:
-    def __init__(self, EEMstack_cw, datlist_cw, range1, range2, Em_range_cw, Ex_range_cw, timestamps_cw, crange_cw):
-        self.EEMstack_cw = EEMstack_cw
+    def __init__(self, eem_stack_cw, datlist_cw, range1, range2, em_range_cw, ex_range_cw, timestamps_cw, crange_cw):
+        self.eem_stack_cw = eem_stack_cw
         self.datlist_cw = datlist_cw
         self.range1 = range1
         self.range2 = range2
-        self.Em_range_cw = Em_range_cw
-        self.Ex_range_cw = Ex_range_cw
+        self.em_range_cw = em_range_cw
+        self.ex_range_cw = ex_range_cw
         self.timestamps_cw = timestamps_cw
         self.crange_cw = crange_cw
         self.property_eem = ipywidgets.Dropdown(options=['Mean', 'Standard deviation', 'Relative standard deviation',
@@ -410,9 +413,9 @@ class Widgets53:
         self.checkbox_reference_filepath_eem.value = not change.new
 
     def eem_statistics_interact(self, foo):
-        EEMstack_class_cw = EEMstack(self.EEMstack_cw[self.datlist_cw.index(self.range1.value):
-                                                      self.datlist_cw.index(self.range2.value) + 1],
-                                     self.Em_range_cw, self.Ex_range_cw)
+        EEMstack_class_cw = EEMstack(self.eem_stack_cw[self.datlist_cw.index(self.range1.value):
+                                                       self.datlist_cw.index(self.range2.value) + 1],
+                                     self.em_range_cw, self.ex_range_cw)
         reference = None
         header = None
         if self.property_eem.value == 'Correlation: Linearity' or self.property_eem.value == 'Correlation: Pearson coef.' \
@@ -442,15 +445,15 @@ class Widgets53:
 # -------Tab5: Stack decomposition----------
 
 class Widgets55:
-    def __init__(self, data_index, data_index_cw, timestamps_cw, EEMstack_cw, datlist_cw, range1, range2, Em_range_cw, Ex_range_cw):
+    def __init__(self, data_index, data_index_cw, timestamps_cw, eem_stack_cw, datlist_cw, range1, range2, em_range_cw, ex_range_cw):
         self.data_index = data_index
         self.data_index_cw = data_index_cw
-        self.EEMstack_cw = EEMstack_cw
+        self.eem_stack_cw = eem_stack_cw
         self.datlist_cw = datlist_cw
         self.range1 = range1
         self.range2 = range2
-        self.Em_range_cw = Em_range_cw
-        self.Ex_range_cw = Ex_range_cw
+        self.em_range_cw = em_range_cw
+        self.ex_range_cw = ex_range_cw
         self.timestamps_cw = timestamps_cw
         self.rank_display = ipywidgets.IntText(value=4, description='Number of components',
                                                style={'description_width': 'initial'})
@@ -484,9 +487,9 @@ class Widgets55:
         if not self.data_index:
             self.data_index_cw = self.timestamps_cw
         parafac_table, _, _, _, J_df, K_df = \
-            decomposition_interact(self.EEMstack_cw[self.datlist_cw.index(self.range1.value):
+            decomposition_interact(self.eem_stack_cw[self.datlist_cw.index(self.range1.value):
                                                     self.datlist_cw.index(self.range2.value) + 1],
-                                   self.Em_range_cw, self.Ex_range_cw, self.rank_display.value,
+                                   self.em_range_cw, self.ex_range_cw, self.rank_display.value,
                                    index=self.data_index_cw[self.datlist_cw.index(self.range1.value):
                                                             self.datlist_cw.index(self.range2.value) + 1],
                                    decomposition_method=self.decomposition_method_list.value,
