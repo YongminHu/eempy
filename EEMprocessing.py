@@ -674,12 +674,28 @@ def load_eem_stack_interact(filedir, scattering_correction=False, em_range_displ
     return eem_stack, em_range_cut, ex_range_cut, datlist_pem
 
 
+def eem_total_fluorescence(intensity):
+    return intensity.sum()
+
+
+def eems_total_fluorescence_normalization(eem_stack):
+    eem_stack_normalized = eem_stack.copy
+    tf_list = []
+    for i in eem_stack.shape[0]:
+        tf = eem_total_fluorescence(eem_stack[i])
+        tf_list.append(tf)
+        eem_stack_normalized[i] = eem_stack/tf
+    return eem_stack_normalized, np.array(tf_list)
+
+
 def decomposition_interact(eem_stack, em_range, ex_range, rank, index=[], decomposition_method='parafac',
-                           score_normalization=False, loadings_normalization=True, component_normalization=False,
-                           component_contour_threshold=0, plot_loadings=True, plot_components=True, display_score=True,
-                           component_cmin=0, component_cmax=1, component_autoscale=False, title=True, cbar=True,
-                           cmap="jet"):
+                           dataset_normalization = False, score_normalization=False, loadings_normalization=True,
+                           component_normalization=False, component_contour_threshold=0, plot_loadings=True,
+                           plot_components=True, display_score=True, component_cmin=0, component_cmax=1,
+                           component_autoscale=False, title=True, cbar=True, cmap="jet"):
     plt.close()
+    if dataset_normalization:
+        eem_stack, tf = eems_total_fluorescence_normalization(eem_stack)
     try:
         if decomposition_method == 'parafac':
             factors = parafac(eem_stack, rank=rank)
@@ -731,6 +747,8 @@ def decomposition_interact(eem_stack, em_range, ex_range, rank, index=[], decomp
         if r == 0:
             component_stack = np.zeros([rank, component.shape[0], component.shape[1]])
         component_stack[r, :, :] = component
+    if dataset_normalization:
+        I = np.multiply(I, tf[:, np.newaxis])
     if score_normalization:
         parafac_table = pd.DataFrame(I / I.mean(axis=0))
     else:
