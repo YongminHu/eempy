@@ -1,9 +1,10 @@
 import ipywidgets
+import matplotlib.pyplot as plt
 from datetime import date
 from ipywidgets import Layout, Label, interactive
 from read_data import read_reference_from_text, string_to_float_list
 from EEMprocessing import EEMstack, eem_statistics, plot_eem_interact, decomposition_interact, \
-    decomposition_reconstruction_interact, export_parafac, load_eem_stack_interact
+    decomposition_reconstruction_interact, export_parafac, load_eem_stack_interact, eems_regional_integration
 from tensorly.decomposition import parafac, non_negative_parafac
 
 
@@ -440,6 +441,56 @@ class Widgets53:
                                     layout=form_item_layout),
                                 ipywidgets.Box([self.button_eem_statistics])]
         return eem_statistics_items
+
+
+# -------Tab4: Regional integration----------
+
+class Widgets54:
+    def __init__(self, eem_stack_cw, datlist_cw, em_range_cw, ex_range_cw, timestamps_cw):
+        self.eem_stack_cw = eem_stack_cw
+        self.datlist_cw = datlist_cw
+        self.em_range_cw = em_range_cw
+        self.ex_range_cw = ex_range_cw
+        self.timestamps_cw = timestamps_cw
+        self.em_boundary_left = ipywidgets.FloatText(value=300)
+        self.em_boundary_right = ipywidgets.FloatText(value=360)
+        self.ex_boundary_left = ipywidgets.FloatText(value=280)
+        self.ex_boundary_right = ipywidgets.FloatText(value=320)
+        self.button_eem_integration = ipywidgets.Button(description='Calculate')
+        self.integration_form = ipywidgets.Dropdown(options=['total fluorescence', 'average valid pixel intensity',
+                                                             'number of pixels'],
+                                                    description='property', style={'description_width': 'initial'})
+
+    def regional_integration_interact(self, foo):
+        eem_stack_cw_selected = \
+            self.eem_stack_cw[self.datlist_cw.index(self.range1.value):self.datlist_cw.index(self.range2.value) + 1]
+        eem_stack_integration, eem_stack_avg_intensity, eem_stack_num_pixels = \
+            eems_regional_integration(eem_stack_cw_selected, self.em_range_cw, self.ex_range_cw,
+                                      [self.em_boundary_left.value, self.em_boundary_right.value],
+                                      [self.ex_boundary_left.value, self.ex_boundary_right.value])
+        ts_selected = self.data_index_cw[self.datlist_cw.index(self.range1.value): self.datlist_cw.index(self.range2.value) + 1]
+        plt.figure()
+        if self.integration_form.value == 'total fluorescence':
+            plt.plot(ts_selected, eem_stack_integration)
+            plt.xlabel('Time')
+            plt.ylabel('Total fluorescence [a.u.]')
+        if self.integration_form.value == 'average valid pixel intensity':
+            plt.plot(ts_selected, eem_stack_avg_intensity)
+            plt.xlabel('Time')
+            plt.ylabel('Average intensity [a.u.]')
+        if self.integration_form.value == 'number of pixels':
+            plt.plot(ts_selected, eem_stack_num_pixels)
+            plt.xlabel('Time')
+            plt.ylabel('Number of pixels')
+
+    def generate_widgets(self):
+        self.button_eem_integration.on_click(self.regional_integration_interact)
+        integration_items = [
+            ipywidgets.Box([Label(value='Excitation wavelength range: '), self.ex_boundary_left, Label(value='to'), self.ex_boundary_right]),
+            ipywidgets.Box([Label(value='Emission wavelength range: '), self.em_boundary_left, Label(value='to'), self.em_boundary_right]),
+            self.integration_form, self.button_eem_integration]
+        return integration_items
+
 
 
 # -------Tab5: Stack decomposition----------

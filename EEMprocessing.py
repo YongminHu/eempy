@@ -137,9 +137,9 @@ def eem_cutting(intensity, em_range, ex_range, em_min, em_max, ex_min, ex_max):
     ex_max_idx = dichotomy_search(ex_range, ex_max)
     intensity_cut = intensity[ex_range.shape[0] - ex_max_idx - 1:ex_range.shape[0] - ex_min_idx,
                     em_min_idx:em_max_idx + 1]
-    Em_range_cut = em_range[em_min_idx:em_max_idx + 1]
-    Ex_range_cut = ex_range[ex_min_idx:ex_max_idx + 1]
-    return intensity_cut, Em_range_cut, Ex_range_cut
+    em_range_cut = em_range[em_min_idx:em_max_idx + 1]
+    ex_range_cut = ex_range[ex_min_idx:ex_max_idx + 1]
+    return intensity_cut, em_range_cut, ex_range_cut
 
 
 def eems_cutting(eem_stack, em_range, ex_range, em_min=250, em_max=810, ex_min=230, ex_max=500):
@@ -189,7 +189,6 @@ def eem_inner_filter_effect(intensity, em_range, ex_range, absorbance, ex_range2
     absorbance_em = np.array([f1(em_range)])
     ife_factors = 10 ** (cuvette_length * (absorbance_ex.T.dot(np.ones(absorbance_em.shape)) +
                                            np.ones(absorbance_ex.shape).T.dot(absorbance_em)))
-    #    plot3DEEM(ife_factors,Em_range, Ex_range, autoscale=False, cmax=2, cmin=1)
     intensity_filtered = intensity * ife_factors
     return intensity_filtered
 
@@ -208,20 +207,21 @@ def eem_regional_integration(intensity, em_range, ex_range, em_boundary, ex_boun
                                                             em_min=em_boundary[0], em_max=em_boundary[1],
                                                             ex_min=ex_boundary[0], ex_max=ex_boundary[1])
     integration = np.sum(intensity_cut)
-    avg_regional_intensity = np.average(intensity_cut)
-    num_pixels = len(em_range_cut)*len(ex_range_cut)
-    return integration, num_pixels, avg_regional_intensity
+    # number of effective pixels (i.e. pixels with positive intensity)
+    num_pixels = intensity[intensity>0].shape[0]
+    avg_regional_intensity = integration/num_pixels
+    return integration, avg_regional_intensity, num_pixels
 
 
 def eems_regional_integration(eem_stack, em_range, ex_range, em_boundary, ex_boundary):
     eem_stack_integration = np.zeros(eem_stack.shape[0])
     eem_stack_regional_intensity = np.zeros(eem_stack.shape[0])
+    eem_stack_num_pixels = np.zeros(eem_stack.shape[0])
     for i in range(eem_stack.shape[0]):
         intensity = eem_stack[i]
-        eem_stack_integration[i], _, eem_stack_regional_intensity[i] = \
+        eem_stack_integration[i], eem_stack_regional_intensity[i], eem_stack_num_pixels[i] = \
             eem_regional_integration(intensity, em_range, ex_range, em_boundary, ex_boundary)
-    return eem_stack_integration
-
+    return eem_stack_integration, eem_stack_regional_intensity, eem_stack_num_pixels
 
 
 def eems_set_region_to_zero(eem_stack, Em_range, Ex_range, Em_min=250, Em_max=550, Ex_min=230, Ex_max=450):
