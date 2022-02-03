@@ -1,7 +1,6 @@
 """
 Functions for fluorescence python toolkit
 Author: Yongmin Hu (yongmin.hu@eawag.ch, yongminhu@outlook.com)
-Last update: 2021-09-08
 """
 
 from read_data import *
@@ -115,11 +114,11 @@ def eem_mask(intensity, em_range, ex_range, ref_matrix, threshold, residual, plo
 
 def eem_set_region_to_zero(intensity, em_range, ex_range, em_min, em_max, ex_min, ex_max):
     zero_mask = np.zeros(intensity.shape)
-    Em_min_idx = dichotomy_search(em_range, em_min)
-    Em_max_idx = dichotomy_search(em_range, em_max)
-    Ex_min_idx = dichotomy_search(ex_range, ex_min)
-    Ex_max_idx = dichotomy_search(ex_range, ex_max)
-    zero_mask[ex_range.shape[0] - Ex_max_idx - 1:ex_range.shape[0] - Ex_min_idx, Em_min_idx:Em_max_idx] = 1
+    em_min_idx = dichotomy_search(em_range, em_min)
+    em_max_idx = dichotomy_search(em_range, em_max)
+    ex_min_idx = dichotomy_search(ex_range, ex_min)
+    ex_max_idx = dichotomy_search(ex_range, ex_max)
+    zero_mask[ex_range.shape[0] - ex_max_idx - 1:ex_range.shape[0] - ex_min_idx, em_min_idx:em_max_idx] = 1
     intensity[np.where(zero_mask == 0)] = 0
     return intensity
 
@@ -132,21 +131,21 @@ def eems_gaussianfilter(eem_stack, sigma=1, truncate=3):
 
 
 def eem_cutting(intensity, em_range, ex_range, em_min, em_max, ex_min, ex_max):
-    Em_min_idx = dichotomy_search(em_range, em_min)
-    Em_max_idx = dichotomy_search(em_range, em_max)
-    Ex_min_idx = dichotomy_search(ex_range, ex_min)
-    Ex_max_idx = dichotomy_search(ex_range, ex_max)
-    intensity_cut = intensity[ex_range.shape[0] - Ex_max_idx - 1:ex_range.shape[0] - Ex_min_idx,
-                    Em_min_idx:Em_max_idx + 1]
-    Em_range_cut = em_range[Em_min_idx:Em_max_idx + 1]
-    Ex_range_cut = ex_range[Ex_min_idx:Ex_max_idx + 1]
+    em_min_idx = dichotomy_search(em_range, em_min)
+    em_max_idx = dichotomy_search(em_range, em_max)
+    ex_min_idx = dichotomy_search(ex_range, ex_min)
+    ex_max_idx = dichotomy_search(ex_range, ex_max)
+    intensity_cut = intensity[ex_range.shape[0] - ex_max_idx - 1:ex_range.shape[0] - ex_min_idx,
+                    em_min_idx:em_max_idx + 1]
+    Em_range_cut = em_range[em_min_idx:em_max_idx + 1]
+    Ex_range_cut = ex_range[ex_min_idx:ex_max_idx + 1]
     return intensity_cut, Em_range_cut, Ex_range_cut
 
 
 def eems_cutting(eem_stack, em_range, ex_range, em_min=250, em_max=810, ex_min=230, ex_max=500):
     for i in range(eem_stack.shape[0]):
         intensity = np.array(eem_stack[i, :, :])
-        intensity_cut, Em_range_cut, Ex_range_cut = eem_cutting(intensity, em_range, ex_range,
+        intensity_cut, em_range_cut, ex_range_cut = eem_cutting(intensity, em_range, ex_range,
                                                                 em_min=em_min, em_max=em_max, ex_min=ex_min,
                                                                 ex_max=ex_max)
         intensity_cut = np.array([intensity_cut])
@@ -154,7 +153,7 @@ def eems_cutting(eem_stack, em_range, ex_range, em_min=250, em_max=810, ex_min=2
             eem_stack_cut = intensity_cut
         if i > 0:
             eem_stack_cut = np.concatenate([eem_stack_cut, intensity_cut], axis=0)
-    return eem_stack_cut, Em_range_cut, Ex_range_cut
+    return eem_stack_cut, em_range_cut, ex_range_cut
 
 
 def eems_scattering_correction(eem_stack, em_range, ex_range, scattering_interpolation='zero',
@@ -202,6 +201,27 @@ def eems_inner_filter_effect(eem_stack, abs_stack, em_range, ex_range, ex_range2
         absorbance = abs_stack[i]
         eem_stack_filtered[i] = eem_inner_filter_effect(intensity, em_range, ex_range, absorbance, ex_range2)
     return eem_stack_filtered
+
+
+def eem_regional_integration(intensity, em_range, ex_range, em_boundary, ex_boundary):
+    intensity_cut, em_range_cut, ex_range_cut = eem_cutting(intensity, em_range, ex_range,
+                                                            em_min=em_boundary[0], em_max=em_boundary[1],
+                                                            ex_min=ex_boundary[0], ex_max=ex_boundary[1])
+    integration = np.sum(intensity_cut)
+    avg_regional_intensity = np.average(intensity_cut)
+    num_pixels = len(em_range_cut)*len(ex_range_cut)
+    return integration, num_pixels, avg_regional_intensity
+
+
+def eems_regional_integration(eem_stack, em_range, ex_range, em_boundary, ex_boundary):
+    eem_stack_integration = np.zeros(eem_stack.shape[0])
+    eem_stack_regional_intensity = np.zeros(eem_stack.shape[0])
+    for i in range(eem_stack.shape[0]):
+        intensity = eem_stack[i]
+        eem_stack_integration[i], _, eem_stack_regional_intensity[i] = \
+            eem_regional_integration(intensity, em_range, ex_range, em_boundary, ex_boundary)
+    return eem_stack_integration
+
 
 
 def eems_set_region_to_zero(eem_stack, Em_range, Ex_range, Em_min=250, Em_max=550, Ex_min=230, Ex_max=450):
@@ -681,10 +701,10 @@ def eem_total_fluorescence(intensity):
 def eems_total_fluorescence_normalization(eem_stack):
     eem_stack_normalized = eem_stack.copy
     tf_list = []
-    for i in eem_stack.shape[0]:
+    for i in range(eem_stack.shape[0]):
         tf = eem_total_fluorescence(eem_stack[i])
         tf_list.append(tf)
-        eem_stack_normalized[i] = eem_stack/tf
+        eem_stack_normalized[i] = eem_stack[i]/tf
     return eem_stack_normalized, np.array(tf_list)
 
 

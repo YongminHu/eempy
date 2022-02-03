@@ -470,6 +470,9 @@ class Widgets55:
                                                                       'test_function'],
                                                              style={'description_width': 'initial'},
                                                              description='Decomposition method')
+        self.dataset_normalization = ipywidgets.Checkbox(value=False,
+                                                         style={'description_width': 'initial'},
+                                                         description='Normalize the EEMs by total fluorescence before PARAFAC')
         self.show_normalized_score = ipywidgets.Checkbox(value=False,
                                                          style={'description_width': 'initial'},
                                                          description='Normalize the score by mean')
@@ -495,6 +498,7 @@ class Widgets55:
                                    decomposition_method=self.decomposition_method_list.value,
                                    plot_loadings=self.show_loadings.value,
                                    plot_components=self.show_components.value,
+                                   dataset_normalization=self.dataset_normalization,
                                    score_normalization=self.show_normalized_score.value,
                                    loadings_normalization=self.show_normalized_loadings.value,
                                    component_normalization=self.show_normalized_component.value,
@@ -508,7 +512,8 @@ class Widgets55:
         decomposition_items = [
             ipywidgets.Box([self.rank_display, self.decomposition_method_list], layout=form_item_layout),
             ipywidgets.Box([Label(value='The number of components should be no more than the number of samples')]),
-            self.show_components, self.show_loadings, self.show_normalized_loadings, self.show_normalized_component,
+            self.show_components, self.show_loadings, self.dataset_normalization,
+            self.show_normalized_loadings, self.show_normalized_component,
             self.show_normalized_score, self.button_decomposition_interact]
         return decomposition_items
 
