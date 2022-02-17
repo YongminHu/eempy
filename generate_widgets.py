@@ -1,10 +1,15 @@
 import ipywidgets
 import matplotlib.pyplot as plt
+import numpy as np
 from datetime import date
+
+import pandas as pd
+from IPython.display import display
 from ipywidgets import Layout, Label, interactive
 from read_data import read_reference_from_text, string_to_float_list
 from EEMprocessing import EEMstack, eem_statistics, plot_eem_interact, decomposition_interact, \
-    decomposition_reconstruction_interact, export_parafac, load_eem_stack_interact, eems_regional_integration
+    decomposition_reconstruction_interact, export_parafac, load_eem_stack_interact, eems_regional_integration, \
+    eems_isolation_forest, eems_one_class_svm
 from tensorly.decomposition import parafac, non_negative_parafac
 
 
@@ -244,8 +249,8 @@ class Widgets2and3:
 
 # ----------------------Part 4. Remove unwanted data from the data stack-----------------------
 
-class Widgets41:
-    def __init__(self, datlist_all, eem_preview_parameters):
+class Widgets4:
+    def __init__(self, eem_stack, datlist_all, em_range, ex_range, eem_preview_parameters):
         self.datlist_all = datlist_all
         self.datlist_filtered = datlist_all.copy()
         self.idx2remove = []
@@ -253,13 +258,25 @@ class Widgets41:
                                                style={'description_width': 'initial'},
                                                layout={'width': 'max-content'})
         self.preview_parameter_dict = eem_preview_parameters # from Widgets2and3
+        self.eem_stack = eem_stack
+        self.em_range = em_range
+        self.ex_range = ex_range
+        self.auto_detection_method = ipywidgets.Dropdown(options=['Isolation forest', 'One-class-SVM', 'Mixed'],
+                                                         description='Artefact detection algorithm')
+        self.tf_normalization = ipywidgets.Checkbox(value=True, description='Normalize EEM with total fluorescence')
+        self.grid_size = ipywidgets.FloatText(value=10, description='The length and width of each pixel after down-sampling')
+        self.contamination = ipywidgets.FloatText(value=0.02, description='The proportion of samples with artefacts')
+        self.auto_detection_labels = []
 
     def update_filelist(self, foo):
-        self.idx2remove.append(self.datlist_all.index(self.filelist_preview.value))
-        self.datlist_filtered.remove(self.filelist_preview.value)
+        try:
+            self.datlist_filtered.remove(self.filelist_preview.value)
+            self.idx2remove.append(self.datlist_all.index(self.filelist_preview.value))
+        except ValueError:
+            pass
         print('"' + self.filelist_preview.value + '"' + " has been removed")
 
-    def generate_widgets(self):
+    def generate_widgets_1(self):
         button_update = ipywidgets.Button(description="Remove data")
         self.preview_parameter_dict['filename'] = self.filelist_preview
 
@@ -280,6 +297,67 @@ class Widgets41:
             width='100%'
         ))
         return manual_cleaning
+
+    def auto_detection(self, foo):
+        if self.auto_detection_method.value == 'Isolation forest':
+            self.auto_detection_labels = eems_isolation_forest(self.eem_stack, self.em_range, self.ex_range,
+                                                                 self.tf_normalization.value,
+                                      (self.grid_size.value, self.grid_size.value), self.contamination.value)
+        if self.auto_detection_method.value == 'One-class-SVM':
+            self.auto_detection_labels = eems_one_class_svm(self.eem_stack, self.em_range, self.ex_range,
+                                                              self.tf_normalization.value,
+                                   (self.grid_size.value, self.grid_size.value), self.contamination.value)
+        if self.auto_detection_method.value == 'Mixed':
+            y1 = eems_isolation_forest(self.eem_stack, self.em_range, self.ex_range, self.tf_normalization.value,
+                                      (self.grid_size.value, self.grid_size.value), self.contamination.value)
+            y2 = eems_one_class_svm(self.eem_stack, self.em_range, self.ex_range, self.tf_normalization.value,
+                                   (self.grid_size.value, self.grid_size.value), self.contamination.value)
+            self.auto_detection_labels = np.array([max(i, j) for i, j in zip(y1, y2)])
+        n_outliers = np.count_nonzero(self.auto_detection_labels == -1)
+        n_cols = 4
+        n_rows = n_outliers//n_cols + 1
+        count = 0
+        extent = [self.em_range.min(), self.em_range.max(), self.ex_range.min(), self.ex_range.max()]
+        print('overview of artefacts detected')
+        plt.figure(figsize=(15, n_rows*3))
+        for i in range(len(self.auto_detection_labels)):
+            if self.auto_detection_labels[i] == -1:
+                axs = plt.subplot2grid((n_rows, n_cols), (count//n_cols, count%n_cols))
+                crange = self.preview_parameter_dict['crange'].value
+                axs.imshow(self.eem_stack[i], cmap='jet', extent=extent, vmin=min(crange), vmax=max(crange))
+                axs.axis('off')
+                axs.set_title(self.datlist_all[i], size=8)
+                count += 1
+
+    def update_auto_detection(self, foo):
+        for i in range(len(self.auto_detection_labels)):
+            if self.auto_detection_labels[i] == -1:
+                try:
+                    self.idx2remove.append(i)
+                    self.datlist_filtered.remove(self.datlist_all[i])
+                except ValueError:
+                    pass
+                print('"' + self.datlist_all[i] + '"' + " has been removed")
+
+    def generate_widgets_2(self):
+        button_detect = ipywidgets.Button(description="Detect artefacts")
+        button_update = ipywidgets.Button(description='Accept artefacts removal')
+        button_detect.on_click(self.auto_detection)
+        button_update.on_click(self.update_auto_detection)
+        auto_cleaning_items = [
+            ipywidgets.Box([self.auto_detection_method, self.grid_size, self.contamination], layout=form_item_layout),
+            ipywidgets.Box([button_detect], layout=form_item_layout),
+            ipywidgets.Box([button_update], layout=form_item_layout)
+        ]
+        auto_cleaning = ipywidgets.Box(auto_cleaning_items, layout=Layout(
+            display='flex',
+            flex_flow='column',
+            border='solid 2px',
+            align_items='stretch',
+            width='100%'
+        ))
+        return auto_cleaning
+
 
     # ----------------------Part 5. Data stack analysis-----------------------
 
@@ -446,9 +524,11 @@ class Widgets53:
 # -------Tab4: Regional integration----------
 
 class Widgets54:
-    def __init__(self, eem_stack_cw, datlist_cw, em_range_cw, ex_range_cw, timestamps_cw):
+    def __init__(self, eem_stack_cw, datlist_cw, range1, range2, em_range_cw, ex_range_cw, timestamps_cw):
         self.eem_stack_cw = eem_stack_cw
         self.datlist_cw = datlist_cw
+        self.range1 = range1
+        self.range2 = range2
         self.em_range_cw = em_range_cw
         self.ex_range_cw = ex_range_cw
         self.timestamps_cw = timestamps_cw
@@ -468,8 +548,8 @@ class Widgets54:
             eems_regional_integration(eem_stack_cw_selected, self.em_range_cw, self.ex_range_cw,
                                       [self.em_boundary_left.value, self.em_boundary_right.value],
                                       [self.ex_boundary_left.value, self.ex_boundary_right.value])
-        ts_selected = self.data_index_cw[self.datlist_cw.index(self.range1.value): self.datlist_cw.index(self.range2.value) + 1]
-        plt.figure()
+        ts_selected = self.timestamps_cw[self.datlist_cw.index(self.range1.value): self.datlist_cw.index(self.range2.value) + 1]
+        plt.figure(figsize=(10, 6))
         if self.integration_form.value == 'total fluorescence':
             plt.plot(ts_selected, eem_stack_integration)
             plt.xlabel('Time')
@@ -482,12 +562,16 @@ class Widgets54:
             plt.plot(ts_selected, eem_stack_num_pixels)
             plt.xlabel('Time')
             plt.ylabel('Number of pixels')
+        tbl = pd.DataFrame(data=eem_stack_integration, index=ts_selected, columns=[self.integration_form.value])
+        display(tbl)
 
     def generate_widgets(self):
         self.button_eem_integration.on_click(self.regional_integration_interact)
         integration_items = [
-            ipywidgets.Box([Label(value='Excitation wavelength range: '), self.ex_boundary_left, Label(value='to'), self.ex_boundary_right]),
-            ipywidgets.Box([Label(value='Emission wavelength range: '), self.em_boundary_left, Label(value='to'), self.em_boundary_right]),
+            ipywidgets.Box([Label(value='Excitation wavelength range: ', style={'description_width': 'initial'}),
+                            self.ex_boundary_left, Label(value='to', style={'description_width': 'initial'}), self.ex_boundary_right]),
+            ipywidgets.Box([Label(value='Emission wavelength range: ', style={'description_width': 'initial'}),
+                            self.em_boundary_left, Label(value='to', style={'description_width': 'initial'}), self.em_boundary_right]),
             self.integration_form, self.button_eem_integration]
         return integration_items
 
@@ -566,6 +650,10 @@ class Widgets55:
             self.show_components, self.show_loadings, self.dataset_normalization,
             self.show_normalized_loadings, self.show_normalized_component,
             self.show_normalized_score, self.button_decomposition_interact]
+        # parameter optimization
+        # correlation analysis
+        tab = ipywidgets.Tab()
+        tab.children = [ipywidgets.Box(decomposition_items)]
         return decomposition_items
 
 
@@ -624,7 +712,8 @@ class Widgets56:
 # ----------------------Part 6. Save PARAFAC result-----------------------
 
 class Widgets6:
-    def __init__(self, I_df, J_df, K_df, filedir_default, inner_filter_effect, scattering_correction, gaussian_smoothing, decomposition_method_list):
+    def __init__(self, I_df, J_df, K_df, filedir_default, inner_filter_effect, scattering_correction, gaussian_smoothing,
+                 decomposition_method_list, tf_normalization):
         self.I_df = I_df
         self.J_df = J_df
         self.K_df = K_df
@@ -633,6 +722,7 @@ class Widgets6:
         self.scattering_correction = scattering_correction
         self.gaussian_smoothing = gaussian_smoothing
         self.decomposition_method_list = decomposition_method_list
+        self.tf_normalization = tf_normalization
         self.filepath_i = ipywidgets.Text(
             value=self.filedir_default,
             description='file save path*',
@@ -674,7 +764,7 @@ class Widgets6:
             style={'description_width': 'initial'},
             layout=Layout(width='25%'))
         self.dataset_calibration_i = ipywidgets.Text(
-            value='Internal calibration: Raman Peak area',
+            value='Internal calibration: Raman Peak area' + 'Normalization by total fluorescence: '+ str(self.tf_normalization.value),
             description='dataset calibration',
             style={'description_width': 'initial'},
             layout=Layout(width='100%'))

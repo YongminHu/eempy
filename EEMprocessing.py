@@ -20,6 +20,8 @@ from IPython.display import display
 import itertools
 from pandas.plotting import register_matplotlib_converters
 from scipy.sparse.linalg import ArpackError
+from sklearn.ensemble import IsolationForest
+from sklearn import svm
 
 register_matplotlib_converters()
 
@@ -224,11 +226,55 @@ def eems_regional_integration(eem_stack, em_range, ex_range, em_boundary, ex_bou
     return eem_stack_integration, eem_stack_regional_intensity, eem_stack_num_pixels
 
 
-def eems_set_region_to_zero(eem_stack, Em_range, Ex_range, Em_min=250, Em_max=550, Ex_min=230, Ex_max=450):
+def eem_interpolation(intensity, em_range_old, ex_range_old, em_range_new, ex_range_new):
+    f = interpolate.interp2d(em_range_old, np.flip(ex_range_old), intensity, kind='linear')
+    intensity_new = f(em_range_new, np.flip(ex_range_new))
+    return intensity_new
+
+
+def eems_interpolation(eem_stack, em_range_old, ex_range_old, em_range_new, ex_range_new):
+    eem_stack_interpolated = np.zeros([eem_stack.shape[0], ex_range_new.shape[0], em_range_new.shape[0]])
     for i in range(eem_stack.shape[0]):
         intensity = np.array(eem_stack[i, :, :])
-        intensity_masked = eem_set_region_to_zero(intensity, Em_range, Ex_range, em_min=Em_min, em_max=Em_max,
-                                                  ex_min=Ex_min, ex_max=Ex_max)
+        intensity_new = eem_interpolation(intensity, em_range_old, ex_range_old, em_range_new, ex_range_new)
+        eem_stack_interpolated[i] = intensity_new
+    return eem_stack_interpolated
+
+
+def eems_isolation_forest(eem_stack, em_range, ex_range, tf_normalization, grid_size=(10,10), contamination=0.02):
+    if tf_normalization:
+        eem_stack, _ = eems_total_fluorescence_normalization(eem_stack)
+    em_range_new = np.arange(em_range[0], em_range[-1], grid_size[1])
+    ex_range_new = np.arange(ex_range[0], ex_range[-1], grid_size[0])
+    eem_stack_interpolated = eems_interpolation(eem_stack, em_range, ex_range, em_range_new, ex_range_new)
+    eem_stack_unfold = eem_stack_interpolated.reshape(eem_stack_interpolated.shape[0],
+                                                      eem_stack_interpolated.shape[1] * eem_stack_interpolated.shape[2])
+    eem_stack_unfold = np.nan_to_num(eem_stack_unfold)
+    clf = IsolationForest(random_state=0, n_estimators=200, contamination=contamination).fit(eem_stack_unfold)
+    label = clf.predict(eem_stack_unfold)
+    return label
+
+
+def eems_one_class_svm(eem_stack, em_range, ex_range, tf_normalization, grid_size=(10,10), nu=0.02, kernel="rbf", gamma=10000):
+    if tf_normalization:
+        eem_stack, _ = eems_total_fluorescence_normalization(eem_stack)
+    em_range_new = np.arange(em_range[0], em_range[-1], grid_size[1])
+    ex_range_new = np.arange(ex_range[0], ex_range[-1], grid_size[0])
+    eem_stack_interpolated = eems_interpolation(eem_stack, em_range, ex_range, em_range_new, ex_range_new)
+    eem_stack_unfold = eem_stack_interpolated.reshape(eem_stack_interpolated.shape[0],
+                                                      eem_stack_interpolated.shape[1] * eem_stack_interpolated.shape[2])
+    eem_stack_unfold = np.nan_to_num(eem_stack_unfold)
+    clf = svm.OneClassSVM(nu=nu, kernel=kernel, gamma=gamma).fit(eem_stack_unfold)
+    label = clf.predict(eem_stack_unfold)
+    return label
+
+
+
+def eems_set_region_to_zero(eem_stack, em_range, ex_range, em_min=250, em_max=550, ex_min=230, ex_max=450):
+    for i in range(eem_stack.shape[0]):
+        intensity = np.array(eem_stack[i, :, :])
+        intensity_masked = eem_set_region_to_zero(intensity, em_range, ex_range, em_min=em_min, em_max=em_max,
+                                                  ex_min=ex_min, ex_max=ex_max)
         intensity_masked = np.array([intensity_masked])
         if i == 0:
             eem_stack_masked = intensity_masked
@@ -366,6 +412,7 @@ class EEMstack:
         cod = (self.em_range[Em_ref], self.ex_range[Ex_ref])
         print('The closest data point (Em, Ex) is: {cod}'.format(cod=cod))
         y = (M[:, self.ex_range.shape[0] - Ex_ref - 1, Em_ref])
+        # x is the reference. y is the fluorescence.
         reg = LinearRegression().fit(x_reshaped, y)
         w = reg.coef_
         b = reg.intercept_
@@ -601,10 +648,6 @@ def rayleigh_masking(intensity, em_range, ex_range, tolerance=15, interpolation=
         return intensity_masked, rayleigh_mask
 
 
-def uv_noise_masking():
-    pass
-
-
 def contour_detection(intensity, em_range=False, ex_range=False, binary_threshold=50, maxval=255,
                       bluring=False, otsu=False, plot=False):
     if bluring:
@@ -699,7 +742,7 @@ def eem_total_fluorescence(intensity):
 
 
 def eems_total_fluorescence_normalization(eem_stack):
-    eem_stack_normalized = eem_stack.copy
+    eem_stack_normalized = eem_stack.copy()
     tf_list = []
     for i in range(eem_stack.shape[0]):
         tf = eem_total_fluorescence(eem_stack[i])
@@ -709,7 +752,7 @@ def eems_total_fluorescence_normalization(eem_stack):
 
 
 def decomposition_interact(eem_stack, em_range, ex_range, rank, index=[], decomposition_method='parafac',
-                           dataset_normalization = False, score_normalization=False, loadings_normalization=True,
+                           dataset_normalization=False, score_normalization=False, loadings_normalization=True,
                            component_normalization=False, component_contour_threshold=0, plot_loadings=True,
                            plot_components=True, display_score=True, component_cmin=0, component_cmax=1,
                            component_autoscale=False, title=True, cbar=True, cmap="jet"):
@@ -786,7 +829,7 @@ def decomposition_interact(eem_stack, em_range, ex_range, rank, index=[], decomp
     K_df.columns = column_labels
     if index:
         parafac_table.index = pd.MultiIndex.from_tuples(list(zip(*[score_column, index])),
-                                                names=('type', 'wavelength'))
+                                                names=('type', 'time'))
     else:
         parafac_table.index = score_column
     parafac_table.columns = column_labels

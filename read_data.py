@@ -51,13 +51,13 @@ def readEEM(filepath):
     # that the wavelength range of Em is larger, and it is visually better to
     # set the longer axis horizontally.
     intensity = data.T
-    Em_range = index
-    Ex_range = header[0]
-    if Em_range[0] > Em_range[1]:
-        Em_range = np.flipud(Em_range)
-    if Ex_range[0] > Ex_range[1]:
-        Ex_range = np.flipud(Ex_range)
-    return intensity, Em_range, Ex_range
+    em_range = index
+    ex_range = header[0]
+    if em_range[0] > em_range[1]:
+        em_range = np.flipud(em_range)
+    if ex_range[0] > ex_range[1]:
+        ex_range = np.flipud(ex_range)
+    return intensity, em_range, ex_range
 
 
 def readABS(filepath):
@@ -76,9 +76,9 @@ def readABS(filepath):
                 # if empty, set the value to nan
             line = of.readline()
         of.close()
-        Ex_range = np.flipud(index)
+        ex_range = np.flipud(index)
         absorbance = np.flipud(data)
-    return absorbance, Ex_range
+    return absorbance, ex_range
 
 
 def string_to_float_list(string):
@@ -114,27 +114,26 @@ def plotABS(absorbance, ex_range, xmax=0.05, ex_range_display=(200, 800)):
 
 def plotABS_interact(filedir, filename):
     filepath = filedir + '/' + filename
-    absorbance, Ex_range = readABS(filepath)
-    plt = plotABS(absorbance, Ex_range)
+    absorbance, ex_range = readABS(filepath)
+    plt = plotABS(absorbance, ex_range)
     
     
-def plot3DEEM(intensity, Em_range, Ex_range, autoscale=False, cmax=6000, cmin=-2000, new_figure=True, cbar=True, cmap='jet', cbar_label="Intensity (a.u.)",
-              figure_size=(7,7), title=False, cbar_labelsize=16, fontsize=20):
+def plot3DEEM(intensity, em_range, ex_range, autoscale=False, cmax=6000, cmin=-2000, new_figure=True, cbar=True, cmap='jet', cbar_label="Intensity (a.u.)",
+              figure_size=(7,7), title=False, cbar_labelsize=16, fontsize=20, aspect='equal'):
     # reset the axis direction
-    extent = [Em_range.min(), Em_range.max(), Ex_range.min(), Ex_range.max()]
+    extent = [em_range.min(), em_range.max(), ex_range.min(), ex_range.max()]
     if new_figure:
         plt.figure(figsize=figure_size)
-    #plt.figure()
     font = {'size': fontsize}
     plt.rc('font', **font)
     if autoscale == False:
         plt.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, vmin=cmin, vmax=cmax,
-                   origin='upper')
+                   origin='upper', aspect=aspect)
     else:
-        plt.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, origin='upper')
+        plt.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, origin='upper', aspect=aspect)
     plt.xlabel('Emission wavelength [nm]')
     plt.ylabel('Excitation wavelength [nm]')
-    plt.ylim([Ex_range[0], Ex_range[-1]])
+    plt.ylim([ex_range[0], ex_range[-1]])
     if title:
         plt.title(title)
     if cbar:
@@ -147,8 +146,8 @@ def plot3DEEM(intensity, Em_range, Ex_range, autoscale=False, cmax=6000, cmin=-2
 def saveplot(datdir, datname, autoscale, cmax_fig, cmin_fig, savedir, savename):
     datpath = datdir + '/' + datname
     savepath = savedir + '/' + savename
-    intensity, Em_range, Ex_range = readEEM(datpath)
-    plt = plot3DEEM(intensity, Em_range, Ex_range, autoscale, cmax_fig, cmin_fig)
+    intensity, em_range, ex_range = readEEM(datpath)
+    plt = plot3DEEM(intensity, em_range, ex_range, autoscale, cmax_fig, cmin_fig)
     plt.savefig(savepath, dpi=600)
 
 
@@ -277,6 +276,7 @@ def read_parafac_result(filepath):
                 line_count_end = line_count
                 score_df = pd.read_csv(filepath, sep="\t", header=None, index_col=[0, 1],
                                             skiprows=line_count_score, nrows=line_count_end - line_count_score)
+                score_df.index = score_df.index.set_levels([score_df.index.levels[0], pd.to_datetime(score_df.index.levels[1])])
                 score_df.columns = component_label
                 score_df.index.names = ['type', 'time']
                 print('Reading complete')
