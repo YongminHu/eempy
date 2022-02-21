@@ -702,8 +702,8 @@ class Widgets56:
     def generate_widgets(self):
         self.button_decomposition_re_interact.on_click(self.decomposition_interact_re_button)
         decomposition_reconstruction_items = [ipywidgets.Box([
-            Label(value='Please first specify the number of components and decomposition method in tab-5 '
-                        '"PARAFAC decomposition"')]),
+            Label(value='Please first specify the number of components and decomposition method tab '
+                        '"Decomposition"')]),
             ipywidgets.Box([self.data_to_view, self.button_decomposition_re_interact],
                            layout=form_item_layout)]
         return decomposition_reconstruction_items
