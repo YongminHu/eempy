@@ -859,6 +859,15 @@ def decomposition_interact(eem_stack, em_range, ex_range, rank, index=[], decomp
     return parafac_table, component_stack, contours, max_idx_r, J_df, K_df
 
 
+def split_n_validation(eem_stack, datlist, em_range, ex_range, rank, index=[], decomposition_method='parafac',
+                       dataset_normalization=False, score_normalization=False, loadings_normalization=True,
+                       component_normalization=False, component_contour_threshold=0, plot_loadings=True,
+                       plot_components=True, display_score=True, component_cmin=0, component_cmax=1,
+                       component_autoscale=False, title=True, cbar=True, cmap="jet"):
+    random.shuffle([i for i in range(len(datlist))])
+
+    return
+
 def decomposition_reconstruction_interact(I, J, K, intensity, em_range, ex_range, datlist, data_to_view,
                                           crange=[0, 1000], manual_component=[], rmse=True, plot=True):
     idx = datlist.index(data_to_view)
