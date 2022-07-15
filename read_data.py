@@ -283,3 +283,15 @@ def read_parafac_result(filepath):
                 line = f.readline().strip()
         f.close()
     return ex_df, em_df, score_df, info_dict
+
+
+def read_parafac_models(datdir, kw):
+    datlist = get_filelist(datdir, kw)
+    parafac_results = []
+    for f in datlist:
+        filepath = datdir + '/' + f
+        ex_df, em_df, score_df, info_dict = read_parafac_result(filepath)
+        info_dict['filename'] = f
+        d = {'info':info_dict, 'ex': ex_df, 'em': em_df, 'score':score_df}
+        parafac_results.append(d)
+    return parafac_results

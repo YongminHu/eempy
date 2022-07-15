@@ -9,7 +9,7 @@ from ipywidgets import Layout, Label, interactive
 from read_data import read_reference_from_text, string_to_float_list
 from EEMprocessing import EEMstack, eem_statistics, plot_eem_interact, decomposition_interact, \
     decomposition_reconstruction_interact, export_parafac, load_eem_stack_interact, eems_regional_integration, \
-    eems_isolation_forest, eems_one_class_svm
+    eems_isolation_forest, eems_one_class_svm, eem_stack_split_validation, eems_total_fluorescence_normalization
 from tensorly.decomposition import parafac, non_negative_parafac
 
 
@@ -174,6 +174,8 @@ class Widgets2and3:
                                                         'ts_start_position': self.ts_start_position_plot,
                                                         'ts_end_position': self.ts_end_position_plot
                                                         }
+        self.synchronize_resolution = ipywidgets.Checkbox(value=True, description='Synchronize wavelength intervals',
+                                                          style={'description_width': 'initial'})
 
     def generate_widgets(self):
         form_item_layout = Layout(
@@ -243,7 +245,12 @@ class Widgets2and3:
                 style={'description_width': 'initial'},
                 description='Filename searching keyword: '
             ),
-            existing_datlist=ipywidgets.fixed(value=[]))
+            existing_datlist=ipywidgets.fixed(value=[]),
+            wavelength_synchronization=ipywidgets.Checkbox(
+                value=True,
+                style={'description_width': 'initial'},
+                description='Synchronize wavelengths for all samples'
+            ))
 
         return stacking_interact
 
@@ -548,20 +555,24 @@ class Widgets54:
             eems_regional_integration(eem_stack_cw_selected, self.em_range_cw, self.ex_range_cw,
                                       [self.em_boundary_left.value, self.em_boundary_right.value],
                                       [self.ex_boundary_left.value, self.ex_boundary_right.value])
-        ts_selected = self.timestamps_cw[self.datlist_cw.index(self.range1.value): self.datlist_cw.index(self.range2.value) + 1]
-        plt.figure(figsize=(10, 6))
-        if self.integration_form.value == 'total fluorescence':
-            plt.plot(ts_selected, eem_stack_integration)
-            plt.xlabel('Time')
-            plt.ylabel('Total fluorescence [a.u.]')
-        if self.integration_form.value == 'average valid pixel intensity':
-            plt.plot(ts_selected, eem_stack_avg_intensity)
-            plt.xlabel('Time')
-            plt.ylabel('Average intensity [a.u.]')
-        if self.integration_form.value == 'number of pixels':
-            plt.plot(ts_selected, eem_stack_num_pixels)
-            plt.xlabel('Time')
-            plt.ylabel('Number of pixels')
+        if self.timestamps_cw:
+            ts_selected = self.timestamps_cw[self.datlist_cw.index(self.range1.value): self.datlist_cw.index(self.range2.value) + 1]
+            plt.figure(figsize=(10, 6))
+            if self.integration_form.value == 'total fluorescence':
+                plt.plot(ts_selected, eem_stack_integration)
+                plt.xlabel('Time')
+                plt.ylabel('Total fluorescence [a.u.]')
+            if self.integration_form.value == 'average valid pixel intensity':
+                plt.plot(ts_selected, eem_stack_avg_intensity)
+                plt.xlabel('Time')
+                plt.ylabel('Average intensity [a.u.]')
+            if self.integration_form.value == 'number of pixels':
+                plt.plot(ts_selected, eem_stack_num_pixels)
+                plt.xlabel('Time')
+                plt.ylabel('Number of pixels')
+        else:
+            labels = self.datlist_cw[self.datlist_cw.index(self.range1.value): self.datlist_cw.index(self.range2.value) + 1]
+            ts_selected = [l[:-4] for l in labels]
         tbl = pd.DataFrame(data=eem_stack_integration, index=ts_selected, columns=[self.integration_form.value])
         display(tbl)
 
@@ -578,6 +589,8 @@ class Widgets54:
 
 
 # -------Tab5: Stack decomposition----------
+
+#------PARAFAC---------
 
 class Widgets55:
     def __init__(self, data_index, data_index_cw, timestamps_cw, eem_stack_cw, datlist_cw, range1, range2, em_range_cw, ex_range_cw):
@@ -620,11 +633,14 @@ class Widgets55:
                                                             style={'description_width': 'initial'},
                                                             description='Normalize the loadings by their STD',
                                                             layout=Layout(width='100%'))
+        self.score_df = None
+        self.ex_df = None
+        self.em_df = None
 
     def decomposition_interact_button(self):
         if not self.data_index:
             self.data_index_cw = self.timestamps_cw
-        parafac_table, _, _, _, J_df, K_df = \
+        score_df, ex_df, em_df, _, _, _ = \
             decomposition_interact(self.eem_stack_cw[self.datlist_cw.index(self.range1.value):
                                                     self.datlist_cw.index(self.range2.value) + 1],
                                    self.em_range_cw, self.ex_range_cw, self.rank_display.value,
@@ -639,7 +655,10 @@ class Widgets55:
                                    component_normalization=self.show_normalized_component.value,
                                    component_autoscale=True,
                                    component_cmin=0, component_cmax=1, title=False, cbar=True)
-        return parafac_table, J_df, K_df
+        self.score_df = score_df
+        self.ex_df = ex_df
+        self.em_df = em_df
+        return score_df, ex_df, em_df
 
     def generate_widgets(self):
         self.button_decomposition_interact = interactive(self.decomposition_interact_button,
@@ -656,20 +675,19 @@ class Widgets55:
         tab.children = [ipywidgets.Box(decomposition_items)]
         return decomposition_items
 
-
-# --------Tab6: Data reconstruction----------
+#------PARAFAC reconstruction----------
 
 class Widgets56:
-    def __init__(self, decomposition_method_list, rank_display, crange_cw, data_index, data_index_cw, timestamps_cw, EEMstack_cw, datlist_cw,
-                 range1, range2, Em_range_cw, Ex_range_cw):
+    def __init__(self, decomposition_method_list, rank_display, crange_cw, data_index, data_index_cw, timestamps_cw,
+                 eem_stack_cw, datlist_cw, range1, range2, em_range_cw, ex_range_cw, dataset_normalization):
         self.data_index = data_index
         self.data_index_cw = data_index_cw
-        self.EEMstack_cw = EEMstack_cw
+        self.eem_stack_cw = eem_stack_cw
         self.datlist_cw = datlist_cw
         self.range1 = range1
         self.range2 = range2
-        self.Em_range_cw = Em_range_cw
-        self.Ex_range_cw = Ex_range_cw
+        self.em_range_cw = em_range_cw
+        self.ex_range_cw = ex_range_cw
         self.timestamps_cw = timestamps_cw
         self.decomposition_method_list = decomposition_method_list
         self.rank_display = rank_display
@@ -680,21 +698,27 @@ class Widgets56:
                                                 layout={'width':'max-content'})
         self.button_decomposition_re_interact= ipywidgets.Button(description='Reconstruct',
                                                                  style={'description_width': 'initial'})
+        self.dataset_normalization = dataset_normalization
+
 
     def decomposition_interact_re_button(self, foo):
-        dataset = self.EEMstack_cw[self.datlist_cw.index(self.range1.value):
+        dataset = self.eem_stack_cw[self.datlist_cw.index(self.range1.value):
                                    self.datlist_cw.index(self.range2.value)+1]
+        if self.dataset_normalization.value:
+            dataset, tf = eems_total_fluorescence_normalization(dataset)
         if self.decomposition_method_list.value=='parafac':
             factors = parafac(dataset, rank=self.rank_display.value)
         elif self.decomposition_method_list.value=='non_negative_parafac':
             factors = non_negative_parafac(dataset, rank=self.rank_display.value)
         elif self.decomposition_method_list.value=='test_function':
             factors = non_negative_parafac(dataset, rank=self.rank_display.value, fixed_modes=[0,1], init="random")
-        I_0 = factors[1][0]
-        J_0 = factors[1][1]
-        K_0 = factors[1][2]
-        decomposition_reconstruction_interact(I_0, J_0, K_0, self.EEMstack_cw[self.datlist_cw.index(self.data_to_view.value)],
-                                              self.Em_range_cw, self.Ex_range_cw,
+        I = factors[1][0]
+        J = factors[1][1]
+        K = factors[1][2]
+        if self.dataset_normalization.value:
+            I = np.multiply(I, tf[:, np.newaxis])
+        decomposition_reconstruction_interact(I, J, K, self.eem_stack_cw[self.datlist_cw.index(self.data_to_view.value)],
+                                              self.em_range_cw, self.ex_range_cw,
                                               self.datlist_cw[self.datlist_cw.index(self.range1.value):
                                                               self.datlist_cw.index(self.range2.value)+1],
                                               self.data_to_view.value, crange=self.crange_cw.value)
@@ -708,6 +732,63 @@ class Widgets56:
                            layout=form_item_layout)]
         return decomposition_reconstruction_items
 
+#-------Split validation-----------
+
+class Widgets57:
+    def __init__(self, eem_stack_cw, em_range_cw, ex_range_cw, rank, decomposition_method_list, datlist_cw,
+                 range1, range2, dataset_normalization):
+        self.eem_stack_cw = eem_stack_cw
+        self.em_range_cw = em_range_cw
+        self.ex_range_cw = ex_range_cw
+        self.rank = rank
+        self.n_split = ipywidgets.IntText(value=4, description='Number of splits',
+                                               style={'description_width': 'initial'})
+        self.combination_size = ipywidgets.Text(value='half',
+                                                description='Size of the combinations',
+                                                style={'description_width': 'initial'},
+                                                layout=Layout(width='80%'))
+        self.n_test = ipywidgets.Text(value='max',
+                                    description='Number of tests',
+                                    style={'description_width': 'initial'},
+                                    layout=Layout(width='80%'))
+        self.rule = ipywidgets.Dropdown(value='random',
+                                        options=['random', 'chronological'],
+                                        style={'description_width': 'initial'},
+                                        description='Spliting method')
+        self.criteria = ipywidgets.Dropdown(value='Tucker congruence',
+                                        options=['Tucker congruence', 'shape-sensitive coefficient'],
+                                        style={'description_width': 'initial'},
+                                        description='Similarity index')
+        self.plot_worst_test = ipywidgets.Checkbox(value=True,
+                                                   style={'description_width': 'initial'},
+                                                   description='plot the worst test')
+        self.decomposition_method_list = decomposition_method_list
+        self.datlist_cw = datlist_cw
+        self.range1 = range1
+        self.range2 = range2
+        self.dataset_normalization = dataset_normalization
+        self.button_split_validation_interact = ipywidgets.Button(description='Run',
+                                                                 style={'description_width': 'initial'})
+
+    def split_test_button(self, foo):
+        dataset = self.eem_stack_cw[self.datlist_cw.index(self.range1.value):
+                                   self.datlist_cw.index(self.range2.value) + 1]
+        sim = eem_stack_split_validation(dataset, self.em_range_cw, self.ex_range_cw, rank=self.rank.value,
+                                         decomposition_method=self.decomposition_method_list.value,
+                                         n_split=self.n_split.value, combination_size=self.combination_size.value,
+                                         n_test=self.n_test.value, rule='random', index=[], criteria='TCC',
+                                         plot_worst_test=self.plot_worst_test.value,
+                                         dataset_normalization=self.dataset_normalization.value,
+                                         )
+
+    def generate_widgets(self):
+        self.button_split_validation_interact.on_click(self.split_test_button)
+        split_validation_items = [ipywidgets.Box([
+        Label(value='Please first specify the number of components and decomposition method tab '
+                        '"Decomposition"')]),
+            self.n_split, self.combination_size, self.n_test, self.rule, self.criteria, self.plot_worst_test,
+            self.button_split_validation_interact]
+        return split_validation_items
 
 # ----------------------Part 6. Save PARAFAC result-----------------------
 
@@ -764,7 +845,7 @@ class Widgets6:
             style={'description_width': 'initial'},
             layout=Layout(width='25%'))
         self.dataset_calibration_i = ipywidgets.Text(
-            value='Internal calibration: Raman Peak area' + 'Normalization by total fluorescence: '+ str(self.tf_normalization.value),
+            value='Internal calibration: Raman Peak area, ' + 'Normalization by total fluorescence: '+ str(self.tf_normalization.value),
             description='dataset calibration',
             style={'description_width': 'initial'},
             layout=Layout(width='100%'))
