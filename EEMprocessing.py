@@ -954,14 +954,14 @@ def match_parafac_components(model1_ex, model1_em, model2_ex, model2_em, criteri
         for n2 in range(model2_ex.shape[1]):
             if criteria == 'TCC':
                 if mode == 'mean':
-                    m_sim[n1, n2] = statistics.mean(stats.pearsonr(ex1_loadings[n1], ex2_loadings[n2]) +
-                                                    stats.pearsonr(em1_loadings[n1], em2_loadings[n2]))
+                    m_sim[n1, n2] = statistics.mean([stats.pearsonr(ex1_loadings[n1], ex2_loadings[n2])[0],
+                                                    stats.pearsonr(em1_loadings[n1], em2_loadings[n2])[0]])
                 if mode == 'min':
-                    m_sim[n1, n2] = min(stats.pearsonr(ex1_loadings[n1], ex2_loadings[n2]) +
-                                        stats.pearsonr(em1_loadings[n1], em2_loadings[n2]))
+                    m_sim[n1, n2] = min([stats.pearsonr(ex1_loadings[n1], ex2_loadings[n2])[0],
+                                                    stats.pearsonr(em1_loadings[n1], em2_loadings[n2])[0]])
                 if mode == 'max':
-                    m_sim[n1, n2] = max(stats.pearsonr(ex1_loadings[n1], ex2_loadings[n2]) +
-                                        stats.pearsonr(em1_loadings[n1], em2_loadings[n2]))
+                    m_sim[n1, n2] = max([stats.pearsonr(ex1_loadings[n1], ex2_loadings[n2])[0],
+                                                    stats.pearsonr(em1_loadings[n1], em2_loadings[n2])[0]])
             # if criteria == 'SSC'
         matched_index.append((n1, np.argmax(m_sim[n1, :])))
         max_sim.append(np.max(m_sim[n1, :]))
