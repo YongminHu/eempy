@@ -81,9 +81,18 @@ def readABS(filepath):
     return absorbance, ex_range
 
 
-def string_to_float_list(string):
-    flist = np.array([float(i) for i in list(string.split(","))])
-    return flist
+def string_to_float_list(string, output_type='np_array'):
+    if output_type == 'np_array':
+        output = np.array([float(i) for i in list(string.split(","))])
+    elif output_type == 'list':
+        output = [float(i) for i in list(string.split(","))]
+    elif output_type == 'list_or_int':
+        output = [float(i) for i in list(string.split(","))]
+        if len(output) == 1:
+            output = int(output[0])
+    else:
+        Warning('Input must be number(s) separated by commas (if there are more than one)')
+    return output
 
 
 def read_reference_from_text(filepath):
@@ -118,22 +127,35 @@ def plotABS_interact(filedir, filename):
     plt = plotABS(absorbance, ex_range)
     
     
-def plot3DEEM(intensity, em_range, ex_range, autoscale=False, cmax=6000, cmin=-2000, new_figure=True, cbar=True, cmap='jet', cbar_label="Intensity (a.u.)",
-              figure_size=(7,7), title=False, cbar_labelsize=16, fontsize=20, aspect='equal'):
-    # reset the axis direction
-    extent = [em_range.min(), em_range.max(), ex_range.min(), ex_range.max()]
+def plot3DEEM(intensity, em_range, ex_range, autoscale=False, cmax=6000, cmin=-2000, new_figure=True, cbar=True,
+              cmap='jet', cbar_label="Intensity (a.u.)", figure_size=(7, 7), title=False, cbar_labelsize=16,
+              fontsize=20, aspect='equal', rotate=False):
     if new_figure:
         plt.figure(figsize=figure_size)
     font = {'size': fontsize}
     plt.rc('font', **font)
-    if autoscale == False:
-        plt.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, vmin=cmin, vmax=cmax,
-                   origin='upper', aspect=aspect)
-    else:
-        plt.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, origin='upper', aspect=aspect)
-    plt.xlabel('Emission wavelength [nm]')
-    plt.ylabel('Excitation wavelength [nm]')
-    plt.ylim([ex_range[0], ex_range[-1]])
+    # reset the axis direction
+    if not rotate:
+        extent = [em_range.min(), em_range.max(), ex_range.min(), ex_range.max()]
+        plt.xlabel('Emission wavelength [nm]')
+        plt.ylabel('Excitation wavelength [nm]')
+        plt.ylim([ex_range[0], ex_range[-1]])
+        if autoscale == False:
+            plt.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, vmin=cmin, vmax=cmax,
+                       origin='upper', aspect=aspect)
+        else:
+            plt.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, origin='upper', aspect=aspect)
+    if rotate:
+        extent = [ex_range.min(), ex_range.max(), em_range.min(), em_range.max()]
+        intensity_T = intensity.T
+        plt.ylabel('Emission wavelength [nm]')
+        plt.xlabel('Excitation wavelength [nm]')
+        plt.xlim([ex_range[0], ex_range[-1]])
+        if autoscale == False:
+            plt.imshow(np.flipud(np.fliplr(intensity.T)), cmap=cmap, interpolation='none', extent=extent, vmin=cmin, vmax=cmax,
+                       origin='upper', aspect=aspect)
+        else:
+            plt.imshow(np.flipud(np.fliplr(intensity.T)), cmap=cmap, interpolation='none', extent=extent, origin='upper', aspect=aspect)
     if title:
         plt.title(title)
     if cbar:
@@ -162,62 +184,6 @@ def ts_reshape(ts, timezone_correction=1):
     ts_reshaped["time"] = pd.to_datetime(ts_reshaped.time) + timedelta(hours=timezone_correction)
     ts_reshaped = ts_reshaped.set_index("time")
     return ts_reshaped
-
-
-def find_filtration_phase(mbr2press, transition_time=9, timezone_correction=1):
-    """
-    status_code:
-    2: filtration_phase
-    1: transition time between filtration phase and stagnation phase
-    0: stagnation phase
-    """
-    #    pres = ts_reshape(mbr2press, timezone_correction)
-    pres = mbr2press
-    pres_10min = pres.resample('10T').mean()
-    pres_diff = np.array(pres_10min.bp[:-1]) - np.array(pres_10min.bp[1:])
-    filtration_status = np.zeros(pres_diff.shape)
-    for i in range(pres_diff.shape[0]):
-        if pres_diff[i] > 0.3 and pres_diff[i] < 5:
-            filtration_status[i] = 2
-        elif i > 1 and i <= pres_diff.shape[0] - transition_time:
-            if filtration_status[i - 1] == 2:
-                filtration_status[i:i + transition_time] = 1
-        elif i > 1 and i > pres_diff.shape[0] - transition_time:
-            if filtration_status[i - 1] == 2:
-                filtration_status[i:] = 1
-    filtration_start = []
-    filtration_end = []
-    filtration_end_mbr = []
-    for j in range(filtration_status.shape[0] - 1):
-        if (j == 0 and filtration_status[j] == 2) or (filtration_status[j] == 2 and filtration_status[j - 1] < 2):
-            filtration_start.append(pres_10min.index[j])
-            # print("start: ", pres_10min.index[j])
-        if filtration_status[j] == 2 and (not filtration_status[j + 1] == 2):
-            filtration_end_mbr.append(pres_10min.index[j])
-            # print("end_mbr", pres_10min.index[j])
-        if filtration_status[j] == 1 and (not filtration_status[j + 1] == 1):
-            filtration_end.append(pres_10min.index[j])
-            # print("end: ", pres_10min.index[j])
-    if not filtration_status[-1] == 0:
-        filtration_end.append(pres_10min.index[-1])
-    elif filtration_status[-1] == 2:
-        filtration_end_mbr.append(pres_10min.index[-1])
-    filtration_duration = [end - start for start, end in zip(filtration_start, filtration_end)]
-    filtration_start = [filtration_start[i] for i in range(len(filtration_start)) if
-                        filtration_duration[i] > timedelta(hours=1.75)]
-    filtration_end = [filtration_end[i] for i in range(len(filtration_end)) if
-                      filtration_duration[i] > timedelta(hours=1.75)]
-    filtration_end_mbr = [filtration_end_mbr[i] for i in range(len(filtration_end_mbr)) if
-                          filtration_duration[i] > timedelta(hours=1.75)]
-    filtration_duration = [end - start for start, end in zip(filtration_start, filtration_end)]
-    filtration_duration_mbr = [end - start for start, end in zip(filtration_start, filtration_end_mbr)]
-
-    flow_rate = [60*(pres.loc[start-timedelta(minutes=20):start+timedelta(minutes=20)].max()
-                     - pres.loc[end-timedelta(minutes=20):end+timedelta(minutes=20)].min())/duration.seconds for
-                 start, end, duration in zip(filtration_start, filtration_end_mbr, filtration_duration_mbr)]
-    # for start, end in zip(filtration_start, filtration_end_mbr):
-    #     print("high:", pres_10min.loc[start][0], " low: ", pres_10min.loc[end][0])
-    return filtration_start, filtration_end, filtration_duration, flow_rate
 
 
 def read_parafac_result(filepath):
