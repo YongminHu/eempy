@@ -1357,16 +1357,19 @@ def parafac_pixel_error(eem_stack, em_range, ex_range, rank,
                         decomposition_method='non_negative_parafac', init='svd',
                         dataset_normalization=False):
     if dataset_normalization:
-        eem_stack, tf = eems_total_fluorescence_normalization(eem_stack)
-    if decomposition_method == 'parafac':
-        weight, factors = parafac(eem_stack, rank, init=init)
-    elif decomposition_method == 'non_negative_parafac':
-        weight, factors = non_negative_parafac(eem_stack, rank, init=init)
-    eem_stack_reconstruct = cp_to_tensor((weight, factors))
-    if dataset_normalization:
-        res_abs = np.mean((eem_stack - eem_stack_reconstruct) * tf[:, np.newaxis, np.newaxis], axis=0)
+        eem_stack_nor, tf = eems_total_fluorescence_normalization(eem_stack)
+        if decomposition_method == 'parafac':
+            weight, factors = parafac(eem_stack_nor, rank, init=init)
+        elif decomposition_method == 'non_negative_parafac':
+            weight, factors = non_negative_parafac(eem_stack_nor, rank, init=init)
+        eem_stack_reconstruct = cp_to_tensor((weight, factors)) * tf[:, np.newaxis, np.newaxis]
     else:
-        res_abs = (eem_stack - eem_stack_reconstruct)
+        if decomposition_method == 'parafac':
+            weight, factors = parafac(eem_stack, rank, init=init)
+        elif decomposition_method == 'non_negative_parafac':
+            weight, factors = non_negative_parafac(eem_stack, rank, init=init)
+        eem_stack_reconstruct = cp_to_tensor((weight, factors))
+    res_abs = eem_stack - eem_stack_reconstruct
     with np.errstate(divide='ignore', invalid='ignore'):
         res_ratio = 100 * (eem_stack - eem_stack_reconstruct) / eem_stack
     return res_abs, res_ratio
@@ -1389,16 +1392,21 @@ def parafac_sample_error(eem_stack, index, rank, error_type='MSE',
         return ssim_index
 
     if dataset_normalization:
-        eem_stack, tf = eems_total_fluorescence_normalization(eem_stack)
-    err_list = []
-    if decomposition_method == 'parafac':
-        weight, factors = parafac(eem_stack, rank, init=init)
-    elif decomposition_method == 'non_negative_parafac':
-        weight, factors = non_negative_parafac(eem_stack, rank, init=init)
-    eem_stack_reconstruct = cp_to_tensor((weight, factors))
-    if dataset_normalization:
-        eem_stack = eem_stack * tf[:, np.newaxis, np.newaxis]
+        eem_stack_nor, tf = eems_total_fluorescence_normalization(eem_stack)
+        err_list = []
+        if decomposition_method == 'parafac':
+            weight, factors = parafac(eem_stack_nor, rank, init=init)
+        elif decomposition_method == 'non_negative_parafac':
+            weight, factors = non_negative_parafac(eem_stack_nor, rank, init=init)
+        eem_stack_reconstruct = cp_to_tensor((weight, factors))
         eem_stack_reconstruct = eem_stack_reconstruct * tf[:, np.newaxis, np.newaxis]
+    else:
+        if decomposition_method == 'parafac':
+            weight, factors = parafac(eem_stack, rank, init=init)
+        elif decomposition_method == 'non_negative_parafac':
+            weight, factors = non_negative_parafac(eem_stack, rank, init=init)
+        eem_stack_reconstruct = cp_to_tensor((weight, factors))
+
     for i in range(eem_stack.shape[0]):
         if error_type == 'MSE':
             err_list.append(np.mean(np.square(eem_stack[i]-eem_stack_reconstruct[i])))

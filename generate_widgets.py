@@ -1045,7 +1045,6 @@ class Widgets_stack_processing:
             self.plot_pixel_error_switch.value = True
 
         def plot_pixel_error(self, res_abs, res_ratio, switch, datlist, data_to_view):
-            plt.close()
             if switch:
                 plot3DEEM(res_abs[datlist.index(data_to_view)],
                           self.em_range_cw, self.ex_range_cw, autoscale=True,
