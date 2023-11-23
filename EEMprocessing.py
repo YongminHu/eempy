@@ -2,6 +2,8 @@
 Functions for fluorescence python toolkit
 Author: Yongmin Hu (yongmin.hu@eawag.ch, yongminhu@outlook.com)
 """
+import math
+
 import matplotlib.pyplot as plt
 
 from read_data import *
@@ -30,6 +32,7 @@ from sklearn.ensemble import IsolationForest
 from sklearn import svm
 from matplotlib.cm import get_cmap
 from typing import Union, Optional
+from scipy.spatial.distance import euclidean
 
 register_matplotlib_converters()
 
@@ -491,10 +494,9 @@ class EEMstack:
             # plt.text(p.min() + 0.1 * (p.max() - p.min()), q.max() - 0.1 * (p.max() - p.min()),
             #          "$R^2$={r2}".format(r2=round(r2, 5)))
             plt.show()
-
         return table
 
-    def eem_linreg(self, x, plot=True):
+    def eem_linreg(self, x, plot=True, scale='log', vmin=0.0001, vmax=0.1, mode='diff', num=4):
         M = self.intensities
         x = x.reshape(M.shape[0], 1)
         W = np.empty([M.shape[1], M.shape[2]])
@@ -513,13 +515,24 @@ class EEMstack:
                 except:
                     pass
         if plot:
+            if mode=='diff':
+                X = 1 - R2
+                title = '1-$R^2$'
+            elif mode=='abs':
+                X = R2
+                title = '$R^2$'
             plt.figure(figsize=(6, 6))
             extent = [self.em_range.min(), self.em_range.max(), self.ex_range.min(), self.ex_range.max()]
-            plt.imshow(1 - R2, cmap='jet', interpolation='none', extent=extent, aspect='1',
-                       norm=LogNorm(vmin=0.0001, vmax=0.1))
-            t = [0.0001, 0.001, 0.01, 0.1]
-            plt.colorbar(ticks=t, fraction=0.03, pad=0.04)
-            plt.title('1-$R^2$')
+            if scale == 'log':
+                plt.imshow(X, cmap='jet', interpolation='none', extent=extent, aspect='1',
+                           norm=LogNorm(vmin=vmin, vmax=vmax))
+                t = np.logspace(math.log(vmin), math.log(vmax), num)
+                plt.colorbar(ticks=t, fraction=0.03, pad=0.04)
+            elif scale == 'linear':
+                plt.imshow(X, cmap='jet', interpolation='none', extent=extent, aspect='1', vmin=vmin, vmax=vmax)
+                t = np.linspace(vmin, vmax, num)
+                plt.colorbar(ticks=t, fraction=0.03, pad=0.04)
+            plt.title(title)
             plt.xlabel('Emission wavelength [nm]')
             plt.ylabel('Excitation wavelength [nm]')
         return W, B, R2, E
@@ -602,9 +615,9 @@ def eem_statistics(EEMstack, term, crange, reference_label=None, reference=None,
         plot3DEEM(EEMstack.mean(), EEMstack.em_range, EEMstack.ex_range,
                   cmin=crange[0], cmax=crange[1])
     if term == 'Standard deviation':
-        plot3DEEM(EEMstack.std(), EEMstack.em_range, EEMstack.ex_range)
+        plot3DEEM(EEMstack.std(), EEMstack.em_range, EEMstack.ex_range, autoscale=True)
     if term == 'Relative standard deviation':
-        plot3DEEM(EEMstack.rel_std(), EEMstack.em_range, EEMstack.ex_range)
+        plot3DEEM(EEMstack.rel_std(), EEMstack.em_range, EEMstack.ex_range, autoscale=True)
     if term == 'Correlation: Linearity':
         EEMstack.eem_linreg(x=reference)
     if term == 'Correlation: Pearson coef.':
@@ -841,7 +854,7 @@ def eems_raman_masking(eem_stack, em_range, ex_range, interpolation='nan',
     return eem_stack_c, raman_mask
 
 
-def contour_detection(intensity, em_range=False, ex_range=False, binary_threshold=50, maxval=255,
+def contour_detection(intensity, em_range=None, ex_range=None, binary_threshold=50, maxval=255,
                       bluring=False, otsu=False, plot=False):
     if bluring:
         intensity = gaussian_filter(intensity, sigma=1, truncate=2)
@@ -1191,7 +1204,10 @@ def decomposition_interact(eem_stack, em_range, ex_range, rank, index=[], decomp
         plt.legend(legend)
 
     fmax = I * component_stack.max(axis=(1, 2))
-    fmax_df = pd.DataFrame(fmax, columns=['component {r}'.format(r=i + 1) for i in range(rank)])
+    if sort_em:
+        fmax_df = pd.DataFrame({'component {r}'.format(r=i + 1): fmax[:, order[i]] for i in range(rank)})
+    else:
+        fmax_df = pd.DataFrame(fmax, columns=['component {r}'.format(r=i + 1) for i in range(rank)])
     if plot_fmax:
         if index:
             fmax_column = ["Fmax" for i in range(score_df.shape[0])]
@@ -1213,10 +1229,39 @@ def decomposition_interact(eem_stack, em_range, ex_range, rank, index=[], decomp
     return score_df, exl_df, eml_df, fmax_df, component_stack, contours, max_idx_r
 
 
-def match_parafac_components(model1_ex, model1_em, model2_ex, model2_em, criteria='TCC',
-                             wavelength_synchronization=True, mode='mean'):
+def dynamic_time_warping(x, y):
+    # Create a cost matrix with initial values set to infinity
+    cost_matrix = np.ones((len(x), len(y))) * np.inf
+    # Initialize the first cell of the cost matrix to the Euclidean distance between the first elements
+    cost_matrix[0, 0] = euclidean([x[0]], [y[0]])
+    # Calculate the cumulative cost matrix
+    for i in range(1, len(x)):
+        for j in range(1, len(y)):
+            cost_matrix[i, j] = euclidean([x[i]], [y[j]]) + min(cost_matrix[i - 1, j], cost_matrix[i, j - 1],
+                                                                cost_matrix[i - 1, j - 1])
+    # Trace back the optimal path
+    i, j = len(x) - 1, len(y) - 1
+    path = [(i, j)]
+    while i > 0 and j > 0:
+        if cost_matrix[i - 1, j] <= cost_matrix[i, j - 1] and cost_matrix[i - 1, j] <= cost_matrix[i - 1, j - 1]:
+            i -= 1
+        elif cost_matrix[i, j - 1] <= cost_matrix[i - 1, j] and cost_matrix[i, j - 1] <= cost_matrix[i - 1, j - 1]:
+            j -= 1
+        else:
+            i -= 1
+            j -= 1
+        path.append((i, j))
+    path.reverse()
+    # Extract the aligned arrays based on the optimal path
+    aligned_x = [x[i] for i, _ in path]
+    aligned_y = [y[j] for _, j in path]
+    return aligned_x, aligned_y
+
+
+def match_parafac_components(model_ex, model_em, model_ref_ex, model_ref_em, criteria='TCC',
+                             wavelength_synchronization=True, mode='mean', dtw=False):
     ex1_loadings, em1_loadings, ex2_loadings, em2_loadings = \
-        model1_ex.unstack(level=0), model1_em.unstack(level=0), model2_ex.unstack(level=0), model2_em.unstack(level=0)
+        model_ex.unstack(level=0), model_em.unstack(level=0), model_ref_ex.unstack(level=0), model_ref_em.unstack(level=0),
     ex_range1, em_range1, ex_range2, em_range2 = \
         ex1_loadings.index, em1_loadings.index, ex2_loadings.index, em2_loadings.index
     if wavelength_synchronization:
@@ -1224,14 +1269,14 @@ def match_parafac_components(model1_ex, model1_em, model2_ex, model2_em, criteri
         em_interval2 = (em_range2.max() - em_range2.min()) / (em_range2.shape[0] - 1)
         ex_interval1 = (ex_range1.max() - ex_range1.min()) / (ex_range1.shape[0] - 1)
         ex_interval2 = (ex_range2.max() - ex_range2.min()) / (ex_range2.shape[0] - 1)
-        if em_interval1 > em_interval2:
-            em_range_target = em_range2
-        else:
+        if em_interval2 > em_interval1:
             em_range_target = em_range1
-        if ex_interval1 > ex_interval2:
-            ex_range_target = ex_range2
         else:
+            em_range_target = em_range2
+        if ex_interval2 > ex_interval1:
             ex_range_target = ex_range1
+        else:
+            ex_range_target = ex_range2
         f_ex1 = interpolate.interp1d(ex_range_target, ex1_loadings.to_numpy().T)
         f_em1 = interpolate.interp1d(em_range_target, em1_loadings.to_numpy().T)
         f_ex2 = interpolate.interp1d(ex_range_target, ex2_loadings.to_numpy().T)
@@ -1242,32 +1287,49 @@ def match_parafac_components(model1_ex, model1_em, model2_ex, model2_em, criteri
         ex1_loadings, em1_loadings, ex2_loadings, em2_loadings = \
             ex1_loadings.to_numpy().T, em1_loadings.to_numpy().T, ex2_loadings.to_numpy().T, em2_loadings.to_numpy().T
 
-    m_sim = np.zeros([model1_ex.shape[1], model2_ex.shape[1]])
+    m_sim = np.zeros([model_ref_ex.shape[1], model_ex.shape[1]])
     matched_index = []
     max_sim = []
-    for n1 in range(model1_ex.shape[1]):
-        for n2 in range(model2_ex.shape[1]):
+    for n2 in range(model_ref_ex.shape[1]):
+        for n1 in range(model_ex.shape[1]):
+            if dtw:
+                ex1_aligned, ex2_aligned = dynamic_time_warping(ex1_loadings[n1], ex2_loadings[n2])
+                em1_aligned, em2_aligned = dynamic_time_warping(em1_loadings[n1], em2_loadings[n2])
+            else:
+                ex1_aligned, ex2_aligned = [ex1_loadings[n1], ex2_loadings[n2]]
+                em1_aligned, em2_aligned = [em1_loadings[n1], em2_loadings[n2]]
             if criteria == 'TCC':
+                stat_ex = stats.pearsonr(ex1_aligned, ex2_aligned)[0]
+                stat_em = stats.pearsonr(em1_aligned, em2_aligned)[0]
                 if mode == 'mean':
-                    m_sim[n1, n2] = statistics.mean([stats.pearsonr(ex1_loadings[n1], ex2_loadings[n2])[0],
-                                                     stats.pearsonr(em1_loadings[n1], em2_loadings[n2])[0]])
+                    m_sim[n1, n2] = statistics.mean([stat_ex,stat_em])
                 if mode == 'min':
-                    m_sim[n1, n2] = min([stats.pearsonr(ex1_loadings[n1], ex2_loadings[n2])[0],
-                                         stats.pearsonr(em1_loadings[n1], em2_loadings[n2])[0]])
+                    m_sim[n1, n2] = min([stat_ex,stat_em])
                 if mode == 'max':
-                    m_sim[n1, n2] = max([stats.pearsonr(ex1_loadings[n1], ex2_loadings[n2])[0],
-                                         stats.pearsonr(em1_loadings[n1], em2_loadings[n2])[0]])
+                    m_sim[n1, n2] = max([stat_ex,stat_em])
             # if criteria == 'SSC'
-        matched_index.append((n1, np.argmax(m_sim[n1, :])))
-        max_sim.append(np.max(m_sim[n1, :]))
-    return m_sim, matched_index, max_sim
+    memory = []
+    m_sim_copy = m_sim.copy()
+    for n2 in range(model_ref_ex.shape[1]):
+        max_index = np.argmax(m_sim[:, n2])
+        while max_index in memory:
+            m_sim_copy[max_index, n2] = 0
+            max_index = np.argmax(m_sim_copy[:, n2])
+        memory.append(max_index)
+        matched_index.append((max_index, n2))
+        max_sim.append(m_sim[max_index, n2])
+    order = [o[0] for o in matched_index]
+    model_ex_sorted, model_em_sorted = model_ex.copy(), model_em.copy()
+    for i, o in enumerate(order):
+        model_ex_sorted['component {i}'.format(i=i+1)] = model_ex['component {i}'.format(i=o+1)]
+        model_em_sorted['component {i}'.format(i=i+1)] = model_em['component {i}'.format(i=o+1)]
+    return m_sim, matched_index, max_sim, [model_ex_sorted, model_em_sorted]
 
 
 def elbow_method(x, y):
     dy1 = np.diff(y)
     dx1 = np.diff(x)
     grad1 = dy1 / dx1
-
     return
 
 
@@ -1390,10 +1452,10 @@ def parafac_sample_error(eem_stack, index, rank, error_type='MSE',
         denominator = (mu1 ** 2 + mu2 ** 2 + c1) * (sigma1 ** 2 + sigma2 ** 2 + c2)
         ssim_index = numerator / denominator
         return ssim_index
-
+    err_list = []
     if dataset_normalization:
         eem_stack_nor, tf = eems_total_fluorescence_normalization(eem_stack)
-        err_list = []
+
         if decomposition_method == 'parafac':
             weight, factors = parafac(eem_stack_nor, rank, init=init)
         elif decomposition_method == 'non_negative_parafac':
@@ -1499,7 +1561,7 @@ def split_validation(eem_stack, em_range, ex_range, rank, datlist, decomposition
                                                                          init=init, plot_fmax=False
                                                                          )
         if test_count > 0:
-            _, matched_index_prev, _ = match_parafac_components(models[test_count-1][0][1],
+            _, matched_index_prev, _, _ = match_parafac_components(models[test_count-1][0][1],
                                                                 models[test_count-1][0][2], exl1_df, eml1_df,
                                                                 criteria=criteria,
                                                                 wavelength_synchronization=False, mode='mean')
@@ -1508,7 +1570,7 @@ def split_validation(eem_stack, em_range, ex_range, rank, datlist, decomposition
             eml1_df = pd.DataFrame({'component {r}'.format(r=i+1): eml1_df.iloc[:, order[i]] for i in range(rank)})
             score1_df = pd.DataFrame({'component {r}'.format(r=i+1): score1_df.iloc[:, order[i]] for i in range(rank)})
 
-        m_sim, matched_index, max_sim = match_parafac_components(exl1_df, eml1_df, exl2_df, eml2_df, criteria=criteria,
+        m_sim, matched_index, max_sim, _ = match_parafac_components(exl1_df, eml1_df, exl2_df, eml2_df, criteria=criteria,
                                                                  wavelength_synchronization=False, mode='mean')
         for l in matched_index:
             if l[0] != l[1]:

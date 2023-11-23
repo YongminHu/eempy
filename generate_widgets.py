@@ -1053,6 +1053,7 @@ class Widgets_stack_processing:
                           self.em_range_cw, self.ex_range_cw, cmin=-30, cmax=30,
                           title='Relative error [%]', cbar_label='Diff. / original intensity [%]')
 
+
         def plot_sample_error(self, foo):
             dataset = self.eem_stack_cw[self.datlist_cw.index(self.range1.value):
                                         self.datlist_cw.index(self.range2.value) + 1]
