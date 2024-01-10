@@ -1,4 +1,4 @@
-# FluoPy
+# EEMpy
 
 Author: Yongmin Hu (yongmin.hu@eawag.ch)
 
