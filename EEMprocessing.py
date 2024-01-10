@@ -1171,7 +1171,7 @@ def decomposition_interact(eem_stack, em_range, ex_range, rank, index=[], decomp
                 title_r = False
             plot3DEEM(component_stack[r, :, :], em_range, ex_range, cmin=component_cmin,
                       cmax=component_cmax, title=title_r, autoscale=component_autoscale, cbar=cbar,
-                      cmap=cmap, aspect=1.3, rotate=rotate)
+                      cmap=cmap, aspect=1, rotate=rotate)
 
     if plot_loadings:
         fig_ex = exl_df.unstack(level=0).plot.line()
