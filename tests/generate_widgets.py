@@ -13,9 +13,9 @@ import pandas as pd
 from IPython.display import display
 from ipywidgets import Layout, Label, interactive
 from eempy.read_data import read_reference_from_text, plot_eem
-from eempy.eem_processing import EEMstack, eem_statistics, plot_eem_interact, decomposition_interact, \
+from eempy.eem_processing import EEMstack, eems_statistics, plot_eem_interact, decomposition_interact, \
     decomposition_reconstruction_interact, export_parafac, load_eem_stack_interact, eems_regional_integration, \
-    eems_isolation_forest, eems_one_class_svm, fast_core_consistency, split_validation, \
+    eems_outlier_detection_if, eems_outlier_detection_ocs, fast_core_consistency, split_validation, \
     eems_total_fluorescence_normalization, \
     eem_region_masking, eem_grid_imputing, explained_variance, parafac_pixel_error, parafac_sample_error
 from tensorly.decomposition import parafac, non_negative_parafac
@@ -488,20 +488,20 @@ class Widgets_data_cleaning:
 
     def auto_detection(self, foo):
         if self.auto_detection_method.value == 'Isolation forest':
-            self.auto_detection_labels = eems_isolation_forest(self.eem_stack, self.em_range, self.ex_range,
-                                                               self.tf_normalization.value,
-                                                               (self.grid_size.value, self.grid_size.value),
-                                                               self.contamination.value)
+            self.auto_detection_labels = eems_outlier_detection_if(self.eem_stack, self.em_range, self.ex_range,
+                                                                   self.tf_normalization.value,
+                                                                   (self.grid_size.value, self.grid_size.value),
+                                                                   self.contamination.value)
         if self.auto_detection_method.value == 'One-class-SVM':
-            self.auto_detection_labels = eems_one_class_svm(self.eem_stack, self.em_range, self.ex_range,
-                                                            self.tf_normalization.value,
-                                                            (self.grid_size.value, self.grid_size.value),
-                                                            self.contamination.value)
+            self.auto_detection_labels = eems_outlier_detection_ocs(self.eem_stack, self.em_range, self.ex_range,
+                                                                    self.tf_normalization.value,
+                                                                    (self.grid_size.value, self.grid_size.value),
+                                                                    self.contamination.value)
         if self.auto_detection_method.value == 'Mixed':
-            y1 = eems_isolation_forest(self.eem_stack, self.em_range, self.ex_range, self.tf_normalization.value,
-                                       (self.grid_size.value, self.grid_size.value), self.contamination.value)
-            y2 = eems_one_class_svm(self.eem_stack, self.em_range, self.ex_range, self.tf_normalization.value,
-                                    (self.grid_size.value, self.grid_size.value), self.contamination.value)
+            y1 = eems_outlier_detection_if(self.eem_stack, self.em_range, self.ex_range, self.tf_normalization.value,
+                                           (self.grid_size.value, self.grid_size.value), self.contamination.value)
+            y2 = eems_outlier_detection_ocs(self.eem_stack, self.em_range, self.ex_range, self.tf_normalization.value,
+                                            (self.grid_size.value, self.grid_size.value), self.contamination.value)
             self.auto_detection_labels = np.array([max(i, j) for i, j in zip(y1, y2)])
         n_outliers = np.count_nonzero(self.auto_detection_labels == -1)
         n_cols = 4
@@ -750,8 +750,8 @@ class Widgets_stack_processing:
                     reference, header = read_reference_from_text(self.reference_filepath_eem.value)
                 if self.checkbox_reference_mannual_input_eem.value:
                     reference = string_to_float_list(self.reference_mannual_input_eem.value)
-            eem_statistics(EEMstack_class_cw, term=self.property_eem.value, title=self.title_eem_statistics.value,
-                           reference=reference, crange=self.crange_cw.value, reference_label=header)
+            eems_statistics(EEMstack_class_cw, term=self.property_eem.value, title=self.title_eem_statistics.value,
+                            reference=reference, crange=self.crange_cw.value, reference_label=header)
 
         def generate_widgets(self):
             self.checkbox_reference_filepath_eem.observe(self.update_manual, 'value')

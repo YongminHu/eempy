@@ -3,24 +3,22 @@ Functions for EEM analysis
 Author: Yongmin Hu (yongmin.hu@eawag.ch, yongminhu@outlook.com)
 Last update: 2024-01-10
 """
-import math
 
-import matplotlib.pyplot as plt
-
-from ..data_importer.read_eem import *
+from read_data import *
+from plot import *
+from utils import *
 import scipy.stats as stats
 import random
 import pandas as pd
-import cv2
 import numpy as np
 import statistics
 import itertools
 import string
 import warnings
+import math
 from sklearn.linear_model import LinearRegression
 from matplotlib.colors import LogNorm, Normalize
 from scipy.ndimage import gaussian_filter
-from skimage.feature import peak_local_max
 from scipy import interpolate
 from datetime import datetime, timedelta
 from tensorly.decomposition import parafac, non_negative_parafac
@@ -32,36 +30,45 @@ from scipy.sparse.linalg import ArpackError
 from sklearn.ensemble import IsolationForest
 from sklearn import svm
 from matplotlib.cm import get_cmap
-from typing import Union, Optional
 from scipy.spatial.distance import euclidean
 
 register_matplotlib_converters()
 
 
-def stackDat(datdir, kw='PEM.dat', timestamp_reference_list=[], existing_datlist=[], wavelength_synchronization=True,
-             em_range_display=[250, 800], ex_range_display=[240, 500]):
-    if not existing_datlist:
+def stack_eem(datdir, kw='PEM.dat', data_format='aqualog', timestamp_reference_list=None, custom_datlist=None,
+              wavelength_synchronization=True, em_range_display=(250, 800), ex_range_display=(240, 500)):
+    if not custom_datlist:
         datlist = get_filelist(datdir, kw)
     else:
-        datlist = existing_datlist
+        datlist = custom_datlist
     if timestamp_reference_list:
         datlist = [x for _, x in sorted(zip(timestamp_reference_list, datlist))]
-    n = 0
-    for f in datlist:
-        path = datdir + '/' + f
-        intensity, em_range, ex_range = readEEM(path)
+    path = datdir + '/' + datlist[0]
+    intensity, em_range, ex_range = read_eem(path, data_format=data_format)
+    intensity, em_range, ex_range = eem_cutting(intensity, em_range, ex_range,
+                                                em_min=em_range_display[0],
+                                                em_max=em_range_display[1],
+                                                ex_min=ex_range_display[0], ex_max=ex_range_display[1])
+    num_datfile = len(datlist)
+    eem_stack = np.zeros([num_datfile, intensity.shape[0], intensity.shape[1]])
+    try:
+        eem_stack[0, :, :] = intensity
+    except ValueError:
+        print('Check data dimension: ', datlist[0])
+    em_range_old = np.copy(em_range)
+    ex_range_old = np.copy(ex_range)
+    for n in range(1, len(datlist)):
+        path = datdir + '/' + datlist[n]
+        intensity, em_range, ex_range = read_eem(path, data_format=data_format)
         intensity, em_range, ex_range = eem_cutting(intensity, em_range, ex_range,
                                                     em_min=em_range_display[0],
                                                     em_max=em_range_display[1],
                                                     ex_min=ex_range_display[0], ex_max=ex_range_display[1])
-        if n == 0:
-            num_datfile = len(datlist)
-            eem_stack = np.zeros([num_datfile, intensity.shape[0], intensity.shape[1]])
-        if wavelength_synchronization and n > 0:
-            em_interval_new = (em_range.max() - em_range.min()) / (em_range.shape[0] - 1)
-            em_interval_old = (em_range_old.max() - em_range_old.min()) / (em_range_old.shape[0] - 1)
-            ex_interval_new = (ex_range.max() - ex_range.min()) / (ex_range.shape[0] - 1)
-            ex_interval_old = (ex_range_old.max() - ex_range_old.min()) / (ex_range_old.shape[0] - 1)
+        if wavelength_synchronization:
+            em_interval_new = (np.max(em_range) - np.min(em_range)) / (em_range.shape[0] - 1)
+            em_interval_old = (np.max(em_range_old) - np.min(em_range_old)) / (em_range_old.shape[0] - 1)
+            ex_interval_new = (np.max(ex_range) - np.min(ex_range)) / (ex_range.shape[0] - 1)
+            ex_interval_old = (np.max(ex_range_old) - np.min(ex_range_old)) / (ex_range_old.shape[0] - 1)
             if em_interval_new > em_interval_old:
                 em_range_target = em_range_old
             else:
@@ -76,31 +83,34 @@ def stackDat(datdir, kw='PEM.dat', timestamp_reference_list=[], existing_datlist
                 em_range = np.copy(em_range_old)
                 ex_range = np.copy(ex_range_old)
             if em_interval_new < em_interval_old or ex_interval_new < ex_interval_old:
-                eem_stack = eems_interpolation(eem_stack, em_range_old, np.flip(ex_range_old), em_range_target,
-                                               np.flip(ex_range_target))
+                eem_stack = process_eem_stack(eem_stack, eem_interpolation, em_range_old, np.flip(ex_range_old), em_range_target,
+                                              np.flip(ex_range_target))
         try:
             eem_stack[n, :, :] = intensity
         except ValueError:
-            print('Check data dimension: ', f)
-        n += 1
+            print('Check data dimension: ', datlist[n])
         em_range_old = np.copy(em_range)
         ex_range_old = np.copy(ex_range)
     return eem_stack, em_range, ex_range, datlist
 
 
-def stackABS(datdir, datlist, wavelength_synchronization=True, ex_range_display=[240, 500]):
-    n = 0
-    for f in datlist:
-        path = datdir + '/' + f
-        absorbance, ex_range = readABS(path)
+def stack_abs(datdir, datlist, wavelength_synchronization=True, ex_range_display=(240, 500)):
+    path = datdir + '/' + datlist[0]
+    absorbance, ex_range = read_abs(path)
+    absorbance = absorbance[np.logical_and(ex_range >= ex_range_display[0], ex_range <= ex_range_display[1])]
+    ex_range = ex_range[np.logical_and(ex_range >= ex_range_display[0], ex_range <= ex_range_display[1])]
+    num_datfile = len(datlist)
+    abs_stack = np.zeros([num_datfile, absorbance.shape[0]])
+    abs_stack[0, :] = absorbance
+    ex_range_old = ex_range
+    for n in range(1, len(datlist)):
+        path = datdir + '/' + datlist[n]
+        absorbance, ex_range = read_abs(path)
         absorbance = absorbance[np.logical_and(ex_range >= ex_range_display[0], ex_range <= ex_range_display[1])]
         ex_range = ex_range[np.logical_and(ex_range >= ex_range_display[0], ex_range <= ex_range_display[1])]
-        if n == 0:
-            num_datfile = len(datlist)
-            abs_stack = np.zeros([num_datfile, absorbance.shape[0]])
         if wavelength_synchronization and n > 0:
-            ex_interval_new = (ex_range.max() - ex_range.min()) / (ex_range.shape[0] - 1)
-            ex_interval_old = (ex_range_old.max() - ex_range_old.min()) / (ex_range_old.shape[0] - 1)
+            ex_interval_new = (np.max(ex_range) - np.min(ex_range)) / (ex_range.shape[0] - 1)
+            ex_interval_old = (np.max(ex_range_old) - np.min(ex_range_old)) / (ex_range_old.shape[0] - 1)
             if ex_interval_new > ex_interval_old:
                 f = interpolate.interp1d(ex_range, absorbance)
                 absorbance = f(ex_range_old)
@@ -112,68 +122,43 @@ def stackABS(datdir, datlist, wavelength_synchronization=True, ex_range_display=
                 abs_stack = abs_stack_new
         abs_stack[n, :] = absorbance
         ex_range_old = ex_range
-        n += 1
     return abs_stack, ex_range, datlist
 
 
-def euclidean_dist_for_tuple(t1, t2):
-    dist = 0
-    for x1, x2 in zip(t1, t2):
-        dist += (x1 - x2) ** 2
-    return dist ** 0.5
-
-
-def dichotomy_search(nums, target):
-    start = 0
-    end = len(nums) - 1
-    if target < min(nums):
-        return np.where(nums == min(nums))[0][0]
-    if target > max(nums):
-        return np.where(nums == max(nums))[0][0]
-    while start <= end:
-        mid = (start + end) // 2
-        fdiff = nums[mid] - target
-        bdiff = nums[mid - 1] - target
-        if fdiff * bdiff <= 0:
-            if abs(fdiff) < abs(bdiff):
-                return mid
-            if abs(bdiff) <= abs(fdiff):
-                return mid - 1
-        elif nums[mid] < target:
-            start = mid + 1
+def process_eem_stack(eem_stack, f, *args, **kwargs):
+    processed_eem_stack = []
+    other_outputs = []
+    for i in range(eem_stack.shape[0]):
+        f_output = f(eem_stack[i,:,:], *args, **kwargs)
+        if isinstance(f_output, tuple):
+            processed_eem_stack.append(f_output[0])
+            other_outputs.append(f_output[1:])
         else:
-            end = mid - 1
-
-
-def eem_to_uint8(intensity):
-    intensity_r = np.copy(intensity)
-    intensity_r[intensity_r < 0] = 0
-    intensity_scaled = np.interp(intensity_r, (0, intensity_r.max()), (0, 255))
-    intensity_scaled = intensity_scaled.astype(np.uint8)
-    return intensity_scaled
+            processed_eem_stack.append(f_output)
+    if len(set([eem.shape for eem in processed_eem_stack])) > 1:
+        warnings.warn("Processed EEMs have different shapes")
+    return np.array(processed_eem_stack), other_outputs
 
 
 def eem_threshold_masking(intensity, em_range, ex_range, ref_matrix, threshold, residual, plot=False, cmin=0,
                           cmax=4000):
     mask = np.ones(ref_matrix.shape)
-    extent = [em_range.min(), em_range.max(), ex_range.min(), ex_range.max()]
+    extent = (em_range.min(), em_range.max(), ex_range.min(), ex_range.max())
     if residual == 'big':
         mask[np.where(ref_matrix < threshold)] = np.nan
     if residual == 'small':
         mask[np.where(ref_matrix > threshold)] = np.nan
     if plot:
         plt.figure(figsize=(8, 8))
-        plot3DEEM(intensity, em_range=em_range, ex_range=ex_range, autoscale=False, cmin=cmin, cmax=cmax)
+        plot_eem(intensity, em_range=em_range, ex_range=ex_range, autoscale=False, cmin=cmin, cmax=cmax)
         plt.imshow(mask, extent=extent, alpha=0.9, cmap="binary")
         # plt.title('Relative STD<{threshold}'.format(threshold=threshold))
     return mask
 
 
-def eems_gaussianfilter(eem_stack, sigma=1, truncate=3):
-    eem_stack_filtered = np.zeros(eem_stack.shape)
-    for i in range(eem_stack.shape[0]):
-        eem_stack_filtered[i] = gaussian_filter(eem_stack[i], sigma=sigma, truncate=truncate)
-    return eem_stack_filtered
+def eem_gaussian_filter(intensity, sigma=1, truncate=3):
+    intensity_filtered = gaussian_filter(intensity, sigma=sigma, truncate=truncate)
+    return intensity_filtered
 
 
 def eem_cutting(intensity, em_range, ex_range, em_min, em_max, ex_min, ex_max):
@@ -188,30 +173,19 @@ def eem_cutting(intensity, em_range, ex_range, em_min, em_max, ex_min, ex_max):
     return intensity_cut, em_range_cut, ex_range_cut
 
 
-def eems_cutting(eem_stack, em_range, ex_range, em_min=250, em_max=810, ex_min=230, ex_max=500):
-    for i in range(eem_stack.shape[0]):
-        intensity = np.array(eem_stack[i, :, :])
-        intensity_cut, em_range_cut, ex_range_cut = eem_cutting(intensity, em_range, ex_range,
-                                                                em_min=em_min, em_max=em_max, ex_min=ex_min,
-                                                                ex_max=ex_max)
-        intensity_cut = np.array([intensity_cut])
-        if i == 0:
-            eem_stack_cut = intensity_cut
-        if i > 0:
-            eem_stack_cut = np.concatenate([eem_stack_cut, intensity_cut], axis=0)
-    return eem_stack_cut, em_range_cut, ex_range_cut
-
-
-def eems_contour_masking(eem_stack, em_range, ex_range, otsu=True, binary_threshold=50):
-    eem_stack_m = np.zeros(eem_stack.shape)
-    for i in range(eem_stack.shape[0]):
-        intensity = np.array(eem_stack[i, :, :])
-        intensity_binary = contour_detection(intensity, em_range=em_range, ex_range=ex_range, otsu=otsu,
-                                             plot=False, binary_threshold=binary_threshold)
-        intensity[np.where(intensity_binary == 0)] = 0
-        intensity = np.array([intensity])
-        eem_stack_m[i] = intensity
-    return eem_stack_m
+# def eems_cutting(eem_stack, em_range, ex_range, em_min, em_max, ex_min, ex_max):
+#     intensity = np.array(eem_stack[0, :, :])
+#     intensity_cut, em_range_cut, ex_range_cut = eem_cutting(intensity, em_range, ex_range,
+#                                                             em_min=em_min, em_max=em_max, ex_min=ex_min,
+#                                                             ex_max=ex_max)
+#     eem_stack_cut = np.zeros(eem_stack.shape[0], intensity_cut.shape[1], intensity_cut.shape[2])
+#     for i in range(eem_stack.shape[0]):
+#         intensity = np.array(eem_stack[i, :, :])
+#         intensity_cut, em_range_cut, ex_range_cut = eem_cutting(intensity, em_range, ex_range,
+#                                                                 em_min=em_min, em_max=em_max, ex_min=ex_min,
+#                                                                 ex_max=ex_max)
+#         eem_stack_cut = np.array([intensity_cut])
+#     return eem_stack_cut, em_range_cut, ex_range_cut
 
 
 def eem_raman_normalization(intensity, em_range_blank=None, ex_range_blank=None, blank=None, from_blank=False,
@@ -239,8 +213,8 @@ def eem_raman_normalization(intensity, em_range_blank=None, ex_range_blank=None,
         return intensity * rsu_standard / rsu_tot / integration_time, rsu_standard / rsu_tot / integration_time
 
 
-def eem_inner_filter_effect(intensity, em_range, ex_range, absorbance, ex_range2, cuvette_length=1, ex_lower_limit=200,
-                            ex_upper_limit=825):
+def eem_ife_correction(intensity, em_range, ex_range, absorbance, ex_range2, cuvette_length=1, ex_lower_limit=200,
+                       ex_upper_limit=825):
     ex_range2 = np.concatenate([[ex_upper_limit], ex_range2, [ex_lower_limit]])
     absorbance = np.concatenate([[0], absorbance, [max(absorbance)]])
     f1 = interpolate.interp1d(ex_range2, absorbance, kind='linear', bounds_error=False, fill_value='extrapolate')
@@ -252,13 +226,13 @@ def eem_inner_filter_effect(intensity, em_range, ex_range, absorbance, ex_range2
     return intensity_filtered
 
 
-def eems_inner_filter_effect(eem_stack, abs_stack, em_range, ex_range, ex_range2):
-    eem_stack_filtered = np.array(eem_stack)
-    for i in range(eem_stack.shape[0]):
-        intensity = eem_stack[i]
-        absorbance = abs_stack[i]
-        eem_stack_filtered[i] = eem_inner_filter_effect(intensity, em_range, ex_range, absorbance, ex_range2)
-    return eem_stack_filtered
+# def eems_inner_filter_effect(eem_stack, abs_stack, em_range, ex_range, ex_range2):
+#     eem_stack_filtered = np.array(eem_stack)
+#     for i in range(eem_stack.shape[0]):
+#         intensity = eem_stack[i]
+#         absorbance = abs_stack[i]
+#         eem_stack_filtered[i] = eem_ife_correction(intensity, em_range, ex_range, absorbance, ex_range2)
+#     return eem_stack_filtered
 
 
 def eem_regional_integration(intensity, em_range, ex_range, em_boundary, ex_boundary):
@@ -278,15 +252,15 @@ def eem_regional_integration(intensity, em_range, ex_range, em_boundary, ex_boun
     return integration, avg_regional_intensity, num_pixels
 
 
-def eems_regional_integration(eem_stack, em_range, ex_range, em_boundary, ex_boundary):
-    eem_stack_integration = np.zeros(eem_stack.shape[0])
-    eem_stack_regional_intensity = np.zeros(eem_stack.shape[0])
-    eem_stack_num_pixels = np.zeros(eem_stack.shape[0])
-    for i in range(eem_stack.shape[0]):
-        intensity = eem_stack[i]
-        eem_stack_integration[i], eem_stack_regional_intensity[i], eem_stack_num_pixels[i] = \
-            eem_regional_integration(intensity, em_range, ex_range, em_boundary, ex_boundary)
-    return eem_stack_integration, eem_stack_regional_intensity, eem_stack_num_pixels
+# def eems_regional_integration(eem_stack, em_range, ex_range, em_boundary, ex_boundary):
+#     eem_stack_integration = np.zeros(eem_stack.shape[0])
+#     eem_stack_regional_intensity = np.zeros(eem_stack.shape[0])
+#     eem_stack_num_pixels = np.zeros(eem_stack.shape[0])
+#     for i in range(eem_stack.shape[0]):
+#         intensity = eem_stack[i]
+#         eem_stack_integration[i], eem_stack_regional_intensity[i], eem_stack_num_pixels[i] = \
+#             eem_regional_integration(intensity, em_range, ex_range, em_boundary, ex_boundary)
+#     return eem_stack_integration, eem_stack_regional_intensity, eem_stack_num_pixels
 
 
 def eem_interpolation(intensity, em_range_old, ex_range_old, em_range_new, ex_range_new):
@@ -295,21 +269,22 @@ def eem_interpolation(intensity, em_range_old, ex_range_old, em_range_new, ex_ra
     return intensity_new
 
 
-def eems_interpolation(eem_stack, em_range_old, ex_range_old, em_range_new, ex_range_new):
-    eem_stack_interpolated = np.zeros([eem_stack.shape[0], ex_range_new.shape[0], em_range_new.shape[0]])
-    for i in range(eem_stack.shape[0]):
-        intensity = np.array(eem_stack[i, :, :])
-        intensity_new = eem_interpolation(intensity, em_range_old, ex_range_old, em_range_new, ex_range_new)
-        eem_stack_interpolated[i] = intensity_new
-    return eem_stack_interpolated
+# def eems_interpolation(eem_stack, em_range_old, ex_range_old, em_range_new, ex_range_new):
+#     eem_stack_interpolated = np.zeros([eem_stack.shape[0], ex_range_new.shape[0], em_range_new.shape[0]])
+#     for i in range(eem_stack.shape[0]):
+#         intensity = np.array(eem_stack[i, :, :])
+#         intensity_new = eem_interpolation(intensity, em_range_old, ex_range_old, em_range_new, ex_range_new)
+#         eem_stack_interpolated[i] = intensity_new
+#     return eem_stack_interpolated
 
 
-def eems_isolation_forest(eem_stack, em_range, ex_range, tf_normalization, grid_size=(10, 10), contamination=0.02):
+def eems_outlier_detection_if(eem_stack, em_range, ex_range, tf_normalization, grid_size=(10, 10), contamination=0.02):
     if tf_normalization:
         eem_stack, _ = eems_total_fluorescence_normalization(eem_stack)
     em_range_new = np.arange(em_range[0], em_range[-1], grid_size[1])
     ex_range_new = np.arange(ex_range[0], ex_range[-1], grid_size[0])
-    eem_stack_interpolated = eems_interpolation(eem_stack, em_range, ex_range, em_range_new, ex_range_new)
+    eem_stack_interpolated = process_eem_stack(eem_stack, eem_interpolation, em_range, ex_range, em_range_new,
+                                               ex_range_new)
     eem_stack_unfold = eem_stack_interpolated.reshape(eem_stack_interpolated.shape[0],
                                                       eem_stack_interpolated.shape[1] * eem_stack_interpolated.shape[2])
     eem_stack_unfold = np.nan_to_num(eem_stack_unfold)
@@ -318,13 +293,14 @@ def eems_isolation_forest(eem_stack, em_range, ex_range, tf_normalization, grid_
     return label
 
 
-def eems_one_class_svm(eem_stack, em_range, ex_range, tf_normalization, grid_size=(10, 10), nu=0.02, kernel="rbf",
-                       gamma=10000):
+def eems_outlier_detection_ocs(eem_stack, em_range, ex_range, tf_normalization, grid_size=(10, 10), nu=0.02,
+                               kernel="rbf", gamma=10000):
     if tf_normalization:
         eem_stack, _ = eems_total_fluorescence_normalization(eem_stack)
     em_range_new = np.arange(em_range[0], em_range[-1], grid_size[1])
     ex_range_new = np.arange(ex_range[0], ex_range[-1], grid_size[0])
-    eem_stack_interpolated = eems_interpolation(eem_stack, em_range, ex_range, em_range_new, ex_range_new)
+    eem_stack_interpolated = process_eem_stack(eem_stack, eem_interpolation, em_range, ex_range, em_range_new,
+                                               ex_range_new)
     eem_stack_unfold = eem_stack_interpolated.reshape(eem_stack_interpolated.shape[0],
                                                       eem_stack_interpolated.shape[1] * eem_stack_interpolated.shape[2])
     eem_stack_unfold = np.nan_to_num(eem_stack_unfold)
@@ -333,53 +309,16 @@ def eems_one_class_svm(eem_stack, em_range, ex_range, tf_normalization, grid_siz
     return label
 
 
-def detect_local_peak(intensity, min_distance=20, plot=False):
-    coordinates = peak_local_max(intensity, min_distance=min_distance)
-    if plot:
-        plt.plot(coordinates[:, 1], coordinates[:, 0], 'r.')
-        plt.axis('off')
-    return coordinates
-
-
-def eems_random_selection(eem_stack):
+def eems_random_sampling(eem_stack):
     i = random.randrange(eem_stack.shape[0])
     EEM_selected = eem_stack[i]
     return EEM_selected
 
 
-def get_TS_from_filename(filename, ts_format='%Y-%m-%d-%H-%M-%S', ts_start_position=0, ts_end_position=19):
-    ts_string = filename[ts_start_position:ts_end_position]
-    ts = datetime.strptime(ts_string, ts_format)
-    return ts
-
-
-def datetime_to_str(datetime_list, output=False, filename='timestamp.txt'):
-    tsstr = [datetime_list[i].strftime("%Y-%m-%d-%H-%M") for i in range(len(datetime_list))]
-    if output:
-        file = open(filename, 'w')
-        for fp in tsstr:
-            file.write(str(fp))
-            file.write('\n')
-        file.close()
-    return tsstr
-
-
-def abs_plot_at_wavelength(abs_stack, Ex_range, Ex, plot=True, timestamp=False):
-    Ex_ref = dichotomy_search(Ex_range, Ex)
-    y = abs_stack[:, Ex_ref]
-    x = np.array(range(1, abs_stack.shape[0] + 1))
-    if plot:
-        if timestamp:
-            x = timestamp
-        plt.figure(figsize=(15, 5))
-        plt.scatter(x, y)
-        plt.xlim([x[0] - timedelta(hours=1), x[-1] + timedelta(hours=1)])
-
-
 class EEMstack:
-    def __init__(self, intensities, em_range, ex_range):
+    def __init__(self, eem_stack, em_range, ex_range):
         # The Em/Ex ranges should be sorted in ascending order
-        self.intensities = intensities
+        self.eem_stack = intensities
         self.em_range = em_range
         self.ex_range = ex_range
 
@@ -516,10 +455,10 @@ class EEMstack:
                 except:
                     pass
         if plot:
-            if mode=='diff':
+            if mode == 'diff':
                 X = 1 - R2
                 title = '1-$R^2$'
-            elif mode=='abs':
+            elif mode == 'abs':
                 X = R2
                 title = '$R^2$'
             plt.figure(figsize=(6, 6))
@@ -594,7 +533,7 @@ class EEMstack:
             plt.ylabel('Excitation wavelength [nm]')
 
             plt.figure(figsize=(8, 8))
-            extent = [self.em_range.min(), self.em_range.max(), self.ex_range.min(), self.ex_range.max()]
+            extent = (self.em_range.min(), self.em_range.max(), self.ex_range.min(), self.ex_range.max())
             plt.imshow(P_s, cmap='jet', interpolation='none', extent=extent, aspect='1.2',
                        norm=Normalize(vmin=0, vmax=0.1))
             plt.colorbar(fraction=0.03, pad=0.04)
@@ -603,7 +542,7 @@ class EEMstack:
             plt.ylabel('Excitation wavelength [nm]')
 
     def plot_eem_linreg_error(self, error, x, x_index):
-        extent = [self.em_range.min(), self.em_range.max(), self.ex_range.min(), self.ex_range.max()]
+        extent = (self.em_range.min(), self.em_range.max(), self.ex_range.min(), self.ex_range.max())
         plt.imshow(error[x_index, :, :], cmap='jet', interpolation='none', extent=extent, aspect='1.2', vmin=-100,
                    vmax=100)
         plt.title('x={x}'.format(x=x[x_index]))
@@ -611,29 +550,20 @@ class EEMstack:
         plt.ylabel('Excitation wavelength [nm]')
 
 
-def eem_statistics(EEMstack, term, crange, reference_label=None, reference=None, title=False):
+def eems_statistics(EEMstack, term, crange, reference_label=None, reference=None, title=False):
     if term == 'Mean':
-        plot3DEEM(EEMstack.mean(), EEMstack.em_range, EEMstack.ex_range,
-                  cmin=crange[0], cmax=crange[1])
+        plot_eem(EEMstack.mean(), EEMstack.em_range, EEMstack.ex_range,
+                 cmin=crange[0], cmax=crange[1])
     if term == 'Standard deviation':
-        plot3DEEM(EEMstack.std(), EEMstack.em_range, EEMstack.ex_range, autoscale=True)
+        plot_eem(EEMstack.std(), EEMstack.em_range, EEMstack.ex_range, autoscale=True)
     if term == 'Relative standard deviation':
-        plot3DEEM(EEMstack.rel_std(), EEMstack.em_range, EEMstack.ex_range, autoscale=True)
+        plot_eem(EEMstack.rel_std(), EEMstack.em_range, EEMstack.ex_range, autoscale=True)
     if term == 'Correlation: Linearity':
         EEMstack.eem_linreg(x=reference)
     if term == 'Correlation: Pearson coef.':
         EEMstack.eem_pearson_coef(x=reference)
     if term == 'Correlation: Spearman coef.':
         EEMstack.eem_spearman_coef(x=reference)
-
-
-def eem_diag_diff(intensity, threshold=0):
-    fil = np.array([[-1, 0, 0],
-                    [0, 0, 0],
-                    [0, 0, 1]])
-    intensity_diag_diff = cv2.filter2D(intensity, -1, fil)
-    intensity_diag_diff[intensity_diag_diff < threshold] = 0
-    return intensity_diag_diff
 
 
 def eem_region_masking(intensity, em_range, ex_range,
@@ -653,15 +583,15 @@ def eem_region_masking(intensity, em_range, ex_range,
     return masked, mask
 
 
-def eems_region_masking(eem_stack, em_range, ex_range,
-                        em_min=250, em_max=810, ex_min=230, ex_max=500, replacement='nan'):
-    eem_stack_masked = np.zeros(eem_stack.shape)
-    for i in range(eem_stack.shape[0]):
-        intensity = eem_stack[i, :, :]
-        intensity_masked, mask = eem_region_masking(intensity, em_range, ex_range,
-                                                    em_min, em_max, ex_min, ex_max, replacement)
-        eem_stack_masked[i, :, :] = intensity_masked
-    return eem_stack_masked, mask
+# def eems_region_masking(eem_stack, em_range, ex_range,
+#                         em_min=250, em_max=810, ex_min=230, ex_max=500, replacement='nan'):
+#     eem_stack_masked = np.zeros(eem_stack.shape)
+#     for i in range(eem_stack.shape[0]):
+#         intensity = eem_stack[i, :, :]
+#         intensity_masked, mask = eem_region_masking(intensity, em_range, ex_range,
+#                                                     em_min, em_max, ex_min, ex_max, replacement)
+#         eem_stack_masked[i, :, :] = intensity_masked
+#     return eem_stack_masked, mask
 
 
 def eem_grid_imputing(intensity, method='linear', fill_value='linear_ex', prior_mask=None):
@@ -855,38 +785,22 @@ def eems_raman_masking(eem_stack, em_range, ex_range, interpolation='nan',
     return eem_stack_c, raman_mask
 
 
-def contour_detection(intensity, em_range=None, ex_range=None, binary_threshold=50, maxval=255,
-                      bluring=False, otsu=False, plot=False):
-    if bluring:
-        intensity = gaussian_filter(intensity, sigma=1, truncate=2)
-    intensity_gray = eem_to_uint8(intensity)
-    if otsu:
-        ret, intensity_binary = cv2.threshold(intensity_gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    if otsu == False:
-        ret, intensity_binary = cv2.threshold(intensity_gray, binary_threshold, maxval, cv2.THRESH_BINARY)
-    if plot:
-        extent = [em_range.min(), em_range.max(), ex_range.min(), ex_range.max()]
-        plot3DEEM(intensity, em_range, ex_range, autoscale=False, cmax=600, cmin=0, cmap='jet')
-        plt.imshow(intensity_binary, extent=extent, alpha=0.3, cmap="binary")
-    return intensity_binary
-
-
-def plot_eem_interact(filedir, filename, autoscale=False, crange=[0, 3000], raman_normalization=False,
+def plot_eem_interact(filedir, filename, data_format, autoscale=False, crange=[0, 3000], raman_normalization=False,
                       inner_filter_effect=True, rayleigh_scattering_correction=True, raman_scattering_correction=True,
                       gaussian_smoothing=True, abs_xmax=0.1, em_range_display=[250, 820], ex_range_display=[200, 500],
-                      contour_mask=False, sigma=1, truncate=3, dilution=1, from_blank=False, integration_time=1,
+                      sigma=1, truncate=3, dilution=1, from_blank=False, integration_time=1,
                       ex_lb=349, ex_ub=351, bandwidth_type='wavenumber', bandwidth=1800, rsu_standard=20000,
                       manual_rsu=1, tolerance_o1=15, tolerance_o2=15, tolerance_raman=5, method_raman='nan',
                       method_o1='zero', method_o2='linear', axis_o1='grid', axis_o2='grid', axis_raman='grid',
-                      ts_format='%Y-%m-%d-%H-%M-%S', ts_start_position=0, ts_end_position=19, otsu=True,
-                      binary_threshold=50, mask_impute=False, mask_ex=None, mask_em=None, plot_abs=False,
+                      ts_format='%Y-%m-%d-%H-%M-%S', ts_start_position=0, ts_end_position=19,
+                      mask_impute=False, mask_ex=None, mask_em=None, plot_abs=False,
                       title=False, show_maximum=False, rotate=False):
     filepath = filedir + '/' + filename
-    intensity, em_range, ex_range = readEEM(filepath)
+    intensity, em_range, ex_range = read_eem(filepath, data_format=data_format)
     intensity = intensity * dilution
     if raman_normalization:
         if from_blank:
-            blank, em_range_blank, ex_range_blank = readEEM(filepath[0:-7] + 'BEM.dat')
+            blank, em_range_blank, ex_range_blank = read_eem(filepath[0:-7] + 'BEM.dat', data_format=data_format)
             intensity, _ = eem_raman_normalization(intensity=intensity,
                                                    em_range_blank=em_range_blank, ex_range_blank=ex_range_blank,
                                                    blank=blank, from_blank=from_blank,
@@ -899,9 +813,9 @@ def plot_eem_interact(filedir, filename, autoscale=False, crange=[0, 3000], rama
 
     if inner_filter_effect:
         try:
-            absorbance, ex_range2 = readABS(filepath[0:-7] + 'ABS.dat')
-            intensity = eem_inner_filter_effect(intensity, em_range=em_range, ex_range=ex_range, absorbance=absorbance,
-                                                ex_range2=ex_range2)
+            absorbance, ex_range2 = read_abs(filepath[0:-7] + 'ABS.dat')
+            intensity = eem_ife_correction(intensity, em_range=em_range, ex_range=ex_range, absorbance=absorbance,
+                                           ex_range2=ex_range2)
         except FileNotFoundError:
             print('Absorbance data missing. Please make sure the file names of the EEM and '
                   'absorbance data are consistent, except the suffix "ABS.dat" and "PEM.dat /" '
@@ -931,21 +845,14 @@ def plot_eem_interact(filedir, filename, autoscale=False, crange=[0, 3000], rama
     intensity, em_range, ex_range = eem_cutting(intensity, em_range, ex_range, em_range_display[0],
                                                 em_range_display[1], ex_range_display[0],
                                                 ex_range_display[1])
-    plot3DEEM(intensity, em_range, ex_range, autoscale, crange[1], crange[0], rotate=rotate)
-    if contour_mask:
-        intensity_binary = contour_detection(intensity, otsu=otsu, binary_threshold=binary_threshold)
-        binary_mask = eem_threshold_masking(intensity=intensity, em_range=em_range, ex_range=ex_range,
-                                            ref_matrix=intensity_binary, threshold=1, residual='small',
-                                            cmin=crange[0], cmax=crange[1])
-        extent = [em_range.min(), em_range.max(), ex_range.min(), ex_range.max()]
-        plt.imshow(binary_mask, extent=extent, alpha=0.5, cmap="binary", aspect=1.2)
+    plot_eem(intensity, em_range, ex_range, autoscale, crange[1], crange[0], rotate=rotate)
     if title:
-        tstitle = get_TS_from_filename(filename, ts_format=ts_format, ts_start_position=ts_start_position,
-                                       ts_end_position=ts_end_position)
+        tstitle = get_timestamp_from_filename(filename, ts_format=ts_format, ts_start_position=ts_start_position,
+                                              ts_end_position=ts_end_position)
         plt.title(tstitle)
     if plot_abs:
         try:
-            absorbance, ex_range2 = readABS(filepath[0:-7] + 'ABS.dat')
+            absorbance, ex_range2 = read_abs(filepath[0:-7] + 'ABS.dat')
             plot_abs(absorbance, ex_range2, abs_xmax, em_range_display)
         except FileNotFoundError:
             pass
@@ -953,15 +860,15 @@ def plot_eem_interact(filedir, filename, autoscale=False, crange=[0, 3000], rama
         print("maximum intensity: ", np.amax(intensity))
 
 
-def load_eem_stack_interact(filedir, raman_normalization=False, rayleigh_scattering_correction=True,
-                            raman_scattering_correction=True, em_range_display=(250, 820), ex_range_display=(200, 500),
-                            gaussian_smoothing=True, inner_filter_effect=True, dilution=1, from_blank=False,
-                            integration_time=1, ex_lb=349, ex_ub=351, bandwidth_type='wavenumber', bandwidth=1800,
-                            rsu_standard=20000, manual_rsu=1, sigma=1, truncate=3, otsu=True, binary_threshold=50,
-                            tolerance_o1=15, tolerance_o2=15, tolerance_raman=5, method_raman='linear',
-                            method_o1='zero', method_o2='linear', axis_o1='grid', axis_o2='grid', axis_raman='grid',
-                            contour_mask=True, keyword_pem='PEM.dat', existing_datlist=[],
-                            wavelength_synchronization=True):
+def load_eem_stack_interact(filedir, data_format='aqualog', raman_normalization=False,
+                            rayleigh_scattering_correction=True, raman_scattering_correction=True,
+                            em_range_display=(250, 820), ex_range_display=(200, 500), gaussian_smoothing=True,
+                            inner_filter_effect=True, dilution=1, from_blank=False, integration_time=1, ex_lb=349,
+                            ex_ub=351, bandwidth_type='wavenumber', bandwidth=1800, rsu_standard=20000, manual_rsu=1,
+                            sigma=1, truncate=3, otsu=True, binary_threshold=50, tolerance_o1=15, tolerance_o2=15,
+                            tolerance_raman=5, method_raman='linear', method_o1='zero', method_o2='linear',
+                            axis_o1='grid', axis_o2='grid', axis_raman='grid', contour_mask=True, keyword_pem='PEM.dat',
+                            existing_datlist=[], wavelength_synchronization=True):
     if not existing_datlist:
         datlist = get_filelist(filedir, keyword_pem)
     else:
@@ -969,11 +876,11 @@ def load_eem_stack_interact(filedir, raman_normalization=False, rayleigh_scatter
     n = 0
     for f in datlist:
         filepath = filedir + '/' + f
-        intensity, em_range, ex_range = readEEM(filepath)
+        intensity, em_range, ex_range = read_eem(filepath, data_format=data_format)
         intensity = intensity * dilution
         if raman_normalization:
             if from_blank:
-                blank, em_range_blank, ex_range_blank = readEEM(filepath[0:-7] + 'BEM.dat')
+                blank, em_range_blank, ex_range_blank = read_eem(filepath[0:-7] + 'BEM.dat', data_format=data_format)
                 intensity, _ = eem_raman_normalization(intensity=intensity,
                                                        em_range_blank=em_range_blank, ex_range_blank=ex_range_blank,
                                                        blank=blank, from_blank=from_blank,
@@ -985,13 +892,13 @@ def load_eem_stack_interact(filedir, raman_normalization=False, rayleigh_scatter
                                                        manual_rsu=manual_rsu)
 
         if inner_filter_effect:
-            absorbance, ex_range2 = readABS(filepath[0:-7] + 'ABS.dat')
-            intensity = eem_inner_filter_effect(intensity, em_range=em_range, ex_range=ex_range, absorbance=absorbance,
-                                                ex_range2=ex_range2)
+            absorbance, ex_range2 = read_abs(filepath[0:-7] + 'ABS.dat', data_format=data_format)
+            intensity = eem_ife_correction(intensity, em_range=em_range, ex_range=ex_range, absorbance=absorbance,
+                                           ex_range2=ex_range2)
             datlist_abs = [dat[0:-7] + 'ABS.dat' for dat in datlist]
-            abs_stack, ex_range_abs, datlist_abs = stackABS(filedir, datlist=datlist_abs,
-                                                            wavelength_synchronization=True,
-                                                            ex_range_display=ex_range_display)
+            abs_stack, ex_range_abs, datlist_abs = stack_abs(filedir, datlist=datlist_abs,
+                                                             wavelength_synchronization=True,
+                                                             ex_range_display=ex_range_display)
         else:
             abs_stack = []
             ex_range_abs = []
@@ -1038,8 +945,8 @@ def load_eem_stack_interact(filedir, raman_normalization=False, rayleigh_scatter
                 em_range = np.copy(em_range_old)
                 ex_range = np.copy(ex_range_old)
             if em_interval_new < em_interval_old or ex_interval_new < ex_interval_old:
-                eem_stack = eems_interpolation(eem_stack, em_range_old, np.flip(ex_range_old), em_range_target,
-                                               np.flip(ex_range_target))
+                eem_stack = process_eem_stack(eem_stack, eem_interpolation, em_range_old, np.flip(ex_range_old),
+                                              em_range_target, np.flip(ex_range_target))
         try:
             eem_stack[n, :, :] = intensity
         except ValueError:
@@ -1047,9 +954,6 @@ def load_eem_stack_interact(filedir, raman_normalization=False, rayleigh_scatter
         n += 1
         em_range_old = np.copy(em_range)
         ex_range_old = np.copy(ex_range)
-    if contour_mask:
-        eem_stack = eems_contour_masking(eem_stack, em_range, ex_range, otsu=otsu,
-                                         binary_threshold=binary_threshold)
     print('Number of samples in the stack:', eem_stack.shape[0])
     return eem_stack, em_range, ex_range, datlist, abs_stack, ex_range_abs
 
@@ -1071,7 +975,7 @@ def eems_total_fluorescence_normalization(eem_stack):
 
 def decomposition_interact(eem_stack, em_range, ex_range, rank, index=[], decomposition_method='parafac', init='svd',
                            dataset_normalization=False, score_normalization=False, loadings_normalization=True,
-                           component_normalization=False, component_contour_threshold=0, plot_loadings=True,
+                           component_normalization=False, plot_loadings=True,
                            plot_components=True, plot_fmax=True, display_score=True, component_cmin=0, component_cmax=1,
                            component_autoscale=False, title=True, cbar=True, cmap="jet", sort_em=True, rotate=False):
     plt.close()
@@ -1119,12 +1023,6 @@ def decomposition_interact(eem_stack, em_range, ex_range, rank, index=[], decomp
             w = 1 / component.max()
             component = component * w
             I[:, r] = I[:, r] / w
-        if component_contour_threshold > 0:
-            binary = contour_detection(component, binary_threshold=component_contour_threshold)
-            contour, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-            contours.append(contour)
-            max_idx = np.unravel_index(np.argmax(component, axis=None), component.shape)
-            max_idx_r.append((max_idx[1], max_idx[0]))
         if r == 0:
             component_stack = np.zeros([rank, component.shape[0], component.shape[1]])
         component_stack[r, :, :] = component
@@ -1170,9 +1068,9 @@ def decomposition_interact(eem_stack, em_range, ex_range, rank, index=[], decomp
                 title_r = score_df.columns[r]
             if not title:
                 title_r = False
-            plot3DEEM(component_stack[r, :, :], em_range, ex_range, cmin=component_cmin,
-                      cmax=component_cmax, title=title_r, autoscale=component_autoscale, cbar=cbar,
-                      cmap=cmap, aspect=1, rotate=rotate)
+            plot_eem(component_stack[r, :, :], em_range, ex_range, cmin=component_cmin,
+                     cmax=component_cmax, title=title_r, autoscale=component_autoscale, cbar=cbar,
+                     cmap=cmap, aspect=1, rotate=rotate)
 
     if plot_loadings:
         fig_ex = exl_df.unstack(level=0).plot.line()
@@ -1262,7 +1160,8 @@ def dynamic_time_warping(x, y):
 def match_parafac_components(model_ex, model_em, model_ref_ex, model_ref_em, criteria='TCC',
                              wavelength_synchronization=True, mode='mean', dtw=False):
     ex1_loadings, em1_loadings, ex2_loadings, em2_loadings = \
-        model_ex.unstack(level=0), model_em.unstack(level=0), model_ref_ex.unstack(level=0), model_ref_em.unstack(level=0),
+        model_ex.unstack(level=0), model_em.unstack(level=0), model_ref_ex.unstack(level=0), model_ref_em.unstack(
+            level=0),
     ex_range1, em_range1, ex_range2, em_range2 = \
         ex1_loadings.index, em1_loadings.index, ex2_loadings.index, em2_loadings.index
     if wavelength_synchronization:
@@ -1303,11 +1202,11 @@ def match_parafac_components(model_ex, model_em, model_ref_ex, model_ref_em, cri
                 stat_ex = stats.pearsonr(ex1_aligned, ex2_aligned)[0]
                 stat_em = stats.pearsonr(em1_aligned, em2_aligned)[0]
                 if mode == 'mean':
-                    m_sim[n1, n2] = statistics.mean([stat_ex,stat_em])
+                    m_sim[n1, n2] = statistics.mean([stat_ex, stat_em])
                 if mode == 'min':
-                    m_sim[n1, n2] = min([stat_ex,stat_em])
+                    m_sim[n1, n2] = min([stat_ex, stat_em])
                 if mode == 'max':
-                    m_sim[n1, n2] = max([stat_ex,stat_em])
+                    m_sim[n1, n2] = max([stat_ex, stat_em])
             # if criteria == 'SSC'
     memory = []
     m_sim_copy = m_sim.copy()
@@ -1322,8 +1221,8 @@ def match_parafac_components(model_ex, model_em, model_ref_ex, model_ref_em, cri
     order = [o[0] for o in matched_index]
     model_ex_sorted, model_em_sorted = model_ex.copy(), model_em.copy()
     for i, o in enumerate(order):
-        model_ex_sorted['component {i}'.format(i=i+1)] = model_ex['component {i}'.format(i=o+1)]
-        model_em_sorted['component {i}'.format(i=i+1)] = model_em['component {i}'.format(i=o+1)]
+        model_ex_sorted['component {i}'.format(i=i + 1)] = model_ex['component {i}'.format(i=o + 1)]
+        model_em_sorted['component {i}'.format(i=i + 1)] = model_em['component {i}'.format(i=o + 1)]
     return m_sim, matched_index, max_sim, [model_ex_sorted, model_em_sorted]
 
 
@@ -1403,7 +1302,7 @@ def explained_variance(eem_stack, rank=[1, 2, 3, 4, 5], decomposition_method='no
         eem_stack_reconstruct = cp_to_tensor((weight, factors))
         y_train = eem_stack.reshape(-1)
         y_pred = eem_stack_reconstruct.reshape(-1)
-        ev_list.append(round(100*(1 - np.var(y_pred - y_train) / np.var(y_train)), 2))
+        ev_list.append(round(100 * (1 - np.var(y_pred - y_train) / np.var(y_train)), 2))
     if plot_ve:
         plt.close()
         plt.figure(figsize=(10, 5))
@@ -1453,6 +1352,7 @@ def parafac_sample_error(eem_stack, index, rank, error_type='MSE',
         denominator = (mu1 ** 2 + mu2 ** 2 + c1) * (sigma1 ** 2 + sigma2 ** 2 + c2)
         ssim_index = numerator / denominator
         return ssim_index
+
     err_list = []
     if dataset_normalization:
         eem_stack_nor, tf = eems_total_fluorescence_normalization(eem_stack)
@@ -1472,12 +1372,12 @@ def parafac_sample_error(eem_stack, index, rank, error_type='MSE',
 
     for i in range(eem_stack.shape[0]):
         if error_type == 'MSE':
-            err_list.append(np.mean(np.square(eem_stack[i]-eem_stack_reconstruct[i])))
+            err_list.append(np.mean(np.square(eem_stack[i] - eem_stack_reconstruct[i])))
         if error_type == 'PSNR':
-            mse = np.mean(np.square(eem_stack[i]-eem_stack_reconstruct[i]))
+            mse = np.mean(np.square(eem_stack[i] - eem_stack_reconstruct[i]))
             err_list.append(20 * np.log10(eem_stack[i].max() / np.sqrt(mse)))
         if error_type == 'SSIM':
-            err_list.append(ssim(eem_to_uint8(eem_stack[i]), eem_to_uint8(eem_stack_reconstruct[i])))
+            err_list.append(ssim(matrix_dtype_to_uint8(eem_stack[i]), matrix_dtype_to_uint8(eem_stack_reconstruct[i])))
     if plot_error:
         plt.figure(figsize=(10, 5))
         plt.plot(index, err_list)
@@ -1562,22 +1462,24 @@ def split_validation(eem_stack, em_range, ex_range, rank, datlist, decomposition
                                                                          init=init, plot_fmax=False
                                                                          )
         if test_count > 0:
-            _, matched_index_prev, _, _ = match_parafac_components(models[test_count-1][0][1],
-                                                                models[test_count-1][0][2], exl1_df, eml1_df,
-                                                                criteria=criteria,
-                                                                wavelength_synchronization=False, mode='mean')
+            _, matched_index_prev, _, _ = match_parafac_components(models[test_count - 1][0][1],
+                                                                   models[test_count - 1][0][2], exl1_df, eml1_df,
+                                                                   criteria=criteria,
+                                                                   wavelength_synchronization=False, mode='mean')
             order = [o[1] for o in matched_index_prev]
-            exl1_df = pd.DataFrame({'component {r}'.format(r=i+1): exl1_df.iloc[:, order[i]] for i in range(rank)})
-            eml1_df = pd.DataFrame({'component {r}'.format(r=i+1): eml1_df.iloc[:, order[i]] for i in range(rank)})
-            score1_df = pd.DataFrame({'component {r}'.format(r=i+1): score1_df.iloc[:, order[i]] for i in range(rank)})
+            exl1_df = pd.DataFrame({'component {r}'.format(r=i + 1): exl1_df.iloc[:, order[i]] for i in range(rank)})
+            eml1_df = pd.DataFrame({'component {r}'.format(r=i + 1): eml1_df.iloc[:, order[i]] for i in range(rank)})
+            score1_df = pd.DataFrame(
+                {'component {r}'.format(r=i + 1): score1_df.iloc[:, order[i]] for i in range(rank)})
 
-        m_sim, matched_index, max_sim, _ = match_parafac_components(exl1_df, eml1_df, exl2_df, eml2_df, criteria=criteria,
-                                                                 wavelength_synchronization=False, mode='mean')
+        m_sim, matched_index, max_sim, _ = match_parafac_components(exl1_df, eml1_df, exl2_df, eml2_df,
+                                                                    criteria=criteria,
+                                                                    wavelength_synchronization=False, mode='mean')
         for l in matched_index:
             if l[0] != l[1]:
                 warnings.warn('Component {c1} of model {m1} does not match with '
                               'component {c1} of model {m2}, which is replaced by Component {c2} of model {m2}'
-                              .format(c1=l[0]+1, c2=l[1]+1, m1=label[0], m2=label[1]))
+                              .format(c1=l[0] + 1, c2=l[1] + 1, m1=label[0], m2=label[1]))
 
         order = [o[1] for o in matched_index]
         exl2_df = pd.DataFrame({'component {r}'.format(r=i + 1): exl2_df.iloc[:, order[i]] for i in range(rank)})
@@ -1586,23 +1488,23 @@ def split_validation(eem_stack, em_range, ex_range, rank, datlist, decomposition
         models.append([[score1_df, exl1_df, eml1_df, label[0]], [score2_df, exl2_df, eml2_df, label[1]]])
         sims['test {n}: {l1} vs. {l2}'.format(n=test_count + 1, l1=label[0], l2=label[1])] = max_sim
         test_count += 1
-    sims_df = pd.DataFrame(sims, index=['component {c}'.format(c=c+1) for c in range(rank)])
+    sims_df = pd.DataFrame(sims, index=['component {c}'.format(c=c + 1) for c in range(rank)])
     if plot_all_combos:
         cmap = get_cmap('tab20')
-        colors = [cmap(i) for i in np.linspace(0, 1, 2*len(models))]
+        colors = [cmap(i) for i in np.linspace(0, 1, 2 * len(models))]
         for r in range(rank):
             plt.figure()
             for i in range(len(models)):
                 score1_df, exl1_df, eml1_df, label1 = models[i][0]
                 score2_df, exl2_df, eml2_df, label2 = models[i][1]
                 plt.plot(exl1_df.index.get_level_values(1), exl1_df.iloc[:, r],
-                         color=colors[2 * i], linewidth=1, label=label1+'-ex')
+                         color=colors[2 * i], linewidth=1, label=label1 + '-ex')
                 plt.plot(exl2_df.index.get_level_values(1), exl2_df.iloc[:, r],
-                         color=colors[2 * i + 1], linewidth=1, label=label2+'-ex')
+                         color=colors[2 * i + 1], linewidth=1, label=label2 + '-ex')
                 plt.plot(eml1_df.index.get_level_values(1), eml1_df.iloc[:, r],
-                         color=colors[2 * i], linewidth=1, linestyle='dashed', label=label1+'-em')
+                         color=colors[2 * i], linewidth=1, linestyle='dashed', label=label1 + '-em')
                 plt.plot(eml2_df.index.get_level_values(1), eml2_df.iloc[:, r],
-                         color=colors[2 * i + 1], linewidth=1, linestyle='dashed', label=label2+'-em')
+                         color=colors[2 * i + 1], linewidth=1, linestyle='dashed', label=label2 + '-em')
                 plt.xlabel('Wavelength [nm]', fontsize=15)
                 plt.xticks(np.arange(min(ex_range), max(em_range), 50), fontsize=12)
                 plt.ylabel('Loadings', fontsize=15)
@@ -1630,20 +1532,20 @@ def decomposition_reconstruction_interact(I, J, K, intensity, em_range, ex_range
             sample_r += I[idx, r] * component
         # reconstruction_error = np.linalg.norm(sample_r - eem_stack[idx])
         if plot:
-            plot3DEEM(sample_r, em_range, ex_range, autoscale=False, cmin=crange[0], cmax=crange[1], figure_size=(8, 8),
+            plot_eem(sample_r, em_range, ex_range, autoscale=False, cmin=crange[0], cmax=crange[1], figure_size=(8, 8),
                       title='Accumulate to component {rank}'.format(rank=r + 1))
     if rmse:
         error = np.sqrt(np.mean((sample_r - intensity) ** 2))
         # print("MSE of the final reconstructed EEM: ", error)
     if plot:
-        plot3DEEM(intensity, em_range, ex_range, autoscale=False, cmin=crange[0], cmax=crange[1],
+        plot_eem(intensity, em_range, ex_range, autoscale=False, cmin=crange[0], cmax=crange[1],
                   title='Original footprint')
-        plot3DEEM(intensity - sample_r, em_range, ex_range, autoscale=False, cmin=crange[0], cmax=crange[1],
+        plot_eem(intensity - sample_r, em_range, ex_range, autoscale=False, cmin=crange[0], cmax=crange[1],
                   title='Residuals')
         with np.errstate(divide='ignore', invalid='ignore'):
             ratio = np.divide(intensity - sample_r, intensity)
         ratio[ratio == np.inf] = np.nan
-        plot3DEEM(ratio, em_range, ex_range, autoscale=False, cmin=crange[0], cmax=crange[1], title='Error [%]')
+        plot_eem(ratio, em_range, ex_range, autoscale=False, cmin=crange[0], cmax=crange[1], title='Error [%]')
     return sample_r, error
 
 
