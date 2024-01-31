@@ -28,10 +28,10 @@ def read_eem(filepath, data_format='aqualog'):
     ----------------
     intensity: np.ndarray (2d)
         the EEM matrix
-    em_range: np.ndarray (1d)
-        the emission wavelengths
     ex_range: np.ndarray (1d)
         the excitation wavelengths
+    em_range: np.ndarray (1d)
+        the emission wavelengths
     """
     with open(filepath, 'r') as of:
         if data_format == 'aqualog':
@@ -81,7 +81,7 @@ def read_eem(filepath, data_format='aqualog'):
         else:
             Warning(
                 'The current version of eempy only supports reading files written in the "Aqualog (HORIBA) format."')
-    return intensity, em_range, ex_range
+    return intensity, ex_range, em_range
 
 
 def read_abs(filepath, data_format='aqualog'):

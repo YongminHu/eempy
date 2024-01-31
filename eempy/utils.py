@@ -4,6 +4,7 @@ Useful functions for EEM processing
 
 
 import numpy as np
+from scipy.spatial.distance import euclidean
 from datetime import datetime, timedelta
 
 
@@ -53,3 +54,32 @@ def datetime_to_str(datetime_list, output=False, filename='timestamp.txt'):
             file.write('\n')
         file.close()
     return tsstr
+
+
+def dynamic_time_warping(x, y):
+    # Create a cost matrix with initial values set to infinity
+    cost_matrix = np.ones((len(x), len(y))) * np.inf
+    # Initialize the first cell of the cost matrix to the Euclidean distance between the first elements
+    cost_matrix[0, 0] = euclidean([x[0]], [y[0]])
+    # Calculate the cumulative cost matrix
+    for i in range(1, len(x)):
+        for j in range(1, len(y)):
+            cost_matrix[i, j] = euclidean([x[i]], [y[j]]) + min(cost_matrix[i - 1, j], cost_matrix[i, j - 1],
+                                                                cost_matrix[i - 1, j - 1])
+    # Trace back the optimal path
+    i, j = len(x) - 1, len(y) - 1
+    path = [(i, j)]
+    while i > 0 and j > 0:
+        if cost_matrix[i - 1, j] <= cost_matrix[i, j - 1] and cost_matrix[i - 1, j] <= cost_matrix[i - 1, j - 1]:
+            i -= 1
+        elif cost_matrix[i, j - 1] <= cost_matrix[i - 1, j] and cost_matrix[i, j - 1] <= cost_matrix[i - 1, j - 1]:
+            j -= 1
+        else:
+            i -= 1
+            j -= 1
+        path.append((i, j))
+    path.reverse()
+    # Extract the aligned arrays based on the optimal path
+    aligned_x = [x[i] for i, _ in path]
+    aligned_y = [y[j] for _, j in path]
+    return aligned_x, aligned_y

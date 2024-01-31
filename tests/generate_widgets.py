@@ -12,12 +12,9 @@ from datetime import date
 import pandas as pd
 from IPython.display import display
 from ipywidgets import Layout, Label, interactive
-from eempy.read_data import read_reference_from_text, plot_eem
-from eempy.eem_processing import EEMstack, eems_statistics, plot_eem_interact, decomposition_interact, \
-    decomposition_reconstruction_interact, export_parafac, load_eem_stack_interact, eems_regional_integration, \
-    eems_outlier_detection_if, eems_outlier_detection_ocs, fast_core_consistency, split_validation, \
-    eems_total_fluorescence_normalization, \
-    eem_region_masking, eem_grid_imputing, explained_variance, parafac_pixel_error, parafac_sample_error
+from eempy.read_data import *
+from eempy.plot import plot_eem
+from eempy.eem_processing import *
 from tensorly.decomposition import parafac, non_negative_parafac
 
 form_item_layout = Layout(display='flex',
@@ -25,21 +22,195 @@ form_item_layout = Layout(display='flex',
                           justify_content='space-between')
 
 
-# ----------------------utils------------------------------
+# --------------------functions for widgets---------------------
 
-def string_to_float_list(string, output_type='np_array'):
-    if output_type == 'np_array':
-        output = np.array([float(i) for i in list(string.split(","))])
-    elif output_type == 'list':
-        output = [float(i) for i in list(string.split(","))]
-    elif output_type == 'list_or_int':
-        output = [float(i) for i in list(string.split(","))]
-        if len(output) == 1:
-            output = int(output[0])
+def plot_eem_interact(filedir, filename, data_format, autoscale=False, crange=[0, 3000], raman_normalization=False,
+                      inner_filter_effect=True, rayleigh_scattering_correction=True, raman_scattering_correction=True,
+                      gaussian_smoothing=True, abs_xmax=0.1, em_range_display=[250, 820], ex_range_display=[200, 500],
+                      sigma=1, truncate=3, dilution=1, from_blank=False, integration_time=1,
+                      ex_lb=349, ex_ub=351, bandwidth_type='wavenumber', bandwidth=1800, rsu_standard=20000,
+                      manual_rsu=1, tolerance_o1=15, tolerance_o2=15, tolerance_raman=5, method_raman='nan',
+                      method_o1='zero', method_o2='linear', axis_o1='grid', axis_o2='grid', axis_raman='grid',
+                      ts_format='%Y-%m-%d-%H-%M-%S', ts_start_position=0, ts_end_position=19,
+                      mask_impute=False, mask_ex=None, mask_em=None, plot_abs=False,
+                      title=False, show_maximum=False, rotate=False):
+    filepath = filedir + '/' + filename
+    intensity, em_range, ex_range = read_eem(filepath, data_format=data_format)
+    intensity = intensity * dilution
+    if raman_normalization:
+        if from_blank:
+            blank, em_range_blank, ex_range_blank = read_eem(filepath[0:-7] + 'BEM.dat', data_format=data_format)
+            intensity, _ = eem_raman_normalization(intensity=intensity,
+                                                   em_range_blank=em_range_blank, ex_range_blank=ex_range_blank,
+                                                   blank=blank, from_blank=from_blank,
+                                                   integration_time=integration_time,
+                                                   ex_lb=ex_lb, ex_ub=ex_ub, bandwidth_type=bandwidth_type,
+                                                   bandwidth=bandwidth, rsu_standard=rsu_standard)
+        else:
+            intensity, _ = eem_raman_normalization(intensity=intensity, from_blank=from_blank,
+                                                   manual_rsu=manual_rsu)
+
+    if inner_filter_effect:
+        try:
+            absorbance, ex_range2 = read_abs(filepath[0:-7] + 'ABS.dat')
+            intensity = eem_ife_correction(intensity, em_range=em_range, ex_range=ex_range, absorbance=absorbance,
+                                           ex_range2=ex_range2)
+        except FileNotFoundError:
+            print('Absorbance data missing. Please make sure the file names of the EEM and '
+                  'absorbance data are consistent, except the suffix "ABS.dat" and "PEM.dat /" '
+                  'If there is no absorbance data, please deselect "Inner filter effect" and "plot absorbance" in '
+                  'the parameter selection')
+
+    if rayleigh_scattering_correction:
+        intensity, rayleigh_mask = eem_rayleigh_masking(intensity, em_range, ex_range, tolerance_o1=tolerance_o1,
+                                                        tolerance_o2=tolerance_o2,
+                                                        method_o1=method_o1,
+                                                        method_o2=method_o2,
+                                                        axis_o1=axis_o1,
+                                                        axis_o2=axis_o2)
+
+    if raman_scattering_correction:
+        intensity, raman_mask = eem_raman_masking(intensity, em_range, ex_range, tolerance=tolerance_raman,
+                                                  method=method_raman, axis=axis_raman)
+
+    if gaussian_smoothing:
+        intensity = gaussian_filter(intensity, sigma=sigma, truncate=truncate)
+
+    if mask_impute:
+        intensity, prior_mask = eem_region_masking(intensity, em_range, ex_range, em_min=mask_em[0], em_max=mask_em[-1],
+                                                   ex_min=mask_ex[0], ex_max=mask_ex[-1])
+        intensity = eem_grid_imputing(intensity, prior_mask=prior_mask)
+
+    intensity, em_range, ex_range = eem_cutting(intensity, em_range, ex_range, em_range_display[0],
+                                                em_range_display[1], ex_range_display[0],
+                                                ex_range_display[1])
+    plot_eem(intensity, em_range, ex_range, autoscale, crange[1], crange[0], rotate=rotate)
+    if title:
+        tstitle = get_timestamp_from_filename(filename, ts_format=ts_format, ts_start_position=ts_start_position,
+                                              ts_end_position=ts_end_position)
+        plt.title(tstitle)
+    if plot_abs:
+        try:
+            absorbance, ex_range2 = read_abs(filepath[0:-7] + 'ABS.dat')
+            plot_abs(absorbance, ex_range2, abs_xmax, em_range_display)
+        except FileNotFoundError:
+            pass
+    if show_maximum:
+        print("maximum intensity: ", np.amax(intensity))
+
+
+def load_eem_stack_interact(filedir, data_format='aqualog', raman_normalization=False,
+                            rayleigh_scattering_correction=True, raman_scattering_correction=True,
+                            em_range_display=(250, 820), ex_range_display=(200, 500), gaussian_smoothing=True,
+                            inner_filter_effect=True, dilution=1, from_blank=False, integration_time=1, ex_lb=349,
+                            ex_ub=351, bandwidth_type='wavenumber', bandwidth=1800, rsu_standard=20000, manual_rsu=1,
+                            sigma=1, truncate=3, otsu=True, binary_threshold=50, tolerance_o1=15, tolerance_o2=15,
+                            tolerance_raman=5, method_raman='linear', method_o1='zero', method_o2='linear',
+                            axis_o1='grid', axis_o2='grid', axis_raman='grid', contour_mask=True, keyword_pem='PEM.dat',
+                            existing_datlist=[], wavelength_synchronization=True):
+    if not existing_datlist:
+        datlist = get_filelist(filedir, keyword_pem)
     else:
-        Warning('Input must be number(s) separated by commas (if there are more than one)')
-    return output
+        datlist = existing_datlist
+    n = 0
+    for f in datlist:
+        filepath = filedir + '/' + f
+        intensity, em_range, ex_range = read_eem(filepath, data_format=data_format)
+        intensity = intensity * dilution
+        if raman_normalization:
+            if from_blank:
+                blank, em_range_blank, ex_range_blank = read_eem(filepath[0:-7] + 'BEM.dat', data_format=data_format)
+                intensity, _ = eem_raman_normalization(intensity=intensity,
+                                                       em_range_blank=em_range_blank, ex_range_blank=ex_range_blank,
+                                                       blank=blank, from_blank=from_blank,
+                                                       integration_time=integration_time,
+                                                       ex_lb=ex_lb, ex_ub=ex_ub, bandwidth_type=bandwidth_type,
+                                                       bandwidth=bandwidth, rsu_standard=rsu_standard)
+            else:
+                intensity, _ = eem_raman_normalization(intensity=intensity, from_blank=from_blank,
+                                                       manual_rsu=manual_rsu)
 
+        if inner_filter_effect:
+            absorbance, ex_range_abs = read_abs(filepath[0:-7] + 'ABS.dat', data_format=data_format)
+            intensity = eem_ife_correction(intensity, em_range=em_range, ex_range=ex_range, absorbance=absorbance,
+                                           ex_range_abs=ex_range_abs)
+            datlist_abs = [dat[0:-7] + 'ABS.dat' for dat in datlist]
+            abs_stack, ex_range_abs, datlist_abs = stack_abs(filedir, datlist=datlist_abs,
+                                                             wavelength_synchronization=True,
+                                                             ex_range_display=ex_range_display)
+        else:
+            abs_stack = []
+            ex_range_abs = []
+        # scattering _correction
+        if rayleigh_scattering_correction:
+            intensity, rayleigh_mask = eem_rayleigh_masking(intensity, em_range, ex_range,
+                                                            tolerance_o1=tolerance_o1,
+                                                            tolerance_o2=tolerance_o2,
+                                                            method_o1=method_o1,
+                                                            method_o2=method_o2,
+                                                            axis_o1=axis_o1,
+                                                            axis_o2=axis_o2)
+
+        if raman_scattering_correction:
+            intensity, raman_mask = eem_raman_masking(intensity, em_range, ex_range, tolerance=tolerance_raman,
+                                                      method=method_raman, axis=axis_raman)
+
+        if gaussian_smoothing:
+            intensity = gaussian_filter(intensity, sigma=sigma, truncate=truncate)
+
+        intensity, em_range, ex_range = eem_cutting(intensity, em_range, ex_range,
+                                                    em_min=em_range_display[0],
+                                                    em_max=em_range_display[1],
+                                                    ex_min=ex_range_display[0], ex_max=ex_range_display[1])
+        if n == 0:
+            num_datfile = len(datlist)
+            eem_stack = np.zeros([num_datfile, intensity.shape[0], intensity.shape[1]])
+        if wavelength_synchronization and n > 0:
+            em_interval_new = (em_range.max() - em_range.min()) / (em_range.shape[0] - 1)
+            em_interval_old = (em_range_old.max() - em_range_old.min()) / (em_range_old.shape[0] - 1)
+            ex_interval_new = (ex_range.max() - ex_range.min()) / (ex_range.shape[0] - 1)
+            ex_interval_old = (ex_range_old.max() - ex_range_old.min()) / (ex_range_old.shape[0] - 1)
+            if em_interval_new > em_interval_old:
+                em_range_target = em_range_old
+            else:
+                em_range_target = em_range
+            if ex_interval_new > ex_interval_old:
+                ex_range_target = ex_range_old
+            else:
+                ex_range_target = ex_range
+            if em_interval_new > em_interval_old or ex_interval_new > ex_interval_old:
+                intensity = eem_interpolation(intensity, em_range, np.flip(ex_range), em_range_target,
+                                              np.flip(ex_range_target))
+                em_range = np.copy(em_range_old)
+                ex_range = np.copy(ex_range_old)
+            if em_interval_new < em_interval_old or ex_interval_new < ex_interval_old:
+                eem_stack = process_eem_stack(eem_stack, eem_interpolation, em_range_old, np.flip(ex_range_old),
+                                              em_range_target, np.flip(ex_range_target))
+        try:
+            eem_stack[n, :, :] = intensity
+        except ValueError:
+            print('Check data dimension: ', f)
+        n += 1
+        em_range_old = np.copy(em_range)
+        ex_range_old = np.copy(ex_range)
+    print('Number of samples in the stack:', eem_stack.shape[0])
+    return eem_stack, em_range, ex_range, datlist, abs_stack, ex_range_abs
+
+
+def eems_statistics_interact(EEMstack, term, crange, reference_label=None, reference=None, title=False):
+    if term == 'Mean':
+        plot_eem(EEMstack.mean(), EEMstack.em_range, EEMstack.ex_range,
+                 cmin=crange[0], cmax=crange[1])
+    if term == 'Standard deviation':
+        plot_eem(EEMstack.std(), EEMstack.em_range, EEMstack.ex_range, autoscale=True)
+    if term == 'Relative standard deviation':
+        plot_eem(EEMstack.rel_std(), EEMstack.em_range, EEMstack.ex_range, autoscale=True)
+    if term == 'Correlation: Linearity':
+        EEMstack.eem_linreg(x=reference)
+    if term == 'Correlation: Pearson coef.':
+        EEMstack.eem_pearson_coef(x=reference)
+    if term == 'Correlation: Spearman coef.':
+        EEMstack.eem_spearman_coef(x=reference)
 
 
 # ----------------------Part 1. Specify data directory and filename format-----------------------
@@ -750,7 +921,7 @@ class Widgets_stack_processing:
                     reference, header = read_reference_from_text(self.reference_filepath_eem.value)
                 if self.checkbox_reference_mannual_input_eem.value:
                     reference = string_to_float_list(self.reference_mannual_input_eem.value)
-            eems_statistics(EEMstack_class_cw, term=self.property_eem.value, title=self.title_eem_statistics.value,
+            eems_statistics_interact(EEMstack_class_cw, term=self.property_eem.value, title=self.title_eem_statistics.value,
                             reference=reference, crange=self.crange_cw.value, reference_label=header)
 
         def generate_widgets(self):
@@ -1069,10 +1240,10 @@ class Widgets_stack_processing:
 
         def plot_pixel_error(self, res_abs, res_ratio, switch, datlist, data_to_view):
             if switch:
-                plot3DEEM(res_abs[datlist.index(data_to_view)],
+                plot_eem(res_abs[datlist.index(data_to_view)],
                           self.em_range_cw, self.ex_range_cw, autoscale=True,
                           title='Absolute error [a.u.]', cbar_label='Diff. of intensity [a.u.]')
-                plot3DEEM(res_ratio[datlist.index(data_to_view)],
+                plot_eem(res_ratio[datlist.index(data_to_view)],
                           self.em_range_cw, self.ex_range_cw, cmin=-30, cmax=30,
                           title='Relative error [%]', cbar_label='Diff. / original intensity [%]')
 
@@ -1294,3 +1465,19 @@ class Widgets_export_parafac:
                         ipywidgets.Box([self.button_output_interact], layout=form_item_layout),
                         ]
         return output_items
+
+
+# ----------------------utils------------------------------
+
+def string_to_float_list(string, output_type='np_array'):
+    if output_type == 'np_array':
+        output = np.array([float(i) for i in list(string.split(","))])
+    elif output_type == 'list':
+        output = [float(i) for i in list(string.split(","))]
+    elif output_type == 'list_or_int':
+        output = [float(i) for i in list(string.split(","))]
+        if len(output) == 1:
+            output = int(output[0])
+    else:
+        Warning('Input must be number(s) separated by commas (if there are more than one)')
+    return output
