@@ -83,7 +83,8 @@ def stack_eem(datdir, kw='PEM.dat', data_format='aqualog', timestamp_reference_l
                 em_range = np.copy(em_range_old)
                 ex_range = np.copy(ex_range_old)
             if em_interval_new < em_interval_old or ex_interval_new < ex_interval_old:
-                eem_stack = process_eem_stack(eem_stack, eem_interpolation, em_range_old, np.flip(ex_range_old), em_range_target,
+                eem_stack = process_eem_stack(eem_stack, eem_interpolation, em_range_old, np.flip(ex_range_old),
+                                              em_range_target,
                                               np.flip(ex_range_target))
         try:
             eem_stack[n, :, :] = intensity
@@ -129,7 +130,7 @@ def process_eem_stack(eem_stack, f, *args, **kwargs):
     processed_eem_stack = []
     other_outputs = []
     for i in range(eem_stack.shape[0]):
-        f_output = f(eem_stack[i,:,:], *args, **kwargs)
+        f_output = f(eem_stack[i, :, :], *args, **kwargs)
         if isinstance(f_output, tuple):
             processed_eem_stack.append(f_output[0])
             other_outputs.append(f_output[1:])
@@ -529,7 +530,7 @@ class EEM_dataset:
 
     def regional_integration(self, em_boundary, ex_boundary):
         integrations, _ = process_eem_stack(self.eem_stack, eem_regional_integration, ex_range=self.ex_range,
-                                         em_range=self.em_range, em_boundary=em_boundary, ex_boundary=ex_boundary)
+                                            em_range=self.em_range, em_boundary=em_boundary, ex_boundary=ex_boundary)
         return integrations
 
     def pixel_rel_std(self, em, ex, plot=True, timestamp=False, baseline=False, output=True,
@@ -763,8 +764,8 @@ class EEM_dataset:
 
     def cutting(self, ex_min, ex_max, em_min, em_max, copy=True):
         eem_stack_cut, new_ranges = process_eem_stack(self.eem_stack, eem_cutting, ex_range=self.ex_range,
-                                             em_range=self.em_range,
-                                             ex_min=ex_min, ex_max=ex_max, em_min=em_min, em_max=em_max)
+                                                      em_range=self.em_range,
+                                                      ex_min=ex_min, ex_max=ex_max, em_min=em_min, em_max=em_max)
         if not copy:
             self.eem_stack = eem_stack_cut
             self.ex_range = new_ranges[0][0]
@@ -834,7 +835,7 @@ class EEM_dataset:
             self.em_range = em_range_new
         return eem_stack_interpolated, ex_range_new, em_range_new
 
-    def outlier_detection_if(self, tf_normalization=True, grid_size=(10,10), contamination=0.02, deletion=False):
+    def outlier_detection_if(self, tf_normalization=True, grid_size=(10, 10), contamination=0.02, deletion=False):
         labels = eems_outlier_detection_if(eem_stack=self.eem_stack, ex_range=self.ex_range, em_range=self.em_range,
                                            tf_normalization=tf_normalization, grid_size=grid_size,
                                            contamination=contamination)
@@ -844,7 +845,7 @@ class EEM_dataset:
             self.index = [idx for i, idx in enumerate(self.index) if labels[i] != -1]
         return labels
 
-    def outlier_detection_ocs(self, tf_normalization=True, grid_size=(10,10), nu=0.02, kernel='rbf', gamma=10000,
+    def outlier_detection_ocs(self, tf_normalization=True, grid_size=(10, 10), nu=0.02, kernel='rbf', gamma=10000,
                               deletion=False):
         labels = eems_outlier_detection_ocs(eem_stack=self.eem_stack, ex_range=self.ex_range, em_range=self.em_range,
                                             tf_normalization=tf_normalization, grid_size=grid_size, nu=nu,
@@ -858,12 +859,21 @@ class EEM_dataset:
 
 class PARAFAC:
     def __init__(self, rank, non_negativity=True, init='svd', tf_normalization=True,
-                 loadings_normalization: Union[Literal['loadings_sd', 'component_maximum'], None] = 'loadings_sd'):
+                 loadings_normalization: Union[Literal['sd', 'maximum'], None] = 'sd', sort_em=True):
+        # ----------parameters--------------
         self.rank = rank
         self.non_negativity = non_negativity
         self.init = init
         self.tf_normalization = tf_normalization
         self.loadings_normalization = loadings_normalization
+        self.sort_em = sort_em
+
+        # -----------attributes---------------
+        self.score_df = None
+        self.exl_df = None
+        self.eml_df = None
+        self.fmax_df = None
+        self.component_stack = None
 
     def fit(self, eem_dataset: EEM_dataset):
         if self.tf_normalization:
@@ -886,45 +896,105 @@ class PARAFAC:
                 "PARAFAC failed possibly due to the presence of patches of nan values. Please consider cut or "
                 "interpolate the nan values.")
         a, b, c = factors
-        max_idx_r = []
-
+        component_stack = np.zeros([self.rank, b.shape[0], c.shape[0]])
         for r in range(self.rank):
-            if a[:, r].sum() < 0:
-                a[:, r] = -a[:, r]
-                if abs(b[:, r].min()) > b[:, r].max():
+
+            # when non_negativity is not applied, ensure the scores are generally positive
+            if not self.non_negativity:
+                if a[:, r].sum() < 0:
+                    a[:, r] = -a[:, r]
+                    if abs(b[:, r].min()) > b[:, r].max():
+                        b[:, r] = -b[:, r]
+                    else:
+                        c[:, r] = -c[:, r]
+                elif abs(b[:, r].min()) > b[:, r].max() and abs(c[:, r].min()) > c[:, r].max():
                     b[:, r] = -b[:, r]
-                elif abs(c[:, r].min()) > c[:, r].max():
                     c[:, r] = -c[:, r]
-            elif abs(b[:, r].min()) > b[:, r].max() and abs(c[:, r].min()) > c[:, r].max():
-                b[:, r] = -b[:, r]
-                c[:, r] = -c[:, r]
-            if self.loadings_normalization == 'loadings_sd':
-                stdj = b[:, r].std()
-                stdk = c[:, r].std()
-                b[:, r] = b[:, r] / stdj
-                c[:, r] = c[:, r] / stdk
-                a[:, r] = a[:, r] * stdj * stdk
+
+            if self.loadings_normalization == 'sd':
+                stdb = b[:, r].std()
+                stdc = c[:, r].std()
+                b[:, r] = b[:, r] / stdb
+                c[:, r] = c[:, r] / stdc
+                a[:, r] = a[:, r] * stdb * stdc
+            elif self.loadings_normalization == 'maximum':
+                maxb = b[:, r].max()
+                maxc = c[:, r].min()
+                b[:, r] = b[:, r] / maxb
+                c[:, r] = c[:, r] / maxc
+                a[:, r] = a[:, r] * maxb * maxc
             component = np.array([b[:, r]]).T.dot(np.array([c[:, r]]))
-            if self.loadings_normalization == 'components_maximum':
-                w = 1 / component.max()
-                component = component * w
-                a[:, r] = a[:, r] / w
-            if r == 0:
-                component_stack = np.zeros([self.rank, component.shape[0], component.shape[1]])
             component_stack[r, :, :] = component
+
         if self.tf_normalization:
             a = np.multiply(a, tf_weights[:, np.newaxis])
-        if self.loadings_normalization == 'components_maximum':
-            score_df = pd.DataFrame(a / a.mean(axis=0))
+        score_df = pd.DataFrame(a)
+        exl_df = pd.DataFrame(np.flipud(b), index=eem_dataset.ex_range)
+        eml_df = pd.DataFrame(c, index=eem_dataset.em_range)
+        ex_column = ['Ex' for i in range(b.shape[0])]
+        em_column = ['Em' for i in range(c.shape[0])]
+        score_column = ['Score' for i in range(score_df.shape[0])]
+        exl_df.index = pd.MultiIndex.from_tuples(list(zip(*[ex_column, eem_dataset.ex_range.tolist()])),
+                                                 names=('type', 'wavelength'))
+        eml_df.index = pd.MultiIndex.from_tuples(list(zip(*[em_column, eem_dataset.em_range.tolist()])),
+                                                 names=('type', 'wavelength'))
+        fmax = a * component_stack.max(axis=(1, 2))
+
+        if eem_dataset.index:
+            score_df.index = pd.MultiIndex.from_tuples(list(zip(*[score_column, eem_dataset.index])),
+                                                       names=('type', 'index'))
         else:
-            score_df = pd.DataFrame(a)
+            score_df.index = pd.MultiIndex.from_tuples(list(zip(*[score_column, [i+1 for i in range(a.shape[0])]])),
+                                                       names=('type', 'index'))
+
+        if self.sort_em:
+            em_peaks = [c[1] for c in eml_df.idxmax()]
+            peak_rank = list(enumerate(stats.rankdata(em_peaks)))
+            order = [i[0] for i in sorted(peak_rank, key=lambda x: x[1])]
+            component_stack = component_stack[order]
+            exl_df = pd.DataFrame({'component {r}'.format(r=i + 1): exl_df.iloc[:, order[i]] for i in range(self.rank)})
+            eml_df = pd.DataFrame({'component {r}'.format(r=i + 1): eml_df.iloc[:, order[i]] for i in range(self.rank)})
+            score_df = pd.DataFrame({'component {r}'.format(r=i + 1): score_df.iloc[:, order[i]] for i in range(self.rank)})
+            # Get the ex/em of the component maximum
+            max_exem = []
+            for r in range(self.rank):
+                max_index = np.unravel_index(np.argmax(component_stack[r, :, :]), component_stack[r, :, :].shape)
+                max_exem.append((eem_dataset.ex_range[-(max_index[0] + 1)], eem_dataset.em_range[max_index[1]]))
+            fmax_df = pd.DataFrame({'component {r}, (ex, em) = {cor}'.format(r=i+1, cor=cor): fmax[:, order[i]]
+                                    for i, cor in enumerate(max_exem)})
+        else:
+            column_labels = ['component {r}'.format(r=i + 1) for i in range(self.rank)]
+            exl_df.columns = column_labels
+            eml_df.columns = column_labels
+            score_df.columns = column_labels
+            fmax_df = pd.DataFrame(fmax, columns=['component {r}'.format(r=i + 1) for i in range(self.rank)])
+
+        self.score_df = score_df
+        self.exl_df = exl_df
+        self.eml_df = eml_df
+        self.fmax_df = fmax_df
+        self.component_stack = component_stack
+
+        return self
+
+    def residual(self):
+        return
+
+    def leverage(self):
+        return
+
+    def explained_variance(self):
+        return
+
+    def core_consistency(self):
+        return
 
 
 def decomposition_interact(eem_stack, em_range, ex_range, rank, index=[], decomposition_method='parafac', init='svd',
                            dataset_normalization=False, score_normalization=False, loadings_normalization=True,
                            component_normalization=False, plot_loadings=True,
                            plot_components=True, plot_fmax=True, display_score=True, component_cmin=0, component_cmax=1,
-                           component_autoscale=False, title=True, cbar=True, cmap="jet", sort_em=True, rotate=False):
+                           component_autoscale=False, title=True, cbar=True, cmap='jet', sort_em=True, rotate=False):
     plt.close()
     if dataset_normalization:
         eem_stack, tf = eems_tf_normalization(eem_stack)
@@ -946,8 +1016,6 @@ def decomposition_interact(eem_stack, em_range, ex_range, rank, index=[], decomp
               "and parameter selection'. If so, please removed the sample, or adjust the excitation "
               "wavelength range to avoid excessive inner filter effect")
     I, J, K = factors
-    max_idx_r = []
-
     for r in range(rank):
         if I[:, r].sum() < 0:
             I[:, r] = -I[:, r]
@@ -989,12 +1057,14 @@ def decomposition_interact(eem_stack, em_range, ex_range, rank, index=[], decomp
                                              names=('type', 'wavelength'))
     eml_df.index = pd.MultiIndex.from_tuples(list(zip(*[em_column, em_range.tolist()])),
                                              names=('type', 'wavelength'))
+    fmax = I * component_stack.max(axis=(1, 2))
 
     if index:
         score_df.index = pd.MultiIndex.from_tuples(list(zip(*[score_column, index])),
                                                    names=('type', 'time'))
     else:
         score_df.index = score_column
+
     if sort_em:
         em_peaks = [c[1] for c in eml_df.idxmax()]
         peak_rank = list(enumerate(stats.rankdata(em_peaks)))
@@ -1002,12 +1072,15 @@ def decomposition_interact(eem_stack, em_range, ex_range, rank, index=[], decomp
         exl_df = pd.DataFrame({'component {r}'.format(r=i + 1): exl_df.iloc[:, order[i]] for i in range(rank)})
         eml_df = pd.DataFrame({'component {r}'.format(r=i + 1): eml_df.iloc[:, order[i]] for i in range(rank)})
         score_df = pd.DataFrame({'component {r}'.format(r=i + 1): score_df.iloc[:, order[i]] for i in range(rank)})
+        fmax_df = pd.DataFrame({'component {r}'.format(r=i + 1): fmax[:, order[i]] for i in range(rank)})
         component_stack = component_stack[order]
     else:
         column_labels = ['component {r}'.format(r=i + 1) for i in range(rank)]
         exl_df.columns = column_labels
         eml_df.columns = column_labels
         score_df.columns = column_labels
+        fmax_df = pd.DataFrame(fmax, columns=['component {r}'.format(r=i + 1) for i in range(rank)])
+
     if plot_components:
         for r in range(rank):
             if title:
@@ -1048,11 +1121,6 @@ def decomposition_interact(eem_stack, em_range, ex_range, rank, index=[], decomp
             plt.ylabel('Score')
         plt.legend(legend)
 
-    fmax = I * component_stack.max(axis=(1, 2))
-    if sort_em:
-        fmax_df = pd.DataFrame({'component {r}'.format(r=i + 1): fmax[:, order[i]] for i in range(rank)})
-    else:
-        fmax_df = pd.DataFrame(fmax, columns=['component {r}'.format(r=i + 1) for i in range(rank)])
     if plot_fmax:
         if index:
             fmax_column = ["Fmax" for i in range(score_df.shape[0])]
@@ -1071,7 +1139,7 @@ def decomposition_interact(eem_stack, em_range, ex_range, rank, index=[], decomp
         plt.xticks(n_sample, index, rotation=90)
         plt.ylabel('Fmax')
         plt.legend(legend)
-    return score_df, exl_df, eml_df, fmax_df, component_stack, max_idx_r
+    return score_df, exl_df, eml_df, fmax_df, component_stack
 
 
 def match_parafac_components(model_ex, model_em, model_ref_ex, model_ref_em, criteria='TCC',
@@ -1443,15 +1511,15 @@ def decomposition_reconstruction_interact(I, J, K, intensity, em_range, ex_range
         # reconstruction_error = np.linalg.norm(sample_r - eem_stack[idx])
         if plot:
             plot_eem(sample_r, em_range, ex_range, autoscale=False, cmin=crange[0], cmax=crange[1], figure_size=(8, 8),
-                      title='Accumulate to component {rank}'.format(rank=r + 1))
+                     title='Accumulate to component {rank}'.format(rank=r + 1))
     if rmse:
         error = np.sqrt(np.mean((sample_r - intensity) ** 2))
         # print("MSE of the final reconstructed EEM: ", error)
     if plot:
         plot_eem(intensity, em_range, ex_range, autoscale=False, cmin=crange[0], cmax=crange[1],
-                  title='Original footprint')
+                 title='Original footprint')
         plot_eem(intensity - sample_r, em_range, ex_range, autoscale=False, cmin=crange[0], cmax=crange[1],
-                  title='Residuals')
+                 title='Residuals')
         with np.errstate(divide='ignore', invalid='ignore'):
             ratio = np.divide(intensity - sample_r, intensity)
         ratio[ratio == np.inf] = np.nan
