@@ -17,114 +17,25 @@ import string
 import warnings
 import math
 from sklearn.linear_model import LinearRegression
+from math import sqrt
+from sklearn.metrics import mean_squared_error, explained_variance_score, r2_score
 from matplotlib.colors import LogNorm, Normalize
 from scipy.ndimage import gaussian_filter
-from scipy import interpolate
+from scipy.interpolate import RegularGridInterpolator, interp1d, griddata
 from datetime import datetime, timedelta
 from tensorly.decomposition import parafac, non_negative_parafac
-from tensorly.tenalg import mode_dot
 from tensorly.cp_tensor import cp_to_tensor
+from tlviz.model_evaluation import core_consistency
+from tlviz.outliers import compute_leverage
 from IPython.display import display
 from pandas.plotting import register_matplotlib_converters
 from scipy.sparse.linalg import ArpackError
 from sklearn.ensemble import IsolationForest
 from sklearn import svm
 from matplotlib.cm import get_cmap
-from typing import Literal, Union
+from typing import Literal, Union, Optional
 
 register_matplotlib_converters()
-
-
-def stack_eem(datdir, kw='PEM.dat', data_format='aqualog', timestamp_reference_list=None, custom_datlist=None,
-              wavelength_synchronization=True, em_range_display=(250, 800), ex_range_display=(240, 500)):
-    if not custom_datlist:
-        datlist = get_filelist(datdir, kw)
-    else:
-        datlist = custom_datlist
-    if timestamp_reference_list:
-        datlist = [x for _, x in sorted(zip(timestamp_reference_list, datlist))]
-    path = datdir + '/' + datlist[0]
-    intensity, ex_range, em_range = read_eem(path, data_format=data_format)
-    intensity, ex_range, em_range = eem_cutting(intensity, ex_range, em_range,
-                                                em_min=em_range_display[0],
-                                                em_max=em_range_display[1],
-                                                ex_min=ex_range_display[0], ex_max=ex_range_display[1])
-    num_datfile = len(datlist)
-    eem_stack = np.zeros([num_datfile, intensity.shape[0], intensity.shape[1]])
-    try:
-        eem_stack[0, :, :] = intensity
-    except ValueError:
-        print('Check data dimension: ', datlist[0])
-    em_range_old = np.copy(em_range)
-    ex_range_old = np.copy(ex_range)
-    for n in range(1, len(datlist)):
-        path = datdir + '/' + datlist[n]
-        intensity, ex_range, em_range = read_eem(path, data_format=data_format)
-        intensity, ex_range, em_range = eem_cutting(intensity, ex_range, em_range,
-                                                    em_min=em_range_display[0],
-                                                    em_max=em_range_display[1],
-                                                    ex_min=ex_range_display[0], ex_max=ex_range_display[1])
-        if wavelength_synchronization:
-            em_interval_new = (np.max(em_range) - np.min(em_range)) / (em_range.shape[0] - 1)
-            em_interval_old = (np.max(em_range_old) - np.min(em_range_old)) / (em_range_old.shape[0] - 1)
-            ex_interval_new = (np.max(ex_range) - np.min(ex_range)) / (ex_range.shape[0] - 1)
-            ex_interval_old = (np.max(ex_range_old) - np.min(ex_range_old)) / (ex_range_old.shape[0] - 1)
-            if em_interval_new > em_interval_old:
-                em_range_target = em_range_old
-            else:
-                em_range_target = em_range
-            if ex_interval_new > ex_interval_old:
-                ex_range_target = ex_range_old
-            else:
-                ex_range_target = ex_range
-            if em_interval_new > em_interval_old or ex_interval_new > ex_interval_old:
-                intensity = eem_interpolation(intensity, em_range, np.flip(ex_range), em_range_target,
-                                              np.flip(ex_range_target))
-                em_range = np.copy(em_range_old)
-                ex_range = np.copy(ex_range_old)
-            if em_interval_new < em_interval_old or ex_interval_new < ex_interval_old:
-                eem_stack = process_eem_stack(eem_stack, eem_interpolation, em_range_old, np.flip(ex_range_old),
-                                              em_range_target,
-                                              np.flip(ex_range_target))
-        try:
-            eem_stack[n, :, :] = intensity
-        except ValueError:
-            print('Check data dimension: ', datlist[n])
-        em_range_old = np.copy(em_range)
-        ex_range_old = np.copy(ex_range)
-    return eem_stack, ex_range, em_range, datlist
-
-
-def stack_abs(datdir, datlist, wavelength_synchronization=True, ex_range_display=(240, 500)):
-    path = datdir + '/' + datlist[0]
-    absorbance, ex_range = read_abs(path)
-    absorbance = absorbance[np.logical_and(ex_range >= ex_range_display[0], ex_range <= ex_range_display[1])]
-    ex_range = ex_range[np.logical_and(ex_range >= ex_range_display[0], ex_range <= ex_range_display[1])]
-    num_datfile = len(datlist)
-    abs_stack = np.zeros([num_datfile, absorbance.shape[0]])
-    abs_stack[0, :] = absorbance
-    ex_range_old = ex_range
-    for n in range(1, len(datlist)):
-        path = datdir + '/' + datlist[n]
-        absorbance, ex_range = read_abs(path)
-        absorbance = absorbance[np.logical_and(ex_range >= ex_range_display[0], ex_range <= ex_range_display[1])]
-        ex_range = ex_range[np.logical_and(ex_range >= ex_range_display[0], ex_range <= ex_range_display[1])]
-        if wavelength_synchronization and n > 0:
-            ex_interval_new = (np.max(ex_range) - np.min(ex_range)) / (ex_range.shape[0] - 1)
-            ex_interval_old = (np.max(ex_range_old) - np.min(ex_range_old)) / (ex_range_old.shape[0] - 1)
-            if ex_interval_new > ex_interval_old:
-                f = interpolate.interp1d(ex_range, absorbance)
-                absorbance = f(ex_range_old)
-            if ex_interval_new < ex_interval_old:
-                abs_stack_new = np.zeros([num_datfile, absorbance.shape[0]])
-                for i in range(n):
-                    f = interpolate.interp1d(ex_range_old, abs_stack[i, :])
-                    abs_stack_new[i, :] = f(ex_range)
-                abs_stack = abs_stack_new
-        abs_stack[n, :] = absorbance
-        ex_range_old = ex_range
-    return abs_stack, ex_range, datlist
-
 
 def process_eem_stack(eem_stack, f, *args, **kwargs):
     processed_eem_stack = []
@@ -153,7 +64,7 @@ def eem_threshold_masking(intensity, ex_range, em_range, threshold, fill, mask_t
     intensity_masked[np.isnan(mask)] = fill
     if plot:
         plt.figure(figsize=(8, 8))
-        plot_eem(intensity_masked, em_range=em_range, ex_range=ex_range, autoscale=autoscale, cmin=cmin, cmax=cmax)
+        plot_eem(intensity_masked, em_range=em_range, ex_range=ex_range, auto_intensity_range=autoscale, vmin=cmin, vmax=cmax)
         plt.imshow(mask, extent=extent, alpha=0.9, cmap="binary")
         # plt.title('Relative STD<{threshold}'.format(threshold=threshold))
     return intensity_masked, mask
@@ -193,31 +104,32 @@ def eem_cutting(intensity, ex_range, em_range, em_min, em_max, ex_min, ex_max):
     return intensity_cut, ex_range_cut, em_range_cut
 
 
-def eem_grid_imputing(intensity, ex_range, em_range, method='linear', fill_value='linear_ex', prior_mask=None):
+def eem_nan_imputing(intensity, ex_range, em_range, method: str = 'linear', fill_value: str ='linear_ex',
+                     prior_mask=None):
     x, y = np.meshgrid(em_range, ex_range[::-1])
     xx = x[~np.isnan(intensity)].flatten()
     yy = y[~np.isnan(intensity)].flatten()
     zz = intensity[~np.isnan(intensity)].flatten()
     interpolated = None
     if isinstance(fill_value, float):
-        interpolated = interpolate.griddata((xx, yy), zz, (x, y), method=method, fill_value=fill_value)
+        interpolated = griddata((xx, yy), zz, (x, y), method=method, fill_value=fill_value)
     elif fill_value == 'linear_ex':
-        interpolated = interpolate.griddata((xx, yy), zz, (x, y), method=method)
+        interpolated = griddata((xx, yy), zz, (x, y), method=method)
         for i in range(interpolated.shape[1]):
             col = interpolated[:, i]
             mask = np.isnan(col)
             if np.any(mask):
-                interp_func = interpolate.interp1d(np.flatnonzero(~mask), col[~mask], kind='linear',
+                interp_func = interp1d(np.flatnonzero(~mask), col[~mask], kind='linear',
                                                    fill_value='extrapolate')
                 col[mask] = interp_func(np.flatnonzero(mask))
             interpolated[:, i] = col
     elif fill_value == 'linear_em':
-        interpolated = interpolate.griddata((xx, yy), zz, (x, y), method=method)
+        interpolated = griddata((xx, yy), zz, (x, y), method=method)
         for j in range(interpolated.shape[0]):
             col = interpolated[j, :]
             mask = np.isnan(col)
             if np.any(mask):
-                interp_func = interpolate.interp1d(np.flatnonzero(~mask), col[~mask], kind='linear',
+                interp_func = interp1d(np.flatnonzero(~mask), col[~mask], kind='linear',
                                                    fill_value='extrapolate')
                 col[mask] = interp_func(np.flatnonzero(mask))
             interpolated[j, :] = col
@@ -281,7 +193,7 @@ def eem_raman_masking(intensity, ex_range, em_range, tolerance=5, method='linear
                     mask_end_idx = np.max(np.where(raman_mask[:, j] == 0)[0])
                     x = np.flipud(ex_range)[np.where(raman_mask[:, j] == 1)]
                     y = intensity_masked[:, j][np.where(raman_mask[:, j] == 1)]
-                    f1 = interpolate.interp1d(x, y, kind=method, fill_value='extrapolate')
+                    f1 = interp1d(x, y, kind=method, fill_value='extrapolate')
                     y_predict = f1(np.flipud(ex_range))
                     intensity_masked[:, j] = y_predict
                 except ValueError:
@@ -294,7 +206,7 @@ def eem_raman_masking(intensity, ex_range, em_range, tolerance=5, method='linear
                     mask_end_idx = np.max(np.where(raman_mask[i, :] == 0)[0])
                     x = em_range[np.where(raman_mask[i, :] == 1)]
                     y = intensity_masked[i, :][np.where(raman_mask[i, :] == 1)]
-                    f1 = interpolate.interp1d(x, y, kind=method, fill_value='extrapolate')
+                    f1 = interp1d(x, y, kind=method, fill_value='extrapolate')
                     y_predict = f1(em_range)
                     intensity_masked[i, :] = y_predict
                 except ValueError:
@@ -303,7 +215,7 @@ def eem_raman_masking(intensity, ex_range, em_range, tolerance=5, method='linear
         if axis == 'grid':
             old_nan = np.isnan(intensity)
             intensity_masked[np.where(raman_mask == 0)] = np.nan
-            intensity_masked = eem_grid_imputing(intensity_masked, method=method)
+            intensity_masked = eem_nan_imputing(intensity_masked, method=method)
             # restore the nan values in non-raman-scattering region
             intensity_masked[old_nan] = np.nan
     return intensity_masked, raman_mask
@@ -355,7 +267,7 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, tolerance_o1=15, toleran
                         mask_end_idx = np.max(np.where(mask[:, j] == 0)[0])
                         x = np.flipud(ex_range)[np.where(mask[:, j] == 1)]
                         y = intensity_masked[:, j][np.where(mask[:, j] == 1)]
-                        f1 = interpolate.interp1d(x, y, kind=itp, fill_value='extrapolate')
+                        f1 = interp1d(x, y, kind=itp, fill_value='extrapolate')
                         y_predict = f1(np.flipud(ex_range))
                         intensity_masked[:, j] = y_predict
                     except ValueError:
@@ -367,7 +279,7 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, tolerance_o1=15, toleran
                         mask_end_idx = np.max(np.where(mask[i, :] == 0)[0])
                         x = em_range[np.where(mask[i, :] == 1)]
                         y = intensity_masked[i, :][np.where(mask[i, :] == 1)]
-                        f1 = interpolate.interp1d(x, y, kind=itp, fill_value='extrapolate')
+                        f1 = interp1d(x, y, kind=itp, fill_value='extrapolate')
                         y_predict = f1(em_range)
                         intensity_masked[i, :] = y_predict
                     except ValueError:
@@ -376,7 +288,7 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, tolerance_o1=15, toleran
                 old_nan = np.isnan(intensity)
                 old_nan_o1 = np.isnan(intensity_masked)
                 intensity_masked[np.where(mask == 0)] = np.nan
-                intensity_masked = eem_grid_imputing(intensity_masked, method=itp)
+                intensity_masked = eem_nan_imputing(intensity_masked, method=itp)
                 # restore the nan values in non-raman-scattering region
                 intensity_masked[old_nan] = np.nan
                 intensity_masked[old_nan_o1] = np.nan
@@ -387,7 +299,7 @@ def eem_ife_correction(intensity, ex_range, em_range, absorbance, ex_range_abs, 
                        ex_upper_limit=825):
     ex_range2 = np.concatenate([[ex_upper_limit], ex_range_abs, [ex_lower_limit]])
     absorbance = np.concatenate([[0], absorbance, [max(absorbance)]])
-    f1 = interpolate.interp1d(ex_range2, absorbance, kind='linear', bounds_error=False, fill_value='extrapolate')
+    f1 = interp1d(ex_range2, absorbance, kind='linear', bounds_error=False, fill_value='extrapolate')
     absorbance_ex = np.fliplr(np.array([f1(ex_range)]))
     absorbance_em = np.array([f1(em_range)])
     ife_factors = 10 ** (cuvette_length * (absorbance_ex.T.dot(np.ones(absorbance_em.shape)) +
@@ -413,9 +325,31 @@ def eem_regional_integration(intensity, ex_range, em_range, em_boundary, ex_boun
     return integration, avg_regional_intensity, num_pixels
 
 
-def eem_interpolation(intensity, ex_range_old, em_range_old, ex_range_new, em_range_new):
-    f = interpolate.interp2d(em_range_old, ex_range_old, intensity, kind='linear')
-    intensity_interpolated = f(em_range_new, ex_range_new)
+def eem_interpolation(intensity, ex_range_old, em_range_old, ex_range_new, em_range_new, method: str = 'linear'):
+    """
+    Interpolate EEM on given ex/em ranges. This function is typically used for changing the ex/em ranges of an EEM
+    (e.g., in order to synchronize EEMs to the same ex/em ranges). It may not be able to interpolate EEM containing nan
+    values. For nan value imputation, please consider eem_nan_imputing().
+
+    Parameters
+    ----------
+    intensity
+    ex_range_old
+    em_range_old
+    ex_range_new
+    em_range_new
+    method
+
+    Returns
+    -------
+
+    """
+    interp = RegularGridInterpolator((ex_range_old[::-1], em_range_old), intensity, method=method)
+    x, y = np.meshgrid(em_range_new, ex_range_new[::-1])
+    xx = x.flatten()
+    yy = y.flatten()
+    coordinates_new = np.concatenate([xx[:, np.newaxis], yy[:, np.newaxis]], axis=1)
+    intensity_interpolated = interp(coordinates_new).reshape(ex_range_new.shape[0], em_range_new.shape[0])
     return intensity_interpolated
 
 
@@ -433,7 +367,7 @@ def eems_tf_normalization(eem_stack):
 def eems_outlier_detection_if(eem_stack, ex_range, em_range, tf_normalization=True, grid_size=(10, 10),
                               contamination=0.02):
     '''
-    tells whether or not (+1 or -1) it should be considered as an inlier according to the fitted model.
+    tells whether it should be considered as an inlier according to the fitted model. +1: inlier; -1: outlier
     :param eem_stack:
     :param ex_range:
     :param em_range:
@@ -484,14 +418,61 @@ def eems_outlier_detection_ocs(eem_stack, ex_range, em_range, tf_normalization=T
     return label
 
 
-# def eems_random_sampling(eem_stack):
-#     i = random.randrange(eem_stack.shape[0])
-#     eems_selected = eem_stack[i]
-#     return eems_selected, i
+def eems_fit_components(eem_stack, component_stack, fit_intercept=False):
+    assert eem_stack.shape[1:] == component_stack.shape, "EEM and component have different shapes"
+    score_sample = []
+    fmax_sample = []
+    max_values = np.amax(component_stack, axis=(1, 2))
+    eem_stack_pred = np.zeros(eem_stack.shape)
+    for i in range(eem_stack.shape[0]):
+        y_true = eem_stack[i].reshape([-1])
+        x = component_stack.reshape([component_stack.shape[0], -1]).T
+        reg = LinearRegression(fit_intercept=fit_intercept).fit(x, y_true)
+        y_pred = reg.predict(x)
+        eem_stack_pred[i, :, :] = y_pred.reshape((eem_stack.shape[1], eem_stack.shape[2]))
+        score_sample.append(reg.coef_)
+        fmax_sample.append(reg.coef_ * max_values)
+    return score_sample, fmax_sample, eem_stack_pred
 
 
-class EEM_dataset:
+def eems_error(eem_stack_true, eem_stack_pred, metric: str = 'mse'):
+    assert eem_stack_true.shape == eem_stack_pred.shape, "eem_stack_true and eem_stack_pred have different shapes"
+    error = []
+    for i in range(eem_stack_true.shape[0]):
+        y_true = eem_stack_true[i].reshape([-1])
+        y_pred = eem_stack_pred[i].reshape([-1])
+        if metric == 'mse':
+            error.append(mean_squared_error(y_true, y_pred))
+        elif metric == 'explained_variance':
+            error.append(explained_variance_score(y_true, y_pred))
+        elif metric == 'r2':
+            error.append(r2_score(y_true, y_pred))
+    return np.array(error)
+
+
+class EEMDataset:
+    """
+    Build an EEM dataset.
+    """
     def __init__(self, eem_stack, ex_range, em_range, ref=None, index=None):
+        """
+        Parameters
+        ----------
+        eem_stack: np.ndarray (3d)
+            A stack of EEM. It should have a shape of (N, I, J), where N is the number of samples, I is the number of
+            excitation wavelengths, and J is the number of emission wavelengths.
+        ex_range: np.ndarray (1d)
+            The excitation wavelengths.
+        em_range: np.ndarray (1d)
+            The emission wavelengths.
+        ref: np.ndarray (1d) or None
+            Optional. The reference data, e.g., the COD of each sample. It should have a length equal to the number of
+            samples in the eem_stack.
+        index: list or None
+            Optional. The index used to label each sample. The number of elements in the list should equal the number
+            of samples in the eem_stack.
+        """
+        # ------------------parameters--------------------
         # The Em/Ex ranges should be sorted in ascending order
         self.eem_stack = eem_stack
         self.ex_range = ex_range
@@ -500,6 +481,7 @@ class EEM_dataset:
         self.index = index
         self.extent = (self.em_range.min(), self.em_range.max(), self.ex_range.min(), self.ex_range.max())
 
+    # --------------------EEM dataset features--------------------
     def zscore(self):
         transformed_data = stats.zscore(self.eem_stack, axis=0)
         return transformed_data
@@ -526,218 +508,78 @@ class EEM_dataset:
         return np.std(self.eem_stack, axis=0)
 
     def total_fluorescence(self):
-        return self.intensity.sum()
+        return self.eem_stack.sum(axis=(1, 2))
 
     def regional_integration(self, em_boundary, ex_boundary):
         integrations, _ = process_eem_stack(self.eem_stack, eem_regional_integration, ex_range=self.ex_range,
                                             em_range=self.em_range, em_boundary=em_boundary, ex_boundary=ex_boundary)
         return integrations
 
-    def pixel_rel_std(self, em, ex, plot=True, timestamp=False, baseline=False, output=True,
-                      labels=False):
-        M = self.eem_stack
-        em_ref = dichotomy_search(self.em_range, em)
-        ex_ref = dichotomy_search(self.ex_range, ex)
-        y = M[:, self.ex_range.shape[0] - ex_ref - 1, em_ref]
-        cod = (self.em_range[em_ref], self.ex_range[ex_ref])
-        rel_std = stats.variation(y)
-        std = np.std(y)
-        x = np.array(range(1, M.shape[0] + 1))
-        y_mean = y.mean()
-        q5 = abs(0.05 * y_mean)
-        q3 = abs(0.03 * y_mean)
-        print("Mean: {mean}".format(mean=y_mean))
-        print("Standard deviation: {std}".format(std=std))
-        print("Relative Standard deviation: {rel_std}".format(rel_std=rel_std))
-        if timestamp:
-            x = timestamp
-        if not timestamp:
-            if labels:
-                x = labels
-        if output:
-            table = pd.DataFrame(y)
-            table.index = x
-            table.columns = ['Intensity (Ex/Em = {ex}/{em})'.format(ex=cod[1], em=cod[0])]
-            display(table)
-        if plot:
-            plt.figure(figsize=(15, 5))
-            marker = itertools.cycle(('o', 'v', '^', 's', 'D'))
-            plt.plot(x, y, marker=next(marker), markersize=13)
-            if timestamp:
-                plt.xlim([x[0] - timedelta(hours=1), x[-1] + timedelta(hours=1)])
-            if baseline:
-                m0 = plt.axhline(y_mean, linestyle='--', label='mean', c='black')
-                mp3 = plt.axhline(y_mean + q3, linestyle='--', label='+3%', c='red')
-                mn3 = plt.axhline(y_mean - q3, linestyle='--', label='-3%', c='blue')
-                if max(y) > y_mean + q5 or min(y) < y_mean - q5:
-                    plt.ylim(min(y) - q3, max(y) + q3)
-                    # plt.text(1, max(y)+abs(0.15*y_mean), "rel_STD={rel_std}".format(rel_std=round(rel_std,3)))
-                else:
-                    plt.ylim(y_mean - q5, y_mean + q5)
-                    # plt.text(1, y_mean+abs(0.03*y_mean), "rel_STD={rel_std}".format(rel_std=round(rel_std,3)))
-                plt.legend([m0, mp3, mn3], ['mean', '+3%', '-3%'], prop={'size': 10})
-            plt.xticks(rotation=90)
-            plt.title('(Ex, Em) = {cod}'.format(cod=(cod[1], cod[0])))
-            plt.show()
-        return rel_std
+    def peak_picking(self, ex, em):
+        """
+        Return the fluorescence intensities at the location closest the given (ex, em)
 
-    def pixel_linreg(self, em, ex, plot=True, output=True):
-        # Find the closest point to the given coordinate (Em, Ex)
-        Em_ref = dichotomy_search(self.em_range, em)
-        Ex_ref = dichotomy_search(self.ex_range, ex)
-        M = self.eem_stack
-        x = self.ref
-        x_reshaped = x.reshape(M.shape[0], 1)
-        cod = (self.em_range[Em_ref], self.ex_range[Ex_ref])
-        print('The closest data point (Em, Ex) is: {cod}'.format(cod=cod))
-        y = (M[:, self.ex_range.shape[0] - Ex_ref - 1, Em_ref])
-        # x is the reference. y is the fluorescence.
-        reg = LinearRegression().fit(x_reshaped, y)
-        w = reg.coef_
-        b = reg.intercept_
-        r2 = reg.score(x_reshaped, y)
-        pearson_coef, p_value_p = stats.pearsonr(x, y)
-        spearman_coef, p_value_s = stats.spearmanr(x, y)
-        print('Linear regression model: y={w}x+{b}'.format(w=w[0], b=b))
-        print('Linear regression R2:', '{r2}'.format(r2=r2))
-        print('Pearson coefficient: {coef_p} (p-value = {p_p})'.format(coef_p=pearson_coef, p_p=p_value_p))
-        print('Spearman coefficient: {coef_s} (p-value = {p_s})'.format(coef_s=spearman_coef, p_s=p_value_s))
-        if output:
-            intensity_label = 'Intensity (Em, Ex)={cod}'.format(cod=cod)
-            table = pd.DataFrame(np.concatenate([[x], [y]]).T)
-            table.columns = ['Reference value', intensity_label]
-            display(table)
-        if plot:
-            plt.figure(figsize=(6, 3))
-            plt.scatter(x, y)
-            p = np.array([x.min(), x.max()])
-            q = w[0] * p + b
-            plt.plot(p, q)
-            plt.title('(Em, Ex) = {cod}'.format(cod=cod), fontdict={"size": 18})
-            plt.xlabel('Time', fontdict={"size": 14})
-            plt.ylabel('Intensity [a.u.]', fontdict={"size": 14})
-            # plt.text(p.min() + 0.1 * (p.max() - p.min()), q.max() - 0.1 * (p.max() - p.min()),
-            #          "$R^2$={r2}".format(r2=round(r2, 5)))
-            plt.show()
-        return table
+        Parameters
+        ----------
+        ex: float or int
+            excitation wavelength of the wanted location
+        em: float or int
+            emission wavelength of the wanted location
 
-    def eem_linreg(self, plot=True, scale='log', vmin=0.0001, vmax=0.1, mode='diff', num=4):
-        M = self.eem_stack
+        Returns
+        -------
+        fi: pandas.DataFrame
+            table of fluorescence intensities at the wanted location for all samples
+        ex_actual:
+            the actual ex of the extracted fluorescence intensities
+        em_actual:
+            the actual em of the extracted fluorescence intensities
+        """
+        em_idx = dichotomy_search(self.em_range, em)
+        ex_idx = dichotomy_search(self.ex_range, ex)
+        fi = self.eem_stack[:, - ex_idx - 1, em_idx]
+        if self.index:
+            fi = pd.DataFrame(fi, index=self.index)
+        else:
+            fi = pd.DataFrame(fi, index=np.arange(fi.shape[0]))
+        ex_actual = self.ex_range[ex_idx]
+        em_actual = self.em_range[em_idx]
+        return fi, ex_actual, em_actual
+
+    def correlation(self):
+        """
+        Analyze the correlation between reference and fluorescence intensity at each pair of ex/em.
+
+        Returns
+        -------
+        corr_dict: dict
+            A dictionary containing multiple correlation evaluation metrics.
+
+        """
+        m = self.eem_stack
         x = self.ref
-        x = x.reshape(M.shape[0], 1)
-        W = np.empty([M.shape[1], M.shape[2]])
-        B = np.empty([M.shape[1], M.shape[2]])
-        R2 = np.empty([M.shape[1], M.shape[2]])
-        E = np.empty(M.shape)
-        for i in range(M.shape[1]):
-            for j in range(M.shape[2]):
+        x = x.reshape(m.shape[0], 1)
+        w, b, r2, pc, pc_p, sc, sc_p = [np.full((m.shape[1], m.shape[2]), fill_value=np.nan)]*7
+        e = np.full(m.shape, fill_value=np.nan)
+        for i in range(m.shape[1]):
+            for j in range(m.shape[2]):
                 try:
-                    y = (M[:, i, j])
+                    y = (m[:, i, j])
                     reg = LinearRegression().fit(x, y)
-                    W[i, j] = reg.coef_
-                    B[i, j] = reg.intercept_
-                    R2[i, j] = reg.score(x, y)
-                    E[:, i, j] = reg.predict(x) - y
+                    w[i, j] = reg.coef_
+                    b[i, j] = reg.intercept_
+                    r2[i, j] = reg.score(x, y)
+                    e[:, i, j] = reg.predict(x) - y
+                    pc[i, j], pc_p[i, j] = stats.pearsonr(x, y)
+                    sc[i, j], sc_p[i, j] = stats.spearmanr(x, y)
                 except:
                     pass
-        if plot:
-            if mode == 'diff':
-                X = 1 - R2
-                title = '1-$R^2$'
-            elif mode == 'abs':
-                X = R2
-                title = '$R^2$'
-            plt.figure(figsize=(6, 6))
-            extent = [self.em_range.min(), self.em_range.max(), self.ex_range.min(), self.ex_range.max()]
-            if scale == 'log':
-                plt.imshow(X, cmap='jet', interpolation='none', extent=extent, aspect='1',
-                           norm=LogNorm(vmin=vmin, vmax=vmax))
-                t = np.logspace(math.log(vmin), math.log(vmax), num)
-                plt.colorbar(ticks=t, fraction=0.03, pad=0.04)
-            elif scale == 'linear':
-                plt.imshow(X, cmap='jet', interpolation='none', extent=extent, aspect='1', vmin=vmin, vmax=vmax)
-                t = np.linspace(vmin, vmax, num)
-                plt.colorbar(ticks=t, fraction=0.03, pad=0.04)
-            plt.title(title)
-            plt.xlabel('Emission wavelength [nm]')
-            plt.ylabel('Excitation wavelength [nm]')
-        return W, B, R2, E
+        corr_dict = {'slope': w, 'intercept': b, 'r_square': r2, 'linear regression residual': e,
+                     'Pearson corr. coef.': pc, 'Pearson corr. coef. p-value': pc_p, 'Spearman corr. coef.': sc,
+                     'Spearman corr. coef. p-value': sc_p}
+        return corr_dict
 
-    def eem_pearson_coef(self, plot=True, crange=(0, 1)):
-        M = self.eem_stack
-        x = self.ref
-        C_p = np.empty([M.shape[1], M.shape[2]])
-        P_p = np.empty([M.shape[1], M.shape[2]])
-        for i in range(M.shape[1]):
-            for j in range(M.shape[2]):
-                try:
-                    y = (M[:, i, j])
-                    pc, p_value_p = stats.pearsonr(x, y)
-                    C_p[i, j] = pc
-                    P_p[i, j] = p_value_p
-                except:
-                    pass
-        if plot:
-            plt.figure(figsize=(8, 8))
-            extent = [self.em_range.min(), self.em_range.max(), self.ex_range.min(), self.ex_range.max()]
-            plt.imshow(abs(C_p), cmap='jet', interpolation='none', extent=extent, aspect='1.2',
-                       norm=Normalize(crange[0], crange[1]))
-            plt.colorbar(fraction=0.03, pad=0.04)
-            plt.title('abs(Pearson correlation coefficient)')
-            plt.xlabel('Emission wavelength [nm]')
-            plt.ylabel('Excitation wavelength [nm]')
-
-            plt.figure(figsize=(8, 8))
-            extent = [self.em_range.min(), self.em_range.max(), self.ex_range.min(), self.ex_range.max()]
-            plt.imshow(P_p, cmap='jet', interpolation='none', extent=extent, aspect='1.2',
-                       norm=Normalize(vmin=0, vmax=0.1))
-            plt.colorbar(fraction=0.03, pad=0.04)
-            plt.title('p-value (Pearson)')
-            plt.xlabel('Emission wavelength [nm]')
-            plt.ylabel('Excitation wavelength [nm]')
-
-    def eem_spearman_coef(self, plot=True, crange=(0, 1)):
-        M = self.eem_stack
-        x = self.ref
-        C_s = np.empty([M.shape[1], M.shape[2]])
-        P_s = np.empty([M.shape[1], M.shape[2]])
-        for i in range(M.shape[1]):
-            for j in range(M.shape[2]):
-                try:
-                    y = (M[:, i, j])
-                    sc, p_value_s = stats.spearmanr(x, y)
-                    C_s[i, j] = sc
-                    P_s[i, j] = p_value_s
-                except:
-                    pass
-        if plot:
-            plt.figure(figsize=(8, 8))
-            extent = [self.em_range.min(), self.em_range.max(), self.ex_range.min(), self.ex_range.max()]
-            plt.imshow(abs(C_s), cmap='jet', interpolation='none', extent=extent, aspect='1.2',
-                       norm=Normalize(crange[0], crange[1]))
-            plt.colorbar(fraction=0.03, pad=0.04)
-            plt.title('abs(Spearman correlation coefficient)')
-            plt.xlabel('Emission wavelength [nm]')
-            plt.ylabel('Excitation wavelength [nm]')
-
-            plt.figure(figsize=(8, 8))
-            extent = (self.em_range.min(), self.em_range.max(), self.ex_range.min(), self.ex_range.max())
-            plt.imshow(P_s, cmap='jet', interpolation='none', extent=extent, aspect='1.2',
-                       norm=Normalize(vmin=0, vmax=0.1))
-            plt.colorbar(fraction=0.03, pad=0.04)
-            plt.title('p-value (Spearman)')
-            plt.xlabel('Emission wavelength [nm]')
-            plt.ylabel('Excitation wavelength [nm]')
-
-    # def plot_eem_linreg_error(self, error):
-    #     x = self.ref
-    #     x_index = self.index
-    #     extent = (self.em_range.min(), self.em_range.max(), self.ex_range.min(), self.ex_range.max())
-    #     plt.imshow(error[x_index, :, :], cmap='jet', interpolation='none', extent=extent, aspect='1.2', vmin=-100,
-    #                vmax=100)
-    #     plt.title('x={x}'.format(x=x[x_index]))
-    #     plt.xlabel('Emission wavelength [nm]')
-    #     plt.ylabel('Excitation wavelength [nm]')
+    # -----------------EEM dataset processing methods-----------------
 
     def threshold_masking(self, threshold, mask_type='greater', plot=False, autoscale=True, cmin=0, cmax=4000,
                           copy=True):
@@ -772,8 +614,8 @@ class EEM_dataset:
             self.em_range = new_ranges[0][1]
         return eem_stack_cut, new_ranges[0][0], new_ranges[0][1]
 
-    def grid_imputing(self, method='linear', fill_value='linear_ex', prior_mask=None, copy=True):
-        eem_stack_imputed = process_eem_stack(self.eem_stack, eem_grid_imputing, ex_range=self.ex_range,
+    def nan_imputing(self, method='linear', fill_value='linear_ex', prior_mask=None, copy=True):
+        eem_stack_imputed = process_eem_stack(self.eem_stack, eem_nan_imputing, ex_range=self.ex_range,
                                               em_range=self.em_range, method=method, fill_value=fill_value,
                                               prior_mask=prior_mask)
         if not copy:
@@ -856,10 +698,97 @@ class EEM_dataset:
             self.index = [idx for i, idx in enumerate(self.index) if labels[i] != -1]
         return labels
 
+    def splitting(self, n_split, rule: str = 'random'):
+        """
+        To split the EEM dataset and form multiple sub-datasets.
+
+        Parameters
+        ----------
+        n_split: int
+            The number of splits.
+        rule: str, {'random', 'sequential'}
+            If 'random' is passed, the split will be generated randomly. If 'sequential' is passed, the dataset will be
+            split according to index order.
+
+        Returns
+        -------
+        model_list: list
+            A list of sub-datasets. Each of them is an EEMDataset object.
+        """
+        idx_eems = [i for i in range(self.eem_stack.shape[0])]
+        model_list = []
+        if rule == 'random':
+            random.shuffle(idx_eems)
+            idx_splits = np.array_split(idx_eems, n_split)
+        elif rule == 'sequential':
+            idx_splits = np.array_split(idx_eems, n_split)
+        for split in idx_splits:
+            m = EEMDataset(eem_stack=np.array([self.eem_stack[i] for i in split]), ex_range=self.ex_range,
+                           em_range=self.em_range, ref=np.array([self.ref[i] for i in split]),
+                           index=[self.index[i] for i in split])
+            model_list.append(m)
+        return model_list
+
+
+def combine_eem_datasets(list_eem_datasets):
+    eem_stack_combined = []
+    ref_combined = []
+    index_combined = []
+    ex_range_0 = list_eem_datasets[0].ex_range
+    em_range_0 = list_eem_datasets[0].em_range
+    for d in list_eem_datasets:
+        eem_stack_combined.append(d.eem_stack)
+        ref_combined.append(d.ref)
+        index_combined = index_combined + d.index
+        if not np.array_equal(d.ex_range, ex_range_0) or not np.array_equal(d.em_range, em_range_0):
+            Warning('ex_range and em_range of the datasets must be identical. If you want to combine EEM datasets '
+                    'having different ex/em ranges, please consider unify the ex/em ranges using the interpolation() '
+                    'method of EEMDataset object')
+    eem_stack_combined = np.concatenate(eem_stack_combined, axis=0)
+    ref_combined = np.concatenate(ref_combined, axis=0)
+    eem_dataset_combined = EEMDataset(eem_stack=eem_stack_combined, ex_range=ex_range_0, em_range=em_range_0,
+                                      ref=ref_combined, index=index_combined)
+    return eem_dataset_combined
+
 
 class PARAFAC:
+    """
+    PARAFAC model
+    """
+
     def __init__(self, rank, non_negativity=True, init='svd', tf_normalization=True,
-                 loadings_normalization: Union[Literal['sd', 'maximum'], None] = 'sd', sort_em=True):
+                 loadings_normalization: Optional[str] = 'sd', sort_em=True):
+        """
+        Parameters
+        ----------
+        rank: int
+            The number of components
+        non_negativity: bool
+            Whether to apply the non-negativity constraint
+        init: str or tensorly.CPTensor, {‘svd’, ‘random’, CPTensor}
+            Type of factor matrix initialization
+        tf_normalization: bool
+            Whether to normalize the EEMs by the total fluorescence in PARAFAC model establishment
+        loadings_normalization: str or None, {'sd', 'maximum', None}
+            Type of normalization applied to loadings. if 'sd' is passed, the standard deviation will be normalized
+            to 1. If 'maximum' is passed, the maximum will be normalized to 1. The scores will be adjusted accordingly.
+        sort_em: bool
+            Whether to sort components by emission peak position from lowest to highest. If False is passed, the
+            components will be sorted by the contribution to the total variance.
+
+        Attributes
+        ----------
+        score
+        ex_loadings
+        em_loadings
+        fmax
+        component_stack
+        cptensors
+        eem_stack_train
+        eem_stack_reconstructed
+        ex_range
+        em_range
+        """
         # ----------parameters--------------
         self.rank = rank
         self.non_negativity = non_negativity
@@ -869,33 +798,52 @@ class PARAFAC:
         self.sort_em = sort_em
 
         # -----------attributes---------------
-        self.score_df = None
-        self.exl_df = None
-        self.eml_df = None
-        self.fmax_df = None
+        self.score = None
+        self.ex_loadings = None
+        self.em_loadings = None
+        self.fmax = None
         self.component_stack = None
+        self.cptensors = None
+        self.eem_stack_train = None
+        self.eem_stack_reconstructed = None
+        self.ex_range = None
+        self.em_range = None
 
-    def fit(self, eem_dataset: EEM_dataset):
+    # --------------methods------------------
+    def establish(self, eem_dataset: EEMDataset):
+        """
+        Establish a PARAFAC model based on a given EEM dataset
+
+        Parameters
+        ----------
+        eem_dataset: EEMDataset
+            The EEM dataset that the PARAFAC model establishes on.
+
+        Returns
+        -------
+        self: object
+            The established PARAFAC model
+        """
         if self.tf_normalization:
             _, tf_weights = eem_dataset.tf_normalization(copy=False)
         try:
             if not self.non_negativity:
                 if np.isnan(eem_dataset.eem_stack).any():
                     mask = np.where(np.isnan(eem_dataset.eem_stack), 0, 1)
-                    _, factors = parafac(eem_dataset.eem_stack, rank=self.rank, mask=mask, init=self.init)
+                    cptensors = parafac(eem_dataset.eem_stack, rank=self.rank, mask=mask, init=self.init)
                 else:
-                    _, factors = parafac(eem_dataset.eem_stack, rank=self.rank, init=self.init)
+                    cptensors = parafac(eem_dataset.eem_stack, rank=self.rank, init=self.init)
             else:
                 if np.isnan(eem_dataset.eem_stack).any():
                     mask = np.where(np.isnan(eem_dataset.eem_stack), 0, 1)
-                    _, factors = non_negative_parafac(eem_dataset.eem_stack, rank=self.rank, mask=mask, init=self.init)
+                    cptensors = non_negative_parafac(eem_dataset.eem_stack, rank=self.rank, mask=mask, init=self.init)
                 else:
-                    _, factors = non_negative_parafac(eem_dataset.eem_stack, rank=self.rank, init=self.init)
+                    cptensors = non_negative_parafac(eem_dataset.eem_stack, rank=self.rank, init=self.init)
         except ArpackError:
             print(
                 "PARAFAC failed possibly due to the presence of patches of nan values. Please consider cut or "
                 "interpolate the nan values.")
-        a, b, c = factors
+        a, b, c = cptensors[1]
         component_stack = np.zeros([self.rank, b.shape[0], c.shape[0]])
         for r in range(self.rank):
 
@@ -928,462 +876,555 @@ class PARAFAC:
 
         if self.tf_normalization:
             a = np.multiply(a, tf_weights[:, np.newaxis])
-        score_df = pd.DataFrame(a)
-        exl_df = pd.DataFrame(np.flipud(b), index=eem_dataset.ex_range)
-        eml_df = pd.DataFrame(c, index=eem_dataset.em_range)
-        ex_column = ['Ex' for i in range(b.shape[0])]
-        em_column = ['Em' for i in range(c.shape[0])]
-        score_column = ['Score' for i in range(score_df.shape[0])]
-        exl_df.index = pd.MultiIndex.from_tuples(list(zip(*[ex_column, eem_dataset.ex_range.tolist()])),
-                                                 names=('type', 'wavelength'))
-        eml_df.index = pd.MultiIndex.from_tuples(list(zip(*[em_column, eem_dataset.em_range.tolist()])),
-                                                 names=('type', 'wavelength'))
+        score = pd.DataFrame(a)
         fmax = a * component_stack.max(axis=(1, 2))
-
-        if eem_dataset.index:
-            score_df.index = pd.MultiIndex.from_tuples(list(zip(*[score_column, eem_dataset.index])),
-                                                       names=('type', 'index'))
-        else:
-            score_df.index = pd.MultiIndex.from_tuples(list(zip(*[score_column, [i+1 for i in range(a.shape[0])]])),
-                                                       names=('type', 'index'))
-
+        ex_loadings = pd.DataFrame(np.flipud(b), index=eem_dataset.ex_range)
+        em_loadings = pd.DataFrame(c, index=eem_dataset.em_range)
         if self.sort_em:
-            em_peaks = [c[1] for c in eml_df.idxmax()]
+            em_peaks = [c[1] for c in em_loadings.idxmax()]
             peak_rank = list(enumerate(stats.rankdata(em_peaks)))
             order = [i[0] for i in sorted(peak_rank, key=lambda x: x[1])]
             component_stack = component_stack[order]
-            exl_df = pd.DataFrame({'component {r}'.format(r=i + 1): exl_df.iloc[:, order[i]] for i in range(self.rank)})
-            eml_df = pd.DataFrame({'component {r}'.format(r=i + 1): eml_df.iloc[:, order[i]] for i in range(self.rank)})
-            score_df = pd.DataFrame({'component {r}'.format(r=i + 1): score_df.iloc[:, order[i]] for i in range(self.rank)})
-            # Get the ex/em of the component maximum
-            max_exem = []
-            for r in range(self.rank):
-                max_index = np.unravel_index(np.argmax(component_stack[r, :, :]), component_stack[r, :, :].shape)
-                max_exem.append((eem_dataset.ex_range[-(max_index[0] + 1)], eem_dataset.em_range[max_index[1]]))
-            fmax_df = pd.DataFrame({'component {r}, (ex, em) = {cor}'.format(r=i+1, cor=cor): fmax[:, order[i]]
-                                    for i, cor in enumerate(max_exem)})
+            ex_loadings = pd.DataFrame({'component {r} ex loadings'.format(r=i+1): ex_loadings.iloc[:, order[i]]
+                                        for i in range(self.rank)})
+            em_loadings = pd.DataFrame({'component {r} em loadings'.format(r=i+1): em_loadings.iloc[:, order[i]]
+                                        for i in range(self.rank)})
+            score = pd.DataFrame({'component {r} score'.format(r=i+1): score.iloc[:, order[i]]
+                                  for i in range(self.rank)})
+            fmax = pd.DataFrame({'component {r} fmax'.format(r=i+1): fmax[:, order[i]]
+                                 for i in range(self.rank)})
         else:
-            column_labels = ['component {r}'.format(r=i + 1) for i in range(self.rank)]
-            exl_df.columns = column_labels
-            eml_df.columns = column_labels
-            score_df.columns = column_labels
-            fmax_df = pd.DataFrame(fmax, columns=['component {r}'.format(r=i + 1) for i in range(self.rank)])
+            column_labels = ['component {r}'.format(r=i+1) for i in range(self.rank)]
+            ex_loadings.columns = column_labels
+            em_loadings.columns = column_labels
+            score.columns = column_labels
+            fmax = pd.DataFrame(fmax, columns=['component {r}'.format(r=i+1) for i in range(self.rank)])
 
-        self.score_df = score_df
-        self.exl_df = exl_df
-        self.eml_df = eml_df
-        self.fmax_df = fmax_df
+        ex_loadings.index = eem_dataset.ex_range.tolist()
+        em_loadings.index = eem_dataset.em_range.tolist()
+
+        if eem_dataset.index:
+            score.index = eem_dataset.index
+            fmax.index = eem_dataset.index
+        else:
+            score.index = [i + 1 for i in range(a.shape[0])]
+            fmax.index = [i + 1 for i in range(a.shape[0])]
+
+        self.score = score
+        self.ex_loadings = ex_loadings
+        self.em_loadings = em_loadings
+        self.fmax = fmax
         self.component_stack = component_stack
-
+        self.cptensors = cptensors
+        self.eem_stack_train = eem_dataset.eem_stack
+        self.ex_range = eem_dataset.ex_range
+        self.em_range = eem_dataset.em_range
+        self.eem_stack_reconstructed = cp_to_tensor(cptensors)
         return self
 
-    def residual(self):
-        return
+    def fit(self, eem_dataset: EEMDataset, fit_intercept=False):
+        """
+        Fit a given EEM dataset with the established PARAFAC components by linear regression. This method can be used
+        to fit a new EEM dataset independent of the one used in model establishment.
 
-    def leverage(self):
-        return
+        Parameters
+        ----------
+        eem_dataset: EEMDataset
+            The EEM.
+        fit_intercept: bool
+            Whether to calculate the intercept.
+
+        Returns
+        -------
+        score_sample: np.ndarray (1d)
+            The fitted score.
+        fmax_sample: np.ndarray (1d)
+            The fitted Fmax.
+        eem_stack_pred: np.ndarray (3d)
+            The EEM dataset reconstructed.
+        """
+        score_sample, fmax_sample, eem_stack_pred = eems_fit_components(eem_dataset.eem_stack, self.component_stack,
+                                                                        fit_intercept=fit_intercept)
+        return score_sample, fmax_sample, eem_stack_pred
+
+    def component_peak_locations(self):
+        """
+        Get the ex/em of component peaks
+
+        Returns
+        -------
+        max_exem: list
+            A List of (ex, em) of component peaks.
+        """
+        max_exem = []
+        for r in range(self.rank):
+            max_index = np.unravel_index(np.argmax(self.component_stack[r, :, :]), self.component_stack[r, :, :].shape)
+            max_exem.append((self.ex_range[-(max_index[0] + 1)], self.em_range[max_index[1]]))
+        return max_exem
+
+    def residual(self):
+        """
+        Get the residual of the established PARAFAC model, i.e., the difference between the original EEM dataset and
+        the reconstructed EEM dataset.
+
+        Returns
+        -------
+        res: np.ndarray (3d)
+            the residual
+        """
+        res = self.eem_stack_train - self.eem_stack_reconstructed
+        return res
 
     def explained_variance(self):
-        return
+        """
+        Calculate the explained variance of the established PARAFAC model
+
+        Returns
+        -------
+        ev: float
+            the explained variance
+        """
+        y_train = self.eem_stack_train.reshape(-1)
+        y_pred = self.eem_stack_reconstructed.reshape(-1)
+        ev = 100 * (1 - np.var(y_pred - y_train) / np.var(y_train))
+        return ev
 
     def core_consistency(self):
-        return
+        """
+        Calculate the core consistency of the established PARAFAC model
+
+        Returns
+        -------
+        ev: float
+            core consistency
+        """
+        cc = core_consistency(self.cptensors, self.eem_stack_train)
+        return cc
+
+    def leverage(self, mode: str = 'sample'):
+        """
+        Calculate the leverage of a selected mode.
+
+        Parameters
+        ----------
+        mode: str, {'ex', 'em', 'sample'}
+            The mode of which the leverage is calculated.
+
+        Returns
+        -------
+        lvr: pandas.DataFrame
+            The table of leverage
+
+        """
+        if mode == 'ex':
+            lvr = compute_leverage(self.ex_loadings)
+        elif mode == 'em':
+            lvr = compute_leverage(self.em_loadings)
+        elif mode == 'sample':
+            lvr = compute_leverage(self.score)
+        lvr.index = lvr.index.set_levels(['leverage of {m}'.format(m=mode)] * len(lvr.index.levels[0]), level=0)
+        return lvr
+
+    def sample_rmse(self):
+        """
+        Calculate the root mean squared error (RMSE) of EEM of each sample.
+
+        Returns
+        -------
+        sse: pandas.DataFrame
+            Table of RMSE
+        """
+        res = self.residual()
+        n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
+        rmse = pd.DataFrame(sqrt(np.sum(res**2, axis=(1,2)) / n_pixels), index=self.score.index)
+        return rmse
+
+    def sample_normalized_rmse(self):
+        """
+        Calculate the normalized root mean squared error (normalized RMSE) of EEM of each sample. It is defined as the
+        RMSE divided by the mean of original signal.
+
+        Returns
+        -------
+        normalized_sse: pandas.DataFrame
+            Table of normalized RMSE
+        """
+        res = self.residual()
+        n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
+        normalized_sse = pd.DataFrame(sqrt(np.sum(res**2, axis=(1,2)) / n_pixels) /
+                                      np.average(self.eem_stack_train, axis=(1,2)),
+                                      index=self.score.index)
+        return normalized_sse
+
+    def sample_summary(self):
+        """
+        Get a table showing the score, Fmax, leverage, RMSE and normalized RMSE for each sample.
+
+        Returns
+        -------
+        summary: pandas.DataFrame
+            Table of samples' score, Fmax, leverage, RMSE and normalized RMSE.
+        """
+        lvr = self.leverage()
+        rmse = self.sample_rmse()
+        normalized_rmse = self.sample_normalized_rmse()
+        summary = pd.concat([self.score, self.fmax, lvr, rmse, normalized_rmse], axis=1)
+        return summary
 
 
-def decomposition_interact(eem_stack, em_range, ex_range, rank, index=[], decomposition_method='parafac', init='svd',
-                           dataset_normalization=False, score_normalization=False, loadings_normalization=True,
-                           component_normalization=False, plot_loadings=True,
-                           plot_components=True, plot_fmax=True, display_score=True, component_cmin=0, component_cmax=1,
-                           component_autoscale=False, title=True, cbar=True, cmap='jet', sort_em=True, rotate=False):
-    plt.close()
-    if dataset_normalization:
-        eem_stack, tf = eems_tf_normalization(eem_stack)
-    try:
-        if decomposition_method == 'parafac':
-            if np.isnan(eem_stack).any():
-                mask = np.where(np.isnan(eem_stack), 0, 1)
-                _, factors = parafac(eem_stack, rank=rank, mask=mask, init=init)
-            else:
-                _, factors = parafac(eem_stack, rank=rank, init=init)
-        if decomposition_method == 'non_negative_parafac':
-            if np.isnan(eem_stack).any():
-                mask = np.where(np.isnan(eem_stack), 0, 1)
-                _, factors = non_negative_parafac(eem_stack, rank=rank, mask=mask, init=init)
-            else:
-                _, factors = non_negative_parafac(eem_stack, rank=rank, init=init)
-    except ArpackError:
-        print("Please check if there's blank space in the fluorescence footprint in 'section 2. Fluorescence preview "
-              "and parameter selection'. If so, please removed the sample, or adjust the excitation "
-              "wavelength range to avoid excessive inner filter effect")
-    I, J, K = factors
-    for r in range(rank):
-        if I[:, r].sum() < 0:
-            I[:, r] = -I[:, r]
-            if abs(J[:, r].min()) > J[:, r].max():
-                J[:, r] = -J[:, r]
-            elif abs(K[:, r].min()) > K[:, r].max():
-                K[:, r] = -K[:, r]
-        elif abs(J[:, r].min()) > J[:, r].max() and abs(K[:, r].min()) > K[:, r].max():
-            J[:, r] = -J[:, r]
-            K[:, r] = -K[:, r]
-        if loadings_normalization:
-            stdj = J[:, r].std()
-            stdk = K[:, r].std()
-            J[:, r] = J[:, r] / stdj
-            K[:, r] = K[:, r] / stdk
-            I[:, r] = I[:, r] * stdj * stdk
-        component = np.array([J[:, r]]).T.dot(np.array([K[:, r]]))
-        if component_normalization:
-            w = 1 / component.max()
-            component = component * w
-            I[:, r] = I[:, r] / w
-        if r == 0:
-            component_stack = np.zeros([rank, component.shape[0], component.shape[1]])
-        component_stack[r, :, :] = component
+def parafac_components_similarity(model1: PARAFAC, model2: PARAFAC, wavelength_alignment=False, dtw=False):
+    """
+    Calculate the Tucker's congruence between the components of two PARAFAC models.
 
-    if dataset_normalization:
-        I = np.multiply(I, tf[:, np.newaxis])
-    if score_normalization:
-        score_df = pd.DataFrame(I / I.mean(axis=0))
-    else:
-        score_df = pd.DataFrame(I)
+    Parameters
+    ----------
+    model1: PARAFAC
+        The first PARAFAC model.
+    model2: PARAFAC
+        The second PARAFAC model
+    wavelength_alignment: bool
+        Align the ex/em ranges of the components. This is useful if the PARAFAC models have different ex/em wavelengths.
+        Note that ex/em will be aligned according to the ex/em ranges with the lower intervals between the two PARAFAC
+        models.
+    dtw: bool
+        Apply dynamic time warping (DTW) to align the component loadings before calculating the similarity. This is
+        useful for matching loadings with similar but shifted shapes.
 
-    exl_df = pd.DataFrame(np.flipud(J), index=ex_range)
-    eml_df = pd.DataFrame(K, index=em_range)
-    ex_column = ["Ex" for i in range(ex_range.shape[0])]
-    em_column = ["Em" for i in range(em_range.shape[0])]
-    score_column = ["Score" for i in range(score_df.shape[0])]
-    exl_df.index = pd.MultiIndex.from_tuples(list(zip(*[ex_column, ex_range.tolist()])),
-                                             names=('type', 'wavelength'))
-    eml_df.index = pd.MultiIndex.from_tuples(list(zip(*[em_column, em_range.tolist()])),
-                                             names=('type', 'wavelength'))
-    fmax = I * component_stack.max(axis=(1, 2))
-
-    if index:
-        score_df.index = pd.MultiIndex.from_tuples(list(zip(*[score_column, index])),
-                                                   names=('type', 'time'))
-    else:
-        score_df.index = score_column
-
-    if sort_em:
-        em_peaks = [c[1] for c in eml_df.idxmax()]
-        peak_rank = list(enumerate(stats.rankdata(em_peaks)))
-        order = [i[0] for i in sorted(peak_rank, key=lambda x: x[1])]
-        exl_df = pd.DataFrame({'component {r}'.format(r=i + 1): exl_df.iloc[:, order[i]] for i in range(rank)})
-        eml_df = pd.DataFrame({'component {r}'.format(r=i + 1): eml_df.iloc[:, order[i]] for i in range(rank)})
-        score_df = pd.DataFrame({'component {r}'.format(r=i + 1): score_df.iloc[:, order[i]] for i in range(rank)})
-        fmax_df = pd.DataFrame({'component {r}'.format(r=i + 1): fmax[:, order[i]] for i in range(rank)})
-        component_stack = component_stack[order]
-    else:
-        column_labels = ['component {r}'.format(r=i + 1) for i in range(rank)]
-        exl_df.columns = column_labels
-        eml_df.columns = column_labels
-        score_df.columns = column_labels
-        fmax_df = pd.DataFrame(fmax, columns=['component {r}'.format(r=i + 1) for i in range(rank)])
-
-    if plot_components:
-        for r in range(rank):
-            if title:
-                title_r = score_df.columns[r]
-            if not title:
-                title_r = False
-            plot_eem(component_stack[r, :, :], em_range, ex_range, cmin=component_cmin,
-                     cmax=component_cmax, title=title_r, autoscale=component_autoscale, cbar=cbar,
-                     cmap=cmap, aspect=1, rotate=rotate)
-
-    if plot_loadings:
-        fig_ex = exl_df.unstack(level=0).plot.line()
-        handles_ex, labels_ex = fig_ex.get_legend_handles_labels()
-        plt.legend(handles_ex, labels_ex, prop={'size': 10})
-        plt.xticks(np.arange(0, ex_range[-1] + 1, 50))
-        plt.xlim([ex_range[0], ex_range[-1]])
-        plt.xlabel("Wavelength [nm]")
-        fig_em = eml_df.unstack(level=0).plot.line()
-        handles_em, labels_em = fig_em.get_legend_handles_labels()
-        plt.legend(handles_em, labels_em, prop={'size': 10})
-        plt.xticks(np.arange(0, em_range[-1], 50))
-        plt.xlim([em_range[0], em_range[-1]])
-        plt.xlabel("Wavelength [nm]")
-    I_standardized = I / np.mean(I, axis=0)
-    plt.figure(figsize=(15, 5))
-    legend = []
-    marker = itertools.cycle(('o', 'v', '^', 's', 'D'))
-    if display_score:
-        display(score_df)
-        for r in range(rank):
-            if index:
-                plt.plot(index, I_standardized[:, r], marker=next(marker), markersize=13)
-            else:
-                plt.plot(I_standardized[:, r], marker=next(marker), markersize=13)
-            legend.append('component {rank}'.format(rank=r + 1))
-            plt.xlabel('Time')
-            plt.xticks(rotation=90)
-            plt.ylabel('Score')
-        plt.legend(legend)
-
-    if plot_fmax:
-        if index:
-            fmax_column = ["Fmax" for i in range(score_df.shape[0])]
-            fmax_df.index = pd.MultiIndex.from_tuples(list(zip(*[fmax_column, index])),
-                                                      names=('type', 'time'))
-        display(fmax_df)
-        plt.figure(figsize=(15, 5))
-        n_sample = np.arange(fmax.shape[0])
-        legend = []
-        fmax_tot = 0
-        for r in range(rank):
-            fmax_r = fmax[:, r]
-            plt.bar(n_sample, fmax_r, bottom=fmax_tot)
-            fmax_tot += fmax_r
-            legend.append('component {rank}'.format(rank=r + 1))
-        plt.xticks(n_sample, index, rotation=90)
-        plt.ylabel('Fmax')
-        plt.legend(legend)
-    return score_df, exl_df, eml_df, fmax_df, component_stack
-
-
-def match_parafac_components(model_ex, model_em, model_ref_ex, model_ref_em, criteria='TCC',
-                             wavelength_synchronization=True, mode='mean', dtw=False):
-    ex1_loadings, em1_loadings, ex2_loadings, em2_loadings = \
-        model_ex.unstack(level=0), model_em.unstack(level=0), model_ref_ex.unstack(level=0), model_ref_em.unstack(
-            level=0),
-    ex_range1, em_range1, ex_range2, em_range2 = \
-        ex1_loadings.index, em1_loadings.index, ex2_loadings.index, em2_loadings.index
-    if wavelength_synchronization:
+    Returns
+    -------
+    m_sim_ex: pandas.DataFrame
+        The table of excitation loadings similarities.
+    m_sim_em: pandas.DataFrame
+        The table of emission loadings similarities.
+    """
+    ex1, em1, ex2, em2 = (model1.ex_loadings, model1.em_loadings, model2.ex_loadings, model2.em_loadings)
+    ex_range1, em_range1, ex_range2, em_range2 = (model1.ex_range, model1.em_range, model2.ex_range, model2.em_range)
+    if wavelength_alignment:
         em_interval1 = (em_range1.max() - em_range1.min()) / (em_range1.shape[0] - 1)
         em_interval2 = (em_range2.max() - em_range2.min()) / (em_range2.shape[0] - 1)
         ex_interval1 = (ex_range1.max() - ex_range1.min()) / (ex_range1.shape[0] - 1)
         ex_interval2 = (ex_range2.max() - ex_range2.min()) / (ex_range2.shape[0] - 1)
-        if em_interval2 > em_interval1:
-            em_range_target = em_range1
-        else:
-            em_range_target = em_range2
         if ex_interval2 > ex_interval1:
-            ex_range_target = ex_range1
-        else:
-            ex_range_target = ex_range2
-        f_ex1 = interpolate.interp1d(ex_range_target, ex1_loadings.to_numpy().T)
-        f_em1 = interpolate.interp1d(em_range_target, em1_loadings.to_numpy().T)
-        f_ex2 = interpolate.interp1d(ex_range_target, ex2_loadings.to_numpy().T)
-        f_em2 = interpolate.interp1d(em_range_target, em2_loadings.to_numpy().T)
-        ex1_loadings, em1_loadings, ex2_loadings, em2_loadings = \
-            f_ex1(ex_range1), f_em1(em_range1), f_ex2(ex_range2), f_em2(em_range2)
+            f_ex2 = interp1d(ex_range2, ex2.to_numpy(), axis=0)
+            ex2 = f_ex2(ex_range1)
+        elif ex_interval1 > ex_interval2:
+            f_ex1 = interp1d(ex_range1, ex1.to_numpy(), axis=0)
+            ex1 = f_ex1(ex_range2)
+        if em_interval2 > em_interval1:
+            f_em2 = interp1d(em_range2, em2.to_numpy(), axis=0)
+            em2 = f_em2(em_range1)
+        elif em_interval1 > em_interval2:
+            f_em1 = interp1d(em_range1, em1.to_numpy(), axis=0)
+            em1 = f_em1(em_range2)
     else:
-        ex1_loadings, em1_loadings, ex2_loadings, em2_loadings = \
-            ex1_loadings.to_numpy().T, em1_loadings.to_numpy().T, ex2_loadings.to_numpy().T, em2_loadings.to_numpy().T
+        ex1, em1, ex2, em2 = (ex1.to_numpy(), em1.to_numpy(), ex2.to_numpy(), em2.to_numpy())
+    m_sim_ex = np.zeros([ex1.shape[1], ex2.shape[1]])
+    m_sim_em = np.zeros([em1.shape[1], em2.shape[1]])
+    for n2 in range(ex2.shape[1]):
+        for n1 in range(ex1.shape[1]):
+            if dtw:
+                ex1_aligned, ex2_aligned = dynamic_time_warping(ex1[:, n1], ex2[:, n2])
+                em1_aligned, em2_aligned = dynamic_time_warping(em1[:, n1], em2[:, n2])
+            else:
+                ex1_aligned, ex2_aligned = [ex1[:, n1], ex2[:, n2]]
+                em1_aligned, em2_aligned = [em1[:, n1], em2[:, n2]]
+            m_sim_ex[n1, n2] = stats.pearsonr(ex1_aligned, ex2_aligned)[0]
+            m_sim_em[n1, n2] = stats.pearsonr(em1_aligned, em2_aligned)[0]
+    m_sim_ex = pd.DataFrame(m_sim_ex, index=['model1 C{i}'.format(i=i+1) for i in range(ex1.shape[1])],
+                            columns=['model2 C{i}'.format(i=i+1) for i in range(ex2.shape[1])])
+    m_sim_em = pd.DataFrame(m_sim_em, index=['model1 C{i}'.format(i=i+1) for i in range(em1.shape[1])],
+                            columns=['model2 C{i}'.format(i=i+1) for i in range(em2.shape[1])])
 
-    m_sim = np.zeros([model_ref_ex.shape[1], model_ex.shape[1]])
+    return m_sim_ex, m_sim_em
+
+
+def match_parafac_components(model1: PARAFAC, model2: PARAFAC, m_sim):
+    """
+    Sort the order of components of two PARAFAC models so that similar components are labelled by the same number.
+
+    Parameters
+    ----------
+    model1: PARAFAC
+        PARAFAC model 1.
+    model2: PARAFAC
+        PARAFAC model 2.
+    m_sim: pandas.DataFrame
+        The component similarity matrix. It can be obtained with parafac_components_similarity().
+
+    Returns
+    -------
+    model1: PARAFAC
+        The sorted PARAFAC model 1.
+    model2: PARAFAC
+        The sorted PARAFAC model 2.
+    """
+    ex1, em1, ex2, em2 = (model1.ex_loadings, model1.em_loadings, model2.ex_loadings, model2.em_loadings)
+    if ex1.shape[1] > ex2.shape[1]:
+        ex_ref, em_ref = (ex2, em2)
+        ex_var, em_var = (ex1, ex1)
+        m_sim = m_sim.to_numpy()
+    else:
+        ex_ref, em_ref = (ex1, em1)
+        ex_var, em_var = (ex2, em2)
+        m_sim = m_sim.to_numpy().T
     matched_index = []
     max_sim = []
-    for n2 in range(model_ref_ex.shape[1]):
-        for n1 in range(model_ex.shape[1]):
-            if dtw:
-                ex1_aligned, ex2_aligned = dynamic_time_warping(ex1_loadings[n1], ex2_loadings[n2])
-                em1_aligned, em2_aligned = dynamic_time_warping(em1_loadings[n1], em2_loadings[n2])
-            else:
-                ex1_aligned, ex2_aligned = [ex1_loadings[n1], ex2_loadings[n2]]
-                em1_aligned, em2_aligned = [em1_loadings[n1], em2_loadings[n2]]
-            if criteria == 'TCC':
-                stat_ex = stats.pearsonr(ex1_aligned, ex2_aligned)[0]
-                stat_em = stats.pearsonr(em1_aligned, em2_aligned)[0]
-                if mode == 'mean':
-                    m_sim[n1, n2] = statistics.mean([stat_ex, stat_em])
-                if mode == 'min':
-                    m_sim[n1, n2] = min([stat_ex, stat_em])
-                if mode == 'max':
-                    m_sim[n1, n2] = max([stat_ex, stat_em])
-            # if criteria == 'SSC'
     memory = []
     m_sim_copy = m_sim.copy()
-    for n2 in range(model_ref_ex.shape[1]):
-        max_index = np.argmax(m_sim[:, n2])
+    for n_ref in range(ex_ref.shape[1]):
+        max_index = np.argmax(m_sim[:, n_ref])
         while max_index in memory:
-            m_sim_copy[max_index, n2] = 0
-            max_index = np.argmax(m_sim_copy[:, n2])
+            m_sim_copy[max_index, n_ref] = 0
+            max_index = np.argmax(m_sim_copy[:, n_ref])
         memory.append(max_index)
-        matched_index.append((max_index, n2))
-        max_sim.append(m_sim[max_index, n2])
-    order = [o[0] for o in matched_index]
-    model_ex_sorted, model_em_sorted = model_ex.copy(), model_em.copy()
+        matched_index.append((max_index, n_ref))
+        max_sim.append(m_sim[max_index, n_ref])
+    non_ordered_idx = list(set([i for i in range(ex_var.shape[1])]) - set(memory))
+    order = [o[0] for o in matched_index] + non_ordered_idx
+    ex_var_sorted, em_var_sorted = (ex_var.copy(), em_var.copy())
     for i, o in enumerate(order):
-        model_ex_sorted['component {i}'.format(i=i + 1)] = model_ex['component {i}'.format(i=o + 1)]
-        model_em_sorted['component {i}'.format(i=i + 1)] = model_em['component {i}'.format(i=o + 1)]
-    return m_sim, matched_index, max_sim, [model_ex_sorted, model_em_sorted]
-
-
-def fast_core_consistency(eem_stack, rank=[1, 2, 3, 4, 5], decomposition_method='non_negative_parafac', init='svd',
-                          dataset_normalization=False, plot_cc=True):
-    # Reference: [1]https://github.com/willshiao/pycorcondia [2]Papalexakis E E, Faloutsos C. Fast efficient and
-    # scalable core consistency diagnostic for the parafac decomposition for big sparse tensors[C]//2015 IEEE
-    # International Conference on Acoustics, Speech and Signal Processing (ICASSP). IEEE, 2015: 5441-5445.
-
-    def kronecker_mat_ten(matrices, X):
-        for k in range(len(matrices)):
-            M = matrices[k]
-            X = mode_dot(X, M, k)
-        return X
-
-    # Shortcut to invert singular values.
-    # Given a vector of singular values, returns the inverted matrix
-
-    def invert_sing(s):
-        return np.diag(1.0 / s)
-
-    if isinstance(rank, int):
-        rank = [rank]
-    if dataset_normalization:
-        eem_stack, tf = eems_tf_normalization(eem_stack)
-    cc_list = []
-    for r in rank:
-        if decomposition_method == 'parafac':
-            _, factors = parafac(eem_stack, r, init=init)
-        elif decomposition_method == 'non_negative_parafac':
-            _, factors = non_negative_parafac(eem_stack, r, init=init)
-        I, J, K = factors
-        Ui, Si, Vi = np.linalg.svd(I, full_matrices=False)
-        Uj, Sj, Vj = np.linalg.svd(J, full_matrices=False)
-        Uk, Sk, Vk = np.linalg.svd(K, full_matrices=False)
-        inverted = [invert_sing(x) for x in (Si, Sj, Sk)]
-        part1 = kronecker_mat_ten([Ui.T, Uj.T, Uk.T], eem_stack)
-        part2 = kronecker_mat_ten(inverted, part1)
-        G = kronecker_mat_ten([Vi.T, Vj.T, Vk.T], part2)
-        for i in range(r):
-            G[:, :, i] = G[:, :, i] / G[i, i, i]
-        T = np.zeros((r, r, r))
-        for i in range(r):
-            T[i, i, i] = 1
-        cc_list.append(round(100 * (1 - ((G - T) ** 2).sum() / float(r)), 2))
-    if plot_cc:
-        plt.close()
-        plt.figure(figsize=(10, 5))
-        for i in range(len(rank)):
-            plt.plot(rank[i], cc_list[i], '-o')
-            plt.annotate(cc_list[i], (rank[i] + 0.2, cc_list[i]))
-        plt.xlabel("Rank")
-        plt.xticks(rank)
-        plt.ylabel("Core consistency")
-    return cc_list
-
-
-def explained_variance(eem_stack, rank=[1, 2, 3, 4, 5], decomposition_method='non_negative_parafac', init='svd',
-                       dataset_normalization=False, plot_ve=True):
-    if isinstance(rank, int):
-        rank = [rank]
-    if dataset_normalization:
-        eem_stack, tf = eems_tf_normalization(eem_stack)
-    ev_list = []
-    for r in rank:
-        if decomposition_method == 'parafac':
-            weight, factors = parafac(eem_stack, r, init=init)
-        elif decomposition_method == 'non_negative_parafac':
-            weight, factors = non_negative_parafac(eem_stack, r, init=init)
-        eem_stack_reconstruct = cp_to_tensor((weight, factors))
-        y_train = eem_stack.reshape(-1)
-        y_pred = eem_stack_reconstruct.reshape(-1)
-        ev_list.append(round(100 * (1 - np.var(y_pred - y_train) / np.var(y_train)), 2))
-    if plot_ve:
-        plt.close()
-        plt.figure(figsize=(10, 5))
-        for i in range(len(rank)):
-            plt.plot(rank[i], ev_list[i], '-o')
-            plt.annotate(ev_list[i], (rank[i] + 0.2, ev_list[i]))
-        plt.xlabel("Rank")
-        plt.xticks(rank)
-        plt.ylabel("Variance explained [%]")
-    return ev_list
-
-
-def parafac_pixel_error(eem_stack, em_range, ex_range, rank,
-                        decomposition_method='non_negative_parafac', init='svd',
-                        dataset_normalization=False):
-    if dataset_normalization:
-        eem_stack_nor, tf = eems_tf_normalization(eem_stack)
-        if decomposition_method == 'parafac':
-            weight, factors = parafac(eem_stack_nor, rank, init=init)
-        elif decomposition_method == 'non_negative_parafac':
-            weight, factors = non_negative_parafac(eem_stack_nor, rank, init=init)
-        eem_stack_reconstruct = cp_to_tensor((weight, factors)) * tf[:, np.newaxis, np.newaxis]
+        ex_var_sorted['component {i}'.format(i=i+1)] = ex1['component {i}'.format(i=o+1)]
+        em_var_sorted['component {i}'.format(i=i+1)] = em1['component {i}'.format(i=o+1)]
+    if ex1.shape[1] > ex2.shape[1]:
+        model1.ex_loadings = ex_var_sorted
+        model1.em_loadings = em_var_sorted
     else:
-        if decomposition_method == 'parafac':
-            weight, factors = parafac(eem_stack, rank, init=init)
-        elif decomposition_method == 'non_negative_parafac':
-            weight, factors = non_negative_parafac(eem_stack, rank, init=init)
-        eem_stack_reconstruct = cp_to_tensor((weight, factors))
-    res_abs = eem_stack - eem_stack_reconstruct
-    with np.errstate(divide='ignore', invalid='ignore'):
-        res_ratio = 100 * (eem_stack - eem_stack_reconstruct) / eem_stack
-    return res_abs, res_ratio
+        model2.ex_loadings = ex_var_sorted
+        model2.em_loadings = em_var_sorted
+    return model1, model2
 
 
-def parafac_sample_error(eem_stack, index, rank, error_type='MSE',
-                         decomposition_method='non_negative_parafac', init='svd',
-                         dataset_normalization=False, plot_error=True):
-    def ssim(eem1, eem2, k1=0.01, k2=0.03, l=255):
-        c1 = (k1 * l) ** 2
-        c2 = (k2 * l) ** 2
-        mu1 = np.mean(eem1)
-        mu2 = np.mean(eem2)
-        sigma1 = np.std(eem1)
-        sigma2 = np.std(eem2)
-        sigma12 = np.cov(eem1.flat, eem2.flat)[0, 1]
-        numerator = (2 * mu1 * mu2 + c1) * (2 * sigma12 + c2)
-        denominator = (mu1 ** 2 + mu2 ** 2 + c1) * (sigma1 ** 2 + sigma2 ** 2 + c2)
-        ssim_index = numerator / denominator
-        return ssim_index
-
-    err_list = []
-    if dataset_normalization:
-        eem_stack_nor, tf = eems_tf_normalization(eem_stack)
-
-        if decomposition_method == 'parafac':
-            weight, factors = parafac(eem_stack_nor, rank, init=init)
-        elif decomposition_method == 'non_negative_parafac':
-            weight, factors = non_negative_parafac(eem_stack_nor, rank, init=init)
-        eem_stack_reconstruct = cp_to_tensor((weight, factors))
-        eem_stack_reconstruct = eem_stack_reconstruct * tf[:, np.newaxis, np.newaxis]
-    else:
-        if decomposition_method == 'parafac':
-            weight, factors = parafac(eem_stack, rank, init=init)
-        elif decomposition_method == 'non_negative_parafac':
-            weight, factors = non_negative_parafac(eem_stack, rank, init=init)
-        eem_stack_reconstruct = cp_to_tensor((weight, factors))
-
-    for i in range(eem_stack.shape[0]):
-        if error_type == 'MSE':
-            err_list.append(np.mean(np.square(eem_stack[i] - eem_stack_reconstruct[i])))
-        if error_type == 'PSNR':
-            mse = np.mean(np.square(eem_stack[i] - eem_stack_reconstruct[i]))
-            err_list.append(20 * np.log10(eem_stack[i].max() / np.sqrt(mse)))
-        if error_type == 'SSIM':
-            err_list.append(ssim(matrix_dtype_to_uint8(eem_stack[i]), matrix_dtype_to_uint8(eem_stack_reconstruct[i])))
-    if plot_error:
-        plt.figure(figsize=(10, 5))
-        plt.plot(index, err_list)
-        plt.xlabel("Sample")
-        plt.xticks(rotation=90)
-        plt.ylabel(error_type)
-    return err_list
+# def explained_variance(eem_stack, rank=[1, 2, 3, 4, 5], decomposition_method='non_negative_parafac', init='svd',
+#                        dataset_normalization=False, plot_ve=True):
+#     if isinstance(rank, int):
+#         rank = [rank]
+#     if dataset_normalization:
+#         eem_stack, tf = eems_tf_normalization(eem_stack)
+#     ev_list = []
+#     for r in rank:
+#         if decomposition_method == 'parafac':
+#             weight, factors = parafac(eem_stack, r, init=init)
+#         elif decomposition_method == 'non_negative_parafac':
+#             weight, factors = non_negative_parafac(eem_stack, r, init=init)
+#         eem_stack_reconstruct = cp_to_tensor((weight, factors))
+#         y_train = eem_stack.reshape(-1)
+#         y_pred = eem_stack_reconstruct.reshape(-1)
+#         ev_list.append(round(100 * (1 - np.var(y_pred - y_train) / np.var(y_train)), 2))
+#     if plot_ve:
+#         plt.close()
+#         plt.figure(figsize=(10, 5))
+#         for i in range(len(rank)):
+#             plt.plot(rank[i], ev_list[i], '-o')
+#             plt.annotate(ev_list[i], (rank[i] + 0.2, ev_list[i]))
+#         plt.xlabel("Rank")
+#         plt.xticks(rank)
+#         plt.ylabel("Variance explained [%]")
+#     return ev_list
 
 
-def eem_stack_spliting(eem_stack, datlist, n_split=4, rule='random'):
-    idx_eems = [i for i in range(eem_stack.shape[0])]
-    split_set = []
-    datlist_set = []
-    if rule == 'random':
-        random.shuffle(idx_eems)
-        idx_splits = np.array_split(idx_eems, n_split)
-    if rule == 'chronological':
-        idx_splits = np.array_split(idx_eems, n_split)
-    for split in idx_splits:
-        split_set.append(np.array([eem_stack[i] for i in split]))
-        datlist_set.append([datlist[i] for i in split])
-    return split_set, datlist_set
+# def parafac_pixel_error(eem_stack, em_range, ex_range, rank,
+#                         decomposition_method='non_negative_parafac', init='svd',
+#                         dataset_normalization=False):
+#     if dataset_normalization:
+#         eem_stack_nor, tf = eems_tf_normalization(eem_stack)
+#         if decomposition_method == 'parafac':
+#             weight, factors = parafac(eem_stack_nor, rank, init=init)
+#         elif decomposition_method == 'non_negative_parafac':
+#             weight, factors = non_negative_parafac(eem_stack_nor, rank, init=init)
+#         eem_stack_reconstruct = cp_to_tensor((weight, factors)) * tf[:, np.newaxis, np.newaxis]
+#     else:
+#         if decomposition_method == 'parafac':
+#             weight, factors = parafac(eem_stack, rank, init=init)
+#         elif decomposition_method == 'non_negative_parafac':
+#             weight, factors = non_negative_parafac(eem_stack, rank, init=init)
+#         eem_stack_reconstruct = cp_to_tensor((weight, factors))
+#     res_abs = eem_stack - eem_stack_reconstruct
+#     with np.errstate(divide='ignore', invalid='ignore'):
+#         res_ratio = 100 * (eem_stack - eem_stack_reconstruct) / eem_stack
+#     return res_abs, res_ratio
 
 
-def split_validation(eem_stack, em_range, ex_range, rank, datlist, decomposition_method,
-                     n_split=4, combination_size='half', n_test='max', rule='random', index=[],
-                     criteria='TCC', plot_all_combos=True, dataset_normalization=False,
-                     init='svd'):
+# def parafac_sample_error(eem_stack, index, rank, error_type='MSE',
+#                          decomposition_method='non_negative_parafac', init='svd',
+#                          dataset_normalization=False, plot_error=True):
+#     def ssim(eem1, eem2, k1=0.01, k2=0.03, l=255):
+#         c1 = (k1 * l) ** 2
+#         c2 = (k2 * l) ** 2
+#         mu1 = np.mean(eem1)
+#         mu2 = np.mean(eem2)
+#         sigma1 = np.std(eem1)
+#         sigma2 = np.std(eem2)
+#         sigma12 = np.cov(eem1.flat, eem2.flat)[0, 1]
+#         numerator = (2 * mu1 * mu2 + c1) * (2 * sigma12 + c2)
+#         denominator = (mu1 ** 2 + mu2 ** 2 + c1) * (sigma1 ** 2 + sigma2 ** 2 + c2)
+#         ssim_index = numerator / denominator
+#         return ssim_index
+#
+#     err_list = []
+#     if dataset_normalization:
+#         eem_stack_nor, tf = eems_tf_normalization(eem_stack)
+#
+#         if decomposition_method == 'parafac':
+#             weight, factors = parafac(eem_stack_nor, rank, init=init)
+#         elif decomposition_method == 'non_negative_parafac':
+#             weight, factors = non_negative_parafac(eem_stack_nor, rank, init=init)
+#         eem_stack_reconstruct = cp_to_tensor((weight, factors))
+#         eem_stack_reconstruct = eem_stack_reconstruct * tf[:, np.newaxis, np.newaxis]
+#     else:
+#         if decomposition_method == 'parafac':
+#             weight, factors = parafac(eem_stack, rank, init=init)
+#         elif decomposition_method == 'non_negative_parafac':
+#             weight, factors = non_negative_parafac(eem_stack, rank, init=init)
+#         eem_stack_reconstruct = cp_to_tensor((weight, factors))
+#
+#     for i in range(eem_stack.shape[0]):
+#         if error_type == 'MSE':
+#             err_list.append(np.mean(np.square(eem_stack[i] - eem_stack_reconstruct[i])))
+#         if error_type == 'PSNR':
+#             mse = np.mean(np.square(eem_stack[i] - eem_stack_reconstruct[i]))
+#             err_list.append(20 * np.log10(eem_stack[i].max() / np.sqrt(mse)))
+#         if error_type == 'SSIM':
+#             err_list.append(ssim(matrix_dtype_to_uint8(eem_stack[i]), matrix_dtype_to_uint8(eem_stack_reconstruct[i])))
+#     if plot_error:
+#         plt.figure(figsize=(10, 5))
+#         plt.plot(index, err_list)
+#         plt.xlabel("Sample")
+#         plt.xticks(rotation=90)
+#         plt.ylabel(error_type)
+#     return err_list
+
+
+# def eem_stack_spliting(eem_stack, datlist, n_split=4, rule='random'):
+#     idx_eems = [i for i in range(eem_stack.shape[0])]
+#     split_set = []
+#     datlist_set = []
+#     if rule == 'random':
+#         random.shuffle(idx_eems)
+#         idx_splits = np.array_split(idx_eems, n_split)
+#     if rule == 'chronological':
+#         idx_splits = np.array_split(idx_eems, n_split)
+#     for split in idx_splits:
+#         split_set.append(np.array([eem_stack[i] for i in split]))
+#         datlist_set.append([datlist[i] for i in split])
+#     return split_set, datlist_set
+
+
+class SplitValidation:
+    """
+    Conduct PARAFAC model validation by evaluating the consistency of PARAFAC models established on EEM sub-datasets.
+    """
+    def __init__(self, rank, n_split, combination_size, n_test, rule, similarity_metric='TCC', non_negativity=True,
+                 tf_normalization=True):
+        """
+        Parameters
+        ----------
+        rank: int
+            Number of components in PARAFAC.
+        n_split: int
+            Number of splits.
+        combination_size: int or str, {int, 'half'}
+            The number of splits assembled into one combination. If 'half' is passed, each combination will include
+            half of the splits (i.e., the split-half validation).
+        n_test: int or str, {int, 'max'}
+            The number of tests conducted. If 'max' is passed, all possible combination will be tested. Otherwise, a
+            specified number of combinations will be randomly selected for testing.
+        rule: str, {'random', 'sequential'}
+            Whether to split the EEM dataset randomly. If 'sequential' is passed, the dataset will be split according
+            to index order.
+        non_negativity: bool
+            Whether to apply non-negativity constraint in PARAFAC.
+        tf_normalization: bool
+            Whether to normalize the EEM by total fluorescence in PARAFAC.
+        """
+        # ---------------Parameters-------------------
+        self.rank = rank
+        self.n_split = n_split
+        self.combination_size = combination_size
+        self.n_test = n_test
+        self.rule = rule
+        self.similarity_metric = similarity_metric
+        self.non_negativity = non_negativity
+        self.tf_normalization = tf_normalization
+
+        # ----------------Attributes------------------
+        self.eem_subsets = None
+
+    def run(self, eem_dataset: EEMDataset):
+        split_set = eem_dataset.splitting(n_split=self.n_split, rule=self.rule)
+        if self.combination_size == 'half':
+            cs = int(self.n_split) / 2
+        else:
+            cs = int(self.combination_size)
+        combos = []
+        combo_labels = []
+        for i, j in zip(itertools.combinations([i for i in range(self.n_split)], int(cs * 2)),
+                        itertools.combinations(list(string.ascii_uppercase)[0:self.n_split], int(cs * 2))):
+            elements = list(itertools.combinations(i, int(cs)))
+            codes = list(itertools.combinations(j, int(cs)))
+            for k in range(int(len(elements) / 2)):
+                combos.append([elements[k], elements[-1 - k]])
+                combo_labels.append([''.join(codes[k]), ''.join(codes[-1 - k])])
+        if self.n_test == 'max':
+            n_t = len(combos)
+        elif isinstance(self.n_test, int):
+            if self.n_test > len(combos):
+                n_t = len(combos)
+            else:
+                n_t = self.n_test
+        idx = random.sample(range(len(combos)), n_t)
+        test_count = 0
+        sims = {}
+        models = []
+        while test_count < n_t:
+            c1 = combos[idx[test_count]][0]
+            c2 = combos[idx[test_count]][1]
+            label = combo_labels[idx[test_count]]
+            eem_dataset_c1 = combine_eem_datasets([split_set[i] for i in c1])
+            eem_dataset_c2 = combine_eem_datasets([split_set[i] for i in c2])
+            model_c1 = PARAFAC(rank=self.rank, non_negativity=self.non_negativity,
+                               tf_normalization=self.tf_normalization)
+            model_c1.establish(eem_dataset_c1)
+            model_c2 = PARAFAC(rank=self.rank, non_negativity=self.non_negativity,
+                               tf_normalization=self.tf_normalization)
+            model_c2.establish(eem_dataset_c2)
+
+            if test_count > 0:
+                _, matched_index_prev, _, _ = match_parafac_components(models[test_count - 1][0][1],
+                                                                       models[test_count - 1][0][2], exl1_df, eml1_df,
+                                                                       similarity_metric=criteria,
+                                                                       wavelength_alignment=False, criteria='mean')
+                order = [o[1] for o in matched_index_prev]
+                exl1_df = pd.DataFrame(
+                    {'component {r}'.format(r=i + 1): exl1_df.iloc[:, order[i]] for i in range(rank)})
+                eml1_df = pd.DataFrame(
+                    {'component {r}'.format(r=i + 1): eml1_df.iloc[:, order[i]] for i in range(rank)})
+                score1_df = pd.DataFrame(
+                    {'component {r}'.format(r=i + 1): score1_df.iloc[:, order[i]] for i in range(rank)})
+
+            m_sim, matched_index, max_sim, _ = match_parafac_components(exl1_df, eml1_df, exl2_df, eml2_df,
+                                                                        similarity_metric=criteria,
+                                                                        wavelength_alignment=False, criteria='mean')
+            for l in matched_index:
+                if l[0] != l[1]:
+                    warnings.warn('Component {c1} of model {m1} does not match with '
+                                  'component {c1} of model {m2}, which is replaced by Component {c2} of model {m2}'
+                                  .format(c1=l[0] + 1, c2=l[1] + 1, m1=label[0], m2=label[1]))
+
+            order = [o[1] for o in matched_index]
+            exl2_df = pd.DataFrame({'component {r}'.format(r=i + 1): exl2_df.iloc[:, order[i]] for i in range(rank)})
+            eml2_df = pd.DataFrame({'component {r}'.format(r=i + 1): eml2_df.iloc[:, order[i]] for i in range(rank)})
+            score2_df = pd.DataFrame(
+                {'component {r}'.format(r=i + 1): score2_df.iloc[:, order[i]] for i in range(rank)})
+            models.append([[score1_df, exl1_df, eml1_df, label[0]], [score2_df, exl2_df, eml2_df, label[1]]])
+            sims['test {n}: {l1} vs. {l2}'.format(n=test_count + 1, l1=label[0], l2=label[1])] = max_sim
+            test_count += 1
+        sims_df = pd.DataFrame(sims, index=['component {c}'.format(c=c + 1) for c in range(rank)])
+
+
+def split_validation_interact(eem_stack, em_range, ex_range, rank, datlist, decomposition_method,
+                              n_split=4, combination_size='half', n_test='max', rule='random', index=[],
+                              criteria='TCC', plot_all_combos=True, dataset_normalization=False,
+                              init='svd'):
     split_set, _ = eem_stack_spliting(eem_stack, datlist, n_split=n_split, rule=rule)
     if combination_size == 'half':
         cs = int(n_split) / 2
@@ -1442,8 +1483,8 @@ def split_validation(eem_stack, em_range, ex_range, rank, datlist, decomposition
         if test_count > 0:
             _, matched_index_prev, _, _ = match_parafac_components(models[test_count - 1][0][1],
                                                                    models[test_count - 1][0][2], exl1_df, eml1_df,
-                                                                   criteria=criteria,
-                                                                   wavelength_synchronization=False, mode='mean')
+                                                                   similarity_metric=criteria,
+                                                                   wavelength_alignment=False, criteria='mean')
             order = [o[1] for o in matched_index_prev]
             exl1_df = pd.DataFrame({'component {r}'.format(r=i + 1): exl1_df.iloc[:, order[i]] for i in range(rank)})
             eml1_df = pd.DataFrame({'component {r}'.format(r=i + 1): eml1_df.iloc[:, order[i]] for i in range(rank)})
@@ -1451,8 +1492,8 @@ def split_validation(eem_stack, em_range, ex_range, rank, datlist, decomposition
                 {'component {r}'.format(r=i + 1): score1_df.iloc[:, order[i]] for i in range(rank)})
 
         m_sim, matched_index, max_sim, _ = match_parafac_components(exl1_df, eml1_df, exl2_df, eml2_df,
-                                                                    criteria=criteria,
-                                                                    wavelength_synchronization=False, mode='mean')
+                                                                    similarity_metric=criteria,
+                                                                    wavelength_alignment=False, criteria='mean')
         for l in matched_index:
             if l[0] != l[1]:
                 warnings.warn('Component {c1} of model {m1} does not match with '
@@ -1510,26 +1551,26 @@ def decomposition_reconstruction_interact(I, J, K, intensity, em_range, ex_range
             sample_r += I[idx, r] * component
         # reconstruction_error = np.linalg.norm(sample_r - eem_stack[idx])
         if plot:
-            plot_eem(sample_r, em_range, ex_range, autoscale=False, cmin=crange[0], cmax=crange[1], figure_size=(8, 8),
+            plot_eem(sample_r, em_range, ex_range, auto_intensity_range=False, vmin=crange[0], vmax=crange[1], figure_size=(8, 8),
                      title='Accumulate to component {rank}'.format(rank=r + 1))
     if rmse:
         error = np.sqrt(np.mean((sample_r - intensity) ** 2))
         # print("MSE of the final reconstructed EEM: ", error)
     if plot:
-        plot_eem(intensity, em_range, ex_range, autoscale=False, cmin=crange[0], cmax=crange[1],
+        plot_eem(intensity, em_range, ex_range, auto_intensity_range=False, vmin=crange[0], vmax=crange[1],
                  title='Original footprint')
-        plot_eem(intensity - sample_r, em_range, ex_range, autoscale=False, cmin=crange[0], cmax=crange[1],
+        plot_eem(intensity - sample_r, em_range, ex_range, auto_intensity_range=False, vmin=crange[0], vmax=crange[1],
                  title='Residuals')
         with np.errstate(divide='ignore', invalid='ignore'):
             ratio = np.divide(intensity - sample_r, intensity)
         ratio[ratio == np.inf] = np.nan
-        plot_eem(ratio, em_range, ex_range, autoscale=False, cmin=crange[0], cmax=crange[1], title='Error [%]')
+        plot_eem(ratio, em_range, ex_range, auto_intensity_range=False, vmin=crange[0], vmax=crange[1], title='Error [%]')
     return sample_r, error
 
 
-def export_parafac(filepath, score_df, exl_df, eml_df, name, creator, date, email='', doi='', reference='', unit='',
-                   toolbox='', fluorometer='', nSample='', decomposition_method='', validation='',
-                   dataset_calibration='', preprocess='', sources='', description=''):
+def export_parafac_interact(filepath, score_df, exl_df, eml_df, name, creator, date, email='', doi='', reference='', unit='',
+                            toolbox='', fluorometer='', nSample='', decomposition_method='', validation='',
+                            dataset_calibration='', preprocess='', sources='', description=''):
     info_dict = {'name': name, 'creator': creator, 'email': email, 'doi': doi, 'reference': reference,
                  'unit': unit, 'toolbox': toolbox, 'date': date, 'fluorometer': fluorometer, 'nSample': nSample,
                  'dateset_calibration': dataset_calibration, 'preprocess': preprocess,
