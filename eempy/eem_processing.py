@@ -1159,7 +1159,7 @@ def match_parafac_components(model1: PARAFAC, model2: PARAFAC, m_sim):
         The sorted PARAFAC model 2.
     """
     ex1, em1, ex2, em2 = (model1.ex_loadings, model1.em_loadings, model2.ex_loadings, model2.em_loadings)
-    if ex1.shape[1] > ex2.shape[1]:
+    if ex1.shape[1] >= ex2.shape[1]:
         ex_ref, em_ref = (ex2, em2)
         ex_var, em_var = (ex1, ex1)
         m_sim = m_sim.to_numpy()
@@ -1185,7 +1185,7 @@ def match_parafac_components(model1: PARAFAC, model2: PARAFAC, m_sim):
     for i, o in enumerate(order):
         ex_var_sorted['component {i}'.format(i=i+1)] = ex1['component {i}'.format(i=o+1)]
         em_var_sorted['component {i}'.format(i=i+1)] = em1['component {i}'.format(i=o+1)]
-    if ex1.shape[1] > ex2.shape[1]:
+    if ex1.shape[1] >= ex2.shape[1]:
         model1.ex_loadings = ex_var_sorted
         model1.em_loadings = em_var_sorted
     else:
@@ -1348,6 +1348,9 @@ class SplitValidation:
 
         # ----------------Attributes------------------
         self.eem_subsets = None
+        self.subset_specific_models = None
+        self.similarities_ex = None
+        self.similarities_em = None
 
     def run(self, eem_dataset: EEMDataset):
         split_set = eem_dataset.splitting(n_split=self.n_split, rule=self.rule)
@@ -1372,10 +1375,12 @@ class SplitValidation:
             else:
                 n_t = self.n_test
         idx = random.sample(range(len(combos)), n_t)
-        test_count = 0
-        sims = {}
-        models = []
-        while test_count < n_t:
+        model_complete = PARAFAC(rank=self.rank, non_negativity=self.non_negativity,
+                                 tf_normalization=self.tf_normalization)
+        model_complete.establish(eem_dataset=eem_dataset)
+        sims_ex, sims_em, models, subsets = ({}, {}, {}, {})
+
+        for test_count in range(n_t):
             c1 = combos[idx[test_count]][0]
             c2 = combos[idx[test_count]][1]
             label = combo_labels[idx[test_count]]
@@ -1388,38 +1393,26 @@ class SplitValidation:
                                tf_normalization=self.tf_normalization)
             model_c2.establish(eem_dataset_c2)
 
-            if test_count > 0:
-                _, matched_index_prev, _, _ = match_parafac_components(models[test_count - 1][0][1],
-                                                                       models[test_count - 1][0][2], exl1_df, eml1_df,
-                                                                       similarity_metric=criteria,
-                                                                       wavelength_alignment=False, criteria='mean')
-                order = [o[1] for o in matched_index_prev]
-                exl1_df = pd.DataFrame(
-                    {'component {r}'.format(r=i + 1): exl1_df.iloc[:, order[i]] for i in range(rank)})
-                eml1_df = pd.DataFrame(
-                    {'component {r}'.format(r=i + 1): eml1_df.iloc[:, order[i]] for i in range(rank)})
-                score1_df = pd.DataFrame(
-                    {'component {r}'.format(r=i + 1): score1_df.iloc[:, order[i]] for i in range(rank)})
+            m_pair = []
+            for m in (model_c1, model_c2):
+                m_sim_ex, m_sim_em = parafac_components_similarity(m, model_complete)
+                m_sorted, _ = match_parafac_components(m, model_complete, m_sim_ex+m_sim_em)
+                m_pair.append(m_sorted)
 
-            m_sim, matched_index, max_sim, _ = match_parafac_components(exl1_df, eml1_df, exl2_df, eml2_df,
-                                                                        similarity_metric=criteria,
-                                                                        wavelength_alignment=False, criteria='mean')
-            for l in matched_index:
-                if l[0] != l[1]:
-                    warnings.warn('Component {c1} of model {m1} does not match with '
-                                  'component {c1} of model {m2}, which is replaced by Component {c2} of model {m2}'
-                                  .format(c1=l[0] + 1, c2=l[1] + 1, m1=label[0], m2=label[1]))
+            key = '{l1} vs. {l2}'.format(l1=label[0], l2=label[1])
+            models[key] = m_pair
+            sim_ex_all, sim_em_all = parafac_components_similarity(model_c1, model_c2)
+            sims_ex[key], sims_em[key] = sim_ex_all.to_numpy().diagonal(), sim_em_all.to_numpy().diagonal()
+            subsets[key] = [eem_dataset_c1, eem_dataset_c2]
 
-            order = [o[1] for o in matched_index]
-            exl2_df = pd.DataFrame({'component {r}'.format(r=i + 1): exl2_df.iloc[:, order[i]] for i in range(rank)})
-            eml2_df = pd.DataFrame({'component {r}'.format(r=i + 1): eml2_df.iloc[:, order[i]] for i in range(rank)})
-            score2_df = pd.DataFrame(
-                {'component {r}'.format(r=i + 1): score2_df.iloc[:, order[i]] for i in range(rank)})
-            models.append([[score1_df, exl1_df, eml1_df, label[0]], [score2_df, exl2_df, eml2_df, label[1]]])
-            sims['test {n}: {l1} vs. {l2}'.format(n=test_count + 1, l1=label[0], l2=label[1])] = max_sim
-            test_count += 1
-        sims_df = pd.DataFrame(sims, index=['component {c}'.format(c=c + 1) for c in range(rank)])
+        self.eem_subsets = subsets
+        self.subset_specific_models = models
+        self.similarities_ex = pd.DataFrame(sims_ex)
+        self.similarities_em = pd.DataFrame(sims_em)
+        return self
 
+    def plot(self):
+        return
 
 def split_validation_interact(eem_stack, em_range, ex_range, rank, datlist, decomposition_method,
                               n_split=4, combination_size='half', n_test='max', rule='random', index=[],

@@ -4,7 +4,7 @@ Author: Yongmin Hu (yongminhu@outlook.com)
 Last update: 2024-01-15
 """
 
-from utils import *
+from eempy.utils import *
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 import numpy as np
@@ -16,7 +16,7 @@ from matplotlib.colors import LogNorm, Normalize
 
 
 def plot_eem(intensity, em_range, ex_range, auto_intensity_range=True, scale_type='linear', vmin=0, vmax=10000,
-             n_cbar_ticks=5, cbar=True, cmap='jet', figure_size=(7, 7), label_font_size=20, title=None,
+             n_cbar_ticks=5, cbar=True, cmap='jet', figure_size=(7, 7), label_font_size=20,
              cbar_label="Intensity (a.u.)", cbar_font_size=16, aspect='equal', rotate=False):
     """
     plot EEM or EEM-like data.
@@ -45,8 +45,6 @@ def plot_eem(intensity, em_range, ex_range, auto_intensity_range=True, scale_typ
         The figure size.
     label_font_size: int
         The fontsize of the x and y axes labels.
-    title: str
-        The figure title.
     cbar: bool
         Whether to plot the colorscale bar.
     cbar_label: str
@@ -57,8 +55,13 @@ def plot_eem(intensity, em_range, ex_range, auto_intensity_range=True, scale_typ
         The aspect ratio.
     rotate: bool
         Whether to rotate the EEM, so that the x-axis is excitation and y-axis is emission.
+
+    Returns
+    ----------------
+    fig：matplotlib figure
+    ax: array of matplotlib axes
     """
-    plt.figure(figsize=figure_size)
+    fig, ax = plt.subplots(figsize=figure_size)
     font = {'size': label_font_size}
     plt.rc('font', **font)
     # reset the axis direction
@@ -70,40 +73,38 @@ def plot_eem(intensity, em_range, ex_range, auto_intensity_range=True, scale_typ
         t_cbar = np.linspace(vmin, vmax, n_cbar_ticks)
     if not rotate:
         extent = (em_range.min(), em_range.max(), ex_range.min(), ex_range.max())
-        plt.xlabel('Emission wavelength [nm]')
-        plt.ylabel('Excitation wavelength [nm]')
-        plt.ylim([ex_range[0], ex_range[-1]])
+        ax.set_xlabel('Emission wavelength [nm]')
+        ax.set_ylabel('Excitation wavelength [nm]')
+        ax.set_ylim([ex_range[0], ex_range[-1]])
         if not auto_intensity_range:
             if scale_type == 'log':
-                plt.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, origin='upper', aspect=aspect,
+                im = ax.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, origin='upper', aspect=aspect,
                            norm=c_norm)
             else:
-                plt.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, vmin=vmin, vmax=vmax,
+                im = ax.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, vmin=vmin, vmax=vmax,
                            origin='upper', aspect=aspect, norm=c_norm)
         else:
-            plt.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, origin='upper', aspect=aspect)
+            im = ax.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, origin='upper', aspect=aspect)
     if rotate:
         extent = (ex_range.min(), ex_range.max(), em_range.min(), em_range.max())
-        plt.ylabel('Emission wavelength [nm]')
-        plt.xlabel('Excitation wavelength [nm]')
-        plt.xlim([ex_range[0], ex_range[-1]])
+        ax.set_ylabel('Emission wavelength [nm]')
+        ax.set_xlabel('Excitation wavelength [nm]')
+        ax.set_xlim([ex_range[0], ex_range[-1]])
         if not auto_intensity_range:
             if scale_type == 'log':
-                plt.imshow(np.flipud(np.fliplr(intensity.T)), cmap=cmap, interpolation='none', extent=extent,
+                im = ax.imshow(np.flipud(np.fliplr(intensity.T)), cmap=cmap, interpolation='none', extent=extent,
                            origin='upper', aspect=aspect, norm=c_norm)
             else:
-                plt.imshow(np.flipud(np.fliplr(intensity.T)), cmap=cmap, interpolation='none', extent=extent, vmin=vmin,
+                im = ax.imshow(np.flipud(np.fliplr(intensity.T)), cmap=cmap, interpolation='none', extent=extent, vmin=vmin,
                            vmax=vmax, origin='upper', aspect=aspect, norm=c_norm)
         else:
-            plt.imshow(np.flipud(np.fliplr(intensity.T)), cmap=cmap, interpolation='none', extent=extent,
+            im = ax.imshow(np.flipud(np.fliplr(intensity.T)), cmap=cmap, interpolation='none', extent=extent,
                        origin='upper', aspect=aspect)
-    if title:
-        plt.title(title)
     if cbar:
-        cbar = plt.colorbar(ticks=t_cbar, fraction=0.03, pad=0.04)
+        cbar = fig.colorbar(im, ax=ax, ticks=t_cbar, fraction=0.03, pad=0.04)
         cbar.set_label(cbar_label, labelpad=1.5)
         cbar.ax.tick_params(labelsize=cbar_font_size)
-    return
+    return fig, ax
 
 
 def plot_abs(absorbance, ex_range, xmax=0.05, ex_range_display=(200, 800)):
@@ -112,42 +113,28 @@ def plot_abs(absorbance, ex_range, xmax=0.05, ex_range_display=(200, 800)):
 
     Parameters
     ----------------
+    absorbance: np.ndarray (1d)
+        The absorbance.
+    ex_range: np.ndarray (1d)
+        The excitation wavelengths.
     xmax: float (0~1)
-        the maximum absorbance diplayed
+        The maximum absorbance displayed.
     ex_range_display: tuple with two elements
-        the range of excitation wavelengths displayed
+        The range of excitation wavelengths displayed.
+
+    Returns
+    ----------------
+    fig：matplotlib figure
+    ax: array of matplotlib axes
     """
-    plt.figure(figsize=(6.5, 2))
-    font = {'size': 18}
-    plt.rc('font', **font)
-    plt.plot(ex_range, absorbance)
-    plt.xlim(ex_range_display)
-    plt.ylim([0, xmax])
-    plt.xlabel('Wavelength [nm]')
-    plt.ylabel('Absorbance [a.u.]')
-
-
-# def saveplot(datdir, datname, autoscale, cmax_fig, cmin_fig, savedir, savename):
-#     """
-#     save the EEM plot
-#     """
-#     datpath = datdir + '/' + datname
-#     savepath = savedir + '/' + savename
-#     intensity, em_range, ex_range = read_eem(datpath)
-#     plt = plot_eem(intensity, em_range, ex_range, autoscale, cmax_fig, cmin_fig)
-#     plt.savefig(savepath, dpi=600)
-
-
-# def plot_abs_at_wavelength(abs_stack, ex_range, ex, plot=True, timestamp=False):
-#     Ex_ref = dichotomy_search(ex_range, ex)
-#     y = abs_stack[:, Ex_ref]
-#     x = np.array(range(1, abs_stack.shape[0] + 1))
-#     if plot:
-#         if timestamp:
-#             x = timestamp
-#         plt.figure(figsize=(15, 5))
-#         plt.scatter(x, y)
-#         plt.xlim([x[0] - timedelta(hours=1), x[-1] + timedelta(hours=1)])
+    fig, ax = plt.subplots(figsize=(6.5, 2))
+    p = ax.plot(ex_range, absorbance)
+    ax.set_xlim(ex_range_display)
+    ax.set_ylim([0, xmax])
+    ax.set_xlabel('Wavelength [nm]', fontsize=14)
+    ax.set_ylabel('Absorbance [a.u.]', fontsize=14)
+    ax.tick_params(labelsize=14)
+    return fig, ax
 
 
 def plot_fi(fi: pd.DataFrame, q: float = 0.05):
@@ -162,27 +149,31 @@ def plot_fi(fi: pd.DataFrame, q: float = 0.05):
     q: float
         Where to plot the reference lines. By default, this is set to be 0.05 - two horizontal lines will be plotted at
         95% and 105% of the average fluorescence intensity.
+
+    Returns
+    ----------
+    fig：matplotlib figure
+    ax: array of matplotlib axes
     """
+    index = fi.index
     fi = fi.to_numpy()
-    index = fi.index()
-    rel_std = stats.variation(fi)
+    rel_std = stats.variation(fi)[0]
     std = np.std(fi)
     fi_mean = fi.mean()
     ql = abs(q * fi_mean)
-    print("Mean: {mean}".format(mean=fi_mean))
-    print("Standard deviation: {std}".format(std=std))
-    print("Relative Standard deviation: {rel_std}".format(rel_std=rel_std))
-    plt.figure(figsize=(15, 5))
-    plt.plot(index, fi, markersize=13)
-    m0 = plt.axhline(fi_mean, linestyle='--', label='mean', c='black')
-    mq_u = plt.axhline(fi_mean + ql, linestyle='--', label='+3%', c='red')
-    mq_l = plt.axhline(fi_mean - ql, linestyle='--', label='-3%', c='blue')
+    fig, ax = plt.subplots(figsize=(15, 5))
+    p = ax.plot(index, fi, markersize=13)
+    m0 = ax.axhline(fi_mean, linestyle='--', label='mean', c='black')
+    mq_u = ax.axhline(fi_mean + ql, linestyle='--', label='+3%', c='red')
+    mq_l = ax.axhline(fi_mean - ql, linestyle='--', label='-3%', c='blue')
     if max(fi) > fi_mean + ql or min(fi) < fi_mean - ql:
-        plt.ylim(min(fi) - ql, max(fi) + ql)
-    plt.legend([m0, mq_u, mq_l], ['mean', '+3%', '-3%'], prop={'size': 10})
-    plt.xticks(rotation=90)
-    plt.show()
-    return
+        ax.set_ylim(min(fi) - ql, max(fi) + ql)
+    ax.legend([m0, mq_u, mq_l], ['mean', '+3%', '-3%'], prop={'size': 10})
+    ax.tick_params(axis='x', rotation=90)
+    ax.text(0.5, 1.2, f"Mean: {fi_mean:.4f}", ha='center', transform=ax.transAxes)
+    ax.text(0.5, 1.125, f"Standard deviation: {std:.4f}", ha='center', transform=ax.transAxes)
+    ax.text(0.5, 1.05, f"Relative Standard deviation: {rel_std:.4f}", ha='center', transform=ax.transAxes)
+    return fig, ax
 
 
 def plot_fi_correlation(fi: pd.DataFrame, ref):
@@ -196,27 +187,62 @@ def plot_fi_correlation(fi: pd.DataFrame, ref):
         passed to this parameter.
     ref: np.ndarray (1d)
         The reference value. It should be an 1d numpy array of shape (n,), where n is the number of samples.
+
+    Returns
+    ----------
+    fig：matplotlib figure
+    ax: array of matplotlib axes
     """
-    fi = fi.to_numpy()
+    fi_2d = fi.to_numpy()
+    fi = fi_2d.reshape(-1)
     x = ref
-    x_reshaped = x.reshape(ref.shape[0], 1)
-    # x is the reference. y is the fluorescence.
-    reg = LinearRegression().fit(x_reshaped, fi)
-    w = reg.coef_
-    b = reg.intercept_
-    r2 = reg.score(x_reshaped, fi)
-    pearson_coef, p_value_p = stats.pearsonr(x, fi)
-    spearman_coef, p_value_s = stats.spearmanr(x, fi)
-    print('Linear regression model: y={w}x+{b}'.format(w=w[0], b=b))
-    print('Linear regression R2:', '{r2}'.format(r2=r2))
-    print('Pearson coefficient: {coef_p} (p-value = {p_p})'.format(coef_p=pearson_coef, p_p=p_value_p))
-    print('Spearman coefficient: {coef_s} (p-value = {p_s})'.format(coef_s=spearman_coef, p_s=p_value_s))
-    plt.figure(figsize=(6, 3))
-    plt.scatter(x, fi)
+    x_2d = x.reshape(ref.shape[0], 1)
+    reg = LinearRegression().fit(x_2d, fi_2d)
+    w = reg.coef_[0][0]
+    b = reg.intercept_[0]
+    r2 = reg.score(x_2d, fi)
+    coef_p, p_value_p = stats.pearsonr(x, fi)
+    coef_s, p_value_s = stats.spearmanr(x, fi)
+    fig, ax = plt.subplots(figsize=(6, 3))
+    ax.scatter(x, fi)
     p = np.array([x.min(), x.max()])
-    q = w[0] * p + b
-    plt.plot(p, q)
-    plt.xlabel('Reference', fontdict={"size": 14})
-    plt.ylabel('Fluorescence Intensity', fontdict={"size": 14})
-    plt.show()
-    return
+    q = w * p + b
+    ax.plot(p, q)
+    ax.set_xlabel('Reference', fontdict={"size": 14})
+    ax.set_ylabel('Fluorescence Intensity', fontdict={"size": 14})
+    ax.tick_params(labelsize=14)
+    ax.text(0.5, 1.3, f"Linear regression model: y={w:.4f}" + f"x+{b:.4f}", ha='center', transform=ax.transAxes,
+            fontsize=12)
+    ax.text(0.5, 1.225, f"Linear regression R2:', '{r2:.4f}", ha='center', transform=ax.transAxes, fontsize=12)
+    ax.text(0.5, 1.15, f"Pearson coefficient: {coef_p:.4f} (p-value = {p_value_p:.4e})", ha='center',
+            transform=ax.transAxes, fontsize=12)
+    ax.text(0.5, 1.075, f"Spearman coefficient: {coef_s:.4f} (p-value = {p_value_s:.4e})", ha='center',
+            transform=ax.transAxes, fontsize=12)
+    return fig, ax
+
+
+def plot_loadings(model_dict: dict, colors):
+    r = 0
+    for model in model_dict.values():
+        r_new = model.score.shape[1]
+        if r_new > r:
+            r = r_new
+    fig, ax = plt.subplots(1, r, figsize=(10, 2), sharey='row')
+    fig.subplots_adjust(wspace=0, hspace=0)
+
+    for i, (model_label, model) in enumerate(model_dict.items()):
+        for j in range(r):
+            ax[j].plot(model.ex_loadings.index, model.ex_loadings.iloc[:, j], label=model_label+'-ex', c=colors[i])
+            ax[j].plot(model.em_loadings.index, model.em_loadings.iloc[:, j], label=model_label+'-em', c=colors[i])
+
+    for j in range(r):
+        ax[j].text(0.8, 0.85, 'C{i}'.format(i=j+1), transform=ax[i].transAxes, fontsize=18)
+
+    leg_ax = fig.add_subplot(111)
+    leg_ax.axis('off')
+    handles, labels = ax[0].get_legend_handles_labels()
+    leg_ax.legend(flip_legend_order(handles, 3), flip_legend_order(labels, 3), loc='upper center', bbox_to_anchor=(1.23, 0.88),
+                  fontsize=11, ncol=3)
+    fig.text(0.4, -0.15, 'Wavelength (nm)', fontsize=18)
+    fig.text(0.07, 0.35, 'Loadings', fontsize=18, rotation='vertical')
+    return fig, ax

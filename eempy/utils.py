@@ -4,6 +4,7 @@ Useful functions for EEM processing
 
 
 import numpy as np
+import itertools
 from scipy.spatial.distance import euclidean
 from datetime import datetime, timedelta
 
@@ -65,7 +66,7 @@ def dynamic_time_warping(x, y):
     for i in range(1, len(x)):
         for j in range(1, len(y)):
             cost_matrix[i, j] = euclidean([x[i]], [y[j]]) + min(cost_matrix[i - 1, j], cost_matrix[i, j - 1],
-                                                                cost_matrix[i - 1, j - 1])
+                                                                      cost_matrix[i - 1, j - 1])
     # Trace back the optimal path
     i, j = len(x) - 1, len(y) - 1
     path = [(i, j)]
@@ -83,3 +84,7 @@ def dynamic_time_warping(x, y):
     aligned_x = [x[i] for i, _ in path]
     aligned_y = [y[j] for _, j in path]
     return aligned_x, aligned_y
+
+
+def flip_legend_order(items, ncol):
+    return itertools.chain(*[items[i::ncol] for i in range(ncol)])
