@@ -27,6 +27,7 @@ from tensorly.decomposition import parafac, non_negative_parafac
 from tensorly.cp_tensor import cp_to_tensor
 from tlviz.model_evaluation import core_consistency
 from tlviz.outliers import compute_leverage
+from tlviz.factor_tools import permute_cp_tensor
 from IPython.display import display
 from pandas.plotting import register_matplotlib_converters
 from scipy.sparse.linalg import ArpackError
@@ -1072,16 +1073,16 @@ class PARAFAC:
         return summary
 
 
-def parafac_components_similarity(model1: PARAFAC, model2: PARAFAC, wavelength_alignment=False, dtw=False):
+def loadings_similarity(loadings1: pd.DataFrame, loadings2: pd.DataFrame, wavelength_alignment=False, dtw=False):
     """
-    Calculate the Tucker's congruence between the components of two PARAFAC models.
+    Calculate the Tucker's congruence between each pair of components of two loadings (of excitation or emission).
 
     Parameters
     ----------
-    model1: PARAFAC
-        The first PARAFAC model.
-    model2: PARAFAC
-        The second PARAFAC model
+    loadings1: pandas.DataFrame
+        The first loadings. Each column of the table corresponds to one component.
+    loadings2: pandas.DataFrame
+        The second loadings. Each column of the table corresponds to one component.
     wavelength_alignment: bool
         Align the ex/em ranges of the components. This is useful if the PARAFAC models have different ex/em wavelengths.
         Note that ex/em will be aligned according to the ex/em ranges with the lower intervals between the two PARAFAC
@@ -1092,53 +1093,102 @@ def parafac_components_similarity(model1: PARAFAC, model2: PARAFAC, wavelength_a
 
     Returns
     -------
-    m_sim_ex: pandas.DataFrame
-        The table of excitation loadings similarities.
-    m_sim_em: pandas.DataFrame
-        The table of emission loadings similarities.
+    m_sim: pandas.DataFrame
+        The table of loadings similarities between each pair of components.
     """
-    ex1, em1, ex2, em2 = (model1.ex_loadings, model1.em_loadings, model2.ex_loadings, model2.em_loadings)
-    ex_range1, em_range1, ex_range2, em_range2 = (model1.ex_range, model1.em_range, model2.ex_range, model2.em_range)
+    wl_range1, wl_range2 = (loadings1.index, loadings2.index)
     if wavelength_alignment:
-        em_interval1 = (em_range1.max() - em_range1.min()) / (em_range1.shape[0] - 1)
-        em_interval2 = (em_range2.max() - em_range2.min()) / (em_range2.shape[0] - 1)
-        ex_interval1 = (ex_range1.max() - ex_range1.min()) / (ex_range1.shape[0] - 1)
-        ex_interval2 = (ex_range2.max() - ex_range2.min()) / (ex_range2.shape[0] - 1)
-        if ex_interval2 > ex_interval1:
-            f_ex2 = interp1d(ex_range2, ex2.to_numpy(), axis=0)
-            ex2 = f_ex2(ex_range1)
-        elif ex_interval1 > ex_interval2:
-            f_ex1 = interp1d(ex_range1, ex1.to_numpy(), axis=0)
-            ex1 = f_ex1(ex_range2)
-        if em_interval2 > em_interval1:
-            f_em2 = interp1d(em_range2, em2.to_numpy(), axis=0)
-            em2 = f_em2(em_range1)
-        elif em_interval1 > em_interval2:
-            f_em1 = interp1d(em_range1, em1.to_numpy(), axis=0)
-            em1 = f_em1(em_range2)
+        wl_interval1 = (wl_range1.max() - wl_range1.min()) / (wl_range1.shape[0] - 1)
+        wl_interval2 = (wl_range2.max() - wl_range2.min()) / (wl_range2.shape[0] - 1)
+        if wl_interval2 > wl_interval1:
+            f2 = interp1d(wl_range2, loadings2.to_numpy(), axis=0)
+            loadings2 = f2(wl_range1)
+        elif wl_interval1 > wl_interval2:
+            f1 = interp1d(wl_range1, loadings1.to_numpy(), axis=0)
+            loadings1 = f1(wl_range2)
     else:
-        ex1, em1, ex2, em2 = (ex1.to_numpy(), em1.to_numpy(), ex2.to_numpy(), em2.to_numpy())
-    m_sim_ex = np.zeros([ex1.shape[1], ex2.shape[1]])
-    m_sim_em = np.zeros([em1.shape[1], em2.shape[1]])
-    for n2 in range(ex2.shape[1]):
-        for n1 in range(ex1.shape[1]):
+        loadings1, loadings2 = (loadings1.to_numpy(), loadings2.to_numpy())
+    m_sim = np.zeros([loadings1.shape[1], loadings2.shape[1]])
+    for n2 in range(loadings2.shape[1]):
+        for n1 in range(loadings1.shape[1]):
             if dtw:
-                ex1_aligned, ex2_aligned = dynamic_time_warping(ex1[:, n1], ex2[:, n2])
-                em1_aligned, em2_aligned = dynamic_time_warping(em1[:, n1], em2[:, n2])
+                ex1_aligned, ex2_aligned = dynamic_time_warping(loadings1[:, n1], loadings2[:, n2])
             else:
-                ex1_aligned, ex2_aligned = [ex1[:, n1], ex2[:, n2]]
-                em1_aligned, em2_aligned = [em1[:, n1], em2[:, n2]]
-            m_sim_ex[n1, n2] = stats.pearsonr(ex1_aligned, ex2_aligned)[0]
-            m_sim_em[n1, n2] = stats.pearsonr(em1_aligned, em2_aligned)[0]
-    m_sim_ex = pd.DataFrame(m_sim_ex, index=['model1 C{i}'.format(i=i+1) for i in range(ex1.shape[1])],
-                            columns=['model2 C{i}'.format(i=i+1) for i in range(ex2.shape[1])])
-    m_sim_em = pd.DataFrame(m_sim_em, index=['model1 C{i}'.format(i=i+1) for i in range(em1.shape[1])],
-                            columns=['model2 C{i}'.format(i=i+1) for i in range(em2.shape[1])])
-
-    return m_sim_ex, m_sim_em
+                ex1_aligned, ex2_aligned = [loadings1[:, n1], loadings2[:, n2]]
+            m_sim[n1, n2] = stats.pearsonr(ex1_aligned, ex2_aligned)[0]
+    m_sim = pd.DataFrame(m_sim, index=['model1 C{i}'.format(i=i+1) for i in range(loadings1.shape[1])],
+                         columns=['model2 C{i}'.format(i=i+1) for i in range(loadings2.shape[1])])
+    return m_sim
 
 
-def match_parafac_components(model1: PARAFAC, model2: PARAFAC, m_sim):
+def align_parafac_components(models_dict: dict, ex_ref: pd.DataFrame, em_ref: pd.DataFrame, wavelength_alignment=False):
+    """
+    Align the components of PARAFAC models according to given reference ex/em loadings so that similar components
+    are labelled by the same name.
+
+    Parameters
+    ----------
+    models_dict: dict
+        Dictionary of PARAFAC object. The models to be aligned.
+    ex_ref: pandas.DataFrame
+        Ex loadings of the reference
+    em_ref: pandas.DataFrame
+        Em loadings of the reference
+    wavelength_alignment: bool
+        Align the ex/em ranges of the components. This is useful if the PARAFAC models have different ex/em wavelengths.
+        Note that ex/em will be aligned according to the ex/em ranges with the lower intervals between the two PARAFAC
+        models.
+
+    Returns
+    -------
+    models_dict_new: dict
+        Dictionary of the aligned PARAFAC object.
+    """
+    component_labels_ref = ex_ref.columns
+    models_dict_new = {}
+    for model_label, model in models_dict.items():
+        m_sim_ex = loadings_similarity(model, ex_ref, wavelength_alignment=wavelength_alignment)
+        m_sim_em = loadings_similarity(model, em_ref, wavelength_alignment=wavelength_alignment)
+        m_sim = (m_sim_ex + m_sim_em)/2
+        ex_var, em_var = (model.ex_loadings, model.em_loadings)
+        matched_index = []
+        m_sim_copy = m_sim.copy()
+        if ex_var.shape[1] <= ex_ref.shape[1]:
+            for n_var in range(ex_var.shape[1]):
+                max_index = np.argmax(m_sim[n_var, :])
+                while max_index in matched_index:
+                    m_sim_copy[n_var, max_index] = 0
+                    max_index = np.argmax(m_sim_copy[n_var, :])
+                matched_index.append(max_index)
+            component_labels_var = [component_labels_ref[i] for i in matched_index]
+            permutation = get_indices_smallest_to_largest(matched_index)
+        else:
+            for n_ref in range(ex_ref.shape[1]):
+                max_index = np.argmax(m_sim[:, n_ref])
+                while max_index in matched_index:
+                    m_sim_copy[max_index, n_ref] = 0
+                    max_index = np.argmax(m_sim_copy[:, n_ref])
+                matched_index.append(max_index)
+            non_ordered_index = list(set([i for i in range(ex_var.shape[1])]) - set(matched_index))
+            permutation = matched_index + non_ordered_index
+            component_labels_ref_extended = component_labels_ref + ['O{i}'.format(i=i+1) for i in
+                                                                    range(len(non_ordered_index))]
+            component_labels_var = [0] * len(permutation)
+            for i, nc in enumerate(permutation):
+                component_labels_var[nc] = component_labels_ref_extended[i]
+        model.score.columns, model.ex_loadings.columns, model.em_loadings.columns, model.fmax.columns = (
+                [component_labels_var] * 4)
+        model.score = model.score.iloc[:, permutation]
+        model.ex_loadings = model.ex_loadings.iloc[:, permutation]
+        model.em_loadings = model.em_loadings.iloc[:, permutation]
+        model.fmax = model.fmax.iloc[:, permutation]
+        model.component_stack = model.component_stack[permutation, :, :]
+        model.cptensor = permute_cp_tensor(model.cptensor, permutation)
+        models_dict_new[model_label] = model
+        return models_dict_new
+
+
+def align_parafac_components(models_dict, model_ref, model1: PARAFAC, model2: PARAFAC, m_sim):
     """
     Sort the order of components of two PARAFAC models so that similar components are labelled by the same number.
 
@@ -1168,7 +1218,6 @@ def match_parafac_components(model1: PARAFAC, model2: PARAFAC, m_sim):
         ex_var, em_var = (ex2, em2)
         m_sim = m_sim.to_numpy().T
     matched_index = []
-    max_sim = []
     memory = []
     m_sim_copy = m_sim.copy()
     for n_ref in range(ex_ref.shape[1]):
@@ -1178,7 +1227,6 @@ def match_parafac_components(model1: PARAFAC, model2: PARAFAC, m_sim):
             max_index = np.argmax(m_sim_copy[:, n_ref])
         memory.append(max_index)
         matched_index.append((max_index, n_ref))
-        max_sim.append(m_sim[max_index, n_ref])
     non_ordered_idx = list(set([i for i in range(ex_var.shape[1])]) - set(memory))
     order = [o[0] for o in matched_index] + non_ordered_idx
     ex_var_sorted, em_var_sorted = (ex_var.copy(), em_var.copy())
@@ -1395,13 +1443,13 @@ class SplitValidation:
 
             m_pair = []
             for m in (model_c1, model_c2):
-                m_sim_ex, m_sim_em = parafac_components_similarity(m, model_complete)
-                m_sorted, _ = match_parafac_components(m, model_complete, m_sim_ex+m_sim_em)
+                m_sim_ex, m_sim_em = loadings_similarity(m, model_complete)
+                m_sorted, _ = align_parafac_components(m, model_complete, m_sim_ex + m_sim_em)
                 m_pair.append(m_sorted)
 
             key = '{l1} vs. {l2}'.format(l1=label[0], l2=label[1])
             models[key] = m_pair
-            sim_ex_all, sim_em_all = parafac_components_similarity(model_c1, model_c2)
+            sim_ex_all, sim_em_all = loadings_similarity(model_c1, model_c2)
             sims_ex[key], sims_em[key] = sim_ex_all.to_numpy().diagonal(), sim_em_all.to_numpy().diagonal()
             subsets[key] = [eem_dataset_c1, eem_dataset_c2]
 
@@ -1474,7 +1522,7 @@ def split_validation_interact(eem_stack, em_range, ex_range, rank, datlist, deco
                                                                          init=init, plot_fmax=False
                                                                          )
         if test_count > 0:
-            _, matched_index_prev, _, _ = match_parafac_components(models[test_count - 1][0][1],
+            _, matched_index_prev, _, _ = align_parafac_components(models[test_count - 1][0][1],
                                                                    models[test_count - 1][0][2], exl1_df, eml1_df,
                                                                    similarity_metric=criteria,
                                                                    wavelength_alignment=False, criteria='mean')
@@ -1484,7 +1532,7 @@ def split_validation_interact(eem_stack, em_range, ex_range, rank, datlist, deco
             score1_df = pd.DataFrame(
                 {'component {r}'.format(r=i + 1): score1_df.iloc[:, order[i]] for i in range(rank)})
 
-        m_sim, matched_index, max_sim, _ = match_parafac_components(exl1_df, eml1_df, exl2_df, eml2_df,
+        m_sim, matched_index, max_sim, _ = align_parafac_components(exl1_df, eml1_df, exl2_df, eml2_df,
                                                                     similarity_metric=criteria,
                                                                     wavelength_alignment=False, criteria='mean')
         for l in matched_index:

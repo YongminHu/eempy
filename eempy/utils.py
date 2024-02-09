@@ -88,3 +88,10 @@ def dynamic_time_warping(x, y):
 
 def flip_legend_order(items, ncol):
     return itertools.chain(*[items[i::ncol] for i in range(ncol)])
+
+
+def get_indices_smallest_to_largest(my_list):
+    indexed_list = [(value, index) for index, value in enumerate(my_list)]
+    sorted_list = sorted(indexed_list, key=lambda x: x[0])
+    indices = [index for _, index in sorted_list]
+    return indices
