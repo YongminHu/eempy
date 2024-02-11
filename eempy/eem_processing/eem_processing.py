@@ -4,9 +4,9 @@ Author: Yongmin Hu (yongmin.hu@eawag.ch, yongminhu@outlook.com)
 Last update: 2024-01-10
 """
 
-from read_data import *
-from plot import *
-from utils import *
+from eempy.read_data import *
+from eempy.plot import *
+from eempy.utils import *
 import scipy.stats as stats
 import random
 import pandas as pd

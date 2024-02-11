@@ -5,14 +5,13 @@ Last update: 2024-01-15
 """
 
 from eempy.utils import *
-from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats as stats
 import pandas as pd
 import math
 from sklearn.linear_model import LinearRegression
-from matplotlib.colors import LogNorm, Normalize, TABLEAU_COLORS
+from matplotlib.colors import LogNorm, TABLEAU_COLORS
 
 
 def plot_eem(intensity, em_range, ex_range, auto_intensity_range=True, scale_type='linear', vmin=0, vmax=10000,
@@ -85,7 +84,7 @@ def plot_eem(intensity, em_range, ex_range, auto_intensity_range=True, scale_typ
                            origin='upper', aspect=aspect, norm=c_norm)
         else:
             im = ax.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, origin='upper', aspect=aspect)
-    if rotate:
+    else:
         extent = (ex_range.min(), ex_range.max(), em_range.min(), em_range.max())
         ax.set_ylabel('Emission wavelength [nm]')
         ax.set_xlabel('Excitation wavelength [nm]')
@@ -197,7 +196,8 @@ def plot_fi_correlation(fi: pd.DataFrame, ref):
     fi = fi_2d.reshape(-1)
     x = ref
     x_2d = x.reshape(ref.shape[0], 1)
-    reg = LinearRegression().fit(x_2d, fi_2d)
+    reg = LinearRegression()
+    reg.fit(x_2d, fi_2d)
     w = reg.coef_[0][0]
     b = reg.intercept_[0]
     r2 = reg.score(x_2d, fi)

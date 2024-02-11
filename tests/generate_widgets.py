@@ -13,7 +13,7 @@ import pandas as pd
 from IPython.display import display
 from ipywidgets import Layout, Label, interactive
 from eempy.read_data import *
-from eempy.plot import plot_eem
+from eempy.plot import *
 from eempy.eem_processing import *
 from tensorly.decomposition import parafac, non_negative_parafac
 
@@ -974,7 +974,7 @@ class Widgets_stack_processing:
             self.button_pixel_statistics = ipywidgets.Button(description='Calculate')
 
         def pixel_statistics_interact(self, foo):
-            EEMstack_class_cw = EEMstack(self.eem_stack_cw[self.datlist_cw.index(self.range1.value):
+            EEMstack_class_cw = EEMDataset(self.eem_stack_cw[self.datlist_cw.index(self.range1.value):
                                                            self.datlist_cw.index(self.range2.value) + 1],
                                          self.em_range_cw, self.ex_range_cw)
             if self.property_pixel.value == 'Timeseries analysis':

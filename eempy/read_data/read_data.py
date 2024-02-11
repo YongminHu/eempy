@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 from typing import Union, Tuple, List
-from eem_processing import eem_interpolation, process_eem_stack
+from eempy.eem_processing import eem_interpolation, process_eem_stack
 from scipy.interpolate import interp1d
 
 
