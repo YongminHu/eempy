@@ -34,7 +34,7 @@ def read_eem(file_path: str, index_pos: Union[Tuple, List, None] = None, data_fo
     Returns
     -------
     intensity: np.ndarray (2d)
-        The EEM matrix.
+        The EEM.
     ex_range: np.ndarray (1d)
         The excitation wavelengths.
     em_range: np.ndarray (1d)
@@ -55,7 +55,7 @@ def read_eem(file_path: str, index_pos: Union[Tuple, List, None] = None, data_fo
             firstline = re.findall(r"\d+", firstline)
             header = np.array([list(map(int, firstline))])
 
-            # get index (the first column, in this case the Em wavelength) and the eem matrix
+            # get index (the first column, in this case the Em wavelength) and the EEM
             idx = []
             data = np.zeros(np.shape(header))
             line = of.readline()  # start reading from the second line
@@ -225,8 +225,8 @@ def read_abs(file_path, index_pos: Union[Tuple, List, None] = None, data_format=
                     value = float((line.split())[1])
                     data.append(value)
                 except IndexError:
+                    # if no absorbance at specific wavelength, set the value to nan
                     data.append(np.nan)
-                    # if empty, set the value to nan
                 line = of.readline()
             of.close()
             ex_range = np.flipud(idx)

@@ -5,7 +5,6 @@ Last update: 2024-01-10
 """
 
 from eempy.read_data import *
-from eempy.plot import *
 from eempy.utils import *
 import scipy.stats as stats
 import random
@@ -34,6 +33,27 @@ register_matplotlib_converters()
 
 
 def process_eem_stack(eem_stack, f, *args, **kwargs):
+    """
+    Apply an EEM processing function across all EEMs in an EEM stack.
+
+    Parameters
+    ----------
+    eem_stack: np.ndarray (3d)
+        The EEM stack.
+    f: callable
+        The EEM processing function to appy. Available functions include all functions named in the format of
+        "eem_xxx()".
+    **kwargs: f function parameters
+        The parameters of the EEM processing function.
+
+    Returns
+    -------
+    processed_eem_stack: np.ndarray
+        The processed EEM stack.
+    other_outputs: tuple, optional
+        If the EEM processing function have more than 1 returns, the rest of the returns will be stored in a tuple,
+        where each element is the return of EEM processing function applied on one EEM.
+    """
     processed_eem_stack = []
     other_outputs = []
     for i in range(eem_stack.shape[0]):
@@ -51,47 +71,135 @@ def process_eem_stack(eem_stack, f, *args, **kwargs):
         return np.array(processed_eem_stack)
 
 
-def eem_threshold_masking(intensity, ex_range, em_range, threshold, fill, mask_type='greater', plot=False,
-                          autoscale=True, cmin=0, cmax=4000):
+def eem_threshold_masking(intensity, threshold, fill=np.nan, mask_type='greater'):
+    """
+    Mask the fluorescence intensities above or below a certain threshold in an EEM.
+
+    Parameters
+    ----------
+    intensity: np.ndarray (2d)
+        The EEM.
+    threshold：
+        The intensity threshold.
+    fill: float
+        The value to fill the masked area
+    mask_type: str, {"greater","smaller"}
+        Whether to mask the intensities greater or smaller than the threshold.
+
+    Returns
+    -------
+    intensity_masked: np.ndarray
+        The masked EEM.
+    mask: np.ndarray
+        The mask matrix. +1: unmasked area; np.nan: masked area.
+    """
     mask = np.ones(intensity.shape)
     intensity_masked = intensity.astype(float)
-    extent = (em_range.min(), em_range.max(), ex_range.min(), ex_range.max())
     if mask_type == 'smaller':
         mask[np.where(intensity < threshold)] = np.nan
     if mask_type == 'greater':
         mask[np.where(intensity > threshold)] = np.nan
     intensity_masked[np.isnan(mask)] = fill
-    if plot:
-        plt.figure(figsize=(8, 8))
-        plot_eem(intensity_masked, em_range=em_range, ex_range=ex_range, auto_intensity_range=autoscale, vmin=cmin,
-                 vmax=cmax)
-        plt.imshow(mask, extent=extent, alpha=0.9, cmap="binary")
-        # plt.title('Relative STD<{threshold}'.format(threshold=threshold))
     return intensity_masked, mask
 
 
-def eem_region_masking(intensity, ex_range, em_range, em_min=250, em_max=810, ex_min=230, ex_max=500,
-                       fill_value='nan'):
-    masked = intensity.copy()
+def eem_region_masking(intensity, ex_range, em_range, ex_min=230, ex_max=500, em_min=250, em_max=810,
+                       fill='nan'):
+    """
+    Mask the fluorescence intensities in a specified rectangular region.
+
+    Parameters
+    ----------
+    intensity: np.ndarray (2d)
+        The EEM.
+    ex_range: np.ndarray (1d)
+        The excitation wavelengths.
+    em_range: np.ndarray (1d)
+        The emission wavelengths.
+    ex_min: float
+        The lower boundary of excitation wavelength of the masked area.
+    ex_max: float
+        The upper boundary of excitation wavelength of the masked area.
+    em_min: float
+        The lower boundary of emission wavelength of the masked area.
+    em_max: float
+        The upper boundary of emission wavelength of the masked area.
+    fill: float
+        The value to fill the masked area
+
+    Returns
+    -------
+    intensity_masked: np.ndarray
+        The masked EEM.
+    mask: np.ndarray
+        The mask matrix. +1: unmasked area; np.nan: masked area.
+    """
+    intensity_masked = intensity.copy()
     em_min_idx = dichotomy_search(em_range, em_min)
     em_max_idx = dichotomy_search(em_range, em_max)
     ex_min_idx = dichotomy_search(ex_range, ex_min)
     ex_max_idx = dichotomy_search(ex_range, ex_max)
     mask = np.ones(intensity.shape)
     mask[ex_range.shape[0] - ex_max_idx - 1:ex_range.shape[0] - ex_min_idx, em_min_idx:em_max_idx + 1] = 0
-    if fill_value == 'nan':
-        masked[mask == 0] = np.nan
-    elif fill_value == 'zero':
-        masked[mask == 0] = 0
-    return masked, mask
+    if fill == 'nan':
+        intensity_masked[mask == 0] = np.nan
+    elif fill == 'zero':
+        intensity_masked[mask == 0] = 0
+    return intensity_masked, mask
 
 
 def eem_gaussian_filter(intensity, sigma=1, truncate=3):
+    """
+    Apply Gaussian filtering to an EEM.
+
+    Parameters
+    ----------
+    intensity: np.ndarray (2d)
+        The EEM.
+    sigma: float
+        Standard deviation for Gaussian kernel.
+    truncate: float
+        Truncate the filter at this many standard deviations.
+
+    Returns
+    -------
+    intensity_filtered: np.ndarray
+        The filtered EEM.
+    """
     intensity_filtered = gaussian_filter(intensity, sigma=sigma, truncate=truncate)
     return intensity_filtered
 
 
 def eem_cutting(intensity, ex_range, em_range, em_min, em_max, ex_min, ex_max):
+    """
+    To cut the EEM.
+
+    Parameters
+    ----------
+    intensity: np.ndarray (2d)
+        The EEM.
+    ex_range: np.ndarray (1d)
+        The excitation wavelengths.
+    em_range: np.ndarray (1d)
+        The emission wavelengths.
+    ex_min: float
+        The lower boundary of excitation wavelength of the EEM after cutting.
+    ex_max: float
+        The upper boundary of excitation wavelength of the EEM after cutting.
+    em_min: float
+        The lower boundary of emission wavelength of the EEM after cutting.
+    em_max: float
+        The upper boundary of emission wavelength of the EEM after cutting.
+
+    Returns
+    -------
+    intensity_cut: np.ndarray
+        The cutted EEM.
+    ex_range_cut: np.ndarray
+        The cutted ex wavelengths.
+    em_range_cut:np.ndarray
+        The cutted em wavelengths.
+    """
     em_min_idx = dichotomy_search(em_range, em_min)
     em_max_idx = dichotomy_search(em_range, em_max)
     ex_min_idx = dichotomy_search(ex_range, ex_min)
@@ -102,46 +210,100 @@ def eem_cutting(intensity, ex_range, em_range, em_min, em_max, ex_min, ex_max):
     return intensity_cut, ex_range_cut, em_range_cut
 
 
-def eem_nan_imputing(intensity, ex_range, em_range, method: str = 'linear', fill_value: str = 'linear_ex',
-                     prior_mask=None):
+def eem_nan_imputing(intensity, ex_range, em_range, method: str = 'linear', fill_value: str = 'linear_ex'):
+    """
+    Impute the NaN values in an EEM.
+
+    Parameters
+    ----------
+    intensity: np.ndarray (2d)
+        The EEM.
+    ex_range: np.ndarray (1d)
+        The excitation wavelengths.
+    em_range: np.ndarray (1d)
+        The emission wavelengths.
+    method: str, {"linear", "cubic"}
+        The method for imputation.
+    fill_value: str, {"linear_ex", "linear_em"}
+        The method to extrapolate the NaN that are outside the non-NaN ranges.
+
+    Returns
+    -------
+    intensity_imputed: np.ndarray
+        The imputed EEM.
+    """
     x, y = np.meshgrid(em_range, ex_range[::-1])
     xx = x[~np.isnan(intensity)].flatten()
     yy = y[~np.isnan(intensity)].flatten()
     zz = intensity[~np.isnan(intensity)].flatten()
-    interpolated = None
+    intensity_imputed = None
     if isinstance(fill_value, float):
-        interpolated = griddata((xx, yy), zz, (x, y), method=method, fill_value=fill_value)
+        intensity_imputed = griddata((xx, yy), zz, (x, y), method=method, fill_value=fill_value)
     elif fill_value == 'linear_ex':
-        interpolated = griddata((xx, yy), zz, (x, y), method=method)
-        for i in range(interpolated.shape[1]):
-            col = interpolated[:, i]
+        intensity_imputed = griddata((xx, yy), zz, (x, y), method=method)
+        for i in range(intensity_imputed.shape[1]):
+            col = intensity_imputed[:, i]
             mask = np.isnan(col)
             if np.any(mask):
                 interp_func = interp1d(np.flatnonzero(~mask), col[~mask], kind='linear',
                                        fill_value='extrapolate')
                 col[mask] = interp_func(np.flatnonzero(mask))
-            interpolated[:, i] = col
+            intensity_imputed[:, i] = col
     elif fill_value == 'linear_em':
-        interpolated = griddata((xx, yy), zz, (x, y), method=method)
-        for j in range(interpolated.shape[0]):
-            col = interpolated[j, :]
+        intensity_imputed = griddata((xx, yy), zz, (x, y), method=method)
+        for j in range(intensity_imputed.shape[0]):
+            col = intensity_imputed[j, :]
             mask = np.isnan(col)
             if np.any(mask):
                 interp_func = interp1d(np.flatnonzero(~mask), col[~mask], kind='linear',
                                        fill_value='extrapolate')
                 col[mask] = interp_func(np.flatnonzero(mask))
-            interpolated[j, :] = col
-    if prior_mask is None:
-        return interpolated
-    else:
-        intensity_imputed = intensity.copy()
-        intensity_imputed[prior_mask == 0] = interpolated[prior_mask == 0]
-        return intensity_imputed
+            intensity_imputed[j, :] = col
+    return intensity_imputed
 
 
-def eem_raman_normalization(intensity, ex_range_blank=None, em_range_blank=None, blank=None, from_blank=False,
-                            integration_time=1, ex_lb=349, ex_ub=351, bandwidth_type='wavenumber', bandwidth=1800,
-                            rsu_standard=20000, manual_rsu=1):
+def eem_raman_normalization(intensity, blank=None, ex_range_blank=None, em_range_blank=None, from_blank=False,
+                            integration_time=1, ex_lb=349, ex_ub=351, bandwidth=1800, bandwidth_type='wavenumber',
+                            rsu_standard=20000, manual_rsu: Optional[float] = 1):
+    """
+    Normalize the EEM using the Raman scattering unit (RSU) given directly or calculated from a blank EEM.
+    RSU_final = RSU_raw / (RSU_standard * integration_time).
+
+    Parameters
+    ----------
+    intensity: np.ndarray (2d)
+        The EEM.
+    blank: np.ndarray (2d)
+        The blank EEM.
+    ex_range_blank: np.ndarray (1d)
+        The excitation wavelengths of blank.
+    em_range_blank: np.ndarray (1d)
+        The emission wavelengths of blank.
+    from_blank: bool
+        Whether to calculate the RSU from a blank. If False, manual_rsu will be used.
+    integration_time: float
+        The integration time of the blank measurement.
+    ex_lb: float
+        The lower boundary of excitation wavelength range within which the RSU is calculated.
+    ex_ub: float
+        The upper boundary of excitation wavelength range within which the RSU is calculated.
+    bandwidth: float
+        The bandwidth of Raman scattering peak.
+    bandwidth_type: str, {"wavenumber", "wavelength"}
+        The type of bandwidth. "wavenumber": (1/nm); "wavelength": (nm).
+    rsu_standard: float
+        A factor used to divide the raw RSU. This is used to control the magnitude of RSU so that the normalized
+        intensity of EEM would not be numerically too high or too low.
+    manual_rsu: float
+        If from_blank = False, this will be used as the RSU_final directly.
+
+    Returns
+    -------
+    intensity_normalized: np.ndarray
+        The normalized EEM.
+    rsu_final: float
+        The Final RSU used in normalization.
+    """
     if not from_blank:
         return intensity / manual_rsu, manual_rsu
     else:
@@ -153,32 +315,61 @@ def eem_raman_normalization(intensity, ex_range_blank=None, em_range_blank=None,
                 wn_target = 10000000 / em_target
                 em_lb = 10000000 / (wn_target + bandwidth)
                 em_rb = 10000000 / (wn_target - bandwidth)
-                rsu, _, _ = eem_regional_integration(blank, ex_range_blank, em_range_blank,
-                                                     [em_lb, em_rb],
-                                                     [ex, ex])
+                rsu, _ = eem_regional_integration(blank, ex_range_blank, em_range_blank,
+                                                     ex_min=ex, ex_max=ex, em_min=em_lb, em_max=em_rb)
+            elif bandwidth_type == 'wavelength':
+                rsu, _ = eem_regional_integration(blank, ex_range_blank, em_range_blank,
+                                                     ex_min=ex, ex_max=ex, em_min=ex - bandwidth, em_max=ex + bandwidth)
             else:
-                rsu, _, _ = eem_regional_integration(blank, ex_range_blank, em_range_blank,
-                                                     [ex - bandwidth, ex + bandwidth],
-                                                     [ex, ex])
+                raise ValueError("'bandwidth_type' should be either 'wavenumber' or 'wavelength'.")
             rsu_tot += rsu
-        return intensity * rsu_standard / rsu_tot / integration_time, rsu_standard / rsu_tot / integration_time
+    rsu_final = rsu_tot / (integration_time * rsu_standard)
+    intensity_normalized = intensity / rsu_final
+    return intensity_normalized, rsu_final
 
 
-def eem_raman_masking(intensity, ex_range, em_range, tolerance=5, method='linear', axis='grid'):
+def eem_raman_masking(intensity, ex_range, em_range, width=5, method='linear', axis='grid'):
+    """
+    Remove and interpolate the Raman scattering.
+
+    Parameters
+    ----------
+    intensity: np.ndarray (2d)
+        The EEM.
+    ex_range: np.ndarray (1d)
+        The excitation wavelengths.
+    em_range: np.ndarray (1d)
+        The emission wavelengths.
+    width: float
+        The width of Raman scattering.
+    method: str, {"linear", "cubic", "nan"}
+        The method used to interpolate the Raman scattering.
+    axis: str, {"ex", "em", "grid"}
+        The axis along which the Raman scattering is interpolated. "ex": interpolation is conducted along the excitation
+        wavelength; "em": interpolation is conducted along the emission wavelength; "grid": interpolation is conducted
+        on the 2D grid of both excitation and emission wavelengths.
+
+    Returns
+    -------
+    intensity_masked: np.ndarray
+        The EEM with Raman scattering interpolated.
+    raman_mask: np.ndarray
+        Indicate the pixels that are interpolated. 0: pixel is interpolated; 1: pixel is not interpolated.
+    """
     intensity_masked = np.array(intensity)
     raman_mask = np.ones(intensity.shape)
     lambda_em = -ex_range / (0.00036 * ex_range - 1)
-    tol_emidx = int(np.round(tolerance / (em_range[1] - em_range[0])))
+    tol_emidx = int(np.round(width / (em_range[1] - em_range[0])))
     for s in range(0, intensity_masked.shape[0]):
         exidx = ex_range.shape[0] - s - 1
-        if lambda_em[s] <= em_range[0] <= lambda_em[s] + tolerance:
-            emidx = dichotomy_search(em_range, lambda_em[s] + tolerance)
+        if lambda_em[s] <= em_range[0] <= lambda_em[s] + width:
+            emidx = dichotomy_search(em_range, lambda_em[s] + width)
             raman_mask[exidx, 0: emidx + 1] = 0
-        elif lambda_em[s] - tolerance <= em_range[0]:
+        elif lambda_em[s] - width <= em_range[0]:
             emidx = dichotomy_search(em_range, lambda_em[s])
             raman_mask[exidx, 0: emidx + tol_emidx + 1] = 0
         else:
-            emidx = dichotomy_search(em_range, lambda_em[s] - tolerance)
+            emidx = dichotomy_search(em_range, lambda_em[s] - width)
             raman_mask[exidx, emidx: emidx + 2 * tol_emidx + 1] = 0
 
     if method == 'nan':
@@ -215,19 +406,57 @@ def eem_raman_masking(intensity, ex_range, em_range, tolerance=5, method='linear
     return intensity_masked, raman_mask
 
 
-def eem_rayleigh_masking(intensity, ex_range, em_range, tolerance_o1=15, tolerance_o2=15,
-                         axis_o1='grid', axis_o2='grid', method_o1='zero', method_o2='linear'):
+def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15,
+                         interpolation_axis_o1='grid', interpolation_axis_o2='grid', interpolation_method_o1='zero',
+                         interpolation_method_o2='linear'):
+    """
+    Remove and interpolate the Rayleigh scattering.
+
+    Parameters
+    ----------
+    intensity: np.ndarray (2d)
+        The EEM.
+    ex_range: np.ndarray (1d)
+        The excitation wavelengths.
+    em_range: np.ndarray (1d)
+        The emission wavelengths.
+    width_o1: float
+        The width or 1st order Rayleigh scattering.
+    width_o2: float
+        The width or 2nd order Rayleigh scattering.
+    interpolation_axis_o1: str, {"ex", "em", "grid"}
+        The axis along which the 1st order Rayleigh scattering is interpolated. "ex": interpolation is conducted along
+        the excitation wavelength; "em": interpolation is conducted along the emission wavelength; "grid": interpolation
+        is conducted on the 2D grid of both excitation and emission wavelengths.
+    interpolation_axis_o2: str, {"ex", "em", "grid"}
+        The axis along which the 2nd order Rayleigh scattering is interpolated.
+    interpolation_method_o1: str, {"linear", "cubic", "nan"}
+        The method used to interpolate the 1st order Rayleigh scattering.
+    interpolation_method_o2: str, {"linear", "cubic", "nan"}
+        The method used to interpolate the 2nd order Rayleigh scattering.
+
+    Returns
+    -------
+    intensity_masked: np.ndarray
+        The EEM with Rayleigh scattering interpolated.
+    rayleigh_mask_o1: np.ndarray
+        Indicate the pixels that are interpolated due to 1st order Rayleigh scattering.
+        0: pixel is interpolated; 1: pixel is not interpolated.
+    rayleigh_mask_o2
+        Indicate the pixels that are interpolated due to 1st order Rayleigh scattering.
+        0: pixel is interpolated; 1: pixel is not interpolated.
+    """
     intensity_masked = np.array(intensity)
     rayleigh_mask_o1 = np.ones(intensity.shape)
     rayleigh_mask_o2 = np.ones(intensity.shape)
     lambda_em_o1 = ex_range
-    tol_emidx_o1 = int(np.round(tolerance_o1 / (em_range[1] - em_range[0])))
+    tol_emidx_o1 = int(np.round(width_o1 / (em_range[1] - em_range[0])))
     for s in range(0, intensity_masked.shape[0]):
         exidx = ex_range.shape[0] - s - 1
-        if lambda_em_o1[s] <= em_range[0] <= lambda_em_o1[s] + tolerance_o1:
-            emidx = dichotomy_search(em_range, lambda_em_o1[s] + tolerance_o1)
+        if lambda_em_o1[s] <= em_range[0] <= lambda_em_o1[s] + width_o1:
+            emidx = dichotomy_search(em_range, lambda_em_o1[s] + width_o1)
             rayleigh_mask_o1[exidx, 0:emidx + 1] = 0
-        elif lambda_em_o1[s] - tolerance_o1 <= em_range[0]:
+        elif lambda_em_o1[s] - width_o1 <= em_range[0]:
             emidx = dichotomy_search(em_range, lambda_em_o1[s])
             rayleigh_mask_o1[exidx, 0: emidx + tol_emidx_o1 + 1] = 0
         else:
@@ -235,20 +464,22 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, tolerance_o1=15, toleran
             rayleigh_mask_o1[exidx, emidx: emidx + tol_emidx_o1 + 1] = 0
             intensity_masked[exidx, 0: emidx] = 0
     lambda_em_o2 = ex_range * 2
-    tol_emidx_o2 = int(np.round(tolerance_o2 / (em_range[1] - em_range[0])))
+    tol_emidx_o2 = int(np.round(width_o2 / (em_range[1] - em_range[0])))
     for s in range(0, intensity_masked.shape[0]):
         exidx = ex_range.shape[0] - s - 1
-        if lambda_em_o2[s] <= em_range[0] <= lambda_em_o2[s] + tolerance_o2:
-            emidx = dichotomy_search(em_range, lambda_em_o2[s] + tolerance_o2)
+        if lambda_em_o2[s] <= em_range[0] <= lambda_em_o2[s] + width_o2:
+            emidx = dichotomy_search(em_range, lambda_em_o2[s] + width_o2)
             rayleigh_mask_o2[exidx, 0:emidx + 1] = 0
-        elif lambda_em_o2[s] - tolerance_o2 <= em_range[0]:
+        elif lambda_em_o2[s] - width_o2 <= em_range[0]:
             emidx = dichotomy_search(em_range, lambda_em_o2[s])
             rayleigh_mask_o2[exidx, 0: emidx + tol_emidx_o2 + 1] = 0
         else:
-            emidx = dichotomy_search(em_range, lambda_em_o2[s] - tolerance_o2)
+            emidx = dichotomy_search(em_range, lambda_em_o2[s] - width_o2)
             rayleigh_mask_o2[exidx, emidx: emidx + 2 * tol_emidx_o2 + 1] = 0
 
-    for axis, itp, mask in zip([axis_o1, axis_o2], [method_o1, method_o2], [rayleigh_mask_o1, rayleigh_mask_o2]):
+    for axis, itp, mask in zip([interpolation_axis_o1, interpolation_axis_o2],
+                               [interpolation_method_o1, interpolation_method_o2],
+                               [rayleigh_mask_o1, rayleigh_mask_o2]):
         if itp == 'zero':
             intensity_masked[np.where(mask == 0)] = 0
         elif itp == 'nan':
@@ -282,14 +513,34 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, tolerance_o1=15, toleran
                 # restore the nan values in non-raman-scattering region
                 intensity_masked[old_nan] = np.nan
                 intensity_masked[old_nan_o1] = np.nan
-    return intensity_masked, (rayleigh_mask_o1, rayleigh_mask_o2)
+    return intensity_masked, rayleigh_mask_o1, rayleigh_mask_o2
 
 
-def eem_ife_correction(intensity, ex_range, em_range, absorbance, ex_range_abs, cuvette_length=1, ex_lower_limit=200,
-                       ex_upper_limit=825):
-    ex_range2 = np.concatenate([[ex_upper_limit], ex_range_abs, [ex_lower_limit]])
-    absorbance = np.concatenate([[0], absorbance, [max(absorbance)]])
-    f1 = interp1d(ex_range2, absorbance, kind='linear', bounds_error=False, fill_value='extrapolate')
+def eem_ife_correction(intensity, ex_range, em_range, absorbance, ex_range_abs, cuvette_length=1):
+    """
+    Correct the inner filter effect (IFE).
+
+    Parameters
+    ----------
+    intensity: np.ndarray (2d)
+        The EEM.
+    ex_range: np.ndarray (1d)
+        The excitation wavelengths of EEM.
+    em_range: np.ndarray (1d)
+        The emission wavelengths of EEM.
+    absorbance: np.ndarray (1d)
+        The absorbance.
+    ex_range_abs: np.ndarray (1d)
+        The excitation wavelengths of absorbance.
+    cuvette_length: float
+        The length of cuvette in measurement.
+
+    Returns
+    -------
+    intensity_corrected: np.ndarray
+        The corrected EEM.
+    """
+    f1 = interp1d(ex_range_abs, absorbance, kind='linear', bounds_error=False, fill_value='extrapolate')
     absorbance_ex = np.fliplr(np.array([f1(ex_range)]))
     absorbance_em = np.array([f1(em_range)])
     ife_factors = 10 ** (cuvette_length * (absorbance_ex.T.dot(np.ones(absorbance_em.shape)) +
@@ -298,10 +549,37 @@ def eem_ife_correction(intensity, ex_range, em_range, absorbance, ex_range_abs, 
     return intensity_corrected
 
 
-def eem_regional_integration(intensity, ex_range, em_range, em_boundary, ex_boundary):
+def eem_regional_integration(intensity, ex_range, em_range, ex_min, ex_max, em_min, em_max):
+    """
+    Calculate the regional fluorescence integration (RFI) over a rectangular region.
+
+    Parameters
+    ----------
+    intensity: np.ndarray (2d)
+        The EEM.
+    ex_range: np.ndarray (1d)
+        The excitation wavelengths.
+    em_range: np.ndarray (1d)
+        The emission wavelengths
+    ex_min: float
+        The lower boundary of excitation wavelengths of the integrated region.
+    ex_max: float
+        The upper boundary of excitation wavelengths of the integrated region.
+    em_min: float
+        The lower boundary of emission wavelengths of the integrated region.
+    em_max: float
+        The upper boundary of emission wavelengths of the integrated region.
+
+    Returns
+    -------
+    integration: float
+        The RFI.
+    avg_regional_intensity:
+        The average fluorescence intensity in the region.
+    """
     intensity_cut, em_range_cut, ex_range_cut = eem_cutting(intensity, ex_range, em_range,
-                                                            em_min=em_boundary[0], em_max=em_boundary[1],
-                                                            ex_min=ex_boundary[0], ex_max=ex_boundary[1])
+                                                            em_min=em_min, em_max=em_max,
+                                                            ex_min=ex_min, ex_max=ex_max)
     if intensity_cut.shape[0] == 1:
         integration = np.trapz(intensity_cut, em_range_cut, axis=1)
     elif intensity_cut.shape[1] == 1:
@@ -312,7 +590,7 @@ def eem_regional_integration(intensity, ex_range, em_range, em_boundary, ex_boun
     # number of effective pixels (i.e. pixels with positive intensity)
     num_pixels = intensity[intensity > 0].shape[0]
     avg_regional_intensity = integration / num_pixels
-    return integration, avg_regional_intensity, num_pixels
+    return integration, avg_regional_intensity
 
 
 def eem_interpolation(intensity, ex_range_old, em_range_old, ex_range_new, em_range_new, method: str = 'linear'):
@@ -323,15 +601,23 @@ def eem_interpolation(intensity, ex_range_old, em_range_old, ex_range_new, em_ra
 
     Parameters
     ----------
-    intensity
-    ex_range_old
-    em_range_old
-    ex_range_new
-    em_range_new
-    method
+    intensity: np.ndarray (2d)
+        The EEM.
+    ex_range_old: np.ndarray (1d)
+        The original excitation wavelengths.
+    em_range_old: np.ndarray (1d)
+        The original emission wavelengths.
+    ex_range_new: np.ndarray (1d)
+        The new excitation wavelengths.
+    em_range_new: np.ndarray (1d)
+        The new emission wavelengths.
+    method: str, {"linear", "nearest", "slinear", "cubic", "quintic", "pchip"}
+        The interpolation method.
 
     Returns
     -------
+    intensity_interpolated: np.ndarray
+        The interpolated EEM.
 
     """
     interp = RegularGridInterpolator((ex_range_old[::-1], em_range_old), intensity, method=method)
@@ -344,6 +630,21 @@ def eem_interpolation(intensity, ex_range_old, em_range_old, ex_range_new, em_ra
 
 
 def eems_tf_normalization(eem_stack):
+    """
+    Normalize EEMs by the total fluorescence of each EEM.
+
+    Parameters
+    ----------
+    eem_stack: np.ndarray (3d)
+        The EEM stack.
+
+    Returns
+    -------
+    eem_stack_normalized: np.ndarray
+        The normalized EEM stack.
+    weights: np.ndarray
+        The total fluorescence of each EEM.
+    """
     tf_list = []
     for i in range(eem_stack.shape[0]):
         tf = eem_stack[i].sum()
@@ -357,13 +658,15 @@ def eems_outlier_detection_if(eem_stack, ex_range, em_range, tf_normalization=Tr
                               contamination=0.02):
     """
     tells whether it should be considered as an inlier according to the fitted model. +1: inlier; -1: outlier
-    :param eem_stack:
-    :param ex_range:
-    :param em_range:
-    :param tf_normalization:
-    :param grid_size:
-    :param contamination:
-    :return:
+
+    Parameters
+    ----------
+    eem_stack: np.ndarray (3d)
+        The EEM stack.
+    ex_range: np.ndarray (1d)
+        The excitation wavelengths.
+    em_range: np.ndarray (1d)
+        The emission wavelengths
     """
     if tf_normalization:
         eem_stack, _ = eems_tf_normalization(eem_stack)
@@ -383,16 +686,17 @@ def eems_outlier_detection_if(eem_stack, ex_range, em_range, tf_normalization=Tr
 def eems_outlier_detection_ocs(eem_stack, ex_range, em_range, tf_normalization=True, grid_size=(10, 10), nu=0.02,
                                kernel="rbf", gamma=10000):
     """
+    tells whether it should be considered as an inlier according to the fitted model. +1: inlier; -1: outlier
 
-    :param eem_stack:
-    :param ex_range:
-    :param em_range:
-    :param tf_normalization:
-    :param grid_size:
-    :param nu:
-    :param kernel:
-    :param gamma:
-    :return:
+    Parameters
+    ----------
+    eem_stack: np.ndarray (3d)
+        The EEM stack.
+    ex_range: np.ndarray (1d)
+        The excitation wavelengths.
+    em_range: np.ndarray (1d)
+        The emission wavelengths
+
     """
     if tf_normalization:
         eem_stack, _ = eems_tf_normalization(eem_stack)
@@ -575,11 +879,9 @@ class EEMDataset:
 
     # -----------------EEM dataset processing methods-----------------
 
-    def threshold_masking(self, threshold, mask_type='greater', plot=False, autoscale=True, cmin=0, cmax=4000,
-                          copy=True):
-        eem_stack_masked, masks = process_eem_stack(self.eem_stack, eem_threshold_masking, ex_range=self.ex_range,
-                                                    em_range=self.em_range, threshold=threshold, mask_type=mask_type,
-                                                    plot=plot, autoscale=autoscale, cmin=cmin, cmax=cmax)
+    def threshold_masking(self, threshold, mask_type='greater', copy=True):
+        eem_stack_masked, masks = process_eem_stack(self.eem_stack, eem_threshold_masking, threshold=threshold,
+                                                    mask_type=mask_type)
         if not copy:
             self.eem_stack = eem_stack_masked
         return eem_stack_masked, masks

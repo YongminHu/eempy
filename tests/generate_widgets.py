@@ -62,15 +62,15 @@ def plot_eem_interact(filedir, filename, data_format, autoscale=False, crange=[0
                   'the parameter selection')
 
     if rayleigh_scattering_correction:
-        intensity, rayleigh_mask = eem_rayleigh_masking(intensity, em_range, ex_range, tolerance_o1=tolerance_o1,
-                                                        tolerance_o2=tolerance_o2,
-                                                        method_o1=method_o1,
-                                                        method_o2=method_o2,
-                                                        axis_o1=axis_o1,
-                                                        axis_o2=axis_o2)
+        intensity, rayleigh_mask = eem_rayleigh_masking(intensity, em_range, ex_range, width_o1=tolerance_o1,
+                                                        width_o2=tolerance_o2,
+                                                        interpolation_method_o1=method_o1,
+                                                        interpolation_method_o2=method_o2,
+                                                        interpolation_axis_o1=axis_o1,
+                                                        interpolation_axis_o2=axis_o2)
 
     if raman_scattering_correction:
-        intensity, raman_mask = eem_raman_masking(intensity, em_range, ex_range, tolerance=tolerance_raman,
+        intensity, raman_mask = eem_raman_masking(intensity, em_range, ex_range, width=tolerance_raman,
                                                   method=method_raman, axis=axis_raman)
 
     if gaussian_smoothing:
@@ -144,15 +144,15 @@ def load_eem_stack_interact(filedir, data_format='aqualog', raman_normalization=
         # scattering _correction
         if rayleigh_scattering_correction:
             intensity, rayleigh_mask = eem_rayleigh_masking(intensity, em_range, ex_range,
-                                                            tolerance_o1=tolerance_o1,
-                                                            tolerance_o2=tolerance_o2,
-                                                            method_o1=method_o1,
-                                                            method_o2=method_o2,
-                                                            axis_o1=axis_o1,
-                                                            axis_o2=axis_o2)
+                                                            width_o1=tolerance_o1,
+                                                            width_o2=tolerance_o2,
+                                                            interpolation_method_o1=method_o1,
+                                                            interpolation_method_o2=method_o2,
+                                                            interpolation_axis_o1=axis_o1,
+                                                            interpolation_axis_o2=axis_o2)
 
         if raman_scattering_correction:
-            intensity, raman_mask = eem_raman_masking(intensity, em_range, ex_range, tolerance=tolerance_raman,
+            intensity, raman_mask = eem_raman_masking(intensity, em_range, ex_range, width=tolerance_raman,
                                                       method=method_raman, axis=axis_raman)
 
         if gaussian_smoothing:
