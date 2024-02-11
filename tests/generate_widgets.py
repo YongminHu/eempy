@@ -364,6 +364,120 @@ def decomposition_interact(eem_stack, em_range, ex_range, rank, index=[], decomp
         plt.legend(legend)
     return score_df, exl_df, eml_df, fmax_df, component_stack
 
+
+# def split_validation_interact(eem_stack, em_range, ex_range, rank, datlist, decomposition_method,
+#                               n_split=4, combination_size='half', n_test='max', rule='random', index=[],
+#                               criteria='TCC', plot_all_combos=True, dataset_normalization=False,
+#                               init='svd'):
+#     split_set, _ = eem_stack_spliting(eem_stack, datlist, n_split=n_split, rule=rule)
+#     if combination_size == 'half':
+#         cs = int(n_split) / 2
+#     else:
+#         cs = int(combination_size)
+#     combos = []
+#     combo_labels = []
+#     for i, j in zip(itertools.combinations([i for i in range(n_split)], int(cs * 2)),
+#                     itertools.combinations(list(string.ascii_uppercase)[0:n_split], int(cs * 2))):
+#         elements = list(itertools.combinations(i, int(cs)))
+#         codes = list(itertools.combinations(j, int(cs)))
+#         for k in range(int(len(elements) / 2)):
+#             combos.append([elements[k], elements[-1 - k]])
+#             combo_labels.append([''.join(codes[k]), ''.join(codes[-1 - k])])
+#     if n_test == 'max':
+#         n_t = len(combos)
+#     elif isinstance(n_test, int):
+#         if n_test > len(combos):
+#             n_t = len(combos)
+#         else:
+#             n_t = n_test
+#     idx = random.sample(range(len(combos)), n_t)
+#     test_count = 0
+#     sims = {}
+#     models = []
+#     while test_count < n_t:
+#         c1 = combos[idx[test_count]][0]
+#         c2 = combos[idx[test_count]][1]
+#         label = combo_labels[idx[test_count]]
+#         eem_stack_c1 = np.concatenate([split_set[i] for i in c1], axis=0)
+#         eem_stack_c2 = np.concatenate([split_set[i] for i in c2], axis=0)
+#         score1_df, exl1_df, eml1_df, _, _, _, _ = decomposition_interact(eem_stack_c1, em_range, ex_range, rank,
+#                                                                          index=index,
+#                                                                          decomposition_method=decomposition_method,
+#                                                                          dataset_normalization=dataset_normalization,
+#                                                                          score_normalization=False,
+#                                                                          loadings_normalization=True,
+#                                                                          component_normalization=False,
+#                                                                          plot_loadings=False,
+#                                                                          plot_components=False, display_score=False,
+#                                                                          component_autoscale=True, sort_em=True,
+#                                                                          init=init, plot_fmax=False
+#                                                                          )
+#         score2_df, exl2_df, eml2_df, _, _, _, _ = decomposition_interact(eem_stack_c2, em_range, ex_range, rank,
+#                                                                          index=index,
+#                                                                          decomposition_method=decomposition_method,
+#                                                                          dataset_normalization=dataset_normalization,
+#                                                                          score_normalization=False,
+#                                                                          loadings_normalization=True,
+#                                                                          component_normalization=False,
+#                                                                          plot_loadings=False,
+#                                                                          plot_components=False, display_score=False,
+#                                                                          component_autoscale=True, sort_em=True,
+#                                                                          init=init, plot_fmax=False
+#                                                                          )
+#         if test_count > 0:
+#             _, matched_index_prev, _, _ = align_parafac_components(models[test_count - 1][0][1],
+#                                                                    models[test_count - 1][0][2], exl1_df, eml1_df,
+#                                                                    similarity_metric=criteria,
+#                                                                    wavelength_alignment=False, criteria='mean')
+#             order = [o[1] for o in matched_index_prev]
+#             exl1_df = pd.DataFrame({'component {r}'.format(r=i + 1): exl1_df.iloc[:, order[i]] for i in range(rank)})
+#             eml1_df = pd.DataFrame({'component {r}'.format(r=i + 1): eml1_df.iloc[:, order[i]] for i in range(rank)})
+#             score1_df = pd.DataFrame(
+#                 {'component {r}'.format(r=i + 1): score1_df.iloc[:, order[i]] for i in range(rank)})
+#
+#         m_sim, matched_index, max_sim, _ = align_parafac_components(exl1_df, eml1_df, exl2_df, eml2_df,
+#                                                                     similarity_metric=criteria,
+#                                                                     wavelength_alignment=False, criteria='mean')
+#         for l in matched_index:
+#             if l[0] != l[1]:
+#                 warnings.warn('Component {c1} of model {m1} does not match with '
+#                               'component {c1} of model {m2}, which is replaced by Component {c2} of model {m2}'
+#                               .format(c1=l[0] + 1, c2=l[1] + 1, m1=label[0], m2=label[1]))
+#
+#         order = [o[1] for o in matched_index]
+#         exl2_df = pd.DataFrame({'component {r}'.format(r=i + 1): exl2_df.iloc[:, order[i]] for i in range(rank)})
+#         eml2_df = pd.DataFrame({'component {r}'.format(r=i + 1): eml2_df.iloc[:, order[i]] for i in range(rank)})
+#         score2_df = pd.DataFrame({'component {r}'.format(r=i + 1): score2_df.iloc[:, order[i]] for i in range(rank)})
+#         models.append([[score1_df, exl1_df, eml1_df, label[0]], [score2_df, exl2_df, eml2_df, label[1]]])
+#         sims['test {n}: {l1} vs. {l2}'.format(n=test_count + 1, l1=label[0], l2=label[1])] = max_sim
+#         test_count += 1
+#     sims_df = pd.DataFrame(sims, index=['component {c}'.format(c=c + 1) for c in range(rank)])
+#     if plot_all_combos:
+#         cmap = get_cmap('tab20')
+#         colors = [cmap(i) for i in np.linspace(0, 1, 2 * len(models))]
+#         for r in range(rank):
+#             plt.figure()
+#             for i in range(len(models)):
+#                 score1_df, exl1_df, eml1_df, label1 = models[i][0]
+#                 score2_df, exl2_df, eml2_df, label2 = models[i][1]
+#                 plt.plot(exl1_df.index.get_level_values(1), exl1_df.iloc[:, r],
+#                          color=colors[2 * i], linewidth=1, label=label1 + '-ex')
+#                 plt.plot(exl2_df.index.get_level_values(1), exl2_df.iloc[:, r],
+#                          color=colors[2 * i + 1], linewidth=1, label=label2 + '-ex')
+#                 plt.plot(eml1_df.index.get_level_values(1), eml1_df.iloc[:, r],
+#                          color=colors[2 * i], linewidth=1, linestyle='dashed', label=label1 + '-em')
+#                 plt.plot(eml2_df.index.get_level_values(1), eml2_df.iloc[:, r],
+#                          color=colors[2 * i + 1], linewidth=1, linestyle='dashed', label=label2 + '-em')
+#                 plt.xlabel('Wavelength [nm]', fontsize=15)
+#                 plt.xticks(np.arange(min(ex_range), max(em_range), 50), fontsize=12)
+#                 plt.ylabel('Loadings', fontsize=15)
+#                 plt.yticks(fontsize=12)
+#                 plt.title('component {rank}'.format(rank=r + 1))
+#             plt.legend(fontsize=12, bbox_to_anchor=(1.05, 1), loc='upper left')
+#         print('Similarity of each test:')
+#         display(sims_df)
+#     return models, sims_df
+
 # ----------------------Part 1. Specify data directory and filename format-----------------------
 
 class Widgets_read_data:
