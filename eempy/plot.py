@@ -12,7 +12,7 @@ import scipy.stats as stats
 import pandas as pd
 import math
 from sklearn.linear_model import LinearRegression
-from matplotlib.colors import LogNorm, Normalize
+from matplotlib.colors import LogNorm, Normalize, TABLEAU_COLORS
 
 
 def plot_eem(intensity, em_range, ex_range, auto_intensity_range=True, scale_type='linear', vmin=0, vmax=10000,
@@ -221,28 +221,46 @@ def plot_fi_correlation(fi: pd.DataFrame, ref):
     return fig, ax
 
 
-def plot_loadings(model_dict: dict, colors):
-    r = 0
+def plot_loadings(model_dict: dict, colors=TABLEAU_COLORS.values()):
+    """
+    Plot the excitation and emission loadings for PARAFAC models.
+
+    Parameters
+    ----------
+    model_dict: dict
+        A dictionary of PARAFAC objects. Each PARAFAC model is labelled with the dictionary key.
+    colors: format for matplotlib color
+        A list of colors used for plotting.
+
+    Returns
+    -------
+    fig：matplotlib figure
+    ax: array of matplotlib axes
+    """
+    component_labels = []
     for model in model_dict.values():
-        r_new = model.score.shape[1]
-        if r_new > r:
-            r = r_new
-    fig, ax = plt.subplots(1, r, figsize=(10, 2), sharey='row')
-    fig.subplots_adjust(wspace=0, hspace=0)
+        component_labels.append(model.score.columns)
+    component_labels = sorted(list(set(component_labels)))
+    fig, ax = plt.subplots(len(component_labels)//4, len(component_labels)%4,
+                           figsize=(10, 2.7*(len(component_labels)//4)), sharey='row')
+    fig.subplots_adjust(wspace=0, hspace=0.7)
 
     for i, (model_label, model) in enumerate(model_dict.items()):
-        for j in range(r):
-            ax[j].plot(model.ex_loadings.index, model.ex_loadings.iloc[:, j], label=model_label+'-ex', c=colors[i])
-            ax[j].plot(model.em_loadings.index, model.em_loadings.iloc[:, j], label=model_label+'-em', c=colors[i])
+        for r, component in enumerate(model.ex_loadings.columns):
+            order = component_labels.index(component)
+            ax[order//4, order%4].plot(model.ex_loadings.index, model.ex_loadings.iloc[:, r], '--',
+                                       label=model_label+'-ex', c=colors[i])
+            ax[order//4, order%4].plot(model.em_loadings.index, model.em_loadings.iloc[:, r], label=model_label+'-em',
+                                       c=colors[i])
 
-    for j in range(r):
-        ax[j].text(0.8, 0.85, 'C{i}'.format(i=j+1), transform=ax[i].transAxes, fontsize=18)
+    for j in range(len(component_labels)):
+        ax[j//4, j%4].text(0.8, 0.85, component_labels[j], transform=ax[j//4, j%4].transAxes, fontsize=18)
 
     leg_ax = fig.add_subplot(111)
     leg_ax.axis('off')
     handles, labels = ax[0].get_legend_handles_labels()
-    leg_ax.legend(flip_legend_order(handles, 3), flip_legend_order(labels, 3), loc='upper center', bbox_to_anchor=(1.23, 0.88),
-                  fontsize=11, ncol=3)
+    leg_ax.legend(flip_legend_order(handles, 3), flip_legend_order(labels, 3), loc='upper center',
+                  bbox_to_anchor=(1.23, 0.88), fontsize=11, ncol=3)
     fig.text(0.4, -0.15, 'Wavelength (nm)', fontsize=18)
     fig.text(0.07, 0.35, 'Loadings', fontsize=18, rotation='vertical')
     return fig, ax

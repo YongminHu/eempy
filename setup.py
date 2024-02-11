@@ -17,7 +17,7 @@ setup(
         "matplotlib",
         "pandas",
         "scikit-image",
-        "opencv-python",
-        "ipywidgets"
+        "ipywidgets",
+        "tlviz"
     ]
 )
