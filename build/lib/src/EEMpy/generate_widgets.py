@@ -12,471 +12,18 @@ from datetime import date
 import pandas as pd
 from IPython.display import display
 from ipywidgets import Layout, Label, interactive
-from eempy.read_data import *
-from eempy.plot import *
-from eempy.eem_processing import *
+from eempy import read_reference_from_text, string_to_float_list, plot3DEEM
+from eempy import EEMstack, eem_statistics, plot_eem_interact, decomposition_interact, \
+    decomposition_reconstruction_interact, export_parafac, load_eem_stack_interact, eems_regional_integration, \
+    eems_isolation_forest, eems_one_class_svm, fast_core_consistency, split_validation, \
+    eems_total_fluorescence_normalization, \
+    eem_region_masking, eem_grid_imputing, explained_variance, parafac_pixel_error, parafac_sample_error
 from tensorly.decomposition import parafac, non_negative_parafac
 
 form_item_layout = Layout(display='flex',
                           flex_flow='row',
                           justify_content='space-between')
 
-
-# --------------------functions for widgets---------------------
-
-def plot_eem_interact(filedir, filename, data_format, autoscale=False, crange=[0, 3000], raman_normalization=False,
-                      inner_filter_effect=True, rayleigh_scattering_correction=True, raman_scattering_correction=True,
-                      gaussian_smoothing=True, abs_xmax=0.1, em_range_display=[250, 820], ex_range_display=[200, 500],
-                      sigma=1, truncate=3, dilution=1, from_blank=False, integration_time=1,
-                      ex_lb=349, ex_ub=351, bandwidth_type='wavenumber', bandwidth=1800, rsu_standard=20000,
-                      manual_rsu=1, tolerance_o1=15, tolerance_o2=15, tolerance_raman=5, method_raman='nan',
-                      method_o1='zero', method_o2='linear', axis_o1='grid', axis_o2='grid', axis_raman='grid',
-                      ts_format='%Y-%m-%d-%H-%M-%S', ts_start_position=0, ts_end_position=19,
-                      mask_impute=False, mask_ex=None, mask_em=None, plot_abs=False,
-                      title=False, show_maximum=False, rotate=False):
-    filepath = filedir + '/' + filename
-    intensity, em_range, ex_range = read_eem(filepath, data_format=data_format)
-    intensity = intensity * dilution
-    if raman_normalization:
-        if from_blank:
-            blank, em_range_blank, ex_range_blank = read_eem(filepath[0:-7] + 'BEM.dat', data_format=data_format)
-            intensity, _ = eem_raman_normalization(intensity=intensity,
-                                                   em_range_blank=em_range_blank, ex_range_blank=ex_range_blank,
-                                                   blank=blank, from_blank=from_blank,
-                                                   integration_time=integration_time,
-                                                   ex_lb=ex_lb, ex_ub=ex_ub, bandwidth_type=bandwidth_type,
-                                                   bandwidth=bandwidth, rsu_standard=rsu_standard)
-        else:
-            intensity, _ = eem_raman_normalization(intensity=intensity, from_blank=from_blank,
-                                                   manual_rsu=manual_rsu)
-
-    if inner_filter_effect:
-        try:
-            absorbance, ex_range2 = read_abs(filepath[0:-7] + 'ABS.dat')
-            intensity = eem_ife_correction(intensity, em_range=em_range, ex_range=ex_range, absorbance=absorbance,
-                                           ex_range2=ex_range2)
-        except FileNotFoundError:
-            print('Absorbance data missing. Please make sure the file names of the EEM and '
-                  'absorbance data are consistent, except the suffix "ABS.dat" and "PEM.dat /" '
-                  'If there is no absorbance data, please deselect "Inner filter effect" and "plot absorbance" in '
-                  'the parameter selection')
-
-    if rayleigh_scattering_correction:
-        intensity, rayleigh_mask = eem_rayleigh_masking(intensity, em_range, ex_range, width_o1=tolerance_o1,
-                                                        width_o2=tolerance_o2,
-                                                        interpolation_method_o1=method_o1,
-                                                        interpolation_method_o2=method_o2,
-                                                        interpolation_axis_o1=axis_o1,
-                                                        interpolation_axis_o2=axis_o2)
-
-    if raman_scattering_correction:
-        intensity, raman_mask = eem_raman_masking(intensity, em_range, ex_range, width=tolerance_raman,
-                                                  method=method_raman, axis=axis_raman)
-
-    if gaussian_smoothing:
-        intensity = gaussian_filter(intensity, sigma=sigma, truncate=truncate)
-
-    if mask_impute:
-        intensity, prior_mask = eem_region_masking(intensity, em_range, ex_range, em_min=mask_em[0], em_max=mask_em[-1],
-                                                   ex_min=mask_ex[0], ex_max=mask_ex[-1])
-        intensity = eem_nan_imputing(intensity, prior_mask=prior_mask)
-
-    intensity, em_range, ex_range = eem_cutting(intensity, em_range, ex_range, em_range_display[0],
-                                                em_range_display[1], ex_range_display[0],
-                                                ex_range_display[1])
-    plot_eem(intensity, em_range, ex_range, autoscale, crange[1], crange[0], rotate=rotate)
-    if title:
-        tstitle = get_timestamp_from_filename(filename, ts_format=ts_format, ts_start_position=ts_start_position,
-                                              ts_end_position=ts_end_position)
-        plt.title(tstitle)
-    if plot_abs:
-        try:
-            absorbance, ex_range2 = read_abs(filepath[0:-7] + 'ABS.dat')
-            plot_abs(absorbance, ex_range2, abs_xmax, em_range_display)
-        except FileNotFoundError:
-            pass
-    if show_maximum:
-        print("maximum intensity: ", np.amax(intensity))
-
-
-def load_eem_stack_interact(filedir, data_format='aqualog', raman_normalization=False,
-                            rayleigh_scattering_correction=True, raman_scattering_correction=True,
-                            em_range_display=(250, 820), ex_range_display=(200, 500), gaussian_smoothing=True,
-                            inner_filter_effect=True, dilution=1, from_blank=False, integration_time=1, ex_lb=349,
-                            ex_ub=351, bandwidth_type='wavenumber', bandwidth=1800, rsu_standard=20000, manual_rsu=1,
-                            sigma=1, truncate=3, otsu=True, binary_threshold=50, tolerance_o1=15, tolerance_o2=15,
-                            tolerance_raman=5, method_raman='linear', method_o1='zero', method_o2='linear',
-                            axis_o1='grid', axis_o2='grid', axis_raman='grid', contour_mask=True, keyword_pem='PEM.dat',
-                            existing_datlist=[], wavelength_synchronization=True):
-    if not existing_datlist:
-        datlist = get_filelist(filedir, keyword_pem)
-    else:
-        datlist = existing_datlist
-    n = 0
-    for f in datlist:
-        filepath = filedir + '/' + f
-        intensity, em_range, ex_range = read_eem(filepath, data_format=data_format)
-        intensity = intensity * dilution
-        if raman_normalization:
-            if from_blank:
-                blank, em_range_blank, ex_range_blank = read_eem(filepath[0:-7] + 'BEM.dat', data_format=data_format)
-                intensity, _ = eem_raman_normalization(intensity=intensity,
-                                                       em_range_blank=em_range_blank, ex_range_blank=ex_range_blank,
-                                                       blank=blank, from_blank=from_blank,
-                                                       integration_time=integration_time,
-                                                       ex_lb=ex_lb, ex_ub=ex_ub, bandwidth_type=bandwidth_type,
-                                                       bandwidth=bandwidth, rsu_standard=rsu_standard)
-            else:
-                intensity, _ = eem_raman_normalization(intensity=intensity, from_blank=from_blank,
-                                                       manual_rsu=manual_rsu)
-
-        if inner_filter_effect:
-            absorbance, ex_range_abs = read_abs(filepath[0:-7] + 'ABS.dat', data_format=data_format)
-            intensity = eem_ife_correction(intensity, em_range=em_range, ex_range=ex_range, absorbance=absorbance,
-                                           ex_range_abs=ex_range_abs)
-            datlist_abs = [dat[0:-7] + 'ABS.dat' for dat in datlist]
-            abs_stack, ex_range_abs, datlist_abs = read_abs_dataset(filedir, datlist=datlist_abs,
-                                                                    wavelength_alignment=True,
-                                                                    ex_range_display=ex_range_display)
-        else:
-            abs_stack = []
-            ex_range_abs = []
-        # scattering _correction
-        if rayleigh_scattering_correction:
-            intensity, rayleigh_mask = eem_rayleigh_masking(intensity, em_range, ex_range,
-                                                            width_o1=tolerance_o1,
-                                                            width_o2=tolerance_o2,
-                                                            interpolation_method_o1=method_o1,
-                                                            interpolation_method_o2=method_o2,
-                                                            interpolation_axis_o1=axis_o1,
-                                                            interpolation_axis_o2=axis_o2)
-
-        if raman_scattering_correction:
-            intensity, raman_mask = eem_raman_masking(intensity, em_range, ex_range, width=tolerance_raman,
-                                                      method=method_raman, axis=axis_raman)
-
-        if gaussian_smoothing:
-            intensity = gaussian_filter(intensity, sigma=sigma, truncate=truncate)
-
-        intensity, em_range, ex_range = eem_cutting(intensity, em_range, ex_range,
-                                                    em_min=em_range_display[0],
-                                                    em_max=em_range_display[1],
-                                                    ex_min=ex_range_display[0], ex_max=ex_range_display[1])
-        if n == 0:
-            num_datfile = len(datlist)
-            eem_stack = np.zeros([num_datfile, intensity.shape[0], intensity.shape[1]])
-        if wavelength_synchronization and n > 0:
-            em_interval_new = (em_range.max() - em_range.min()) / (em_range.shape[0] - 1)
-            em_interval_old = (em_range_old.max() - em_range_old.min()) / (em_range_old.shape[0] - 1)
-            ex_interval_new = (ex_range.max() - ex_range.min()) / (ex_range.shape[0] - 1)
-            ex_interval_old = (ex_range_old.max() - ex_range_old.min()) / (ex_range_old.shape[0] - 1)
-            if em_interval_new > em_interval_old:
-                em_range_target = em_range_old
-            else:
-                em_range_target = em_range
-            if ex_interval_new > ex_interval_old:
-                ex_range_target = ex_range_old
-            else:
-                ex_range_target = ex_range
-            if em_interval_new > em_interval_old or ex_interval_new > ex_interval_old:
-                intensity = eem_interpolation(intensity, em_range, np.flip(ex_range), em_range_target,
-                                              np.flip(ex_range_target))
-                em_range = np.copy(em_range_old)
-                ex_range = np.copy(ex_range_old)
-            if em_interval_new < em_interval_old or ex_interval_new < ex_interval_old:
-                eem_stack = process_eem_stack(eem_stack, eem_interpolation, em_range_old, np.flip(ex_range_old),
-                                              em_range_target, np.flip(ex_range_target))
-        try:
-            eem_stack[n, :, :] = intensity
-        except ValueError:
-            print('Check data dimension: ', f)
-        n += 1
-        em_range_old = np.copy(em_range)
-        ex_range_old = np.copy(ex_range)
-    print('Number of samples in the stack:', eem_stack.shape[0])
-    return eem_stack, em_range, ex_range, datlist, abs_stack, ex_range_abs
-
-
-def eems_statistics_interact(EEMstack, term, crange, reference_label=None, reference=None, title=False):
-    if term == 'Mean':
-        plot_eem(EEMstack.mean(), EEMstack.em_range, EEMstack.ex_range,
-                 vmin=crange[0], vmax=crange[1])
-    if term == 'Standard deviation':
-        plot_eem(EEMstack.std(), EEMstack.em_range, EEMstack.ex_range, auto_intensity_range=True)
-    if term == 'Relative standard deviation':
-        plot_eem(EEMstack.rel_std(), EEMstack.em_range, EEMstack.ex_range, auto_intensity_range=True)
-    if term == 'Correlation: Linearity':
-        EEMstack.eem_correlation(x=reference)
-    if term == 'Correlation: Pearson coef.':
-        EEMstack.eem_pearson_coef(x=reference)
-    if term == 'Correlation: Spearman coef.':
-        EEMstack.eem_spearman_coef(x=reference)
-
-
-def decomposition_interact(eem_stack, em_range, ex_range, rank, index=[], decomposition_method='parafac', init='svd',
-                           dataset_normalization=False, score_normalization=False, loadings_normalization=True,
-                           component_normalization=False, plot_loadings=True,
-                           plot_components=True, plot_fmax=True, display_score=True, component_cmin=0, component_cmax=1,
-                           component_autoscale=False, title=True, cbar=True, cmap='jet', sort_em=True, rotate=False):
-    plt.close()
-    if dataset_normalization:
-        eem_stack, tf = eems_tf_normalization(eem_stack)
-    try:
-        if decomposition_method == 'parafac':
-            if np.isnan(eem_stack).any():
-                mask = np.where(np.isnan(eem_stack), 0, 1)
-                _, factors = parafac(eem_stack, rank=rank, mask=mask, init=init)
-            else:
-                _, factors = parafac(eem_stack, rank=rank, init=init)
-        if decomposition_method == 'non_negative_parafac':
-            if np.isnan(eem_stack).any():
-                mask = np.where(np.isnan(eem_stack), 0, 1)
-                _, factors = non_negative_parafac(eem_stack, rank=rank, mask=mask, init=init)
-            else:
-                _, factors = non_negative_parafac(eem_stack, rank=rank, init=init)
-    except ArpackError:
-        print("Please check if there's blank space in the fluorescence footprint in 'section 2. Fluorescence preview "
-              "and parameter selection'. If so, please removed the sample, or adjust the excitation "
-              "wavelength range to avoid excessive inner filter effect")
-    I, J, K = factors
-    for r in range(rank):
-        if I[:, r].sum() < 0:
-            I[:, r] = -I[:, r]
-            if abs(J[:, r].min()) > J[:, r].max():
-                J[:, r] = -J[:, r]
-            elif abs(K[:, r].min()) > K[:, r].max():
-                K[:, r] = -K[:, r]
-        elif abs(J[:, r].min()) > J[:, r].max() and abs(K[:, r].min()) > K[:, r].max():
-            J[:, r] = -J[:, r]
-            K[:, r] = -K[:, r]
-        if loadings_normalization:
-            stdj = J[:, r].std()
-            stdk = K[:, r].std()
-            J[:, r] = J[:, r] / stdj
-            K[:, r] = K[:, r] / stdk
-            I[:, r] = I[:, r] * stdj * stdk
-        component = np.array([J[:, r]]).T.dot(np.array([K[:, r]]))
-        if component_normalization:
-            w = 1 / component.max()
-            component = component * w
-            I[:, r] = I[:, r] / w
-        if r == 0:
-            component_stack = np.zeros([rank, component.shape[0], component.shape[1]])
-        component_stack[r, :, :] = component
-
-    if dataset_normalization:
-        I = np.multiply(I, tf[:, np.newaxis])
-    if score_normalization:
-        score_df = pd.DataFrame(I / I.mean(axis=0))
-    else:
-        score_df = pd.DataFrame(I)
-
-    exl_df = pd.DataFrame(np.flipud(J), index=ex_range)
-    eml_df = pd.DataFrame(K, index=em_range)
-    ex_column = ["Ex" for i in range(ex_range.shape[0])]
-    em_column = ["Em" for i in range(em_range.shape[0])]
-    score_column = ["Score" for i in range(score_df.shape[0])]
-    exl_df.index = pd.MultiIndex.from_tuples(list(zip(*[ex_column, ex_range.tolist()])),
-                                             names=('type', 'wavelength'))
-    eml_df.index = pd.MultiIndex.from_tuples(list(zip(*[em_column, em_range.tolist()])),
-                                             names=('type', 'wavelength'))
-    fmax = I * component_stack.max(axis=(1, 2))
-
-    if index:
-        score_df.index = pd.MultiIndex.from_tuples(list(zip(*[score_column, index])),
-                                                   names=('type', 'time'))
-    else:
-        score_df.index = score_column
-
-    if sort_em:
-        em_peaks = [c[1] for c in eml_df.idxmax()]
-        peak_rank = list(enumerate(stats.rankdata(em_peaks)))
-        order = [i[0] for i in sorted(peak_rank, key=lambda x: x[1])]
-        exl_df = pd.DataFrame({'component {r}'.format(r=i + 1): exl_df.iloc[:, order[i]] for i in range(rank)})
-        eml_df = pd.DataFrame({'component {r}'.format(r=i + 1): eml_df.iloc[:, order[i]] for i in range(rank)})
-        score_df = pd.DataFrame({'component {r}'.format(r=i + 1): score_df.iloc[:, order[i]] for i in range(rank)})
-        fmax_df = pd.DataFrame({'component {r}'.format(r=i + 1): fmax[:, order[i]] for i in range(rank)})
-        component_stack = component_stack[order]
-    else:
-        column_labels = ['component {r}'.format(r=i + 1) for i in range(rank)]
-        exl_df.columns = column_labels
-        eml_df.columns = column_labels
-        score_df.columns = column_labels
-        fmax_df = pd.DataFrame(fmax, columns=['component {r}'.format(r=i + 1) for i in range(rank)])
-
-    if plot_components:
-        for r in range(rank):
-            if title:
-                title_r = score_df.columns[r]
-            if not title:
-                title_r = False
-            plot_eem(component_stack[r, :, :], em_range, ex_range, vmin=component_cmin,
-                     vmax=component_cmax, title=title_r, auto_intensity_range=component_autoscale, cbar=cbar,
-                     cmap=cmap, aspect=1, rotate=rotate)
-
-    if plot_loadings:
-        fig_ex = exl_df.unstack(level=0).plot.line()
-        handles_ex, labels_ex = fig_ex.get_legend_handles_labels()
-        plt.legend(handles_ex, labels_ex, prop={'size': 10})
-        plt.xticks(np.arange(0, ex_range[-1] + 1, 50))
-        plt.xlim([ex_range[0], ex_range[-1]])
-        plt.xlabel("Wavelength [nm]")
-        fig_em = eml_df.unstack(level=0).plot.line()
-        handles_em, labels_em = fig_em.get_legend_handles_labels()
-        plt.legend(handles_em, labels_em, prop={'size': 10})
-        plt.xticks(np.arange(0, em_range[-1], 50))
-        plt.xlim([em_range[0], em_range[-1]])
-        plt.xlabel("Wavelength [nm]")
-    I_standardized = I / np.mean(I, axis=0)
-    plt.figure(figsize=(15, 5))
-    legend = []
-    marker = itertools.cycle(('o', 'v', '^', 's', 'D'))
-    if display_score:
-        display(score_df)
-        for r in range(rank):
-            if index:
-                plt.plot(index, I_standardized[:, r], marker=next(marker), markersize=13)
-            else:
-                plt.plot(I_standardized[:, r], marker=next(marker), markersize=13)
-            legend.append('component {rank}'.format(rank=r + 1))
-            plt.xlabel('Time')
-            plt.xticks(rotation=90)
-            plt.ylabel('Score')
-        plt.legend(legend)
-
-    if plot_fmax:
-        if index:
-            fmax_column = ["Fmax" for i in range(score_df.shape[0])]
-            fmax_df.index = pd.MultiIndex.from_tuples(list(zip(*[fmax_column, index])),
-                                                      names=('type', 'time'))
-        display(fmax_df)
-        plt.figure(figsize=(15, 5))
-        n_sample = np.arange(fmax.shape[0])
-        legend = []
-        fmax_tot = 0
-        for r in range(rank):
-            fmax_r = fmax[:, r]
-            plt.bar(n_sample, fmax_r, bottom=fmax_tot)
-            fmax_tot += fmax_r
-            legend.append('component {rank}'.format(rank=r + 1))
-        plt.xticks(n_sample, index, rotation=90)
-        plt.ylabel('Fmax')
-        plt.legend(legend)
-    return score_df, exl_df, eml_df, fmax_df, component_stack
-
-
-# def split_validation_interact(eem_stack, em_range, ex_range, rank, datlist, decomposition_method,
-#                               n_split=4, combination_size='half', n_test='max', rule='random', index=[],
-#                               criteria='TCC', plot_all_combos=True, dataset_normalization=False,
-#                               init='svd'):
-#     split_set, _ = eem_stack_spliting(eem_stack, datlist, n_split=n_split, rule=rule)
-#     if combination_size == 'half':
-#         cs = int(n_split) / 2
-#     else:
-#         cs = int(combination_size)
-#     combos = []
-#     combo_labels = []
-#     for i, j in zip(itertools.combinations([i for i in range(n_split)], int(cs * 2)),
-#                     itertools.combinations(list(string.ascii_uppercase)[0:n_split], int(cs * 2))):
-#         elements = list(itertools.combinations(i, int(cs)))
-#         codes = list(itertools.combinations(j, int(cs)))
-#         for k in range(int(len(elements) / 2)):
-#             combos.append([elements[k], elements[-1 - k]])
-#             combo_labels.append([''.join(codes[k]), ''.join(codes[-1 - k])])
-#     if n_test == 'max':
-#         n_t = len(combos)
-#     elif isinstance(n_test, int):
-#         if n_test > len(combos):
-#             n_t = len(combos)
-#         else:
-#             n_t = n_test
-#     idx = random.sample(range(len(combos)), n_t)
-#     test_count = 0
-#     sims = {}
-#     models = []
-#     while test_count < n_t:
-#         c1 = combos[idx[test_count]][0]
-#         c2 = combos[idx[test_count]][1]
-#         label = combo_labels[idx[test_count]]
-#         eem_stack_c1 = np.concatenate([split_set[i] for i in c1], axis=0)
-#         eem_stack_c2 = np.concatenate([split_set[i] for i in c2], axis=0)
-#         score1_df, exl1_df, eml1_df, _, _, _, _ = decomposition_interact(eem_stack_c1, em_range, ex_range, rank,
-#                                                                          index=index,
-#                                                                          decomposition_method=decomposition_method,
-#                                                                          dataset_normalization=dataset_normalization,
-#                                                                          score_normalization=False,
-#                                                                          loadings_normalization=True,
-#                                                                          component_normalization=False,
-#                                                                          plot_loadings=False,
-#                                                                          plot_components=False, display_score=False,
-#                                                                          component_autoscale=True, sort_em=True,
-#                                                                          init=init, plot_fmax=False
-#                                                                          )
-#         score2_df, exl2_df, eml2_df, _, _, _, _ = decomposition_interact(eem_stack_c2, em_range, ex_range, rank,
-#                                                                          index=index,
-#                                                                          decomposition_method=decomposition_method,
-#                                                                          dataset_normalization=dataset_normalization,
-#                                                                          score_normalization=False,
-#                                                                          loadings_normalization=True,
-#                                                                          component_normalization=False,
-#                                                                          plot_loadings=False,
-#                                                                          plot_components=False, display_score=False,
-#                                                                          component_autoscale=True, sort_em=True,
-#                                                                          init=init, plot_fmax=False
-#                                                                          )
-#         if test_count > 0:
-#             _, matched_index_prev, _, _ = align_parafac_components(models[test_count - 1][0][1],
-#                                                                    models[test_count - 1][0][2], exl1_df, eml1_df,
-#                                                                    similarity_metric=criteria,
-#                                                                    wavelength_alignment=False, criteria='mean')
-#             order = [o[1] for o in matched_index_prev]
-#             exl1_df = pd.DataFrame({'component {r}'.format(r=i + 1): exl1_df.iloc[:, order[i]] for i in range(rank)})
-#             eml1_df = pd.DataFrame({'component {r}'.format(r=i + 1): eml1_df.iloc[:, order[i]] for i in range(rank)})
-#             score1_df = pd.DataFrame(
-#                 {'component {r}'.format(r=i + 1): score1_df.iloc[:, order[i]] for i in range(rank)})
-#
-#         m_sim, matched_index, max_sim, _ = align_parafac_components(exl1_df, eml1_df, exl2_df, eml2_df,
-#                                                                     similarity_metric=criteria,
-#                                                                     wavelength_alignment=False, criteria='mean')
-#         for l in matched_index:
-#             if l[0] != l[1]:
-#                 warnings.warn('Component {c1} of model {m1} does not match with '
-#                               'component {c1} of model {m2}, which is replaced by Component {c2} of model {m2}'
-#                               .format(c1=l[0] + 1, c2=l[1] + 1, m1=label[0], m2=label[1]))
-#
-#         order = [o[1] for o in matched_index]
-#         exl2_df = pd.DataFrame({'component {r}'.format(r=i + 1): exl2_df.iloc[:, order[i]] for i in range(rank)})
-#         eml2_df = pd.DataFrame({'component {r}'.format(r=i + 1): eml2_df.iloc[:, order[i]] for i in range(rank)})
-#         score2_df = pd.DataFrame({'component {r}'.format(r=i + 1): score2_df.iloc[:, order[i]] for i in range(rank)})
-#         models.append([[score1_df, exl1_df, eml1_df, label[0]], [score2_df, exl2_df, eml2_df, label[1]]])
-#         sims['test {n}: {l1} vs. {l2}'.format(n=test_count + 1, l1=label[0], l2=label[1])] = max_sim
-#         test_count += 1
-#     sims_df = pd.DataFrame(sims, index=['component {c}'.format(c=c + 1) for c in range(rank)])
-#     if plot_all_combos:
-#         cmap = get_cmap('tab20')
-#         colors = [cmap(i) for i in np.linspace(0, 1, 2 * len(models))]
-#         for r in range(rank):
-#             plt.figure()
-#             for i in range(len(models)):
-#                 score1_df, exl1_df, eml1_df, label1 = models[i][0]
-#                 score2_df, exl2_df, eml2_df, label2 = models[i][1]
-#                 plt.plot(exl1_df.index.get_level_values(1), exl1_df.iloc[:, r],
-#                          color=colors[2 * i], linewidth=1, label=label1 + '-ex')
-#                 plt.plot(exl2_df.index.get_level_values(1), exl2_df.iloc[:, r],
-#                          color=colors[2 * i + 1], linewidth=1, label=label2 + '-ex')
-#                 plt.plot(eml1_df.index.get_level_values(1), eml1_df.iloc[:, r],
-#                          color=colors[2 * i], linewidth=1, linestyle='dashed', label=label1 + '-em')
-#                 plt.plot(eml2_df.index.get_level_values(1), eml2_df.iloc[:, r],
-#                          color=colors[2 * i + 1], linewidth=1, linestyle='dashed', label=label2 + '-em')
-#                 plt.xlabel('Wavelength [nm]', fontsize=15)
-#                 plt.xticks(np.arange(min(ex_range), max(em_range), 50), fontsize=12)
-#                 plt.ylabel('Loadings', fontsize=15)
-#                 plt.yticks(fontsize=12)
-#                 plt.title('component {rank}'.format(rank=r + 1))
-#             plt.legend(fontsize=12, bbox_to_anchor=(1.05, 1), loc='upper left')
-#         print('Similarity of each test:')
-#         display(sims_df)
-#     return models, sims_df
 
 # ----------------------Part 1. Specify data directory and filename format-----------------------
 
@@ -924,20 +471,20 @@ class Widgets_data_cleaning:
 
     def auto_detection(self, foo):
         if self.auto_detection_method.value == 'Isolation forest':
-            self.auto_detection_labels = eems_outlier_detection_if(self.eem_stack, self.em_range, self.ex_range,
-                                                                   self.tf_normalization.value,
-                                                                   (self.grid_size.value, self.grid_size.value),
-                                                                   self.contamination.value)
+            self.auto_detection_labels = eems_isolation_forest(self.eem_stack, self.em_range, self.ex_range,
+                                                               self.tf_normalization.value,
+                                                               (self.grid_size.value, self.grid_size.value),
+                                                               self.contamination.value)
         if self.auto_detection_method.value == 'One-class-SVM':
-            self.auto_detection_labels = eems_outlier_detection_ocs(self.eem_stack, self.em_range, self.ex_range,
-                                                                    self.tf_normalization.value,
-                                                                    (self.grid_size.value, self.grid_size.value),
-                                                                    self.contamination.value)
+            self.auto_detection_labels = eems_one_class_svm(self.eem_stack, self.em_range, self.ex_range,
+                                                            self.tf_normalization.value,
+                                                            (self.grid_size.value, self.grid_size.value),
+                                                            self.contamination.value)
         if self.auto_detection_method.value == 'Mixed':
-            y1 = eems_outlier_detection_if(self.eem_stack, self.em_range, self.ex_range, self.tf_normalization.value,
-                                           (self.grid_size.value, self.grid_size.value), self.contamination.value)
-            y2 = eems_outlier_detection_ocs(self.eem_stack, self.em_range, self.ex_range, self.tf_normalization.value,
-                                            (self.grid_size.value, self.grid_size.value), self.contamination.value)
+            y1 = eems_isolation_forest(self.eem_stack, self.em_range, self.ex_range, self.tf_normalization.value,
+                                       (self.grid_size.value, self.grid_size.value), self.contamination.value)
+            y2 = eems_one_class_svm(self.eem_stack, self.em_range, self.ex_range, self.tf_normalization.value,
+                                    (self.grid_size.value, self.grid_size.value), self.contamination.value)
             self.auto_detection_labels = np.array([max(i, j) for i, j in zip(y1, y2)])
         n_outliers = np.count_nonzero(self.auto_detection_labels == -1)
         n_cols = 4
@@ -990,7 +537,7 @@ class Widgets_data_cleaning:
         masked, mask = eem_region_masking(self.eem_stack_imputed[idx, :, :], self.em_range, self.ex_range,
                                           self.em_range_mask.value[0], self.em_range_mask.value[-1],
                                           self.ex_range_mask.value[0], self.ex_range_mask.value[-1])
-        imputed = eem_nan_imputing(masked, prior_mask=mask)
+        imputed = eem_grid_imputing(masked, prior_mask=mask)
         self.eem_stack_imputed[idx, :, :] = imputed
         print("Artefact has been imputed for" + '"' + self.filelist_preview.value + '"')
 
@@ -999,7 +546,7 @@ class Widgets_data_cleaning:
             masked, mask = eem_region_masking(self.eem_stack_imputed[i, :, :], self.em_range, self.ex_range,
                                               self.em_range_mask.value[0], self.em_range_mask.value[-1],
                                               self.ex_range_mask.value[0], self.ex_range_mask.value[-1])
-            imputed = eem_nan_imputing(masked, prior_mask=mask)
+            imputed = eem_grid_imputing(masked, prior_mask=mask)
             self.eem_stack_imputed[i, :, :] = imputed
         print("Artefact has been imputed for all EEMs in the stack")
 
@@ -1088,7 +635,7 @@ class Widgets_stack_processing:
             self.button_pixel_statistics = ipywidgets.Button(description='Calculate')
 
         def pixel_statistics_interact(self, foo):
-            EEMstack_class_cw = EEMDataset(self.eem_stack_cw[self.datlist_cw.index(self.range1.value):
+            EEMstack_class_cw = EEMstack(self.eem_stack_cw[self.datlist_cw.index(self.range1.value):
                                                            self.datlist_cw.index(self.range2.value) + 1],
                                          self.em_range_cw, self.ex_range_cw)
             if self.property_pixel.value == 'Timeseries analysis':
@@ -1186,8 +733,8 @@ class Widgets_stack_processing:
                     reference, header = read_reference_from_text(self.reference_filepath_eem.value)
                 if self.checkbox_reference_mannual_input_eem.value:
                     reference = string_to_float_list(self.reference_mannual_input_eem.value)
-            eems_statistics_interact(EEMstack_class_cw, term=self.property_eem.value, title=self.title_eem_statistics.value,
-                            reference=reference, crange=self.crange_cw.value, reference_label=header)
+            eem_statistics(EEMstack_class_cw, term=self.property_eem.value, title=self.title_eem_statistics.value,
+                           reference=reference, crange=self.crange_cw.value, reference_label=header)
 
         def generate_widgets(self):
             self.checkbox_reference_filepath_eem.observe(self.update_manual, 'value')
@@ -1505,12 +1052,12 @@ class Widgets_stack_processing:
 
         def plot_pixel_error(self, res_abs, res_ratio, switch, datlist, data_to_view):
             if switch:
-                plot_eem(res_abs[datlist.index(data_to_view)],
-                         self.em_range_cw, self.ex_range_cw, auto_intensity_range=True,
-                         title='Absolute error [a.u.]', cbar_label='Diff. of intensity [a.u.]')
-                plot_eem(res_ratio[datlist.index(data_to_view)],
-                         self.em_range_cw, self.ex_range_cw, vmin=-30, vmax=30,
-                         title='Relative error [%]', cbar_label='Diff. / original intensity [%]')
+                plot3DEEM(res_abs[datlist.index(data_to_view)],
+                          self.em_range_cw, self.ex_range_cw, autoscale=True,
+                          title='Absolute error [a.u.]', cbar_label='Diff. of intensity [a.u.]')
+                plot3DEEM(res_ratio[datlist.index(data_to_view)],
+                          self.em_range_cw, self.ex_range_cw, cmin=-30, cmax=30,
+                          title='Relative error [%]', cbar_label='Diff. / original intensity [%]')
 
 
         def plot_sample_error(self, foo):
@@ -1587,14 +1134,14 @@ class Widgets_stack_processing:
         def split_test_button(self, foo):
             dataset = self.eem_stack_cw[self.datlist_cw.index(self.range1.value):
                                         self.datlist_cw.index(self.range2.value) + 1]
-            models, sims_df = split_validation_interact(dataset, self.em_range_cw, self.ex_range_cw, rank=self.rank.value,
-                                                        datlist=self.datlist_cw,
-                                                        decomposition_method=self.decomposition_method_list.value,
-                                                        n_split=self.n_split.value, combination_size=self.combination_size.value,
-                                                        n_test=self.n_test.value, rule='random', index=[], criteria='TCC',
-                                                        plot_all_combos=self.plot_tests.value,
-                                                        dataset_normalization=self.dataset_normalization.value,
-                                                        init=self.init.value)
+            models, sims_df = split_validation(dataset, self.em_range_cw, self.ex_range_cw, rank=self.rank.value,
+                                               datlist=self.datlist_cw,
+                                               decomposition_method=self.decomposition_method_list.value,
+                                               n_split=self.n_split.value, combination_size=self.combination_size.value,
+                                               n_test=self.n_test.value, rule='random', index=[], criteria='TCC',
+                                               plot_all_combos=self.plot_tests.value,
+                                               dataset_normalization=self.dataset_normalization.value,
+                                               init=self.init.value)
             return models, sims_df
 
         def generate_widgets(self):
@@ -1704,15 +1251,15 @@ class Widgets_export_parafac:
         return info
 
     def export_parafac_interact(self):
-        export_parafac_interact(self.filepath_i.value, self.score_df, self.exl_df, self.eml_df, self.name_i.value,
-                                self.creator_i.value,
-                                toolbox='EEM_python_toolkit',
-                                date=self.date_i.value, fluorometer=self.fluorometer_i.value, nSample=self.nSample_i.value,
-                                sources=self.sources_i.value,
-                                dataset_calibration=self.dataset_calibration_i.value,
-                                decomposition_method=self.decomposition_method_i.value,
-                                preprocess=self.preprocess_i.value,
-                                validation=self.validation_i.value, description=self.description_i.value)
+        export_parafac(self.filepath_i.value, self.score_df, self.exl_df, self.eml_df, self.name_i.value,
+                       self.creator_i.value,
+                       toolbox='EEM_python_toolkit',
+                       date=self.date_i.value, fluorometer=self.fluorometer_i.value, nSample=self.nSample_i.value,
+                       sources=self.sources_i.value,
+                       dataset_calibration=self.dataset_calibration_i.value,
+                       decomposition_method=self.decomposition_method_i.value,
+                       preprocess=self.preprocess_i.value,
+                       validation=self.validation_i.value, description=self.description_i.value)
 
     def generate_widgets(self):
         self.button_output_interact = interactive(self.export_parafac_interact,
@@ -1730,19 +1277,3 @@ class Widgets_export_parafac:
                         ipywidgets.Box([self.button_output_interact], layout=form_item_layout),
                         ]
         return output_items
-
-
-# ----------------------utils------------------------------
-
-def string_to_float_list(string, output_type='np_array'):
-    if output_type == 'np_array':
-        output = np.array([float(i) for i in list(string.split(","))])
-    elif output_type == 'list':
-        output = [float(i) for i in list(string.split(","))]
-    elif output_type == 'list_or_int':
-        output = [float(i) for i in list(string.split(","))]
-        if len(output) == 1:
-            output = int(output[0])
-    else:
-        Warning('Input must be number(s) separated by commas (if there are more than one)')
-    return output

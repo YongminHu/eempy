@@ -1,7 +1,7 @@
 """
 Functions for EEM analysis
 Author: Yongmin Hu (yongmin.hu@eawag.ch, yongminhu@outlook.com)
-Last update: 2024-01-10
+Last update: 2024-02-13
 """
 
 from eempy.read_data import *
@@ -13,20 +13,22 @@ import numpy as np
 import itertools
 import string
 import warnings
-from sklearn.linear_model import LinearRegression
 from math import sqrt
 from sklearn.metrics import mean_squared_error, explained_variance_score, r2_score
+# from sklearn.ensemble import IsolationForest
+# from sklearn import svm
+from sklearn.linear_model import LinearRegression
 from scipy.ndimage import gaussian_filter
 from scipy.interpolate import RegularGridInterpolator, interp1d, griddata
+from scipy.cluster.hierarchy import linkage, fcluster
+from scipy.spatial.distance import squareform
+from scipy.sparse.linalg import ArpackError
 from tensorly.decomposition import parafac, non_negative_parafac
 from tensorly.cp_tensor import cp_to_tensor
 from tlviz.model_evaluation import core_consistency
 from tlviz.outliers import compute_leverage
 from tlviz.factor_tools import permute_cp_tensor
 from pandas.plotting import register_matplotlib_converters
-from scipy.sparse.linalg import ArpackError
-from sklearn.ensemble import IsolationForest
-from sklearn import svm
 from typing import Optional
 
 register_matplotlib_converters()
@@ -79,7 +81,7 @@ def eem_threshold_masking(intensity, threshold, fill=np.nan, mask_type='greater'
     ----------
     intensity: np.ndarray (2d)
         The EEM.
-    threshold：
+    threshold:
         The intensity threshold.
     fill: float
         The value to fill the masked area
@@ -194,17 +196,18 @@ def eem_cutting(intensity, ex_range, em_range, em_min, em_max, ex_min, ex_max):
     Returns
     -------
     intensity_cut: np.ndarray
-        The cutted EEM.
+        The cut EEM.
     ex_range_cut: np.ndarray
-        The cutted ex wavelengths.
+        The cut ex wavelengths.
     em_range_cut:np.ndarray
-        The cutted em wavelengths.
+        The cut em wavelengths.
     """
     em_min_idx = dichotomy_search(em_range, em_min)
     em_max_idx = dichotomy_search(em_range, em_max)
     ex_min_idx = dichotomy_search(ex_range, ex_min)
     ex_max_idx = dichotomy_search(ex_range, ex_max)
-    intensity_cut = intensity[ex_range.shape[0]-ex_max_idx-1:ex_range.shape[0]-ex_min_idx, em_min_idx:em_max_idx+1]
+    intensity_cut = intensity[ex_range.shape[0] - ex_max_idx - 1:ex_range.shape[0] - ex_min_idx,
+                              em_min_idx:em_max_idx + 1]
     em_range_cut = em_range[em_min_idx:em_max_idx + 1]
     ex_range_cut = ex_range[ex_min_idx:ex_max_idx + 1]
     return intensity_cut, ex_range_cut, em_range_cut
@@ -316,10 +319,10 @@ def eem_raman_normalization(intensity, blank=None, ex_range_blank=None, em_range
                 em_lb = 10000000 / (wn_target + bandwidth)
                 em_rb = 10000000 / (wn_target - bandwidth)
                 rsu, _ = eem_regional_integration(blank, ex_range_blank, em_range_blank,
-                                                     ex_min=ex, ex_max=ex, em_min=em_lb, em_max=em_rb)
+                                                  ex_min=ex, ex_max=ex, em_min=em_lb, em_max=em_rb)
             elif bandwidth_type == 'wavelength':
                 rsu, _ = eem_regional_integration(blank, ex_range_blank, em_range_blank,
-                                                     ex_min=ex, ex_max=ex, em_min=ex - bandwidth, em_max=ex + bandwidth)
+                                                  ex_min=ex, ex_max=ex, em_min=ex - bandwidth, em_max=ex + bandwidth)
             else:
                 raise ValueError("'bandwidth_type' should be either 'wavenumber' or 'wavelength'.")
             rsu_tot += rsu
@@ -328,7 +331,7 @@ def eem_raman_normalization(intensity, blank=None, ex_range_blank=None, em_range
     return intensity_normalized, rsu_final
 
 
-def eem_raman_masking(intensity, ex_range, em_range, width=5, method='linear', axis='grid'):
+def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_method='linear', interpolation_axis='grid'):
     """
     Remove and interpolate the Raman scattering.
 
@@ -342,9 +345,9 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, method='linear', a
         The emission wavelengths.
     width: float
         The width of Raman scattering.
-    method: str, {"linear", "cubic", "nan"}
+    interpolation_method: str, {"linear", "cubic", "nan"}
         The method used to interpolate the Raman scattering.
-    axis: str, {"ex", "em", "grid"}
+    interpolation_axis: str, {"ex", "em", "grid"}
         The axis along which the Raman scattering is interpolated. "ex": interpolation is conducted along the excitation
         wavelength; "em": interpolation is conducted along the emission wavelength; "grid": interpolation is conducted
         on the 2D grid of both excitation and emission wavelengths.
@@ -372,35 +375,35 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, method='linear', a
             emidx = dichotomy_search(em_range, lambda_em[s] - width)
             raman_mask[exidx, emidx: emidx + 2 * tol_emidx + 1] = 0
 
-    if method == 'nan':
+    if interpolation_method == 'nan':
         intensity_masked[np.where(raman_mask == 0)] = np.nan
     else:
-        if axis == 'ex':
+        if interpolation_axis == 'ex':
             for j in range(0, intensity.shape[1]):
                 try:
                     x = np.flipud(ex_range)[np.where(raman_mask[:, j] == 1)]
                     y = intensity_masked[:, j][np.where(raman_mask[:, j] == 1)]
-                    f1 = interp1d(x, y, kind=method, fill_value='extrapolate')
+                    f1 = interp1d(x, y, kind=interpolation_method, fill_value='extrapolate')
                     y_predict = f1(np.flipud(ex_range))
                     intensity_masked[:, j] = y_predict
                 except ValueError:
                     continue
 
-        if axis == 'em':
+        if interpolation_axis == 'em':
             for i in range(0, intensity.shape[0]):
                 try:
                     x = em_range[np.where(raman_mask[i, :] == 1)]
                     y = intensity_masked[i, :][np.where(raman_mask[i, :] == 1)]
-                    f1 = interp1d(x, y, kind=method, fill_value='extrapolate')
+                    f1 = interp1d(x, y, kind=interpolation_method, fill_value='extrapolate')
                     y_predict = f1(em_range)
                     intensity_masked[i, :] = y_predict
                 except ValueError:
                     continue
 
-        if axis == 'grid':
+        if interpolation_axis == 'grid':
             old_nan = np.isnan(intensity)
             intensity_masked[np.where(raman_mask == 0)] = np.nan
-            intensity_masked = eem_nan_imputing(intensity_masked, ex_range, em_range, method=method)
+            intensity_masked = eem_nan_imputing(intensity_masked, ex_range, em_range, method=interpolation_method)
             # restore the nan values in non-raman-scattering region
             intensity_masked[old_nan] = np.nan
     return intensity_masked, raman_mask
@@ -618,7 +621,6 @@ def eem_interpolation(intensity, ex_range_old, em_range_old, ex_range_new, em_ra
     -------
     intensity_interpolated: np.ndarray
         The interpolated EEM.
-
     """
     interp = RegularGridInterpolator((ex_range_old[::-1], em_range_old), intensity, method=method)
     x, y = np.meshgrid(em_range_new, ex_range_new[::-1])
@@ -629,88 +631,88 @@ def eem_interpolation(intensity, ex_range_old, em_range_old, ex_range_new, em_ra
     return intensity_interpolated
 
 
-def eems_tf_normalization(eem_stack):
+def eems_tf_normalization(intensity):
     """
     Normalize EEMs by the total fluorescence of each EEM.
 
     Parameters
     ----------
-    eem_stack: np.ndarray (3d)
+    intensity: np.ndarray (3d)
         The EEM stack.
 
     Returns
     -------
-    eem_stack_normalized: np.ndarray
+    intensity_normalized: np.ndarray
         The normalized EEM stack.
     weights: np.ndarray
         The total fluorescence of each EEM.
     """
     tf_list = []
-    for i in range(eem_stack.shape[0]):
-        tf = eem_stack[i].sum()
+    for i in range(intensity.shape[0]):
+        tf = intensity[i].sum()
         tf_list.append(tf)
     weights = np.array(tf_list) / np.mean(tf_list)
-    eem_stack_normalized = eem_stack / weights[:, np.newaxis, np.newaxis]
-    return eem_stack_normalized, weights
+    intensity_normalized = intensity / weights[:, np.newaxis, np.newaxis]
+    return intensity_normalized, weights
 
 
-def eems_outlier_detection_if(eem_stack, ex_range, em_range, tf_normalization=True, grid_size=(10, 10),
-                              contamination=0.02):
-    """
-    tells whether it should be considered as an inlier according to the fitted model. +1: inlier; -1: outlier
-
-    Parameters
-    ----------
-    eem_stack: np.ndarray (3d)
-        The EEM stack.
-    ex_range: np.ndarray (1d)
-        The excitation wavelengths.
-    em_range: np.ndarray (1d)
-        The emission wavelengths
-    """
-    if tf_normalization:
-        eem_stack, _ = eems_tf_normalization(eem_stack)
-    em_range_new = np.arange(em_range[0], em_range[-1], grid_size[1])
-    ex_range_new = np.arange(ex_range[0], ex_range[-1], grid_size[0])
-    eem_stack_interpolated = process_eem_stack(eem_stack, eem_interpolation, ex_range, em_range, ex_range_new,
-                                               em_range_new)
-    eem_stack_unfold = eem_stack_interpolated.reshape(eem_stack_interpolated.shape[0],
-                                                      eem_stack_interpolated.shape[1] * eem_stack_interpolated.shape[2])
-    eem_stack_unfold = np.nan_to_num(eem_stack_unfold)
-    clf = IsolationForest(random_state=0, n_estimators=200, contamination=contamination)
-    clf.fit(eem_stack_unfold)
-    label = clf.predict(eem_stack_unfold)
-    return label
-
-
-def eems_outlier_detection_ocs(eem_stack, ex_range, em_range, tf_normalization=True, grid_size=(10, 10), nu=0.02,
-                               kernel="rbf", gamma=10000):
-    """
-    tells whether it should be considered as an inlier according to the fitted model. +1: inlier; -1: outlier
-
-    Parameters
-    ----------
-    eem_stack: np.ndarray (3d)
-        The EEM stack.
-    ex_range: np.ndarray (1d)
-        The excitation wavelengths.
-    em_range: np.ndarray (1d)
-        The emission wavelengths
-
-    """
-    if tf_normalization:
-        eem_stack, _ = eems_tf_normalization(eem_stack)
-    em_range_new = np.arange(em_range[0], em_range[-1], grid_size[1])
-    ex_range_new = np.arange(ex_range[0], ex_range[-1], grid_size[0])
-    eem_stack_interpolated = process_eem_stack(eem_stack, eem_interpolation, ex_range, em_range, ex_range_new,
-                                               em_range_new)
-    eem_stack_unfold = eem_stack_interpolated.reshape(eem_stack_interpolated.shape[0],
-                                                      eem_stack_interpolated.shape[1] * eem_stack_interpolated.shape[2])
-    eem_stack_unfold = np.nan_to_num(eem_stack_unfold)
-    clf = svm.OneClassSVM(nu=nu, kernel=kernel, gamma=gamma)
-    clf.fit(eem_stack_unfold)
-    label = clf.predict(eem_stack_unfold)
-    return label
+# def eems_outlier_detection_if(eem_stack, ex_range, em_range, tf_normalization=True, grid_size=(10, 10),
+#                               contamination=0.02):
+#     """
+#     tells whether it should be considered as an inlier according to the fitted model. +1: inlier; -1: outlier
+#
+#     Parameters
+#     ----------
+#     eem_stack: np.ndarray (3d)
+#         The EEM stack.
+#     ex_range: np.ndarray (1d)
+#         The excitation wavelengths.
+#     em_range: np.ndarray (1d)
+#         The emission wavelengths
+#     """
+#     if tf_normalization:
+#         eem_stack, _ = eems_tf_normalization(eem_stack)
+#     em_range_new = np.arange(em_range[0], em_range[-1], grid_size[1])
+#     ex_range_new = np.arange(ex_range[0], ex_range[-1], grid_size[0])
+#     eem_stack_interpolated = process_eem_stack(eem_stack, eem_interpolation, ex_range, em_range, ex_range_new,
+#                                                em_range_new)
+#     eem_stack_unfold = eem_stack_interpolated.reshape(eem_stack_interpolated.shape[0],
+#                                                       eem_stack_interpolated.shape[1] * eem_stack_interpolated.shape[2])
+#     eem_stack_unfold = np.nan_to_num(eem_stack_unfold)
+#     clf = IsolationForest(random_state=0, n_estimators=200, contamination=contamination)
+#     clf.fit(eem_stack_unfold)
+#     label = clf.predict(eem_stack_unfold)
+#     return label
+#
+#
+# def eems_outlier_detection_ocs(eem_stack, ex_range, em_range, tf_normalization=True, grid_size=(10, 10), nu=0.02,
+#                                kernel="rbf", gamma=10000):
+#     """
+#     tells whether it should be considered as an inlier according to the fitted model. +1: inlier; -1: outlier
+#
+#     Parameters
+#     ----------
+#     eem_stack: np.ndarray (3d)
+#         The EEM stack.
+#     ex_range: np.ndarray (1d)
+#         The excitation wavelengths.
+#     em_range: np.ndarray (1d)
+#         The emission wavelengths
+#
+#     """
+#     if tf_normalization:
+#         eem_stack, _ = eems_tf_normalization(eem_stack)
+#     em_range_new = np.arange(em_range[0], em_range[-1], grid_size[1])
+#     ex_range_new = np.arange(ex_range[0], ex_range[-1], grid_size[0])
+#     eem_stack_interpolated = process_eem_stack(eem_stack, eem_interpolation, ex_range, em_range, ex_range_new,
+#                                                em_range_new)
+#     eem_stack_unfold = eem_stack_interpolated.reshape(eem_stack_interpolated.shape[0],
+#                                                       eem_stack_interpolated.shape[1] * eem_stack_interpolated.shape[2])
+#     eem_stack_unfold = np.nan_to_num(eem_stack_unfold)
+#     clf = svm.OneClassSVM(nu=nu, kernel=kernel, gamma=gamma)
+#     clf.fit(eem_stack_unfold)
+#     label = clf.predict(eem_stack_unfold)
+#     return label
 
 
 def eems_fit_components(eem_stack, component_stack, fit_intercept=False):
@@ -770,7 +772,7 @@ class EEMDataset:
     """
 
     def __init__(self, eem_stack: np.ndarray, ex_range: np.ndarray, em_range: np.ndarray,
-                 ref: Optional[np.ndarray] = None, index: Optional[list] = None):
+                 index: Optional[list] = None, ref: Optional[np.ndarray] = None):
 
         # ------------------parameters--------------------
         # The Em/Ex ranges should be sorted in ascending order
@@ -783,33 +785,80 @@ class EEMDataset:
 
     # --------------------EEM dataset features--------------------
     def zscore(self):
-        transformed_data = stats.zscore(self.eem_stack, axis=0)
-        return transformed_data
+        """
+        Calculate zscore of each pixel over all samples.
+
+        Returns
+        -------
+        zscore: np.ndarray
+        """
+        zscore = stats.zscore(self.eem_stack, axis=0)
+        return zscore
 
     def mean(self):
+        """
+        Calculate mean of each pixel over all samples.
+
+        Returns
+        -------
+        mean: np.ndarray
+        """
         mean = np.mean(self.eem_stack, axis=0)
         return mean
 
     def variance(self):
+        """
+        Calculate variance of each pixel over all samples.
+
+        Returns
+        -------
+        variance: np.ndarray
+        """
         variance = np.var(self.eem_stack, axis=0)
         return variance
 
-    def rel_std(self, threshold=0.05):
-        coef_variation = stats.variation(self.eem_stack, axis=0)
-        rel_std = abs(coef_variation)
-        if threshold:
-            qualified_pixel_proportion = np.count_nonzero(rel_std < threshold) / np.count_nonzero(~np.isnan(rel_std))
-            print("The proportion of pixels with relative STD < {t}: ".format(t=threshold),
-                  qualified_pixel_proportion)
-        return rel_std
-
     def std(self):
+        """
+        Calculate standard deviation of each pixel over all samples.
+
+        Returns
+        -------
+        std: np.ndarray
+        """
         return np.std(self.eem_stack, axis=0)
 
+    # def rel_std(self, threshold=0.05):
+    #
+    #     coef_variation = stats.variation(self.eem_stack, axis=0)
+    #     rel_std = abs(coef_variation)
+    #     if threshold:
+    #         qualified_pixel_proportion = np.count_nonzero(rel_std < threshold) / np.count_nonzero(~np.isnan(rel_std))
+    #         print("The proportion of pixels with relative STD < {t}: ".format(t=threshold),
+    #               qualified_pixel_proportion)
+    #     return rel_std
+
     def total_fluorescence(self):
+        """
+        Calculate total fluorescence of each sample.
+
+        Returns
+        -------
+        tf: np.ndarray
+        """
         return self.eem_stack.sum(axis=(1, 2))
 
     def regional_integration(self, em_boundary, ex_boundary):
+        """
+        Calculate regional integration of samples.
+
+        Parameters
+        ----------
+        See eempy.eem_processing.eem_regional_integration
+
+        Returns
+        -------
+        integrations: np.ndarray
+        """
         integrations, _ = process_eem_stack(self.eem_stack, eem_regional_integration, ex_range=self.ex_range,
                                             em_range=self.em_range, em_boundary=em_boundary, ex_boundary=ex_boundary)
         return integrations
@@ -853,7 +902,6 @@ class EEMDataset:
         -------
         corr_dict: dict
             A dictionary containing multiple correlation evaluation metrics.
-
         """
         m = self.eem_stack
         x = self.ref
@@ -882,6 +930,23 @@ class EEMDataset:
     # -----------------EEM dataset processing methods-----------------
 
     def threshold_masking(self, threshold, mask_type='greater', copy=True):
+        """
+        Mask the fluorescence intensities above or below a certain threshold in an EEM.
+
+        Parameters
+        ----------
+        threshold, mask_type:
+            See eempy.eem_processing.eem_threshold_masking
+        copy: bool
+            if False, overwrite the EEMDataset object with the processed EEMs.
+
+        Returns
+        -------
+        eem_stack_masked: np.ndarray
+            The masked EEM.
+        mask: np.ndarray
+            The mask matrix. +1: unmasked area; np.nan: masked area.
+        """
         eem_stack_masked, masks = process_eem_stack(self.eem_stack, eem_threshold_masking, threshold=threshold,
                                                     mask_type=mask_type)
         if not copy:
@@ -889,12 +954,42 @@ class EEMDataset:
         return eem_stack_masked, masks
 
     def gaussian_filter(self, sigma=1, truncate=3, copy=True):
+        """
+        Apply Gaussian filtering to an EEM.
+
+        Parameters
+        ----------
+        sigma, truncate
+            See eempy.eem_processing.eem_gaussian_filter
+        copy: bool
+            if False, overwrite the EEMDataset object with the processed EEMs.
+
+        Returns
+        -------
+        eem_stack_filtered: np.ndarray
+            The filtered EEM.
+        """
         eem_stack_filtered = process_eem_stack(self.eem_stack, eem_gaussian_filter, sigma=sigma, truncate=truncate)
         if not copy:
             self.eem_stack = eem_stack_filtered
         return eem_stack_filtered
 
     def region_masking(self, ex_min, ex_max, em_min, em_max, fill_value='nan', copy=True):
+        """
+        Mask the fluorescence intensities in a specified rectangular region.
+
+        Parameters
+        ----------
+        ex_min, ex_max, em_min, em_max, fill_value
+            See eempy.eem_processing.eem_region_masking
+        copy: bool
+            if False, overwrite the EEMDataset object with the processed EEMs.
+
+        Returns
+        -------
+        eem_stack_masked: np.ndarray
+            The masked EEM.
+        """
         eem_stack_masked, _ = process_eem_stack(self.eem_stack, eem_region_masking, ex_range=self.ex_range,
                                                 em_range=self.em_range, ex_min=ex_min, ex_max=ex_max, em_min=em_min,
                                                 em_max=em_max, fill_value=fill_value)
@@ -903,6 +998,25 @@ class EEMDataset:
         return eem_stack_masked
 
     def cutting(self, ex_min, ex_max, em_min, em_max, copy=True):
+        """
+        Calculate the regional fluorescence integration (RFI) over a rectangular region.
+
+        Parameters
+        ----------
+        ex_min, ex_max, em_min, em_max
+            See eempy.eem_processing.eem_cutting
+        copy: bool
+            if False, overwrite the EEMDataset object with the processed EEMs.
+
+        Returns
+        -------
+        intensity_cut: np.ndarray
+            The cut EEM.
+        ex_range_cut: np.ndarray
+            The cut ex wavelengths.
+        em_range_cut:np.ndarray
+            The cut em wavelengths.
+        """
         eem_stack_cut, new_ranges = process_eem_stack(self.eem_stack, eem_cutting, ex_range=self.ex_range,
                                                       em_range=self.em_range,
                                                       ex_min=ex_min, ex_max=ex_max, em_min=em_min, em_max=em_max)
@@ -912,10 +1026,24 @@ class EEMDataset:
             self.em_range = new_ranges[0][1]
         return eem_stack_cut, new_ranges[0][0], new_ranges[0][1]
 
-    def nan_imputing(self, method='linear', fill_value='linear_ex', prior_mask=None, copy=True):
+    def nan_imputing(self, method='linear', fill_value='linear_ex', copy=True):
+        """
+        Impute the NaN values in an EEM.
+
+        Parameters
+        ----------
+        method, fill_value
+            See eempy.eem_processing.eem_nan_imputing
+        copy: bool
+            if False, overwrite the EEMDataset object with the processed EEMs.
+
+        Returns
+        -------
+        eem_stack_imputed: np.ndarray
+            The imputed EEM.
+        """
         eem_stack_imputed = process_eem_stack(self.eem_stack, eem_nan_imputing, ex_range=self.ex_range,
-                                              em_range=self.em_range, method=method, fill_value=fill_value,
-                                              prior_mask=prior_mask)
+                                              em_range=self.em_range, method=method, fill_value=fill_value)
         if not copy:
             self.eem_stack = eem_stack_imputed
         return eem_stack_imputed
@@ -923,6 +1051,24 @@ class EEMDataset:
     def raman_normalization(self, ex_range_blank=None, em_range_blank=None, blank=None, from_blank=False,
                             integration_time=1, ex_lb=349, ex_ub=351, bandwidth_type='wavenumber', bandwidth=1800,
                             rsu_standard=20000, manual_rsu=1, copy=True):
+        """
+        Normalize the EEM using the Raman scattering unit (RSU) given directly or calculated from a blank EEM.
+        RSU_final = RSU_raw / (RSU_standard * integration_time).
+
+        Parameters
+        ----------
+        blank, ex_range_blank, em_range_blank, from_blank, integration_time, ex_lb, ex_ub, bandwidth, bandwidth_type
+            See eempy.eem_processing.eem_raman_normalization
+        rsu_standard, manual_rsu
+            See eempy.eem_processing.eem_raman_normalization
+        copy: bool
+            if False, overwrite the EEMDataset object with the processed EEMs.
+
+        Returns
+        -------
+        eem_stack_normalized: np.ndarray
+            The normalized EEM.
+        """
         eem_stack_normalized = process_eem_stack(self.eem_stack, eem_raman_normalization, ex_range_blank=ex_range_blank,
                                                  em_range_blank=em_range_blank, blank=blank, from_blank=from_blank,
                                                  integration_time=integration_time, ex_lb=ex_lb, ex_ub=ex_ub,
@@ -933,68 +1079,145 @@ class EEMDataset:
         return eem_stack_normalized
 
     def tf_normalization(self, copy=True):
+        """
+        Normalize EEMs by the total fluorescence of each EEM.
+
+        Parameters
+        ----------
+        copy: bool
+            if False, overwrite the EEMDataset object with the processed EEMs.
+
+        Returns
+        -------
+        eem_stack_normalized: np.ndarray
+            The normalized EEM stack.
+        weights: np.ndarray
+            The total fluorescence of each EEM.
+        """
         eem_stack_normalized, weights = eems_tf_normalization(self.eem_stack)
         if not copy:
             self.eem_stack = eem_stack_normalized
         return eem_stack_normalized, weights
 
-    def raman_masking(self, tolerance=5, method='linear', axis='grid', copy=True):
+    def raman_masking(self, width=5, method='linear', interpolation_axis='grid', copy=True):
+        """
+        Remove and interpolate the Raman scattering.
+
+        Parameters
+        ----------
+        width, method, interpolation_axis
+            See eempy.eem_processing.eem_raman_masking
+        copy: bool
+            if False, overwrite the EEMDataset object with the processed EEMs.
+
+        Returns
+        -------
+        eem_stack_masked: np.ndarray
+            The EEM with Raman scattering interpolated.
+        """
         eem_stack_masked, _ = process_eem_stack(self.eem_stack, eem_raman_masking, ex_range=self.ex_range,
-                                                em_range=self.em_range, tolerance=tolerance, method=method, axis=axis)
+                                                em_range=self.em_range, width=width, interpolation_method=method,
+                                                interpolation_axis=interpolation_axis)
         if not copy:
             self.eem_stack = eem_stack_masked
         return eem_stack_masked
 
-    def rayleigh_masking(self, tolerance_o1=15, tolerance_o2=15, axis_o1='grid', axis_o2='grid', method_o1='zero',
-                         method_o2='linear', copy=True):
+    def rayleigh_masking(self, width_o1=15, width_o2=15, interpolation_axis_o1='grid', interpolation_axis_o2='grid',
+                         interpolation_method_o1='zero', interpolation_method_o2='linear', copy=True):
+        """
+        Remove and interpolate the Rayleigh scattering.
+
+        Parameters
+        ----------
+        width_o1, width_o2, interpolation_axis_o1, interpolation_axis_o2, interpolation_method_o1, interpolation_method_o2
+            See eempy.eem_processing.eem_rayleigh_masking
+        copy: bool
+            if False, overwrite the EEMDataset object with the processed EEMs.
+
+        Returns
+        -------
+        eem_stack_masked: np.ndarray
+            The EEM with Rayleigh scattering interpolated.
+        """
         eem_stack_masked, _ = process_eem_stack(self.eem_stack, eem_rayleigh_masking, ex_range=self.ex_range,
-                                                em_range=self.em_range, tolerance_o1=tolerance_o1,
-                                                tolerance_o2=tolerance_o2, axis_o1=axis_o1, axis_o2=axis_o2,
-                                                method_o1=method_o1, method_o2=method_o2)
+                                                em_range=self.em_range, width_o1=width_o1,
+                                                width_o2=width_o2, axis_o1=interpolation_axis_o1,
+                                                axis_o2=interpolation_axis_o2,
+                                                method_o1=interpolation_method_o1, method_o2=interpolation_method_o2)
         if not copy:
             self.eem_stack = eem_stack_masked
         return eem_stack_masked
 
-    def ife_correction(self, absorbance, ex_range_abs, cuvette_length=1, ex_lower_limit=200, ex_upper_limit=825,
-                       copy=True):
+    def ife_correction(self, absorbance, ex_range_abs, cuvette_length=1, copy=True):
+        """
+        Correct the inner filter effect (IFE).
+
+        Parameters
+        ----------
+        absorbance, ex_range_abs, cuvette_length
+            See eempy.eem_processing.eem_ife_correction
+        copy: bool
+            if False, overwrite the EEMDataset object with the processed EEMs.
+
+        Returns
+        -------
+        eem_stack_corrected: np.ndarray
+            The corrected EEM.
+        """
         eem_stack_corrected = process_eem_stack(self.eem_stack, eem_ife_correction, ex_range=self.ex_range,
                                                 em_range=self.em_range, absorbance=absorbance,
-                                                ex_range_abs=ex_range_abs, cuvette_length=cuvette_length,
-                                                ex_lower_limit=ex_lower_limit, ex_upper_limit=ex_upper_limit)
+                                                ex_range_abs=ex_range_abs, cuvette_length=cuvette_length)
         if not copy:
             self.eem_stack = eem_stack_corrected
         return eem_stack_corrected
 
-    def interpolation(self, ex_range_new, em_range_new, copy=True):
+    def interpolation(self, ex_range_new, em_range_new, method, copy=True):
+        """
+        Interpolate EEM on given ex/em ranges. This function is typically used for changing the ex/em ranges of an EEM
+        (e.g., in order to synchronize EEMs to the same ex/em ranges). It may not be able to interpolate EEM containing
+        nan values. For nan value imputation, please consider eem_nan_imputing().
+
+        Parameters
+        ----------
+        ex_range_new, em_range_new, method
+            See eempy.eem_processing.eem_interpolation
+        copy: bool
+            if False, overwrite the EEMDataset object with the processed EEMs.
+
+        Returns
+        -------
+        eem_stack_interpolated: np.ndarray
+            The interpolated EEM.
+        """
         eem_stack_interpolated = process_eem_stack(self.eem_stack, eem_interpolation, ex_range_old=self.ex_range,
                                                    em_range_old=self.em_range, ex_range_new=ex_range_new,
-                                                   em_range_new=em_range_new)
+                                                   em_range_new=em_range_new, method=method)
         if not copy:
             self.eem_stack = eem_stack_interpolated
             self.ex_range = ex_range_new
             self.em_range = em_range_new
-        return eem_stack_interpolated, ex_range_new, em_range_new
+        return eem_stack_interpolated
 
-    def outlier_detection_if(self, tf_normalization=True, grid_size=(10, 10), contamination=0.02, deletion=False):
-        labels = eems_outlier_detection_if(eem_stack=self.eem_stack, ex_range=self.ex_range, em_range=self.em_range,
-                                           tf_normalization=tf_normalization, grid_size=grid_size,
-                                           contamination=contamination)
-        if deletion:
-            self.eem_stack = self.eem_stack[labels != -1]
-            self.ref = self.ref[labels != -1]
-            self.index = [idx for i, idx in enumerate(self.index) if labels[i] != -1]
-        return labels
-
-    def outlier_detection_ocs(self, tf_normalization=True, grid_size=(10, 10), nu=0.02, kernel='rbf', gamma=10000,
-                              deletion=False):
-        labels = eems_outlier_detection_ocs(eem_stack=self.eem_stack, ex_range=self.ex_range, em_range=self.em_range,
-                                            tf_normalization=tf_normalization, grid_size=grid_size, nu=nu,
-                                            kernel=kernel, gamma=gamma)
-        if deletion:
-            self.eem_stack = self.eem_stack[labels != -1]
-            self.ref = self.ref[labels != -1]
-            self.index = [idx for i, idx in enumerate(self.index) if labels[i] != -1]
-        return labels
+    # def outlier_detection_if(self, tf_normalization=True, grid_size=(10, 10), contamination=0.02, deletion=False):
+    #     labels = eems_outlier_detection_if(eem_stack=self.eem_stack, ex_range=self.ex_range, em_range=self.em_range,
+    #                                        tf_normalization=tf_normalization, grid_size=grid_size,
+    #                                        contamination=contamination)
+    #     if deletion:
+    #         self.eem_stack = self.eem_stack[labels != -1]
+    #         self.ref = self.ref[labels != -1]
+    #         self.index = [idx for i, idx in enumerate(self.index) if labels[i] != -1]
+    #     return labels
+    #
+    # def outlier_detection_ocs(self, tf_normalization=True, grid_size=(10, 10), nu=0.02, kernel='rbf', gamma=10000,
+    #                           deletion=False):
+    #     labels = eems_outlier_detection_ocs(eem_stack=self.eem_stack, ex_range=self.ex_range, em_range=self.em_range,
+    #                                         tf_normalization=tf_normalization, grid_size=grid_size, nu=nu,
+    #                                         kernel=kernel, gamma=gamma)
+    #     if deletion:
+    #         self.eem_stack = self.eem_stack[labels != -1]
+    #         self.ref = self.ref[labels != -1]
+    #         self.index = [idx for i, idx in enumerate(self.index) if labels[i] != -1]
+    #     return labels
 
     def splitting(self, n_split, rule: str = 'random'):
         """
@@ -1010,7 +1233,7 @@ class EEMDataset:
 
         Returns
         -------
-        model_list: list
+        model_list: list.
             A list of sub-datasets. Each of them is an EEMDataset object.
         """
         idx_eems = [i for i in range(self.eem_stack.shape[0])]
@@ -1036,8 +1259,60 @@ class EEMDataset:
             model_list.append(m)
         return model_list
 
+    def subsampling(self, portion=0.8, copy=True):
+        """
+        Randomly select a portion of the EEM.
+
+        Parameters
+        ----------
+        portion: float
+            The portion.
+        copy: bool
+            if False, overwrite the EEMDataset object with the processed EEMs.
+
+        Returns
+        -------
+        eem_stack_new: np.ndarray
+            New EEM dataset.
+        index_new: list.
+            New index.
+        ref_new: np.ndarray
+            New reference data.
+        selected_indices: np.ndarray
+            Indices of selected EEMs.
+        """
+        n_samples = self.eem_stack.shape[0]
+        selected_indices = np.random.choice(n_samples, size=int(n_samples * portion), replace=False)
+        eem_stack_new = self.eem_stack[selected_indices, :, :]
+        if self.index:
+            index_new = [self.index[i] for i in selected_indices]
+        else:
+            index_new = None
+        if self.ref:
+            ref_new = self.ref[selected_indices]
+        else:
+            ref_new = None
+        if not copy:
+            self.eem_stack = eem_stack_new
+            self.index = index_new
+            self.ref = ref_new
+        return eem_stack_new, index_new, ref_new, selected_indices
+
 
 def combine_eem_datasets(list_eem_datasets):
+    """
+    Combine all EEMDataset objects in a list
+
+    Parameters
+    ----------
+    list_eem_datasets: list.
+        List of EEM datasets.
+
+    Returns
+    -------
+    eem_dataset_combined: EEMDataset
+        EEM dataset combined.
+    """
     eem_stack_combined = []
     ref_combined = []
     index_combined = []
@@ -1082,16 +1357,26 @@ class PARAFAC:
 
     Attributes
     ----------
-    score
-    ex_loadings
-    em_loadings
-    fmax
-    component_stack
-    cptensors
-    eem_stack_train
-    eem_stack_reconstructed
-    ex_range
-    em_range
+    score: pandas.DataFrame
+        Score table.
+    ex_loadings: pandas.DataFrame
+        Excitation loadings table.
+    em_loadings: pandas.DataFrame
+        Emission loadings table.
+    fmax: pandas.DataFrame
+        Fmax table.
+    component_stack: np.ndarray
+        PARAFAC Components.
+    cptensors: tensorly CPTensor
+        The output of PARAFAC in the form of tensorly CPTensor.
+    eem_stack_train: np.ndarray
+        EEMs used for PARAFAC model establishment.
+    eem_stack_reconstructed: np.ndarray
+        EEMs reconstructed by the established PARAFAC model.
+    ex_range: np.ndarray
+        Excitation wavelengths.
+    em_range: np.ndarray
+        Emission wavelengths.
     """
 
     def __init__(self, rank, non_negativity=True, init='svd', tf_normalization=True,
@@ -1383,9 +1668,7 @@ class PARAFAC:
         summary = pd.concat([self.score, self.fmax, lvr, rmse, normalized_rmse], axis=1)
         return summary
 
-    def export(self, filepath, name='', creator='', date='', email='', doi='', reference='', unit='', toolbox='',
-               fluorometer='', nSample='', decomposition_method='', validation='', dataset_calibration='',
-               preprocess='', sources='', description=''):
+    def export(self, filepath, info_dict):
         """
         Export the PARAFAC model to a text file that can be uploaded to the online PARAFAC model database Openfluor
         (https://openfluor.lablicate.com/#).
@@ -1394,22 +1677,10 @@ class PARAFAC:
         ----------
         filepath: str
             Location of the saved text file. Please specify the ".csv" extension.
-        name
-        creator
-        date
-        email
-        doi
-        reference
-        unit
-        toolbox
-        fluorometer
-        nSample
-        decomposition_method
-        validation
-        dataset_calibration
-        preprocess
-        sources
-        description
+        info_dict: dict
+            A dictionary containing the model information. Possible keys include: name, creator
+            date, email, doi, reference, unit, toolbox, fluorometer, nSample, decomposition_method, validation,
+            dataset_calibration, preprocess, sources, description
 
         Returns
         -------
@@ -1417,11 +1688,7 @@ class PARAFAC:
             A dictionary containing the information of the PARAFAC model.
 
         """
-        info_dict = {'name': name, 'creator': creator, 'email': email, 'doi': doi, 'reference': reference,
-                     'unit': unit, 'toolbox': toolbox, 'date': date, 'fluorometer': fluorometer, 'nSample': nSample,
-                     'dateset_calibration': dataset_calibration, 'preprocess': preprocess,
-                     'decomposition_method': decomposition_method,
-                     'validation': validation, 'sources': sources, 'description': description}
+
         ex_column = ["Ex"] * self.ex_range.shape[0]
         em_column = ["Em"] * self.em_range.shape[0]
         score_column = ["Score"] * self.score.shape[0]
@@ -1508,7 +1775,7 @@ def align_parafac_components(models_dict: dict, ex_ref: pd.DataFrame, em_ref: pd
     Parameters
     ----------
     models_dict: dict
-        Dictionary of PARAFAC object. The models to be aligned.
+        Dictionary of PARAFAC objects, the models to be aligned.
     ex_ref: pandas.DataFrame
         Ex loadings of the reference
     em_ref: pandas.DataFrame
@@ -1570,28 +1837,34 @@ def align_parafac_components(models_dict: dict, ex_ref: pd.DataFrame, em_ref: pd
 class SplitValidation:
     """
     Conduct PARAFAC model validation by evaluating the consistency of PARAFAC models established on EEM sub-datasets.
+
+    Parameters
+    ----------
+    rank: int
+        Number of components in PARAFAC.
+    n_split: int
+        Number of splits.
+    combination_size: int or str, {int, 'half'}
+        The number of splits assembled into one combination. If 'half' is passed, each combination will include
+        half of the splits (i.e., the split-half validation).
+    rule: str, {'random', 'sequential'}
+        Whether to split the EEM dataset randomly. If 'sequential' is passed, the dataset will be split according
+        to index order.
+    non_negativity: bool
+        Whether to apply non-negativity constraint in PARAFAC.
+    tf_normalization: bool
+        Whether to normalize the EEM by total fluorescence in PARAFAC.
+
+    Attributes
+    -----------
+    eem_subsets: dict
+        Dictionary of EEM sub-datasets.
+    subset_specific_models: dict
+        Dictionary of PARAFAC models established on sub-datasets.
     """
 
     def __init__(self, rank, n_split, combination_size, rule, similarity_metric='TCC', non_negativity=True,
                  tf_normalization=True):
-        """
-        Parameters
-        ----------
-        rank: int
-            Number of components in PARAFAC.
-        n_split: int
-            Number of splits.
-        combination_size: int or str, {int, 'half'}
-            The number of splits assembled into one combination. If 'half' is passed, each combination will include
-            half of the splits (i.e., the split-half validation).
-        rule: str, {'random', 'sequential'}
-            Whether to split the EEM dataset randomly. If 'sequential' is passed, the dataset will be split according
-            to index order.
-        non_negativity: bool
-            Whether to apply non-negativity constraint in PARAFAC.
-        tf_normalization: bool
-            Whether to normalize the EEM by total fluorescence in PARAFAC.
-        """
         # ---------------Parameters-------------------
         self.rank = rank
         self.n_split = n_split
@@ -1661,44 +1934,131 @@ class SplitValidation:
 
 
 class KPARAFACs:
+    """
+    Conduct K-PARAFACs, an EEM clustering algorithm aiming to minimize the general PARAFAC reconstruction error. The
+    key hypothesis behind K-PARAFACs is that fitting EEMs with varied underlying chemical compositions using the same
+    PARAFAC model could lead to a large reconstruction error. In contrast, samples with similar chemical composition
+    can be incorporated into the same PARAFAC model with small reconstruction error (i.e., the root mean-squared
+    error (RMSE) between the original EEM and its reconstruction derived from loadings and scores). if samples can be
+    appropriately clustered by their chemical compositions, then the PARAFAC models established on individual
+    clusters, i.e., the cluster-specific PARAFAC models, should exhibit reduced reconstruction error compared to the
+    unified PARAFAC model. Based on this hypothesis, K-PARAFACs is proposed to search for an optimal clustering
+    strategy so that the overall reconstruction error of cluster-specific PARAFAC models is minimized.
 
-    def __init__(self, rank, n_clusters, dropout_rate=0.8, max_iter=20, tol=0.001, non_negativity=True, init='svd',
-                 tf_normalization=True, loadings_normalization: Optional[str] = 'sd', sort_em=True):
+    Parameters
+    -----------
+    rank: int
+        Number of components.
+    n_clusters: int
+        Number of clusters.
+    max_iter: int
+        Maximum number of iterations of K-PARAFACs for a single run.
+    tol: float
+        Tolerence in regard to the average Tucker's congruence between the cluster-specific PARAFAC models
+        of two consecutive iterations to declare convergence. If the Tucker's congruence > 1-tol, then convergence is
+        confirmed.
+    non_negativity: bool
+        Whether to apply the non-negativity constraint
+    init: str or tensorly.CPTensor, {‘svd’, ‘random’, CPTensor}
+        Type of factor matrix initialization
+    tf_normalization: bool
+        Whether to normalize the EEMs by the total fluorescence in PARAFAC model establishment
+    loadings_normalization: str or None, {'sd', 'maximum', None}
+        Type of normalization applied to loadings. if 'sd' is passed, the standard deviation will be normalized
+        to 1. If 'maximum' is passed, the maximum will be normalized to 1. The scores will be adjusted accordingly.
+    sort_em: bool
+        Whether to sort components by emission peak position from lowest to highest. If False is passed, the
+        components will be sorted by the contribution to the total variance.
+
+    Attributes
+    ------------
+    unified_model: PARAFAC
+        Unified PARAFAC model.
+    label_history: list
+        A list of cluster labels after each run of clustering.
+    error_history: list
+        A list of average RMSE over all pixels after each run of clustering.
+    labels: np.ndarray
+        Finally cluter labels.
+    clusters: dict
+        EEM clusters.
+    cluster_specific_models: dict
+        Cluster-specific PARAFAC models.
+    consensus_matrix: np.ndarray
+        Consensus matrix.
+    consensus_matrix_sorted: np.ndarray
+        Sorted consensus matrix.
+    """
+
+    def __init__(self, rank, n_clusters, max_iter=20, tol=0.001, non_negativity=True,
+                 init='svd', tf_normalization=True, loadings_normalization: Optional[str] = 'sd', sort_em=True):
 
         # -----------Parameters-------------
         self.rank = rank
         self.n_clusters = n_clusters
         self.max_iter = max_iter
-        self.dropout_rate = dropout_rate
         self.tol = tol
         self.non_negativity = non_negativity
         self.init = init
         self.tf_normalization = tf_normalization
         self.loadings_normalization = loadings_normalization
         self.sort_em = sort_em
+        self.dropout = None
+        self.n_runs = None
+        self.consensus_conversion_power = None
 
         # ----------Attributes-------------
+        self.unified_model = None
         self.label_history = None
         self.error_history = None
+        self.labels = None
+        self.clusters = None
+        self.cluster_specific_models = None
         self.consensus_matrix = None
+        self.consensus_matrix_sorted = None
 
-    def fit(self, eem_dataset: EEMDataset):
+    def base_clustering(self, eem_dataset: EEMDataset):
+        """
+        Run clustering for a single time.
 
-        # -------Define functions for each step-------
+        Parameters
+        ----------
+        eem_dataset: EEMDataset
+            The EEM dataset to be clustered.
+
+        Returns
+        -------
+        cluster_labels: np.ndarray
+            Cluster labels.
+        label_history: list
+            Cluster labels in each iteration.
+        error_history: list
+            Average reconstruction error (RMSE) in each iteration.
+        """
+
+        # -------Generate a unified model as reference for ordering components--------
+
+        unified_model = PARAFAC(rank=self.rank, non_negativity=self.non_negativity, init=self.init,
+                                tf_normalization=self.tf_normalization,
+                                loadings_normalization=self.loadings_normalization, sort_em=self.sort_em)
+        unified_model.fit(eem_dataset)
+
+        # -------Define functions for estimation and maximization steps-------
+
         def estimation(sub_datasets: dict):
-            cluster_specific_models ={}
+            models = {}
             for label, d in sub_datasets.items():
                 model = PARAFAC(rank=self.rank, non_negativity=self.non_negativity, init=self.init,
-                                  tf_normalization=self.tf_normalization,
-                                  loadings_normalization=self.loadings_normalization, sort_em=self.sort_em)
+                                tf_normalization=self.tf_normalization,
+                                loadings_normalization=self.loadings_normalization, sort_em=self.sort_em)
                 model.fit(d)
-                cluster_specific_models[label] = model
-            return cluster_specific_models
+                models[label] = model
+            return models
 
-        def maximization(cluster_specific_models: dict):
+        def maximization(models: dict):
             sample_error = []
             sub_datasets = {}
-            for label, m in cluster_specific_models.items():
+            for label, m in models.items():
                 score_m, fmax_m, eem_stack_re_m = m.predict(eem_dataset)
                 res = m.eem_stack_train - eem_stack_re_m
                 n_pixels = m.eem_stack_train.shape[1] * m.eem_stack_train.shape[2]
@@ -1706,86 +2066,176 @@ class KPARAFACs:
                 sample_error.append(rmse)
             best_model_idx = np.argmin(sample_error, axis=0)
             least_model_errors = np.min(sample_error, axis=0)
-            for j, label in enumerate(cluster_specific_models.keys()):
-                eem_stack_j = eem_dataset.eem_stack[np.where(best_model_idx==j)]
+            for j, label in enumerate(models.keys()):
+                eem_stack_j = eem_dataset.eem_stack[np.where(best_model_idx == j)]
                 if eem_dataset.ref:
-                    ref_j = eem_dataset.ref[np.where(best_model_idx==j)]
+                    ref_j = eem_dataset.ref[np.where(best_model_idx == j)]
                 else:
                     ref_j = None
                 if eem_dataset.index:
                     index_j = [eem_dataset.index[k] for k, idx in enumerate(best_model_idx) if idx == j]
                 else:
                     index_j = None
-                sub_dataset = EEMDataset(eem_stack=eem_stack_j, ex_range=eem_dataset.ex_range,
-                                         em_range=eem_dataset.em_range, ref=ref_j, index=index_j)
-                sub_datasets[label] = sub_dataset
-            return sub_datasets, best_model_idx, least_model_errors
+                sub_datasets[label] = EEMDataset(eem_stack=eem_stack_j, ex_range=eem_dataset.ex_range,
+                                                 em_range=eem_dataset.em_range, ref=ref_j, index=index_j)
+            best_model_label = np.array([list(models.keys())[idx] for idx in best_model_idx])
+            return sub_datasets, best_model_label, least_model_errors
+
+        # -------Define function for convergence detection-------
+
+        def model_similarity(models_1: dict, models_2: dict):
+            similarity = 0
+            for label, m in models_1.items():
+                similarity_ex = loadings_similarity(m.ex_loadings, models_2[label].ex_loadings).to_numpy().diagonal()
+                similarity_em = loadings_similarity(m.em_loadings, models_2[label].ex_loadings).to_numpy().diagonal()
+                similarity += (similarity_ex.mean() + similarity_em.mean()) / 2
+            similarity = similarity / len(models_1)
+            return similarity
 
         # -------Initialization--------
-        cluster_history = []
+        label_history = []
         error_history = []
-        initial_sub_datasets = {}
-        sub_eem_datasets = eem_dataset.splitting(n_split=self.n_clusters)
-        for i, random_m in enumerate(sub_eem_datasets):
-            initial_sub_datasets[i+1] = random_m
+        sub_datasets_n = {}
+        initial_sub_eem_datasets = eem_dataset.splitting(n_split=self.n_clusters)
+        for i, random_m in enumerate(initial_sub_eem_datasets):
+            sub_datasets_n[i + 1] = random_m
 
         for n in range(self.max_iter):
-            # ---------The estimation step----------
 
-            # ---------The maximization step----------
+            # -------Eliminate sub_datasets having EEMs less than the number of ranks--------
+            for cluster_label, sub_dataset_i in sub_datasets_n.items():
+                if sub_dataset_i.eem_stack.shape[0] <= self.rank:
+                    sub_datasets_n.pop(cluster_label)
 
+            # -------The estimation step-------
+            cluster_specific_models_new = estimation(sub_datasets_n)
+            cluster_specific_models_new = align_parafac_components(cluster_specific_models_new,
+                                                                   unified_model.ex_loadings,
+                                                                   unified_model.em_loadings)
 
+            # -------The maximization step--------
+            sub_datasets_n, cluster_labels, fitting_errors = maximization(cluster_specific_models_new)
+            label_history.append(cluster_labels)
+            error_history.append(fitting_errors)
 
-
-        def parafac_em_clustering(eem_stack, em_range, ex_range, rank, index, n_splits, n_iterations, plot_errors=True,
-                                  metric='mse'):
-            # random initialization
-            sub_eem_stacks, index_classes = eem_stack_spliting(eem_stack, index, n_splits, rule='random')
-            # The EM
-            error_classes_iterations = []
-            for n in range(n_iterations):
-                component_stacks = parafac_estimation(sub_eem_stacks, em_range, ex_range, rank, index_classes)
-                sub_eem_stacks, index_classes, error_classes, coef_classes = parafac_maximization(eem_stack,
-                                                                                                  component_stacks,
-                                                                                                  index, metric=metric)
-                # remove class with the number of samples less than the number of ranks
-                idx_to_remove = []
-                if n < n_iterations - 1:
-                    for i in range(len(index_classes)):
-                        if len(index_classes[i]) < rank + 1:
-                            idx_to_remove.append(i)
-                    for j in sorted(idx_to_remove, reverse=True):
-                        del (sub_eem_stacks[j])
-                        del (index_classes[j])
-                error_classes_iterations.append(error_classes)
-                if n > 0:
-                    if index_classes_prev == index_classes:
+            # -------Detect convergence---------
+            if 0 < n < self.max_iter - 1:
+                if label_history[-1] == label_history[-2]:
+                    break
+                if len(cluster_specific_models_old) == len(cluster_specific_models_new):
+                    if model_similarity(cluster_specific_models_new, cluster_specific_models_old) > 1 - self.tol:
                         break
-                index_classes_prev = index_classes.copy()
-            for c in range(len(sub_eem_stacks)):
-                tbl = pd.DataFrame({"labels": np.full((len(error_classes[c]),), c + 1), "metric": error_classes[c]},
-                                   index=index_classes[c])
-                if c > 0:
-                    tbl = pd.concat([tbl_old, tbl])
-                tbl_old = tbl
-            tbl = tbl.sort_index()
-            tbl.index.name = 'Time'
-            if plot_errors:
-                error_mean_classes = [[] for i in range(len(sub_eem_stacks) + 1)]
-                for error_classes in error_classes_iterations:
-                    for i in range(len(sub_eem_stacks)):
-                        mean_error_class = np.mean(error_classes[i])
-                        error_mean_classes[i].append(mean_error_class)
-                    error_classes_flat = [item for sublist in error_classes for item in sublist]
-                    error_mean_classes[-1].append(np.mean(error_classes_flat))
-                for i in range(len(sub_eem_stacks)):
-                    plt.plot(error_mean_classes[i])
-                    plt.title('cluster {i}'.format(i=i))
-                    plt.show()
-                plt.plot(error_mean_classes[-1])
-                plt.title("all samples")
-                plt.show()
-            return component_stacks, sub_eem_stacks, index_classes, error_classes_iterations, tbl
-        return
 
+            cluster_specific_models_old = cluster_specific_models_new
 
+        label_history = pd.DataFrame(np.array(label_history).T, index=eem_dataset.index,
+                                     columns=['iter_{i}'.format(i=i + 1) for i in range(n + 1)])
+        error_history = pd.DataFrame(np.array(error_history).T, index=eem_dataset.index,
+                                     columns=['iter_{i}'.format(i=i + 1) for i in range(n + 1)])
+        self.label_history = [label_history]
+        self.error_history = [error_history]
+        self.unified_model = unified_model
+        self.labels = cluster_labels
+        self.clusters = sub_datasets_n
+        self.cluster_specific_models = cluster_specific_models_new
+
+        return cluster_labels, label_history, error_history
+
+    def robust_clustering(self, eem_dataset: EEMDataset, n_runs: int, subsampling_portion: float,
+                          consensus_conversion_power: float = 1.0):
+        """
+        Run the clustering for many times and combine the output of each run to obtain an optimal clustering.
+
+        Parameters
+        ----------
+        eem_dataset: EEMDataset
+            EEM dataset.
+        n_runs: int
+            Number of clustering
+        subsampling_portion: float
+            The portion of EEMs remained after subsampling.
+        consensus_conversion_power: float
+            The factor adjusting the conversion from consensus matrix (M) to distance matrix (D) used for hierarchical
+            clustering. D_{i,j} = (1 - M_{i,j})^factor. This number influences the gradient of distance with respect
+            to consensus. A smaller number will lead to shaper increase of distance at consensus close to 1.
+
+        Returns
+        -------
+        self: object
+            The established K-PARAFACs model
+        """
+
+        n_samples = eem_dataset.eem_stack.shape[0]
+        co_label_matrix = np.zeros((n_samples, n_samples))
+        co_occurrence_matrix = np.zeros((n_samples, n_samples))
+
+        # ---------Repeat base clustering and generate consensus matrix---------
+
+        n = 0
+        label_history = []
+        error_history = []
+        while n < n_runs:
+
+            # ------Subsampling-------
+            eem_dataset_new, index_new, ref_new, selected_indices = eem_dataset.subsampling(portion=subsampling_portion)
+            n_samples_new = eem_dataset_new.shape[0]
+            eem_dataset_n = EEMDataset(eem_stack=eem_dataset_new, ex_range=eem_dataset.ex_range,
+                                       em_range=eem_dataset.em_range, index=index_new, ref=ref_new)
+
+            # ------Base clustering-------
+            cluster_labels_n, label_history_n, error_history_n = self.base_clustering(eem_dataset_n)
+            for j in range(n_samples_new):
+                for k in range(n_samples_new):
+                    co_occurrence_matrix[selected_indices[j], selected_indices[k]] += 1
+                    if cluster_labels_n[j] == cluster_labels_n[k]:
+                        co_label_matrix[selected_indices[j], selected_indices[k]] += 1
+            label_history.append(label_history_n)
+            error_history.append(error_history_n)
+
+            # ----check if counting_matrix contains 0, meaning that not all sample pairs have been included in the
+            # clustering. If this is the case, run more base clustering until all sample pairs are covered----
+            if n == n_runs - 1 and np.any(co_occurrence_matrix == 0):
+                warnings.warn(
+                    'Not all sample pairs are covered. One extra clustering will be executed.')
+            else:
+                n += 1
+
+        # ---------Hierarchical clustering----------
+        consensus_matrix = co_label_matrix / co_occurrence_matrix
+        distance_matrix = (1 - co_label_matrix) ** consensus_conversion_power
+        linkage_matrix = linkage(squareform(distance_matrix), method='complete')
+        labels = fcluster(linkage_matrix, self.n_clusters, criterion='maxclust')
+        sorted_indices = np.argsort(labels)
+        consensus_matrix_sorted = consensus_matrix[sorted_indices][:, sorted_indices]
+
+        # ---------Get final clusters and cluster-specific models-------
+        clusters = {}
+        cluster_specific_models = {}
+        for j in set(list(labels)):
+            eem_stack_j = eem_dataset.eem_stack[np.where(labels == j)]
+            if eem_dataset.ref:
+                ref_j = eem_dataset.ref[np.where(labels == j)]
+            else:
+                ref_j = None
+            if eem_dataset.index:
+                index_j = [eem_dataset.index[k] for k, idx in enumerate(labels) if idx == j]
+            else:
+                index_j = None
+            clusters[j] = EEMDataset(eem_stack=eem_stack_j, ex_range=eem_dataset.ex_range,
+                                     em_range=eem_dataset.em_range, ref=ref_j, index=index_j)
+            model = PARAFAC(rank=self.rank, non_negativity=self.non_negativity, init=self.init,
+                            tf_normalization=self.tf_normalization,
+                            loadings_normalization=self.loadings_normalization, sort_em=self.sort_em)
+            model.fit(clusters[j])
+            cluster_specific_models[j] = model
+
+        self.n_runs = n_runs
+        self.dropout = subsampling_portion
+        self.consensus_conversion_power = consensus_conversion_power
+        self.label_history = label_history
+        self.error_history = error_history
+        self.labels = labels
+        self.clusters = clusters
+        self.cluster_specific_models = cluster_specific_models
+        self.consensus_matrix = consensus_matrix
+        self.consensus_matrix_sorted = consensus_matrix_sorted

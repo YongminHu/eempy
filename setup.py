@@ -6,7 +6,7 @@ setup(
     author='Yongmin Hu',
     author_email='yongminhu@outlook.com',
     packages=find_packages(),
-    url='https://github.com/YongminHu/EEMpy',
+    url='https://github.com/YongminHu/eempy',
     license='MIT',
     description='A python toolkit for excitation-emission matrix (EEM) analysis',
     install_requires=[
