@@ -2,7 +2,7 @@
 
 Author: Yongmin Hu (yongmin.hu@eawag.ch)
 
-Last update: 2024-01-10
+Last update: 2024-02-13
 
-This is an interactive toolkit for fluorescence data (Excitation-Emission Matrix, EEM) analysis based on python.
+This is a package for Excitation-Emission Matrix (EEM) analysis.
 

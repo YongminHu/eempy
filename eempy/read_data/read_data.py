@@ -2,6 +2,9 @@
 Functions for importing raw EEM data
 Author: Yongmin Hu (yongminhu@outlook.com)
 Last update: 2024-02-13
+
+Important information: The current version only supports reading Aqualog (HORIBA, Japan) files. You are welcome to
+contact me by email if you have the need to read other types of EEM raw data.
 """
 
 import os
