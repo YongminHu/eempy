@@ -728,6 +728,8 @@ def eems_fit_components(eem_stack, component_stack, fit_intercept=False):
         eem_stack_pred[i, :, :] = y_pred.reshape((eem_stack.shape[1], eem_stack.shape[2]))
         score_sample.append(reg.coef_)
         fmax_sample.append(reg.coef_ * max_values)
+    score_sample = np.array(score_sample)
+    fmax_sample = np.array(fmax_sample)
     return score_sample, fmax_sample, eem_stack_pred
 
 
@@ -1021,9 +1023,16 @@ class EEMDataset:
         else:
             raise ValueError("'rule' should be either 'random' or 'sequential'")
         for split in idx_splits:
+            if self.ref:
+                ref = np.array([self.ref[i] for i in split])
+            else:
+                ref = None
+            if self.index:
+                index = [self.index[i] for i in split]
+            else:
+                index = None
             m = EEMDataset(eem_stack=np.array([self.eem_stack[i] for i in split]), ex_range=self.ex_range,
-                           em_range=self.em_range, ref=np.array([self.ref[i] for i in split]),
-                           index=[self.index[i] for i in split])
+                           em_range=self.em_range, ref=ref, index=index)
             model_list.append(m)
         return model_list
 
@@ -1109,7 +1118,7 @@ class PARAFAC:
         self.em_range = None
 
     # --------------methods------------------
-    def establish(self, eem_dataset: EEMDataset):
+    def fit(self, eem_dataset: EEMDataset):
         """
         Establish a PARAFAC model based on a given EEM dataset
 
@@ -1221,10 +1230,10 @@ class PARAFAC:
         self.eem_stack_reconstructed = cp_to_tensor(cptensors)
         return self
 
-    def fit(self, eem_dataset: EEMDataset, fit_intercept=False):
+    def predict(self, eem_dataset: EEMDataset, fit_intercept=False):
         """
-        Fit a given EEM dataset with the established PARAFAC components by linear regression. This method can be used
-        to fit a new EEM dataset independent of the one used in model establishment.
+        Predict the score and Fmax of a given EEM dataset using the component fitted. This method can be applied to a
+        new EEM dataset independent of the one used in PARAFAC model fitting.
 
         Parameters
         ----------
@@ -1235,15 +1244,17 @@ class PARAFAC:
 
         Returns
         -------
-        score_sample: np.ndarray (1d)
+        score_sample: pd.DataFrame
             The fitted score.
-        fmax_sample: np.ndarray (1d)
+        fmax_sample: pd.DataFrame
             The fitted Fmax.
         eem_stack_pred: np.ndarray (3d)
             The EEM dataset reconstructed.
         """
         score_sample, fmax_sample, eem_stack_pred = eems_fit_components(eem_dataset.eem_stack, self.component_stack,
                                                                         fit_intercept=fit_intercept)
+        score_sample = pd.DataFrame(score_sample, index=eem_dataset.index, columns=self.score.columns)
+        fmax_sample = pd.DataFrame(fmax_sample, index=eem_dataset.index, columns=self.fmax.columns)
         return score_sample, fmax_sample, eem_stack_pred
 
     def component_peak_locations(self):
@@ -1594,7 +1605,7 @@ class SplitValidation:
         self.eem_subsets = None
         self.subset_specific_models = None
 
-    def build(self, eem_dataset: EEMDataset):
+    def fit(self, eem_dataset: EEMDataset):
         split_set = eem_dataset.splitting(n_split=self.n_split, rule=self.rule)
         if self.combination_size == 'half':
             cs = int(self.n_split) / 2
@@ -1604,7 +1615,7 @@ class SplitValidation:
         codes = list(itertools.combinations(list(string.ascii_uppercase)[0:self.n_split], int(cs)))
         model_complete = PARAFAC(rank=self.rank, non_negativity=self.non_negativity,
                                  tf_normalization=self.tf_normalization)
-        model_complete.establish(eem_dataset=eem_dataset)
+        model_complete.fit(eem_dataset=eem_dataset)
         sims_ex, sims_em, models, subsets = ({}, {}, {}, {})
 
         for e, c in zip(elements, codes):
@@ -1612,7 +1623,7 @@ class SplitValidation:
             subdataset = combine_eem_datasets([split_set[i] for i in e])
             model_subdataset = PARAFAC(rank=self.rank, non_negativity=self.non_negativity,
                                        tf_normalization=self.tf_normalization)
-            model_subdataset.establish(subdataset)
+            model_subdataset.fit(subdataset)
 
             models[label] = model_subdataset
             subsets[label] = subdataset
@@ -1647,3 +1658,134 @@ class SplitValidation:
         similarities_ex = pd.DataFrame(similarities_ex, columns=['C{i}'.format(i=i + 1) for i in range(self.rank)])
         similarities_em = pd.DataFrame(similarities_em, columns=['C{i}'.format(i=i + 1) for i in range(self.rank)])
         return similarities_ex, similarities_em
+
+
+class KPARAFACs:
+
+    def __init__(self, rank, n_clusters, dropout_rate=0.8, max_iter=20, tol=0.001, non_negativity=True, init='svd',
+                 tf_normalization=True, loadings_normalization: Optional[str] = 'sd', sort_em=True):
+
+        # -----------Parameters-------------
+        self.rank = rank
+        self.n_clusters = n_clusters
+        self.max_iter = max_iter
+        self.dropout_rate = dropout_rate
+        self.tol = tol
+        self.non_negativity = non_negativity
+        self.init = init
+        self.tf_normalization = tf_normalization
+        self.loadings_normalization = loadings_normalization
+        self.sort_em = sort_em
+
+        # ----------Attributes-------------
+        self.label_history = None
+        self.error_history = None
+        self.consensus_matrix = None
+
+    def fit(self, eem_dataset: EEMDataset):
+
+        # -------Define functions for each step-------
+        def estimation(sub_datasets: dict):
+            cluster_specific_models ={}
+            for label, d in sub_datasets.items():
+                model = PARAFAC(rank=self.rank, non_negativity=self.non_negativity, init=self.init,
+                                  tf_normalization=self.tf_normalization,
+                                  loadings_normalization=self.loadings_normalization, sort_em=self.sort_em)
+                model.fit(d)
+                cluster_specific_models[label] = model
+            return cluster_specific_models
+
+        def maximization(cluster_specific_models: dict):
+            sample_error = []
+            sub_datasets = {}
+            for label, m in cluster_specific_models.items():
+                score_m, fmax_m, eem_stack_re_m = m.predict(eem_dataset)
+                res = m.eem_stack_train - eem_stack_re_m
+                n_pixels = m.eem_stack_train.shape[1] * m.eem_stack_train.shape[2]
+                rmse = sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels)
+                sample_error.append(rmse)
+            best_model_idx = np.argmin(sample_error, axis=0)
+            least_model_errors = np.min(sample_error, axis=0)
+            for j, label in enumerate(cluster_specific_models.keys()):
+                eem_stack_j = eem_dataset.eem_stack[np.where(best_model_idx==j)]
+                if eem_dataset.ref:
+                    ref_j = eem_dataset.ref[np.where(best_model_idx==j)]
+                else:
+                    ref_j = None
+                if eem_dataset.index:
+                    index_j = [eem_dataset.index[k] for k, idx in enumerate(best_model_idx) if idx == j]
+                else:
+                    index_j = None
+                sub_dataset = EEMDataset(eem_stack=eem_stack_j, ex_range=eem_dataset.ex_range,
+                                         em_range=eem_dataset.em_range, ref=ref_j, index=index_j)
+                sub_datasets[label] = sub_dataset
+            return sub_datasets, best_model_idx, least_model_errors
+
+        # -------Initialization--------
+        cluster_history = []
+        error_history = []
+        initial_sub_datasets = {}
+        sub_eem_datasets = eem_dataset.splitting(n_split=self.n_clusters)
+        for i, random_m in enumerate(sub_eem_datasets):
+            initial_sub_datasets[i+1] = random_m
+
+        for n in range(self.max_iter):
+            # ---------The estimation step----------
+
+            # ---------The maximization step----------
+
+
+
+
+        def parafac_em_clustering(eem_stack, em_range, ex_range, rank, index, n_splits, n_iterations, plot_errors=True,
+                                  metric='mse'):
+            # random initialization
+            sub_eem_stacks, index_classes = eem_stack_spliting(eem_stack, index, n_splits, rule='random')
+            # The EM
+            error_classes_iterations = []
+            for n in range(n_iterations):
+                component_stacks = parafac_estimation(sub_eem_stacks, em_range, ex_range, rank, index_classes)
+                sub_eem_stacks, index_classes, error_classes, coef_classes = parafac_maximization(eem_stack,
+                                                                                                  component_stacks,
+                                                                                                  index, metric=metric)
+                # remove class with the number of samples less than the number of ranks
+                idx_to_remove = []
+                if n < n_iterations - 1:
+                    for i in range(len(index_classes)):
+                        if len(index_classes[i]) < rank + 1:
+                            idx_to_remove.append(i)
+                    for j in sorted(idx_to_remove, reverse=True):
+                        del (sub_eem_stacks[j])
+                        del (index_classes[j])
+                error_classes_iterations.append(error_classes)
+                if n > 0:
+                    if index_classes_prev == index_classes:
+                        break
+                index_classes_prev = index_classes.copy()
+            for c in range(len(sub_eem_stacks)):
+                tbl = pd.DataFrame({"labels": np.full((len(error_classes[c]),), c + 1), "metric": error_classes[c]},
+                                   index=index_classes[c])
+                if c > 0:
+                    tbl = pd.concat([tbl_old, tbl])
+                tbl_old = tbl
+            tbl = tbl.sort_index()
+            tbl.index.name = 'Time'
+            if plot_errors:
+                error_mean_classes = [[] for i in range(len(sub_eem_stacks) + 1)]
+                for error_classes in error_classes_iterations:
+                    for i in range(len(sub_eem_stacks)):
+                        mean_error_class = np.mean(error_classes[i])
+                        error_mean_classes[i].append(mean_error_class)
+                    error_classes_flat = [item for sublist in error_classes for item in sublist]
+                    error_mean_classes[-1].append(np.mean(error_classes_flat))
+                for i in range(len(sub_eem_stacks)):
+                    plt.plot(error_mean_classes[i])
+                    plt.title('cluster {i}'.format(i=i))
+                    plt.show()
+                plt.plot(error_mean_classes[-1])
+                plt.title("all samples")
+                plt.show()
+            return component_stacks, sub_eem_stacks, index_classes, error_classes_iterations, tbl
+        return
+
+
