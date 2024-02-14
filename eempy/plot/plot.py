@@ -14,7 +14,7 @@ from sklearn.linear_model import LinearRegression
 from matplotlib.colors import LogNorm, TABLEAU_COLORS
 
 
-def plot_eem(intensity, em_range, ex_range, auto_intensity_range=True, scale_type='linear', vmin=0, vmax=10000,
+def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_type='linear', vmin=0, vmax=10000,
              n_cbar_ticks=5, cbar=True, cmap='jet', figure_size=(7, 7), label_font_size=20,
              cbar_label="Intensity (a.u.)", cbar_font_size=16, aspect='equal', rotate=False):
     """
@@ -24,10 +24,10 @@ def plot_eem(intensity, em_range, ex_range, auto_intensity_range=True, scale_typ
     ----------------
     intensity: np.ndarray (2d)
         The EEM.
-    em_range: np.ndarray (1d)
-        The emission wavelengths.
     ex_range: np.ndarray (1d)
         The excitation wavelengths.
+    em_range: np.ndarray (1d)
+        The emission wavelengths.
     auto_intensity_range: bool
         Whether to use the colorbar range generated automatically by matplotlib for plotting fluorescence intensity.
     scale_type: str, {'linear', 'log'}

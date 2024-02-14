@@ -1423,9 +1423,9 @@ class PARAFAC:
             if not self.non_negativity:
                 if np.isnan(eem_dataset.eem_stack).any():
                     mask = np.where(np.isnan(eem_dataset.eem_stack), 0, 1)
-                    cptensors = parafac(eem_dataset.eem_stack, rank=self.rank, mask=mask, init=self.init)
+                    cptensors, _ = parafac(eem_dataset.eem_stack, rank=self.rank, mask=mask, init=self.init)
                 else:
-                    cptensors = parafac(eem_dataset.eem_stack, rank=self.rank, init=self.init)
+                    cptensors, _ = parafac(eem_dataset.eem_stack, rank=self.rank, init=self.init)
             else:
                 if np.isnan(eem_dataset.eem_stack).any():
                     mask = np.where(np.isnan(eem_dataset.eem_stack), 0, 1)
