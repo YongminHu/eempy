@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='eem-python',
-    version='1.0',
+    version='1.1',
     author='Yongmin Hu',
     author_email='yongminhu@outlook.com',
     packages=find_packages(),
@@ -16,8 +16,6 @@ setup(
         "scikit-learn",
         "matplotlib",
         "pandas",
-        "scikit-image",
-        "ipywidgets",
         "tlviz"
     ]
 )
