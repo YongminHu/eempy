@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='eempy',
+    name='eem-python',
     version='1.0',
     author='Yongmin Hu',
     author_email='yongminhu@outlook.com',
