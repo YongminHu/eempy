@@ -155,7 +155,7 @@ def read_eem_dataset(folder_path: str, kw: str = 'PEM.dat', data_format: str = '
     ex_range_old = np.copy(ex_range)
     for n in range(1, len(filename_list)):
         path = folder_path + '/' + filename_list[n]
-        intensity, ex_range, em_range, index = read_eem(path, data_format=data_format)
+        intensity, ex_range, em_range, index = read_eem(path, data_format=data_format, index_pos=index_pos)
         indexes.append(index)
         if wavelength_alignment:
             em_interval_new = (np.max(em_range) - np.min(em_range)) / (em_range.shape[0] - 1)
