@@ -247,7 +247,7 @@ def eem_nan_imputing(intensity, ex_range, em_range, method: str = 'linear', fill
         for i in range(intensity_imputed.shape[1]):
             col = intensity_imputed[:, i]
             mask = np.isnan(col)
-            if np.any(mask):
+            if np.any(mask) and np.any(~mask):
                 interp_func = interp1d(np.flatnonzero(~mask), col[~mask], kind='linear',
                                        fill_value='extrapolate')
                 col[mask] = interp_func(np.flatnonzero(mask))
@@ -257,7 +257,7 @@ def eem_nan_imputing(intensity, ex_range, em_range, method: str = 'linear', fill
         for j in range(intensity_imputed.shape[0]):
             col = intensity_imputed[j, :]
             mask = np.isnan(col)
-            if np.any(mask):
+            if np.any(mask) and np.any(~mask):
                 interp_func = interp1d(np.flatnonzero(~mask), col[~mask], kind='linear',
                                        fill_value='extrapolate')
                 col[mask] = interp_func(np.flatnonzero(mask))
@@ -512,7 +512,7 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15
                 old_nan = np.isnan(intensity)
                 old_nan_o1 = np.isnan(intensity_masked)
                 intensity_masked[np.where(mask == 0)] = np.nan
-                intensity_masked = eem_nan_imputing(intensity_masked, ex_range, em_range, method=itp)
+                intensity_masked = eem_nan_imputing(intensity_masked, ex_range, em_range, method=itp, fill_value='linear_ex')
                 # restore the nan values in non-raman-scattering region
                 intensity_masked[old_nan] = np.nan
                 intensity_masked[old_nan_o1] = np.nan
@@ -531,8 +531,10 @@ def eem_ife_correction(intensity, ex_range, em_range, absorbance, ex_range_abs, 
         The excitation wavelengths of EEM.
     em_range: np.ndarray (1d)
         The emission wavelengths of EEM.
-    absorbance: np.ndarray (1d)
-        The absorbance.
+    absorbance: np.ndarray
+        The absorbance. If this function is called alone, an array of shape (i, ) should be passed, where i is the
+        length of the absorbance spectrum. If this function is called with process_eem_stack(), an array of shape (n, i)
+        should be passed, where n is the number samples, and i is the length of the absorbance spectrum.
     ex_range_abs: np.ndarray (1d)
         The excitation wavelengths of absorbance.
     cuvette_length: float
@@ -543,6 +545,8 @@ def eem_ife_correction(intensity, ex_range, em_range, absorbance, ex_range_abs, 
     intensity_corrected: np.ndarray
         The corrected EEM.
     """
+    if absorbance.ndim == 1:
+        absorbance_reshape = absorbance.reshape((1, absorbance.shape[0]))
     f1 = interp1d(ex_range_abs, absorbance, kind='linear', bounds_error=False, fill_value='extrapolate')
     absorbance_ex = np.fliplr(np.array([f1(ex_range)]))
     absorbance_em = np.array([f1(em_range)])
@@ -1141,9 +1145,9 @@ class EEMDataset:
         """
         eem_stack_masked, _ = process_eem_stack(self.eem_stack, eem_rayleigh_masking, ex_range=self.ex_range,
                                                 em_range=self.em_range, width_o1=width_o1,
-                                                width_o2=width_o2, axis_o1=interpolation_axis_o1,
-                                                axis_o2=interpolation_axis_o2,
-                                                method_o1=interpolation_method_o1, method_o2=interpolation_method_o2)
+                                                width_o2=width_o2, interpolation_axis_o1=interpolation_axis_o1,
+                                                interpolation_axis_o2=interpolation_axis_o2,
+                                                interpolation_method_o1=interpolation_method_o1, interpolation_method_o2=interpolation_method_o2)
         if not copy:
             self.eem_stack = eem_stack_masked
         return eem_stack_masked
