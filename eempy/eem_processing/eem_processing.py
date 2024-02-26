@@ -34,7 +34,7 @@ from typing import Optional
 register_matplotlib_converters()
 
 
-def process_eem_stack(eem_stack, f, *args, **kwargs):
+def process_eem_stack(eem_stack, f, **kwargs):
     """
     Apply an EEM processing function across all EEMs in an EEM stack.
 
@@ -43,7 +43,7 @@ def process_eem_stack(eem_stack, f, *args, **kwargs):
     eem_stack: np.ndarray (3d)
         The EEM stack.
     f: callable
-        The EEM processing function to appy. Available functions include all functions named in the format of
+        The EEM processing function to apply. Available functions include all functions named in the format of
         "eem_xxx()".
     **kwargs: f function parameters
         The parameters of the EEM processing function.
@@ -58,8 +58,28 @@ def process_eem_stack(eem_stack, f, *args, **kwargs):
     """
     processed_eem_stack = []
     other_outputs = []
+
+    #------Absorbance and blank are two parameters that are potentially sample-specific--------
+    if "absorbance" in kwargs:
+        abs = kwargs.pop('absorbance')
+        abs_passed = True
+    else:
+        abs_passed = False
+
+    if "blank" in kwargs:
+        b = kwargs.pop('blank')
+        b_passed = True
+    else:
+        b_passed = False
+
     for i in range(eem_stack.shape[0]):
-        f_output = f(eem_stack[i, :, :], *args, **kwargs)
+        if abs_passed:
+            f_output = f(eem_stack[i, :, :], absorbance=abs[i], **kwargs)
+        elif b_passed:
+            f_output = f(eem_stack[i, :, :], blank=b[i], **kwargs)
+        else:
+            f_output = f(eem_stack[i, :, :], **kwargs)
+
         if isinstance(f_output, tuple):
             processed_eem_stack.append(f_output[0])
             other_outputs.append(f_output[1:])
@@ -276,8 +296,9 @@ def eem_raman_normalization(intensity, blank=None, ex_range_blank=None, em_range
     ----------
     intensity: np.ndarray (2d)
         The EEM.
-    blank: np.ndarray (2d)
-        The blank EEM.
+    blank: np.ndarray (2d) or np.ndarray (3d)
+        The blank. If this function is called by implementing process_eem_stack(), a 3d array with length n (the number
+        of samples) at axis 0 may be passed. In this case, each EEM will be normalized with a sample-specific blank.
     ex_range_blank: np.ndarray (1d)
         The excitation wavelengths of blank.
     em_range_blank: np.ndarray (1d)
@@ -1147,7 +1168,8 @@ class EEMDataset:
                                                 em_range=self.em_range, width_o1=width_o1,
                                                 width_o2=width_o2, interpolation_axis_o1=interpolation_axis_o1,
                                                 interpolation_axis_o2=interpolation_axis_o2,
-                                                interpolation_method_o1=interpolation_method_o1, interpolation_method_o2=interpolation_method_o2)
+                                                interpolation_method_o1=interpolation_method_o1,
+                                                interpolation_method_o2=interpolation_method_o2)
         if not copy:
             self.eem_stack = eem_stack_masked
         return eem_stack_masked

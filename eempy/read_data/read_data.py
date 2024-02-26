@@ -171,14 +171,15 @@ def read_eem_dataset(folder_path: str, kw: str = 'PEM.dat', data_format: str = '
             else:
                 ex_range_target = ex_range
             if em_interval_new > em_interval_old or ex_interval_new > ex_interval_old:
-                intensity = eem_interpolation(intensity, em_range, np.flip(ex_range), em_range_target,
-                                              np.flip(ex_range_target), method=interpolation_method)
+                intensity = eem_interpolation(intensity, ex_range, em_range, ex_range_target,
+                                              em_range_target, method=interpolation_method)
                 em_range = np.copy(em_range_old)
                 ex_range = np.copy(ex_range_old)
             if em_interval_new < em_interval_old or ex_interval_new < ex_interval_old:
-                eem_stack = process_eem_stack(eem_stack, eem_interpolation, em_range_old, np.flip(ex_range_old),
-                                              em_range_target,
-                                              np.flip(ex_range_target))
+                eem_stack = process_eem_stack(eem_stack, eem_interpolation, ex_range_old=ex_range_old,
+                                              em_range_old=em_range_old,
+                                              ex_range_new=ex_range_target,
+                                              em_range_new=em_range_target)
         try:
             eem_stack[n, :, :] = intensity
         except ValueError:
