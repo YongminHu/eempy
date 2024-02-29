@@ -1124,13 +1124,13 @@ class EEMDataset:
             self.eem_stack = eem_stack_normalized
         return eem_stack_normalized, weights
 
-    def raman_masking(self, width=5, method='linear', interpolation_axis='grid', copy=True):
+    def raman_masking(self, width=5, interpolation_method='linear', interpolation_axis='grid', copy=True):
         """
         Remove and interpolate the Raman scattering.
 
         Parameters
         ----------
-        width, method, interpolation_axis
+        width, interpolation_method, interpolation_axis
             See eempy.eem_processing.eem_raman_masking
         copy: bool
             if False, overwrite the EEMDataset object with the processed EEMs.
@@ -1141,7 +1141,8 @@ class EEMDataset:
             The EEM with Raman scattering interpolated.
         """
         eem_stack_masked, _ = process_eem_stack(self.eem_stack, eem_raman_masking, ex_range=self.ex_range,
-                                                em_range=self.em_range, width=width, interpolation_method=method,
+                                                em_range=self.em_range, width=width,
+                                                interpolation_method=interpolation_method,
                                                 interpolation_axis=interpolation_axis)
         if not copy:
             self.eem_stack = eem_stack_masked
@@ -1323,6 +1324,22 @@ class EEMDataset:
             self.index = index_new
             self.ref = ref_new
         return eem_stack_new, index_new, ref_new, selected_indices
+
+    def sort_by_index(self):
+        sorted_indices = np.argsort(self.index)
+        self.eem_stack = self.eem_stack[sorted_indices]
+        if self.ref:
+            self.ref = self.ref[sorted_indices]
+        self.index = sorted(self.index)
+        return sorted_indices
+
+    def sort_by_ref(self):
+        sorted_indices = np.argsort(self.ref)
+        self.eem_stack = self.eem_stack[sorted_indices]
+        if self.index:
+            self.index = self.index[sorted_indices]
+        self.ref = sorted(self.ref)
+        return sorted_indices
 
 
 def combine_eem_datasets(list_eem_datasets):
