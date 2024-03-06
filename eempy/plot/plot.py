@@ -15,7 +15,7 @@ from matplotlib.colors import LogNorm, TABLEAU_COLORS
 
 
 def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_type='linear', vmin=0, vmax=10000,
-             n_cbar_ticks=5, cbar=True, cmap='jet', figure_size=(7, 7), label_font_size=20,
+             n_cbar_ticks=5, cbar=True, cmap='jet', figure_size=(10, 7), label_font_size=20,
              cbar_label="Intensity (a.u.)", cbar_font_size=16, aspect='equal', rotate=False):
     """
     plot EEM or EEM-like data.
@@ -78,10 +78,10 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
         if not auto_intensity_range:
             if scale_type == 'log':
                 im = ax.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, origin='upper', aspect=aspect,
-                           norm=c_norm)
+                               norm=c_norm)
             else:
                 im = ax.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, vmin=vmin, vmax=vmax,
-                           origin='upper', aspect=aspect, norm=c_norm)
+                               origin='upper', aspect=aspect, norm=c_norm)
         else:
             im = ax.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, origin='upper', aspect=aspect)
     else:
@@ -92,13 +92,13 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
         if not auto_intensity_range:
             if scale_type == 'log':
                 im = ax.imshow(np.flipud(np.fliplr(intensity.T)), cmap=cmap, interpolation='none', extent=extent,
-                           origin='upper', aspect=aspect, norm=c_norm)
+                               origin='upper', aspect=aspect, norm=c_norm)
             else:
-                im = ax.imshow(np.flipud(np.fliplr(intensity.T)), cmap=cmap, interpolation='none', extent=extent, vmin=vmin,
-                           vmax=vmax, origin='upper', aspect=aspect, norm=c_norm)
+                im = ax.imshow(np.flipud(np.fliplr(intensity.T)), cmap=cmap, interpolation='none', extent=extent,
+                               vmin=vmin, vmax=vmax, origin='upper', aspect=aspect, norm=c_norm)
         else:
             im = ax.imshow(np.flipud(np.fliplr(intensity.T)), cmap=cmap, interpolation='none', extent=extent,
-                       origin='upper', aspect=aspect)
+                           origin='upper', aspect=aspect)
     if cbar:
         cbar = fig.colorbar(im, ax=ax, ticks=t_cbar, fraction=0.03, pad=0.04)
         cbar.set_label(cbar_label, labelpad=1.5)
