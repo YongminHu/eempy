@@ -4,7 +4,6 @@ Author: Yongmin Hu (yongmin.hu@eawag.ch, yongminhu@outlook.com)
 Last update: 2024-02-13
 """
 
-from eempy.read_data import *
 from eempy.utils import *
 import scipy.stats as stats
 import random
@@ -559,7 +558,7 @@ def eem_ife_correction(intensity, ex_range, em_range, absorbance, ex_range_abs, 
     ex_range_abs: np.ndarray (1d)
         The excitation wavelengths of absorbance.
     cuvette_length: float
-        The length of cuvette in measurement.
+        The pathlength of cuvette in measurement.
 
     Returns
     -------
@@ -572,7 +571,7 @@ def eem_ife_correction(intensity, ex_range, em_range, absorbance, ex_range_abs, 
     absorbance_ex = np.fliplr(np.array([f1(ex_range)]))
     absorbance_em = np.array([f1(em_range)])
     ife_factors = 10 ** (cuvette_length * (absorbance_ex.T.dot(np.ones(absorbance_em.shape)) +
-                                           np.ones(absorbance_ex.shape).T.dot(absorbance_em)))
+                                           np.ones(absorbance_ex.shape).T.dot(absorbance_em)) / 2)
     intensity_corrected = intensity * ife_factors
     return intensity_corrected
 
