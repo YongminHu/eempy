@@ -4,7 +4,6 @@ Author: Yongmin Hu (yongmin.hu@eawag.ch, yongminhu@outlook.com)
 Last update: 2024-02-13
 """
 
-from eempy.read_data import *
 from eempy.utils import *
 import scipy.stats as stats
 import random
@@ -389,10 +388,10 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_meth
         if lambda_em[s] <= em_range[0] <= lambda_em[s] + width:
             emidx = dichotomy_search(em_range, lambda_em[s] + width)
             raman_mask[exidx, 0: emidx + 1] = 0
-        elif lambda_em[s] - width <= em_range[0]:
+        elif lambda_em[s] - width <= em_range[0] < lambda_em[s]:
             emidx = dichotomy_search(em_range, lambda_em[s])
             raman_mask[exidx, 0: emidx + tol_emidx + 1] = 0
-        else:
+        elif lambda_em[s] - width > em_range[0]:
             emidx = dichotomy_search(em_range, lambda_em[s] - width)
             raman_mask[exidx, emidx: emidx + 2 * tol_emidx + 1] = 0
 
@@ -480,10 +479,10 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15
         if lambda_em_o1[s] <= em_range[0] <= lambda_em_o1[s] + width_o1:
             emidx = dichotomy_search(em_range, lambda_em_o1[s] + width_o1)
             rayleigh_mask_o1[exidx, 0:emidx + 1] = 0
-        elif lambda_em_o1[s] - width_o1 <= em_range[0]:
+        elif lambda_em_o1[s] - width_o1 <= em_range[0] < lambda_em_o1[s]:
             emidx = dichotomy_search(em_range, lambda_em_o1[s])
             rayleigh_mask_o1[exidx, 0: emidx + tol_emidx_o1 + 1] = 0
-        else:
+        elif lambda_em_o1[s] - width_o1 > em_range[0]:
             emidx = dichotomy_search(em_range, lambda_em_o1[s])
             rayleigh_mask_o1[exidx, emidx: emidx + tol_emidx_o1 + 1] = 0
             intensity_masked[exidx, 0: emidx] = 0
@@ -494,10 +493,10 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15
         if lambda_em_o2[s] <= em_range[0] <= lambda_em_o2[s] + width_o2:
             emidx = dichotomy_search(em_range, lambda_em_o2[s] + width_o2)
             rayleigh_mask_o2[exidx, 0:emidx + 1] = 0
-        elif lambda_em_o2[s] - width_o2 <= em_range[0]:
+        elif lambda_em_o2[s] - width_o2 <= em_range[0] < lambda_em_o2[s]:
             emidx = dichotomy_search(em_range, lambda_em_o2[s])
             rayleigh_mask_o2[exidx, 0: emidx + tol_emidx_o2 + 1] = 0
-        else:
+        elif lambda_em_o2[s] - width_o2 > em_range[0]:
             emidx = dichotomy_search(em_range, lambda_em_o2[s] - width_o2)
             rayleigh_mask_o2[exidx, emidx: emidx + 2 * tol_emidx_o2 + 1] = 0
 
@@ -559,20 +558,20 @@ def eem_ife_correction(intensity, ex_range, em_range, absorbance, ex_range_abs, 
     ex_range_abs: np.ndarray (1d)
         The excitation wavelengths of absorbance.
     cuvette_length: float
-        The length of cuvette in measurement.
+        The pathlength of cuvette in measurement.
 
     Returns
     -------
     intensity_corrected: np.ndarray
         The corrected EEM.
     """
-    if absorbance.ndim == 1:
-        absorbance_reshape = absorbance.reshape((1, absorbance.shape[0]))
+    # if absorbance.ndim == 1:
+    #     absorbance_reshape = absorbance.reshape((1, absorbance.shape[0]))
     f1 = interp1d(ex_range_abs, absorbance, kind='linear', bounds_error=False, fill_value='extrapolate')
     absorbance_ex = np.fliplr(np.array([f1(ex_range)]))
     absorbance_em = np.array([f1(em_range)])
     ife_factors = 10 ** (cuvette_length * (absorbance_ex.T.dot(np.ones(absorbance_em.shape)) +
-                                           np.ones(absorbance_ex.shape).T.dot(absorbance_em)))
+                                           np.ones(absorbance_ex.shape).T.dot(absorbance_em)) / 2)
     intensity_corrected = intensity * ife_factors
     return intensity_corrected
 
@@ -919,9 +918,14 @@ class EEMDataset:
         em_actual = self.em_range[em_idx]
         return fi, ex_actual, em_actual
 
-    def correlation(self):
+    def correlation(self, fit_intercept=True):
         """
         Analyze the correlation between reference and fluorescence intensity at each pair of ex/em.
+
+        Params
+        -------
+        fit_intercept: bool, optional
+            Whether to fit the intercept for linear regression.
 
         Returns
         -------
@@ -931,20 +935,28 @@ class EEMDataset:
         m = self.eem_stack
         x = self.ref
         x = x.reshape(m.shape[0], 1)
-        w, b, r2, pc, pc_p, sc, sc_p = [np.full((m.shape[1], m.shape[2]), fill_value=np.nan)] * 7
+        w = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
+        b = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
+        r2 = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
+        pc = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
+        pc_p = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
+        sc = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
+        sc_p = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
         e = np.full(m.shape, fill_value=np.nan)
         for i in range(m.shape[1]):
             for j in range(m.shape[2]):
                 try:
                     y = (m[:, i, j])
-                    reg = LinearRegression()
+                    reg = LinearRegression(fit_intercept=fit_intercept)
                     reg.fit(x, y)
                     w[i, j] = reg.coef_
                     b[i, j] = reg.intercept_
                     r2[i, j] = reg.score(x, y)
                     e[:, i, j] = reg.predict(x) - y
-                    pc[i, j], pc_p[i, j] = stats.pearsonr(x, y)
-                    sc[i, j], sc_p[i, j] = stats.spearmanr(x, y)
+                    pc[i, j] = stats.pearsonr(x.reshape(-1), y).statistic
+                    pc_p[i, j] = stats.pearsonr(x.reshape(-1), y).pvalue
+                    sc[i, j] = stats.spearmanr(x.reshape(-1), y).statistic
+                    sc_p[i, j] = stats.spearmanr(x.reshape(-1), y).pvalue
                 except ValueError:
                     pass
         corr_dict = {'slope': w, 'intercept': b, 'r_square': r2, 'linear regression residual': e,
@@ -984,7 +996,7 @@ class EEMDataset:
 
         Parameters
         ----------
-        sigma, truncate
+        sigma, truncate:
             See eempy.eem_processing.eem_gaussian_filter
         copy: bool
             if False, overwrite the EEMDataset object with the processed EEMs.
@@ -1005,7 +1017,7 @@ class EEMDataset:
 
         Parameters
         ----------
-        ex_min, ex_max, em_min, em_max, fill_value
+        ex_min, ex_max, em_min, em_max, fill_value:
             See eempy.eem_processing.eem_region_masking
         copy: bool
             if False, overwrite the EEMDataset object with the processed EEMs.
@@ -1028,7 +1040,7 @@ class EEMDataset:
 
         Parameters
         ----------
-        ex_min, ex_max, em_min, em_max
+        ex_min, ex_max, em_min, em_max:
             See eempy.eem_processing.eem_cutting
         copy: bool
             if False, overwrite the EEMDataset object with the processed EEMs.
@@ -1130,7 +1142,7 @@ class EEMDataset:
 
         Parameters
         ----------
-        width, interpolation_method, interpolation_axis
+        width, interpolation_method, interpolation_axis:
             See eempy.eem_processing.eem_raman_masking
         copy: bool
             if False, overwrite the EEMDataset object with the processed EEMs.
@@ -1155,7 +1167,7 @@ class EEMDataset:
 
         Parameters
         ----------
-        width_o1, width_o2, interpolation_axis_o1, interpolation_axis_o2, interpolation_method_o1, interpolation_method_o2
+        width_o1, width_o2, interpolation_axis_o1, interpolation_axis_o2, interpolation_method_o1, interpolation_method_o2:
             See eempy.eem_processing.eem_rayleigh_masking
         copy: bool
             if False, overwrite the EEMDataset object with the processed EEMs.
@@ -1181,7 +1193,7 @@ class EEMDataset:
 
         Parameters
         ----------
-        absorbance, ex_range_abs, cuvette_length
+        absorbance, ex_range_abs, cuvette_length:
             See eempy.eem_processing.eem_ife_correction
         copy: bool
             if False, overwrite the EEMDataset object with the processed EEMs.
@@ -1206,7 +1218,7 @@ class EEMDataset:
 
         Parameters
         ----------
-        ex_range_new, em_range_new, method
+        ex_range_new, em_range_new, method:
             See eempy.eem_processing.eem_interpolation
         copy: bool
             if False, overwrite the EEMDataset object with the processed EEMs.
@@ -1326,6 +1338,14 @@ class EEMDataset:
         return eem_stack_new, index_new, ref_new, selected_indices
 
     def sort_by_index(self):
+        """
+        Sort the sample order of eem_stack, index and reference (if exists) by the index.
+
+        Returns
+        -------
+        sorted_indices: np.ndarray
+            The sorted sample order
+        """
         sorted_indices = np.argsort(self.index)
         self.eem_stack = self.eem_stack[sorted_indices]
         if self.ref:
@@ -1334,11 +1354,19 @@ class EEMDataset:
         return sorted_indices
 
     def sort_by_ref(self):
+        """
+        Sort the sample order of eem_stack, reference and index (if exists) by the reference.
+
+        Returns
+        -------
+        sorted_indices: np.ndarray
+            The sorted sample order
+        """
         sorted_indices = np.argsort(self.ref)
         self.eem_stack = self.eem_stack[sorted_indices]
         if self.index:
             self.index = self.index[sorted_indices]
-        self.ref = sorted(self.ref)
+        self.ref = np.array(sorted(self.ref))
         return sorted_indices
 
 
@@ -2046,7 +2074,7 @@ class KPARAFACs:
         self.tf_normalization = tf_normalization
         self.loadings_normalization = loadings_normalization
         self.sort_em = sort_em
-        self.dropout = None
+        self.subsampling_portion = None
         self.n_runs = None
         self.consensus_conversion_power = None
 
@@ -2273,7 +2301,7 @@ class KPARAFACs:
             cluster_specific_models[j] = model
 
         self.n_runs = n_runs
-        self.dropout = subsampling_portion
+        self.subsampling_portion = subsampling_portion
         self.consensus_conversion_power = consensus_conversion_power
         self.label_history = label_history
         self.error_history = error_history
@@ -2282,3 +2310,54 @@ class KPARAFACs:
         self.cluster_specific_models = cluster_specific_models
         self.consensus_matrix = consensus_matrix
         self.consensus_matrix_sorted = consensus_matrix_sorted
+
+    def predict(self, eem_dataset: EEMDataset):
+        """
+        Fit the cluster-specific models to a given EEM dataset. Each EEM in the EEM dataset is fitted to the model that
+        produce the least RMSE.
+
+        Parameters
+        ----------
+        eem_dataset: EEMDataset
+            EEM dataset.
+
+        Returns
+        -------
+        best_model_label: pd.DataFrame
+            The best-fit model for every EEM.
+        score_all: pd.DataFrame
+            The score fitted with each cluster-specific model.
+        fmax_all: pd.DataFrame
+            The fmax fitted with each cluster-specific model.
+        sample_error: pd.DataFrame
+            The RMSE fitted with each cluster-specific model.
+        """
+
+        sample_error = []
+        score_all = []
+        fmax_all = []
+
+        for label, m in self.cluster_specific_models.items():
+            score_m, fmax_m, eem_stack_re_m = m.predict(eem_dataset)
+            res = m.eem_stack_train - eem_stack_re_m
+            n_pixels = m.eem_stack_train.shape[1] * m.eem_stack_train.shape[2]
+            rmse = sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels)
+            sample_error.append(rmse)
+            score_all.append(score_m)
+            fmax_all.append(fmax_m)
+
+        score_all = pd.DataFrame(np.array(score_all), index=eem_dataset.index,
+                                 columns=list(self.cluster_specific_models.keys()))
+        fmax_all = pd.DataFrame(np.array(fmax_all), index=eem_dataset.index,
+                                columns=list(self.cluster_specific_models.keys()))
+        best_model_idx = np.argmin(sample_error, axis=0)
+        # least_model_errors = np.min(sample_error, axis=0)
+        # score_opt = np.array([score_all[i, j] for j, i in enumerate(best_model_idx)])
+        # fmax_opt = np.array([fmax_all[i, j] for j, i in enumerate(best_model_idx)])
+        best_model_label = np.array([list(self.cluster_specific_models.keys())[idx] for idx in best_model_idx])
+        best_model_label = pd.DataFrame(best_model_label, index=eem_dataset.index, columns=['best-fit model'])
+        sample_error = pd.DataFrame(np.array(sample_error), index=eem_dataset.index,
+                                    columns=list(self.cluster_specific_models.keys()))
+
+        return best_model_label, score_all, fmax_all, sample_error
+
