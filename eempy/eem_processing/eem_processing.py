@@ -16,6 +16,7 @@ from math import sqrt
 from sklearn.metrics import mean_squared_error, explained_variance_score, r2_score
 # from sklearn.ensemble import IsolationForest
 # from sklearn import svm
+from sklearn.decomposition import PCA, NMF
 from sklearn.linear_model import LinearRegression
 from scipy.ndimage import gaussian_filter
 from scipy.interpolate import RegularGridInterpolator, interp1d, griddata
@@ -740,7 +741,7 @@ def eems_tf_normalization(intensity):
 
 
 def eems_fit_components(eem_stack, component_stack, fit_intercept=False):
-    assert eem_stack.shape[1:] == component_stack.shape, "EEM and component have different shapes"
+    assert eem_stack.shape[1:] == component_stack.shape[1:], "EEM and component have different shapes"
     score_sample = []
     fmax_sample = []
     max_values = np.amax(component_stack, axis=(1, 2))
@@ -1437,7 +1438,7 @@ class PARAFAC:
     fmax: pandas.DataFrame
         Fmax table.
     component_stack: np.ndarray
-        PARAFAC Components.
+        PARAFAC components.
     cptensors: tensorly CPTensor
         The output of PARAFAC in the form of tensorly CPTensor.
     eem_stack_train: np.ndarray
@@ -2360,4 +2361,53 @@ class KPARAFACs:
                                     columns=list(self.cluster_specific_models.keys()))
 
         return best_model_label, score_all, fmax_all, sample_error
+
+
+class EEMPCA:
+
+    def __init__(self, n_components):
+        self.n_components = n_components
+        self.score = None
+        self.components = None
+
+    def fit(self, eem_dataset: EEMDataset):
+        decomposer = PCA(n_components=self.n_components)
+        n_samples = eem_dataset.eem_stack.shape[0]
+        X = eem_dataset.eem_stack.reshape([n_samples, -1])
+        score = decomposer.fit_transform(X)
+        score = pd.DataFrame(score, index=eem_dataset.index,
+                             columns=["component {i}".format(i=i+1) for i in range(self.n_components)])
+        components = decomposer.components_.reshape([self.n_components, eem_dataset.eem_stack.shape[1],
+                                                     eem_dataset.eem_stack.shape[2]])
+        self.score = score
+        self.components = components
+
+        return self
+
+
+class EEMNMF:
+
+    def __init__(self, n_components, alpha_W, alpha_H, l1_ratio):
+        self.n_components = n_components
+        self.alpha_W = alpha_W
+        self.alpha_H = alpha_H
+        self.l1_ratio = l1_ratio
+        self.score = None
+        self.components = None
+
+    def fit(self, eem_dataset: EEMDataset):
+        decomposer = NMF(n_components=self.n_components, alpha_W=self.alpha_W, alpha_H=self.alpha_H,
+                         l1_ratio=self.l1_ratio)
+        n_samples = eem_dataset.eem_stack.shape[0]
+        X = eem_dataset.eem_stack.reshape([n_samples, -1])
+        score = decomposer.fit_transform(X)
+        score = pd.DataFrame(score, index=eem_dataset.index,
+                             columns=["component {i}".format(i=i+1) for i in range(self.n_components)])
+        components = decomposer.components_.reshape([self.n_components, eem_dataset.eem_stack.shape[1],
+                                                     eem_dataset.eem_stack.shape[2]])
+        self.score = score
+        self.components = components
+
+        return self
+
 
