@@ -59,7 +59,7 @@ def process_eem_stack(eem_stack, f, **kwargs):
     processed_eem_stack = []
     other_outputs = []
 
-    #------Absorbance and blank are two parameters that are potentially sample-specific--------
+    # ------Absorbance and blank are two parameters that are potentially sample-specific--------
     if "absorbance" in kwargs:
         abs = kwargs.pop('absorbance')
         abs_passed = True
@@ -533,7 +533,8 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15
                 old_nan = np.isnan(intensity)
                 old_nan_o1 = np.isnan(intensity_masked)
                 intensity_masked[np.where(mask == 0)] = np.nan
-                intensity_masked = eem_nan_imputing(intensity_masked, ex_range, em_range, method=itp, fill_value='linear_ex')
+                intensity_masked = eem_nan_imputing(intensity_masked, ex_range, em_range, method=itp,
+                                                    fill_value='linear_ex')
                 # restore the nan values in non-raman-scattering region
                 intensity_masked[old_nan] = np.nan
                 intensity_masked[old_nan_o1] = np.nan
@@ -740,7 +741,7 @@ def eems_tf_normalization(intensity):
 #     return label
 
 
-def eems_fit_components(eem_stack, component_stack, fit_intercept=False):
+def eems_fit_components(eem_stack, component_stack, fit_intercept=False, positive=False):
     assert eem_stack.shape[1:] == component_stack.shape[1:], "EEM and component have different shapes"
     score_sample = []
     fmax_sample = []
@@ -749,7 +750,7 @@ def eems_fit_components(eem_stack, component_stack, fit_intercept=False):
     for i in range(eem_stack.shape[0]):
         y_true = eem_stack[i].reshape([-1])
         x = component_stack.reshape([component_stack.shape[0], -1]).T
-        reg = LinearRegression(fit_intercept=fit_intercept)
+        reg = LinearRegression(fit_intercept=fit_intercept, positive=positive)
         reg.fit(x, y_true)
         y_pred = reg.predict(x)
         eem_stack_pred[i, :, :] = y_pred.reshape((eem_stack.shape[1], eem_stack.shape[2]))
@@ -1369,6 +1370,16 @@ class EEMDataset:
             self.index = self.index[sorted_indices]
         self.ref = np.array(sorted(self.ref))
         return sorted_indices
+
+    def filter_by_index(self, keyword):
+        """
+        Select the samples whose indexes contain the given keyword.
+
+        Returns
+        -------
+
+        """
+        return
 
 
 def combine_eem_datasets(list_eem_datasets):

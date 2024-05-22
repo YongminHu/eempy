@@ -10,13 +10,15 @@ import numpy as np
 import scipy.stats as stats
 import pandas as pd
 import math
+import plotly.graph_objects as go
 from sklearn.linear_model import LinearRegression
 from matplotlib.colors import LogNorm, TABLEAU_COLORS
 
 
 def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_type='linear', vmin=0, vmax=10000,
              n_cbar_ticks=5, cbar=True, cmap='jet', figure_size=(10, 7), label_font_size=20,
-             cbar_label="Intensity (a.u.)", cbar_font_size=16, aspect='equal', rotate=False):
+             cbar_label="Intensity (a.u.)", cbar_font_size=16, fix_aspect_ratio=True, rotate=False,
+             plot_tool='matplotlib'):
     """
     plot EEM or EEM-like data.
 
@@ -50,10 +52,12 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
         The label of the colorbar scale.
     cbar_font_size: int
         The label size of the colorbar scale.
-    aspect: 'equal' or float
-        The aspect ratio.
+    fix_aspect_ratio: bool
+        Whether to fix the aspect ratio to be one.
     rotate: bool
         Whether to rotate the EEM, so that the x-axis is excitation and y-axis is emission.
+    plot_tool: str, {'matplotlib', 'plotly'}
+        Which python package to use for plotting.
 
     Returns
     ----------------
@@ -77,13 +81,14 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
         ax.set_ylim([ex_range[0], ex_range[-1]])
         if not auto_intensity_range:
             if scale_type == 'log':
-                im = ax.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, origin='upper', aspect=aspect,
-                               norm=c_norm)
+                im = ax.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, origin='upper',
+                               aspect=1 if fix_aspect_ratio else None, norm=c_norm)
             else:
                 im = ax.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, vmin=vmin, vmax=vmax,
-                               origin='upper', aspect=aspect, norm=c_norm)
+                               origin='upper', aspect=1 if fix_aspect_ratio else None, norm=c_norm)
         else:
-            im = ax.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, origin='upper', aspect=aspect)
+            im = ax.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, origin='upper',
+                           aspect=1 if fix_aspect_ratio else None)
     else:
         extent = (ex_range.min(), ex_range.max(), em_range.min(), em_range.max())
         ax.set_ylabel('Emission wavelength [nm]')
@@ -92,18 +97,42 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
         if not auto_intensity_range:
             if scale_type == 'log':
                 im = ax.imshow(np.flipud(np.fliplr(intensity.T)), cmap=cmap, interpolation='none', extent=extent,
-                               origin='upper', aspect=aspect, norm=c_norm)
+                               origin='upper', aspect=1 if fix_aspect_ratio else None, norm=c_norm)
             else:
                 im = ax.imshow(np.flipud(np.fliplr(intensity.T)), cmap=cmap, interpolation='none', extent=extent,
-                               vmin=vmin, vmax=vmax, origin='upper', aspect=aspect, norm=c_norm)
+                               vmin=vmin, vmax=vmax, origin='upper', aspect=1 if fix_aspect_ratio else None,
+                               norm=c_norm)
         else:
             im = ax.imshow(np.flipud(np.fliplr(intensity.T)), cmap=cmap, interpolation='none', extent=extent,
-                           origin='upper', aspect=aspect)
+                           origin='upper', aspect=1 if fix_aspect_ratio else None)
     if cbar:
         cbar = fig.colorbar(im, ax=ax, ticks=t_cbar, fraction=0.03, pad=0.04)
         cbar.set_label(cbar_label, labelpad=1.5)
         cbar.ax.tick_params(labelsize=cbar_font_size)
     return fig, ax
+
+
+    #
+    # def plot_eem_plotly(intensity, ex_range, em_range, auto_intensity_range=True, scale_type='linear',
+    #                     vmin=0, vmax=10000, n_cbar_ticks=5, cbar=True, cmap='jet', figure_size=(800, 600),
+    #                     cbar_label="Intensity (a.u.)"):
+    #     # Create a heatmap trace
+    #     trace = go.Heatmap(z=intensity, x=em_range, y=ex_range, colorscale=cmap, zmin=vmin, zmax=vmax,
+    #                        colorbar=dict(title=cbar_label, tickvals=np.linspace(vmin, vmax, n_cbar_ticks)))
+    #
+    #     # Set layout options
+    #     layout = go.Layout(
+    #         xaxis=dict(title='Emission wavelength [nm]'),
+    #         yaxis=dict(title='Excitation wavelength [nm]'),
+    #         width=figure_size[0],
+    #         height=figure_size[1],
+    #     )
+    #
+    #     # Create the figure
+    #     fig = go.Figure(data=[trace], layout=layout)
+    #
+    #     return fig
+
 
 
 def plot_abs(absorbance, ex_range, xmax=0.05, ex_range_display=(200, 800)):

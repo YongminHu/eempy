@@ -263,12 +263,12 @@ def read_abs_dataset(folder_path, kw: str = 'ABS.dat', data_format: str = 'aqual
             ex_interval_new = (np.max(ex_range) - np.min(ex_range)) / (ex_range.shape[0] - 1)
             ex_interval_old = (np.max(ex_range_old) - np.min(ex_range_old)) / (ex_range_old.shape[0] - 1)
             if ex_interval_new > ex_interval_old:
-                f = interp1d(ex_range, absorbance, kind=interpolation_method)
+                f = interp1d(ex_range, absorbance, kind=interpolation_method, fill_value='extrapolate')
                 absorbance = f(ex_range_old)
             if ex_interval_new < ex_interval_old:
                 abs_stack_new = np.zeros([num_datfile, absorbance.shape[0]])
                 for i in range(n):
-                    f = interp1d(ex_range_old, abs_stack[i, :], kind=interpolation_method)
+                    f = interp1d(ex_range_old, abs_stack[i, :], kind=interpolation_method, fill_value='extrapolate')
                     abs_stack_new[i, :] = f(ex_range)
                 abs_stack = abs_stack_new
         abs_stack[n, :] = absorbance
