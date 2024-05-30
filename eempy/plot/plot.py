@@ -64,74 +64,87 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
     fig：matplotlib figure
     ax: array of matplotlib axes
     """
-    fig, ax = plt.subplots(figsize=figure_size)
-    font = {'size': label_font_size}
-    plt.rc('font', **font)
-    # reset the axis direction
-    if scale_type == 'log':
-        c_norm = LogNorm(vmin=vmin, vmax=vmax)
-        t_cbar = np.logspace(math.log(vmin), math.log(vmax), n_cbar_ticks)
-    else:
-        c_norm = None
-        t_cbar = np.linspace(vmin, vmax, n_cbar_ticks)
-    if not rotate:
-        extent = (em_range.min(), em_range.max(), ex_range.min(), ex_range.max())
-        ax.set_xlabel('Emission wavelength [nm]')
-        ax.set_ylabel('Excitation wavelength [nm]')
-        ax.set_ylim([ex_range[0], ex_range[-1]])
+    if plot_tool == 'matplotlib':
+        fig, ax = plt.subplots(figsize=figure_size)
+        font = {'size': label_font_size}
+        plt.rc('font', **font)
+        # reset the axis direction
+        if scale_type == 'log':
+            c_norm = LogNorm(vmin=vmin, vmax=vmax)
+            t_cbar = np.logspace(math.log(vmin), math.log(vmax), n_cbar_ticks)
+        else:
+            c_norm = None
+            t_cbar = np.linspace(vmin, vmax, n_cbar_ticks)
+        if not rotate:
+            extent = (em_range.min(), em_range.max(), ex_range.min(), ex_range.max())
+            ax.set_ylim([ex_range[0], ex_range[-1]])
+        else:
+            extent = (ex_range.min(), ex_range.max(), em_range.min(), em_range.max())
+            ax.set_xlim([ex_range[0], ex_range[-1]])
+        ax.set_xlabel('Emission wavelength [nm]' if not rotate else 'Excitation wavelength [nm]')
+        ax.set_ylabel('Excitation wavelength [nm]' if not rotate else 'Emission wavelength [nm]')
         if not auto_intensity_range:
             if scale_type == 'log':
-                im = ax.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, origin='upper',
+                im = ax.imshow(intensity if not rotate else np.flipud(np.fliplr(intensity.T)), cmap=cmap,
+                               interpolation='none', extent=extent, origin='upper',
                                aspect=1 if fix_aspect_ratio else None, norm=c_norm)
             else:
-                im = ax.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, vmin=vmin, vmax=vmax,
+                im = ax.imshow(intensity if not rotate else np.flipud(np.fliplr(intensity.T)), cmap=cmap,
+                               interpolation='none', extent=extent, vmin=vmin, vmax=vmax,
                                origin='upper', aspect=1 if fix_aspect_ratio else None, norm=c_norm)
         else:
-            im = ax.imshow(intensity, cmap=cmap, interpolation='none', extent=extent, origin='upper',
+            im = ax.imshow(intensity if not rotate else np.flipud(np.fliplr(intensity.T)), cmap=cmap,
+                           interpolation='none', extent=extent, origin='upper',
                            aspect=1 if fix_aspect_ratio else None)
-    else:
-        extent = (ex_range.min(), ex_range.max(), em_range.min(), em_range.max())
-        ax.set_ylabel('Emission wavelength [nm]')
-        ax.set_xlabel('Excitation wavelength [nm]')
-        ax.set_xlim([ex_range[0], ex_range[-1]])
-        if not auto_intensity_range:
-            if scale_type == 'log':
-                im = ax.imshow(np.flipud(np.fliplr(intensity.T)), cmap=cmap, interpolation='none', extent=extent,
-                               origin='upper', aspect=1 if fix_aspect_ratio else None, norm=c_norm)
-            else:
-                im = ax.imshow(np.flipud(np.fliplr(intensity.T)), cmap=cmap, interpolation='none', extent=extent,
-                               vmin=vmin, vmax=vmax, origin='upper', aspect=1 if fix_aspect_ratio else None,
-                               norm=c_norm)
-        else:
-            im = ax.imshow(np.flipud(np.fliplr(intensity.T)), cmap=cmap, interpolation='none', extent=extent,
-                           origin='upper', aspect=1 if fix_aspect_ratio else None)
-    if cbar:
-        cbar = fig.colorbar(im, ax=ax, ticks=t_cbar, fraction=0.03, pad=0.04)
-        cbar.set_label(cbar_label, labelpad=1.5)
-        cbar.ax.tick_params(labelsize=cbar_font_size)
-    return fig, ax
+        if cbar:
+            cbar = fig.colorbar(im, ax=ax, ticks=t_cbar, fraction=0.03, pad=0.04)
+            cbar.set_label(cbar_label, labelpad=1.5)
+            cbar.ax.tick_params(labelsize=cbar_font_size)
+        return fig, ax
 
+    elif plot_tool == 'plotly':
 
-    #
-    # def plot_eem_plotly(intensity, ex_range, em_range, auto_intensity_range=True, scale_type='linear',
-    #                     vmin=0, vmax=10000, n_cbar_ticks=5, cbar=True, cmap='jet', figure_size=(800, 600),
-    #                     cbar_label="Intensity (a.u.)"):
-    #     # Create a heatmap trace
-    #     trace = go.Heatmap(z=intensity, x=em_range, y=ex_range, colorscale=cmap, zmin=vmin, zmax=vmax,
-    #                        colorbar=dict(title=cbar_label, tickvals=np.linspace(vmin, vmax, n_cbar_ticks)))
-    #
-    #     # Set layout options
-    #     layout = go.Layout(
-    #         xaxis=dict(title='Emission wavelength [nm]'),
-    #         yaxis=dict(title='Excitation wavelength [nm]'),
-    #         width=figure_size[0],
-    #         height=figure_size[1],
-    #     )
-    #
-    #     # Create the figure
-    #     fig = go.Figure(data=[trace], layout=layout)
-    #
-    #     return fig
+        if scale_type == 'log':
+            t_cbar = np.logspace(math.log(vmin), math.log(vmax), n_cbar_ticks)
+            trace = go.Heatmap(z=np.log10(intensity) if not rotate else np.flipud(np.fliplr(np.log10(intensity).T)),
+                               x=em_range if not rotate else ex_range,
+                               y=ex_range[::-1] if not rotate else em_range[::-1],
+                               colorscale=cmap,
+                               zmin=vmin if not auto_intensity_range else None,
+                               zmax=vmax if not auto_intensity_range else None,
+                               colorbar=dict(title=cbar_label, tickvals=np.log10(t_cbar), ticktext=t_cbar,
+                                             tickfont=cbar_font_size) if not
+                               auto_intensity_range else dict(title=cbar_label, tickfont=cbar_font_size))
+
+        elif scale_type == 'linear':
+            trace = go.Heatmap(
+                z=intensity if not rotate else np.flipud(np.fliplr(intensity.T)),
+                x=em_range if not rotate else ex_range,
+                y=ex_range[::-1] if not rotate else em_range[::-1],
+                colorscale=cmap,
+                zmin=vmin if not auto_intensity_range else None,
+                zmax=vmax if not auto_intensity_range else None,
+                colorbar=dict(title=cbar_label,
+                              tickvals=np.linspace(vmin, vmax, n_cbar_ticks),
+                              tickfont=dict(size=cbar_font_size)) if not auto_intensity_range
+                else dict(title=cbar_label,
+                          tickfont=dict(size=cbar_font_size)))
+
+        xaxis_title = 'Emission wavelength [nm]' if not rotate else 'Excitation wavelength [nm]'
+        yaxis_title = 'Excitation wavelength [nm]' if not rotate else 'Emission wavelength [nm]'
+        layout = go.Layout(
+            xaxis=dict(title=xaxis_title),
+            yaxis=dict(title=yaxis_title),
+            font=dict(size=label_font_size),
+            width=figure_size[0] * 100,
+            height=figure_size[1] * 100,
+            yaxis_scaleanchor="x" if fix_aspect_ratio else None,
+            autosize=True
+        )
+
+        fig = go.Figure(data=[trace], layout=layout)
+
+        return fig
 
 
 
