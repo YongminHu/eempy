@@ -259,7 +259,6 @@ def eem_nan_imputing(intensity, ex_range, em_range, method: str = 'linear', fill
     xx = x[~np.isnan(intensity)].flatten()
     yy = y[~np.isnan(intensity)].flatten()
     zz = intensity[~np.isnan(intensity)].flatten()
-    intensity_imputed = None
     if isinstance(fill_value, float):
         intensity_imputed = griddata((xx, yy), zz, (x, y), method=method, fill_value=fill_value)
     elif fill_value == 'linear_ex':
@@ -314,7 +313,7 @@ def eem_raman_normalization(intensity, blank=None, ex_range_blank=None, em_range
     bandwidth: float
         The bandwidth of Raman scattering peak.
     bandwidth_type: str, {"wavenumber", "wavelength"}
-        The type of bandwidth. "wavenumber": (1/nm); "wavelength": (nm).
+        The type of bandwidth. "wavenumber": (1/cm); "wavelength": (nm).
     rsu_standard: float
         A factor used to divide the raw RSU. This is used to control the magnitude of RSU so that the normalized
         intensity of EEM would not be numerically too high or too low.
@@ -381,6 +380,7 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_meth
         Indicate the pixels that are interpolated. 0: pixel is interpolated; 1: pixel is not interpolated.
     """
     intensity_masked = np.array(intensity)
+    width = width/2
     raman_mask = np.ones(intensity.shape)
     lambda_em = -ex_range / (0.00036 * ex_range - 1)
     tol_emidx = int(np.round(width / (em_range[1] - em_range[0])))
@@ -392,9 +392,9 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_meth
         elif lambda_em[s] - width <= em_range[0] < lambda_em[s]:
             emidx = dichotomy_search(em_range, lambda_em[s])
             raman_mask[exidx, 0: emidx + tol_emidx + 1] = 0
-        elif lambda_em[s] - width > em_range[0]:
+        elif em_range[0] < lambda_em[s] - width < em_range[-1]:
             emidx = dichotomy_search(em_range, lambda_em[s] - width)
-            raman_mask[exidx, emidx: emidx + 2 * tol_emidx + 1] = 0
+            raman_mask[exidx, emidx: min(em_range.shape[0], emidx + 2 * tol_emidx + 1)] = 0
 
     if interpolation_method == 'nan':
         intensity_masked[np.where(raman_mask == 0)] = np.nan
@@ -473,6 +473,9 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15
     intensity_masked = np.array(intensity)
     rayleigh_mask_o1 = np.ones(intensity.shape)
     rayleigh_mask_o2 = np.ones(intensity.shape)
+    # convert the entire width to half-width
+    width_o1 = width_o1/2
+    width_o2 = width_o2/2
     lambda_em_o1 = ex_range
     tol_emidx_o1 = int(np.round(width_o1 / (em_range[1] - em_range[0])))
     for s in range(0, intensity_masked.shape[0]):
@@ -483,10 +486,11 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15
         elif lambda_em_o1[s] - width_o1 <= em_range[0] < lambda_em_o1[s]:
             emidx = dichotomy_search(em_range, lambda_em_o1[s])
             rayleigh_mask_o1[exidx, 0: emidx + tol_emidx_o1 + 1] = 0
-        elif lambda_em_o1[s] - width_o1 > em_range[0]:
-            emidx = dichotomy_search(em_range, lambda_em_o1[s])
-            rayleigh_mask_o1[exidx, emidx: emidx + tol_emidx_o1 + 1] = 0
+        elif em_range[0] < lambda_em_o1[s] - width_o1 < em_range[-1]:
+            emidx = dichotomy_search(em_range, lambda_em_o1[s] - width_o1)
+            rayleigh_mask_o1[exidx, emidx: min(em_range.shape[0], emidx + 2 * tol_emidx_o1 + 1)] = 0
             intensity_masked[exidx, 0: emidx] = 0
+
     lambda_em_o2 = ex_range * 2
     tol_emidx_o2 = int(np.round(width_o2 / (em_range[1] - em_range[0])))
     for s in range(0, intensity_masked.shape[0]):
@@ -497,9 +501,9 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15
         elif lambda_em_o2[s] - width_o2 <= em_range[0] < lambda_em_o2[s]:
             emidx = dichotomy_search(em_range, lambda_em_o2[s])
             rayleigh_mask_o2[exidx, 0: emidx + tol_emidx_o2 + 1] = 0
-        elif lambda_em_o2[s] - width_o2 > em_range[0]:
+        elif em_range[0] < lambda_em_o2[s] - width_o2 <= em_range[-1]:
             emidx = dichotomy_search(em_range, lambda_em_o2[s] - width_o2)
-            rayleigh_mask_o2[exidx, emidx: emidx + 2 * tol_emidx_o2 + 1] = 0
+            rayleigh_mask_o2[exidx, emidx: min(em_range.shape[0], emidx + 2 * tol_emidx_o2 + 1)] = 0
 
     for axis, itp, mask in zip([interpolation_axis_o1, interpolation_axis_o2],
                                [interpolation_method_o1, interpolation_method_o2],
@@ -1557,7 +1561,7 @@ class PARAFAC:
         ex_loadings = pd.DataFrame(np.flipud(b), index=eem_dataset.ex_range)
         em_loadings = pd.DataFrame(c, index=eem_dataset.em_range)
         if self.sort_em:
-            em_peaks = [c[1] for c in em_loadings.idxmax()]
+            em_peaks = [c for c in em_loadings.idxmax()]
             peak_rank = list(enumerate(stats.rankdata(em_peaks)))
             order = [i[0] for i in sorted(peak_rank, key=lambda x: x[1])]
             component_stack = component_stack[order]

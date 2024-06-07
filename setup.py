@@ -17,6 +17,8 @@ setup(
         "matplotlib",
         "pandas",
         "tlviz",
-        "plotly"
+        "plotly",
+        "dash",
+        "dash-bootstrap-components"
     ]
 )
