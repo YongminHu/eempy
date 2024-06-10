@@ -285,7 +285,7 @@ def eem_nan_imputing(intensity, ex_range, em_range, method: str = 'linear', fill
 
 
 def eem_raman_normalization(intensity, blank=None, ex_range_blank=None, em_range_blank=None, from_blank=False,
-                            integration_time=1, ex_lb=349, ex_ub=351, bandwidth=1800, bandwidth_type='wavenumber',
+                            integration_time=1, ex_lb=349, ex_ub=351, bandwidth=1800, bandwidth_type='wavelength',
                             rsu_standard=20000, manual_rsu: Optional[float] = 1):
     """
     Normalize the EEM using the Raman scattering unit (RSU) given directly or calculated from a blank EEM.
@@ -333,16 +333,17 @@ def eem_raman_normalization(intensity, blank=None, ex_range_blank=None, em_range
         ex_range_cut = ex_range_blank[(ex_range_blank >= ex_lb) & (ex_range_blank <= ex_ub)]
         rsu_tot = 0
         for ex in ex_range_cut.tolist():
-            if bandwidth_type == 'wavenumber':
-                em_target = -ex / (0.00036 * ex - 1)
-                wn_target = 10000000 / em_target
-                em_lb = 10000000 / (wn_target + bandwidth)
-                em_rb = 10000000 / (wn_target - bandwidth)
+            if bandwidth_type == 'wavelength':
                 rsu, _ = eem_regional_integration(blank, ex_range_blank, em_range_blank,
-                                                  ex_min=ex, ex_max=ex, em_min=em_lb, em_max=em_rb)
-            elif bandwidth_type == 'wavelength':
-                rsu, _ = eem_regional_integration(blank, ex_range_blank, em_range_blank,
-                                                  ex_min=ex, ex_max=ex, em_min=ex - bandwidth, em_max=ex + bandwidth)
+                                                  ex_min=ex, ex_max=ex, em_min=ex - bandwidth/2,
+                                                  em_max=ex + bandwidth/2)
+            # elif bandwidth_type == 'wavenumber':
+            #     em_target = -ex / (0.00036 * ex - 1)
+            #     wn_target = 10000000 / em_target
+            #     em_lb = 10000000 / (wn_target + bandwidth)
+            #     em_rb = 10000000 / (wn_target - bandwidth)
+            #     rsu, _ = eem_regional_integration(blank, ex_range_blank, em_range_blank,
+            #                                       ex_min=ex, ex_max=ex, em_min=em_lb, em_max=em_rb)
             else:
                 raise ValueError("'bandwidth_type' should be either 'wavenumber' or 'wavelength'.")
             rsu_tot += rsu
@@ -351,7 +352,7 @@ def eem_raman_normalization(intensity, blank=None, ex_range_blank=None, em_range
     return intensity_normalized, rsu_final
 
 
-def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_method='linear', interpolation_axis='grid'):
+def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_method='linear', interpolation_axis='2d'):
     """
     Remove and interpolate the Raman scattering.
 
@@ -367,9 +368,9 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_meth
         The width of Raman scattering.
     interpolation_method: str, {"linear", "cubic", "nan"}
         The method used to interpolate the Raman scattering.
-    interpolation_axis: str, {"ex", "em", "grid"}
-        The axis along which the Raman scattering is interpolated. "ex": interpolation is conducted along the excitation
-        wavelength; "em": interpolation is conducted along the emission wavelength; "grid": interpolation is conducted
+    interpolation_axis: str, {"1d-ex", "1d-em", "2d"}
+        The axis along which the Raman scattering is interpolated. "1d-ex": interpolation is conducted along the excitation
+        wavelength; "1d-em": interpolation is conducted along the emission wavelength; "2d": interpolation is conducted
         on the 2D grid of both excitation and emission wavelengths.
 
     Returns
@@ -399,7 +400,7 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_meth
     if interpolation_method == 'nan':
         intensity_masked[np.where(raman_mask == 0)] = np.nan
     else:
-        if interpolation_axis == 'ex':
+        if interpolation_axis == '1d-ex':
             for j in range(0, intensity.shape[1]):
                 try:
                     x = np.flipud(ex_range)[np.where(raman_mask[:, j] == 1)]
@@ -410,7 +411,7 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_meth
                 except ValueError:
                     continue
 
-        if interpolation_axis == 'em':
+        if interpolation_axis == '1d-em':
             for i in range(0, intensity.shape[0]):
                 try:
                     x = em_range[np.where(raman_mask[i, :] == 1)]
@@ -421,7 +422,7 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_meth
                 except ValueError:
                     continue
 
-        if interpolation_axis == 'grid':
+        if interpolation_axis == '2d':
             old_nan = np.isnan(intensity)
             intensity_masked[np.where(raman_mask == 0)] = np.nan
             intensity_masked = eem_nan_imputing(intensity_masked, ex_range, em_range, method=interpolation_method)
@@ -431,7 +432,7 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_meth
 
 
 def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15,
-                         interpolation_axis_o1='grid', interpolation_axis_o2='grid', interpolation_method_o1='zero',
+                         interpolation_axis_o1='2d', interpolation_axis_o2='2d', interpolation_method_o1='zero',
                          interpolation_method_o2='linear'):
     """
     Remove and interpolate the Rayleigh scattering.
@@ -448,11 +449,11 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15
         The width or 1st order Rayleigh scattering.
     width_o2: float
         The width or 2nd order Rayleigh scattering.
-    interpolation_axis_o1: str, {"ex", "em", "grid"}
+    interpolation_axis_o1: str, {"1d-ex", "1d-em", "2d"}
         The axis along which the 1st order Rayleigh scattering is interpolated. "ex": interpolation is conducted along
-        the excitation wavelength; "em": interpolation is conducted along the emission wavelength; "grid": interpolation
+        the excitation wavelength; "em": interpolation is conducted along the emission wavelength; "2d": interpolation
         is conducted on the 2D grid of both excitation and emission wavelengths.
-    interpolation_axis_o2: str, {"ex", "em", "grid"}
+    interpolation_axis_o2: str, {"1d-ex", "1d-em", "2d"}
         The axis along which the 2nd order Rayleigh scattering is interpolated.
     interpolation_method_o1: str, {"linear", "cubic", "nan"}
         The method used to interpolate the 1st order Rayleigh scattering.
@@ -512,8 +513,10 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15
             intensity_masked[np.where(mask == 0)] = 0
         elif itp == 'nan':
             intensity_masked[np.where(mask == 0)] = np.nan
+        elif itp == 'none':
+            pass
         else:
-            if axis == 'ex':
+            if axis == '1d-ex':
                 for j in range(0, intensity.shape[1]):
                     try:
                         x = np.flipud(ex_range)[np.where(mask[:, j] == 1)]
@@ -523,7 +526,7 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15
                         intensity_masked[:, j] = y_predict
                     except ValueError:
                         continue
-            if axis == 'em':
+            if axis == '1d-em':
                 for i in range(0, intensity.shape[0]):
                     try:
                         x = em_range[np.where(mask[i, :] == 1)]
@@ -533,7 +536,7 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15
                         intensity_masked[i, :] = y_predict
                     except ValueError:
                         continue
-            if axis == 'grid':
+            if axis == '2d':
                 old_nan = np.isnan(intensity)
                 old_nan_o1 = np.isnan(intensity_masked)
                 intensity_masked[np.where(mask == 0)] = np.nan
@@ -1142,7 +1145,7 @@ class EEMDataset:
             self.eem_stack = eem_stack_normalized
         return eem_stack_normalized, weights
 
-    def raman_masking(self, width=5, interpolation_method='linear', interpolation_axis='grid', copy=True):
+    def raman_masking(self, width=5, interpolation_method='linear', interpolation_axis='2d', copy=True):
         """
         Remove and interpolate the Raman scattering.
 
@@ -1166,7 +1169,7 @@ class EEMDataset:
             self.eem_stack = eem_stack_masked
         return eem_stack_masked
 
-    def rayleigh_masking(self, width_o1=15, width_o2=15, interpolation_axis_o1='grid', interpolation_axis_o2='grid',
+    def rayleigh_masking(self, width_o1=15, width_o2=15, interpolation_axis_o1='2d', interpolation_axis_o2='2d',
                          interpolation_method_o1='zero', interpolation_method_o2='linear', copy=True):
         """
         Remove and interpolate the Rayleigh scattering.

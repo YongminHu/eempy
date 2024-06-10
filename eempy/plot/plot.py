@@ -16,11 +16,10 @@ from sklearn.linear_model import LinearRegression
 from matplotlib.colors import LogNorm, TABLEAU_COLORS
 
 
-
 def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_type='linear', vmin=0, vmax=10000,
              n_cbar_ticks=5, cbar=True, cmap='jet', figure_size=(10, 7), label_font_size=20,
              cbar_label="Intensity (a.u.)", cbar_font_size=16, fix_aspect_ratio=True, rotate=False,
-             plot_tool='matplotlib', display=True):
+             plot_tool='matplotlib', display=True, title=None):
     """
     plot EEM or EEM-like data.
 
@@ -62,6 +61,8 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
         Which python package to use for plotting.
     display: bool
         Whether to display the figure when calling the function
+    title: str
+        Plot title.
 
     Returns
     ----------------
@@ -104,6 +105,9 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
             cbar = fig.colorbar(im, ax=ax, ticks=t_cbar, fraction=0.03, pad=0.04)
             cbar.set_label(cbar_label, labelpad=1.5)
             cbar.ax.tick_params(labelsize=cbar_font_size)
+
+        if title:
+            ax.set_title(title, pad=20, fontsize=20)
 
         if display:
             plt.show()
@@ -151,6 +155,12 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
         )
 
         fig = go.Figure(data=[trace], layout=layout)
+
+        if title:
+            fig.update_layout(
+                title=dict(text=title, font=dict(size=20)),
+                margin=dict(pad=0.5)
+            )
 
         if display:
             fig.show()
