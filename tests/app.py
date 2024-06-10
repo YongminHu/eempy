@@ -46,55 +46,74 @@ card_selecting_files = dbc.Card(
                     dbc.Row([
                         dbc.Col(
                             dbc.Label("EEM file format"),
+                            width={'size': 3}
                         ),
                         dbc.Col(
-                            dcc.Dropdown(id='eem-data-format',
-                                         options=[{'label': 'Horiba Aqualog .dat file', 'value': 'aqualog'}],
-                                         value='aqualog', placeholder='Select EEM data file format',
-                                         style={'width': '100%'}),
+                            dcc.Dropdown(
+                                id='eem-data-format',
+                                options=[{'label': 'Horiba Aqualog .dat file', 'value': 'aqualog'}],
+                                value=None,
+                                style={'width': '100%'},
+                                optionHeight=50
+                            ),
+                            width={'offset': 0, 'size': 3},
                         ),
                         dbc.Col(
                             dbc.Label("Absorbance file format"),
+                            width={'size': 3}
                         ),
                         dbc.Col(
-                            dcc.Dropdown(id='abs-data-format',
-                                         options=[{'label': 'Horiba Aqualog .dat file', 'value': 'aqualog'}],
-                                         value='aqualog', placeholder='Select EEM data file format',
-                                         style={'width': '100%'}),
+                            dcc.Dropdown(
+                                id='abs-data-format',
+                                options=[{'label': 'Horiba Aqualog .dat file', 'value': 'aqualog'}],
+                                value=None,
+                                style={'width': '100%'},
+                                optionHeight=50
+                            ),
+                            width={"offset": 0, "size": 3},
+
                         ),
                     ]),
 
                     dbc.Row([
                         dbc.Col(
                             dbc.Label("Overarching file searching keyword"),
+                            width={'size': 3}
                         ),
                         dbc.Col(
                             dcc.Input(id='eem-file-keyword', type='text', placeholder='',
-                                      style={'width': '160px', 'height': '20px'}, debounce=True, value='PEM'),
+                                      style={'width': '100%', 'height': '20px'}, debounce=True, value=''),
+                            width={"offset": 0, "size": 3}
                         ),
                         dbc.Col(
                             dbc.Label("Sample EEM file searching keyword"),
+                            width={'size': 3}
                         ),
                         dbc.Col(
                             dcc.Input(id='eem-file-keyword', type='text', placeholder='',
-                                      style={'width': '160px', 'height': '20px'}, debounce=True, value='PEM'),
+                                      style={'width': '100%', 'height': '20px'}, debounce=True, value=''),
+                            width={"offset": 0, "size": 3}
                         ),
                     ]),
 
                     dbc.Row([
                         dbc.Col(
                             dbc.Label("Absorbance file searching keyword"),
+                            width={'size': 3}
                         ),
                         dbc.Col(
                             dcc.Input(id='abs-file-keyword', type='text', placeholder='',
-                                      style={'width': '160px', 'height': '20px'}, debounce=True, value='ABS'),
+                                      style={'width': '100%', 'height': '20px'}, debounce=True, value=''),
+                            width={"offset": 0, "size": 3}
                         ),
                         dbc.Col(
                             dbc.Label("Blank EEM file searching keyword"),
+                            width={'size': 3}
                         ),
                         dbc.Col(
                             dcc.Input(id='blank-file-keyword', type='text', placeholder='',
-                                      style={'width': '160px', 'height': '20px'}, debounce=True, value='BEM'),
+                                      style={'width': '100%', 'height': '20px'}, debounce=True, value=''),
+                            width={"offset": 0, "size": 3}
                         ),
                     ]),
 
@@ -107,14 +126,14 @@ card_selecting_files = dbc.Card(
                         ),
                         dbc.Col(
                             dcc.Input(id='index-pos-left', type='number', placeholder='',
-                                      style={'width': '160px', 'height': '20px'}, debounce=True),
+                                      style={'width': '100%', 'height': '20px'}, debounce=True),
                         ),
                         dbc.Col(
                             dbc.Label("Index end position"),
                         ),
                         dbc.Col(
                             dcc.Input(id='index-pos-right', type='text', placeholder='',
-                                      style={'width': '160px', 'height': '20px'}, debounce=True),
+                                      style={'width': '100%', 'height': '20px'}, debounce=True),
                         ),
                     ]),
 
@@ -131,7 +150,7 @@ card_selecting_files = dbc.Card(
                         ),
                         dbc.Col(
                             dcc.Input(id='timestamp-format', type='text', placeholder='e.g., %Y-%m-%d-%H-%M',
-                                      style={'width': '160px', 'height': '20px'}, debounce=True),
+                                      style={'width': '100%', 'height': '20px'}, debounce=True),
                         )
                     ]),
                 ]
@@ -177,7 +196,7 @@ card_range_selection = dbc.Card(
                     dbc.Row([
                         dbc.Col(
                             dcc.Input(id='excitation-wavelength-min', type='number', placeholder='min',
-                                      style={'width': '120%', 'height':'20px'}, debounce=True),
+                                      style={'width': '120%', 'height': '20px'}, debounce=True),
                             width={'size': 3}
                         ),
                         dbc.Col(
@@ -209,7 +228,7 @@ card_range_selection = dbc.Card(
                     dbc.Row([
                         dbc.Col(
                             dcc.Input(id='emission-wavelength-min', type='number', placeholder='min',
-                                      style={'width': '120%', 'height':'20px'}, debounce=True),
+                                      style={'width': '120%', 'height': '20px'}, debounce=True),
                             width={'size': 3}
                         ),
                         dbc.Col(
@@ -279,16 +298,23 @@ card_range_selection = dbc.Card(
 card_ife = dbc.Card(
     dbc.CardBody(
         [
-            html.H5("Inner filter effect", className="card-title"),
             html.Div(
                 [
-                    dbc.Row([
-                        dbc.Checklist(id='ife-button',
-                                      options=[{'label': html.Span("Inner filter effect correction",
-                                                                   style={"font-size": 15, "padding-left": 10}),
-                                                'value': "ife"}],
-                                      switch=True),
-                    ]),
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                [
+                                    html.H5("Inner filter effect correction"),
+                                ],
+                                width={'size': 10}),
+                            dbc.Col([
+                                dbc.Checklist(id='ife-button', options=[{'label': ' ', 'value': "ife"}], switch=True,
+                                              style={'transform': 'scale(1.3)'})
+                            ], width={'size': 2})
+                        ],
+                        align='start'
+                    ),
+
                     dbc.Row([
                         dbc.Col(
                             dbc.Label("method"),
@@ -314,17 +340,20 @@ card_su = dbc.Card(
         [
             html.Div(
                 [
-                    dbc.Row([
-                        dbc.Col(
-                            [
-                                html.H5("Raman scattering unit (RSU) normalization from blank"),
-                            ],
-                            width={'size': 10}),
-                        dbc.Col([
-                            dbc.Checklist(id='su-butthn', options=[{'label': ' ', 'value': "su"}], switch=True,
-                                          style={'transform': 'scale(1.5)'})
-                        ], width={'size': 2})
-                    ]),
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                [
+                                    html.H5("Raman scattering unit (RSU) normalization from blank"),
+                                ],
+                                width={'size': 10}),
+                            dbc.Col([
+                                dbc.Checklist(id='su-button', options=[{'label': ' ', 'value': "su"}], switch=True,
+                                              style={'transform': 'scale(1.3)'})
+                            ], width={'size': 2})
+                        ],
+                        align='start'
+                    ),
 
                     dbc.Row([
                         dbc.Col(
@@ -379,8 +408,8 @@ card_su = dbc.Card(
                         dbc.Col(
                             dbc.Col(
                                 dcc.Input(id='su-normalization-factor', type='number', placeholder='max',
-                                          style={'width': '100%', 'height': '20px'}, debounce=True, value=0),
-                                width={'size':6}
+                                          style={'width': '100%', 'height': '20px'}, debounce=True, value=1000),
+                                width={'size': 6}
                             )
                         ),
                     ])
@@ -397,38 +426,46 @@ card_su = dbc.Card(
 card_rayleigh = dbc.Card(
     dbc.CardBody(
         [
-            html.H5("Rayleigh scattering", className="card-title"),
-            html.Div(
+            dbc.Stack(
                 [
-                    dbc.Row([
-                        dcc.Checklist(id='rayleigh-button',
-                                      options=[{'label': 'Rayleigh scattering interpolation', 'value': "rayleigh"}]),
-                    ]),
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                [
+                                    html.H5("Rayleigh scattering removal"),
+                                ],
+                                width={'size': 10}),
+                            dbc.Col([
+                                dbc.Checklist(id='rayleigh-button', options=[{'label': ' ', 'value': "rayleigh"}],
+                                              switch=True,
+                                              style={'transform': 'scale(1.3)'})
+                            ], width={'size': 2})
+                        ],
+                        align='start'
+                    ),
+
                     dbc.Row([
                         html.H6("First order")
                     ]),
-                    dbc.Row([
-                        dbc.Col(
-                            dbc.Label("method"),
-                        ),
-                        dbc.Col(
-                            dcc.Dropdown(id='rayleigh-o1-methods',
-                                         options=[{'label': 'zero', 'value': 'zero'},
-                                                  {'label': 'linear', 'value': 'linear'},
-                                                  {'label': 'cubic', 'value': 'cubic'},
-                                                  {'label': 'nan', 'value': 'nan'},
-                                                  {'label': 'none', 'value': 'none'}],
-                                         value='zero', placeholder='', style={'width': '100%'})
-                        ),
 
-                        dbc.Col(
-                            dbc.Label("width")
-                        ),
-                        dbc.Col(
-                            dcc.Input(id='rayleigh-o1-width',
-                                      type='number', placeholder='max',
-                                      style={'width': '100px', 'height': '20px'}, debounce=True, value=20)
-                        ),
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                dbc.Label("method"),
+                            ),
+                            dbc.Col(
+                                dcc.Dropdown(id='rayleigh-o1-methods',
+                                             options=[{'label': 'zero', 'value': 'zero'},
+                                                      {'label': 'linear', 'value': 'linear'},
+                                                      {'label': 'cubic', 'value': 'cubic'},
+                                                      {'label': 'nan', 'value': 'nan'},
+                                                      {'label': 'none', 'value': 'none'}],
+                                             value='zero', placeholder='', style={'width': '100%'})
+                            ),
+                        ]
+                    ),
+
+                    dbc.Row([
                         dbc.Col(
                             dbc.Label("dimension")
                         ),
@@ -441,31 +478,42 @@ card_rayleigh = dbc.Card(
                                 value='2d', placeholder='', style={'width': '100%'})
                         )
                     ]),
+
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                dbc.Label("width")
+                            ),
+                            dbc.Col(
+                                dcc.Input(id='rayleigh-o1-width',
+                                          type='number', placeholder='max',
+                                          style={'width': '100%', 'height': '20px'}, debounce=True, value=20)
+                            ),
+                        ]
+                    ),
+
                     dbc.Row([
                         html.H6("Second order")
                     ]),
-                    dbc.Row([
-                        dbc.Col(
-                            dbc.Label("method"),
-                        ),
-                        dbc.Col(
-                            dcc.Dropdown(id='rayleigh-o2-methods',
-                                         options=[{'label': 'zero', 'value': 'zero'},
-                                                  {'label': 'linear', 'value': 'linear'},
-                                                  {'label': 'cubic', 'value': 'cubic'},
-                                                  {'label': 'nan', 'value': 'nan'},
-                                                  {'label': 'none', 'value': 'none'}],
-                                         value='linear', placeholder='', style={'width': '100%'})
-                        ),
 
-                        dbc.Col(
-                            dbc.Label("width")
-                        ),
-                        dbc.Col(
-                            dcc.Input(id='rayleigh-o2-width',
-                                      type='number', placeholder='max',
-                                      style={'width': '100px', 'height': '20px'}, debounce=True, value=20)
-                        ),
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                dbc.Label("method"),
+                            ),
+                            dbc.Col(
+                                dcc.Dropdown(id='rayleigh-o2-methods',
+                                             options=[{'label': 'zero', 'value': 'zero'},
+                                                      {'label': 'linear', 'value': 'linear'},
+                                                      {'label': 'cubic', 'value': 'cubic'},
+                                                      {'label': 'nan', 'value': 'nan'},
+                                                      {'label': 'none', 'value': 'none'}],
+                                             value='linear', placeholder='', style={'width': '100%'})
+                            ),
+                        ]
+                    ),
+
+                    dbc.Row([
                         dbc.Col(
                             dbc.Label("dimension")
                         ),
@@ -478,7 +526,20 @@ card_rayleigh = dbc.Card(
                         )
                     ]),
 
-                ]
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                dbc.Label("width")
+                            ),
+                            dbc.Col(
+                                dcc.Input(id='rayleigh-o2-width',
+                                          type='number', placeholder='max',
+                                          style={'width': '100%', 'height': '20px'}, debounce=True, value=20)
+                            ),
+                        ]
+                    )
+
+                ], gap=1
             ),
         ]
     ),
@@ -490,13 +551,24 @@ card_rayleigh = dbc.Card(
 card_raman = dbc.Card(
     dbc.CardBody(
         [
-            html.H5("Raman scattering", className="card-title"),
-            html.Div(
+            dbc.Stack(
                 [
-                    dbc.Row([
-                        dcc.Checklist(id='raman-button',
-                                      options=[{'label': 'Raman scattering interpolation', 'value': "raman"}]),
-                    ]),
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                [
+                                    html.H5("Raman scattering removal"),
+                                ],
+                                width={'size': 10}),
+                            dbc.Col([
+                                dbc.Checklist(id='raman-button', options=[{'label': ' ', 'value': "raman"}],
+                                              switch=True,
+                                              style={'transform': 'scale(1.3)'})
+                            ], width={'size': 2})
+                        ],
+                        align='start'
+                    ),
+
                     dbc.Row([
                         dbc.Col(
                             dbc.Label("method"),
@@ -508,15 +580,9 @@ card_raman = dbc.Card(
                                                   {'label': 'nan', 'value': 'nan'}],
                                          value='linear', placeholder='', style={'width': '100%'})
                         ),
+                    ]),
 
-                        dbc.Col(
-                            dbc.Label("width")
-                        ),
-                        dbc.Col(
-                            dcc.Input(id='raman-width',
-                                      type='number', placeholder='max',
-                                      style={'width': '100px', 'height': '20px'}, debounce=True, value=15)
-                        ),
+                    dbc.Row([
                         dbc.Col(
                             dbc.Label("dimension")
                         ),
@@ -525,14 +591,25 @@ card_raman = dbc.Card(
                                          options=[{'label': '1d-ex', 'value': '1d-ex'},
                                                   {'label': '1d-em', 'value': '1d-em'},
                                                   {'label': '2d', 'value': '2d'}],
-                                         value='zero', placeholder='', style={'width': '100%'})
+                                         value='2d', placeholder='', style={'width': '100%'})
                         )
                     ]),
-                ]
-            ),
+
+                    dbc.Row([
+                        dbc.Col(
+                            dbc.Label("width")
+                        ),
+                        dbc.Col(
+                            dcc.Input(id='raman-width',
+                                      type='number', placeholder='max',
+                                      style={'width': '100%', 'height': '20px'}, debounce=True, value=15)
+                        ),
+                    ]),
+                ],
+                gap=1
+            )
         ]
-    ),
-    className="w-100"
+    )
 )
 
 #       -----------dbc card for Gaussian smoothing
@@ -540,13 +617,24 @@ card_raman = dbc.Card(
 card_smoothing = dbc.Card(
     dbc.CardBody(
         [
-            html.H5("Gaussian smoothing", className="card-title"),
             html.Div(
                 [
-                    dbc.Row([
-                        dcc.Checklist(id='gaussian-smoothing-button',
-                                      options=[{'label': 'Gaussian smoothing', 'value': "gaussian"}]),
-                    ]),
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                [
+                                    html.H5("Gaussian Smoothing"),
+                                ],
+                                width={'size': 10}),
+                            dbc.Col([
+                                dbc.Checklist(id='gaussian-button', options=[{'label': ' ', 'value': "gaussian"}],
+                                              switch=True,
+                                              style={'transform': 'scale(1.3)'})
+                            ], width={'size': 2})
+                        ],
+                        align='start'
+                    ),
+
                     dbc.Row([
                         dbc.Col(
                             dbc.Label("sigma"),
@@ -554,17 +642,21 @@ card_smoothing = dbc.Card(
                         dbc.Col(
                             dcc.Input(id='gaussian-sigma',
                                       type='number', placeholder='max',
-                                      style={'width': '100px', 'height': '20px'}, debounce=True, value=1),
+                                      style={'width': '100%', 'height': '20px'}, debounce=True, value=1),
                         ),
-                        dbc.Col(
-                            dbc.Label("truncate")
-                        ),
-                        dbc.Col(
-                            dcc.Input(id='gaussian-truncate',
-                                      type='number', placeholder='max',
-                                      style={'width': '100px', 'height': '20px'}, debounce=True, value=3),
-                        )
-                    ])
+                    ]),
+
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                dbc.Label("truncate")
+                            ),
+                            dbc.Col(
+                                dcc.Input(id='gaussian-truncate',
+                                          type='number', placeholder='max',
+                                          style={'width': '100%', 'height': '20px'}, debounce=True, value=3),
+                            )
+                        ])
                 ]
             )
         ]
@@ -577,18 +669,29 @@ card_smoothing = dbc.Card(
 card_eem_downloading = dbc.Card(
     dbc.CardBody(
         [
-            html.H5("Download pre-processed EEM", className="card-title"),
-            html.Div([
+            html.H5("Export pre-processed EEM", className="card-title"),
+            dbc.Stack([
                 dbc.Row([
-                    dbc.Label("output format"),
-                    dcc.Dropdown(
-                        id="eem-downloading-format",
-                        options=[{'label': 'Horiba Aqualog .dat file', 'value': 'aqualog'}],
-                        value='aqualog', placeholder='Select EEM data file format',
-                        style={'width': '100%'})
+                    dbc.Col(
+                        [
+                            dbc.Label("format"),
+                        ],
+                        width={'size': 5}
+                    ),
+                    dbc.Col(
+                        [
+                            dcc.Dropdown(
+                                id="eem-downloading-format",
+                                options=[{'label': 'Horiba Aqualog .dat file', 'value': 'aqualog'}],
+                                value='aqualog', placeholder='Select EEM data file format',
+                                style={'width': '100%'}, optionHeight=50)
+                        ]
+                    ),
                 ]),
-                dbc.Button("Download", id='eem-download', className='col-4')
-            ])
+                dbc.Row([
+                    dbc.Col(dbc.Button("Export", id='eem-export', className='col-5')
+                            )])
+            ], gap=2)
         ]
     ),
     className="w-100"
@@ -600,15 +703,21 @@ card_built_eem_dataset = dbc.Card(
     dbc.CardBody(
         [
             html.H5("Build EEM dataset", className="card-title"),
-            html.Div([
+            dbc.Stack([
                 dbc.Row([
                     dcc.Checklist(
                         id="align-exem",
-                        options=[{'label': 'Align Ex/Em (select if the Ex/Em intervals are different between EEMs)',
-                                  'value': 'align'}])
+                        options=[{
+                            'label': html.Span('Align Ex/Em (select if the Ex/Em intervals are different between EEMs)',
+                                               style={"font-size": 15, "padding-left": 10}),
+                            'value': 'align'}])
                 ]),
-                dbc.Button("Build", id='eem-download', className='col-4')
-            ])
+                dbc.Row([
+                    dbc.Col(
+                        dbc.Button("Build", id='eem-download', className='col-5')
+                    )
+                ])
+            ], gap=2)
         ]
     ),
     className="w-100"
