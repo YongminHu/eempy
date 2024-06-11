@@ -100,7 +100,7 @@ def read_eem(file_path: str, index_pos: Union[Tuple, List, None] = None, data_fo
     return intensity, ex_range, em_range, index
 
 
-def read_eem_dataset(folder_path: str, kw: str = 'PEM.dat', data_format: str = 'aqualog',
+def read_eem_dataset(folder_path: str, mandatory_keywords, optional_keywords, data_format: str = 'aqualog',
                      index_pos: Union[Tuple, List, None] = None,
                      custom_filename_list: Union[Tuple, List, None] = None, wavelength_alignment=False,
                      interpolation_method: str = 'linear'):
@@ -114,8 +114,10 @@ def read_eem_dataset(folder_path: str, kw: str = 'PEM.dat', data_format: str = '
     ----------
     folder_path: str
         The path to the folder containing EEMs.
-    kw: str
-        A keyword for searching EEM files whose filenames contain this keyword.
+    mandatory_keywords: list of str
+        Keywords for searching EEM files whose filenames contain all the mandatory keywords.
+    optional_keywords: list of str
+        Keywords for searching EEM files whose filenames contain any of the optional keywords.
     data_format: str
         Specify the type of EEM data format.
     index_pos: str
@@ -142,7 +144,7 @@ def read_eem_dataset(folder_path: str, kw: str = 'PEM.dat', data_format: str = '
         The list of EEM indexes (if index_pos is specified).
     """
     if not custom_filename_list:
-        filename_list = get_filelist(folder_path, kw)
+        filename_list = get_filelist(folder_path, mandatory_keywords, optional_keywords)
     else:
         filename_list = custom_filename_list
     path = folder_path + '/' + filename_list[0]
@@ -315,14 +317,35 @@ def read_reference_from_text(filepath):
     return reference_data, header
 
 
-def get_filelist(filedir, kw):
+def get_filelist(folderpath, mandatory_keywords, optional_keywords):
     """
-    Get a list containing all filenames with a given keyword in a folder
-    For example, this can be used for searching EEM files (with the keyword "PEM.dat")
+    Get a list containing all filenames with given keywords in a folder. A filename must contain all mandatory keywords
+    and any of the optional keywords.
+
     """
-    filelist = os.listdir(filedir)
-    datlist = [file for file in filelist if kw in file]
-    return datlist
+    filelist = os.listdir(folderpath)
+    if isinstance(mandatory_keywords, str):
+        mandatory_keywords = [mandatory_keywords]
+    if isinstance(optional_keywords, str):
+        optional_keywords = [optional_keywords]
+    filelist_mandatory_filtered = []
+    filelist_all_filtered = []
+
+    if mandatory_keywords:
+        for f in filelist:
+            if all(kw in f for kw in mandatory_keywords):
+                filelist_mandatory_filtered.append(f)
+    else:
+        filelist_mandatory_filtered = filelist
+
+    if optional_keywords:
+        for f in filelist_mandatory_filtered:
+            if any(kw in f for kw in optional_keywords):
+                filelist_all_filtered.append(f)
+    else:
+        filelist_all_filtered = filelist_mandatory_filtered
+
+    return filelist_all_filtered
 
 
 def read_parafac_model(filepath):

@@ -7,13 +7,13 @@ from eempy.plot import plot_eem, plot_loadings
 import re
 
 
-folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240313_BSA_Ecoli'
-
-eem_stack, ex_range, em_range, index = read_eem_dataset(folder_path=folder_path, index_pos=(0, -7), kw='SYM.dat')
-abs_stack, ex_range_abs, _, _ = read_abs_dataset(folder_path=folder_path, index_pos=(0, -7))
-
-fig = plot_eem(eem_stack[0], ex_range, em_range, auto_intensity_range=False, vmin=0, vmax=2000, plot_tool='plotly',
-               rotate=False, fix_aspect_ratio=True, title='2024-05-13-06')
+# folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240313_BSA_Ecoli'
+#
+# eem_stack, ex_range, em_range, index = read_eem_dataset(folder_path=folder_path, index_pos=(0, -7), kw='SYM.dat')
+# abs_stack, ex_range_abs, _, _ = read_abs_dataset(folder_path=folder_path, index_pos=(0, -7))
+#
+# fig = plot_eem(eem_stack[0], ex_range, em_range, auto_intensity_range=False, vmin=0, vmax=2000, plot_tool='plotly',
+#                rotate=False, fix_aspect_ratio=True, title='2024-05-13-06')
 
 # eem_dataset_1 = EEMDataset(eem_stack[0:5], ex_range, em_range, index=index[0:5], ref=np.arange(5))
 # eem_dataset_2 = EEMDataset(eem_stack[5:10], ex_range, em_range, index=index[5:10], ref=np.arange(10))
@@ -94,4 +94,4 @@ fig = plot_eem(eem_stack[0], ex_range, em_range, auto_intensity_range=False, vmi
 #             plt.title(key +  k)
 #             plt.show()
 
-
+print('ac' in 'a-c')

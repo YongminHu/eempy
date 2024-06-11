@@ -9,11 +9,12 @@ import pandas as pd
 import plotly.express as px
 
 from eempy.plot import plot_eem
-from eempy.read_data import read_eem
+from eempy.read_data import read_eem, get_filelist
 from eempy.eem_processing import eem_rayleigh_masking, eem_raman_masking
+from eempy.utils import string_to_list
 from matplotlib import pyplot as plt
 
-app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP])
+app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
 
 # -----------Global variables--------------
 
@@ -32,7 +33,7 @@ card_selecting_files = dbc.Card(
     dbc.CardBody(
         [
             html.H5("Select files", className="card-title"),
-            html.Div(
+            dbc.Stack(
                 [
                     dbc.Row(
                         dcc.Input(id='folder-path-input', type='text',
@@ -41,7 +42,7 @@ card_selecting_files = dbc.Card(
                         justify="center"
                     ),
 
-                    html.Hr(),
+                    html.H6("Data format"),
 
                     dbc.Row([
                         dbc.Col(
@@ -75,49 +76,63 @@ card_selecting_files = dbc.Card(
                         ),
                     ]),
 
+                    html.H6("File searching keywords"),
+
                     dbc.Row([
                         dbc.Col(
-                            dbc.Label("Overarching file searching keyword"),
+                            dbc.Label("Main body (mandatory)"),
                             width={'size': 3}
                         ),
                         dbc.Col(
-                            dcc.Input(id='eem-file-keyword', type='text', placeholder='',
-                                      style={'width': '100%', 'height': '20px'}, debounce=True, value=''),
+                            dcc.Input(id='file-keyword-mandatory', type='text', placeholder='',
+                                      style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
                             width={"offset": 0, "size": 3}
                         ),
                         dbc.Col(
-                            dbc.Label("Sample EEM file searching keyword"),
+                            dbc.Label("Main body (optional)"),
                             width={'size': 3}
                         ),
                         dbc.Col(
-                            dcc.Input(id='eem-file-keyword', type='text', placeholder='',
-                                      style={'width': '100%', 'height': '20px'}, debounce=True, value=''),
+                            dcc.Input(id='file-keyword-optional', type='text', placeholder='',
+                                      style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
                             width={"offset": 0, "size": 3}
                         ),
                     ]),
 
                     dbc.Row([
                         dbc.Col(
-                            dbc.Label("Absorbance file searching keyword"),
+                            dbc.Label("Sample EEM"),
                             width={'size': 3}
                         ),
                         dbc.Col(
-                            dcc.Input(id='abs-file-keyword', type='text', placeholder='',
-                                      style={'width': '100%', 'height': '20px'}, debounce=True, value=''),
+                            dcc.Input(id='file-keyword-sample', type='text', placeholder='',
+                                      style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
                             width={"offset": 0, "size": 3}
                         ),
                         dbc.Col(
-                            dbc.Label("Blank EEM file searching keyword"),
+                            dbc.Label("Absorbance"),
                             width={'size': 3}
                         ),
                         dbc.Col(
-                            dcc.Input(id='blank-file-keyword', type='text', placeholder='',
-                                      style={'width': '100%', 'height': '20px'}, debounce=True, value=''),
+                            dcc.Input(id='file-keyword-absorbance', type='text', placeholder='',
+                                      style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
                             width={"offset": 0, "size": 3}
                         ),
                     ]),
 
-                    html.Hr(),
+                    dbc.Row([
+                        dbc.Col(
+                            dbc.Label("Blank EEM"),
+                            width={'size': 3}
+                        ),
+                        dbc.Col(
+                            dcc.Input(id='file-keyword-blank', type='text', placeholder='',
+                                      style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
+                            width={"offset": 0, "size": 3}
+                        ),
+                    ]),
+
+                    html.H6("Index extraction from filenames"),
 
                     dbc.Row([
 
@@ -126,14 +141,14 @@ card_selecting_files = dbc.Card(
                         ),
                         dbc.Col(
                             dcc.Input(id='index-pos-left', type='number', placeholder='',
-                                      style={'width': '100%', 'height': '20px'}, debounce=True),
+                                      style={'width': '100%', 'height': '30px'}, debounce=True),
                         ),
                         dbc.Col(
                             dbc.Label("Index end position"),
                         ),
                         dbc.Col(
                             dcc.Input(id='index-pos-right', type='text', placeholder='',
-                                      style={'width': '100%', 'height': '20px'}, debounce=True),
+                                      style={'width': '100%', 'height': '30px'}, debounce=True),
                         ),
                     ]),
 
@@ -150,10 +165,11 @@ card_selecting_files = dbc.Card(
                         ),
                         dbc.Col(
                             dcc.Input(id='timestamp-format', type='text', placeholder='e.g., %Y-%m-%d-%H-%M',
-                                      style={'width': '100%', 'height': '20px'}, debounce=True),
+                                      style={'width': '100%', 'height': '30px'}, debounce=True),
                         )
                     ]),
-                ]
+                ],
+                gap=1
             ),
         ],
         className="w-100")
@@ -170,13 +186,15 @@ card_eem_display = dbc.Card(
                     dbc.Row(
                         [
                             dbc.Col(
-                                dcc.Dropdown(id='filename-dropdown', options=[], placeholder='Please select a file...'),
+                                dcc.Dropdown(id='filename-dropdown', options=[], placeholder='Please select a '
+                                                                                             'eem file...'),
                             ),
                         ],
                         justify='end'
                     ),
 
                     dcc.Graph(id='eem-graph'),
+                    dcc.Graph(id='absorbance-graph'),
                 ]
             ),
         ]
@@ -189,104 +207,109 @@ card_eem_display = dbc.Card(
 card_range_selection = dbc.Card(
     dbc.CardBody(
         [
-            html.H5("Ex/Em/intensity ranges"),
-            html.H6("Excitation wavelength", className="card-title"),
-            html.Div(
+            dbc.Stack(
                 [
-                    dbc.Row([
-                        dbc.Col(
-                            dcc.Input(id='excitation-wavelength-min', type='number', placeholder='min',
-                                      style={'width': '120%', 'height': '20px'}, debounce=True),
-                            width={'size': 3}
-                        ),
-                        dbc.Col(
-                            dbc.Label("nm"),
-                            width={'size': 1}
-                        ),
-                        dbc.Col(
-                            html.Span("-",
-                                      style={"font-size": 15, "padding-left": 20}),
-                            width={'offset': 0, 'size': 2}
-                        ),
-                        dbc.Col(
-                            dcc.Input(id='excitation-wavelength-max', type='number', placeholder='max',
-                                      style={'width': '120%', 'height': '20px'}, debounce=True),
-                            width={'size': 3}
-                        ),
-                        dbc.Col(
-                            dbc.Label("nm"),
-                            width={'size': 1}
-                        )
-                    ],
-                        justify='start'
+                    html.H5("Ex/Em/intensity ranges"),
+                    html.H6("Excitation wavelength", className="card-title"),
+                    html.Div(
+                        [
+                            dbc.Row([
+                                dbc.Col(
+                                    dcc.Input(id='excitation-wavelength-min', type='number', placeholder='min',
+                                              style={'width': '120%', 'height': '30px'}, debounce=True),
+                                    width={'size': 3}
+                                ),
+                                dbc.Col(
+                                    dbc.Label("nm"),
+                                    width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    html.Span("-",
+                                              style={"font-size": 15, "padding-left": 20}),
+                                    width={'offset': 0, 'size': 2}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='excitation-wavelength-max', type='number', placeholder='max',
+                                              style={'width': '120%', 'height': '30px'}, debounce=True),
+                                    width={'size': 3}
+                                ),
+                                dbc.Col(
+                                    dbc.Label("nm"),
+                                    width={'size': 1}
+                                )
+                            ],
+                                justify='start'
+                            ),
+                        ],
                     ),
-                ],
-            ),
-            html.H6("Emission wavelength", className="card-title"),
-            html.Div(
-                [
-                    dbc.Row([
-                        dbc.Col(
-                            dcc.Input(id='emission-wavelength-min', type='number', placeholder='min',
-                                      style={'width': '120%', 'height': '20px'}, debounce=True),
-                            width={'size': 3}
-                        ),
-                        dbc.Col(
-                            dbc.Label("nm"),
-                            width={'size': 1}
-                        ),
-                        dbc.Col(
-                            html.Span("-",
-                                      style={"font-size": 15, "padding-left": 20}),
-                            width={'offset': 0, 'size': 2}
-                        ),
-                        dbc.Col(
-                            dcc.Input(id='emission-wavelength-max', type='number', placeholder='max',
-                                      style={'width': '120%', 'height': '20px'}, debounce=True),
-                            width={'size': 3}
-                        ),
-                        dbc.Col(
-                            dbc.Label("nm"),
-                            width={'size': 1}
-                        )
-                    ],
-                        justify='start'
+                    html.H6("Emission wavelength", className="card-title"),
+                    html.Div(
+                        [
+                            dbc.Row([
+                                dbc.Col(
+                                    dcc.Input(id='emission-wavelength-min', type='number', placeholder='min',
+                                              style={'width': '120%', 'height': '30px'}, debounce=True),
+                                    width={'size': 3}
+                                ),
+                                dbc.Col(
+                                    dbc.Label("nm"),
+                                    width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    html.Span("-",
+                                              style={"font-size": 15, "padding-left": 20}),
+                                    width={'offset': 0, 'size': 2}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='emission-wavelength-max', type='number', placeholder='max',
+                                              style={'width': '120%', 'height': '30px'}, debounce=True),
+                                    width={'size': 3}
+                                ),
+                                dbc.Col(
+                                    dbc.Label("nm"),
+                                    width={'size': 1}
+                                )
+                            ],
+                                justify='start'
+                            ),
+                        ],
                     ),
-                ],
-            ),
 
-            html.H6("Fluorescence intensity", className="card-title"),
-            html.Div(
-                [
-                    dbc.Row([
-                        dbc.Col(
-                            dcc.Input(id='fluorescence-intensity-min', type='number', placeholder='min',
-                                      style={'width': '120%', 'height': '20px'}, debounce=True),
-                            width={'size': 3}
-                        ),
-                        dbc.Col(
-                            dbc.Label("a.u."),
-                            width={'size': 1}
-                        ),
-                        dbc.Col(
-                            html.Span("-",
-                                      style={"font-size": 15, "padding-left": 20}),
-                            width={'offset': 0, 'size': 2}
-                        ),
-                        dbc.Col(
-                            dcc.Input(id='fluorescence-intensity-max', type='number', placeholder='max',
-                                      style={'width': '120%', 'height': '20px'}, debounce=True),
-                            width={'size': 3}
-                        ),
-                        dbc.Col(
-                            dbc.Label("a.u."),
-                            width={'size': 1}
-                        )
-                    ],
-                        justify='start'
+                    html.H6("Fluorescence intensity", className="card-title"),
+                    html.Div(
+                        [
+                            dbc.Row([
+                                dbc.Col(
+                                    dcc.Input(id='fluorescence-intensity-min', type='number', placeholder='min',
+                                              style={'width': '120%', 'height': '30px'}, debounce=True),
+                                    width={'size': 3}
+                                ),
+                                dbc.Col(
+                                    dbc.Label("a.u."),
+                                    width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    html.Span("-",
+                                              style={"font-size": 15, "padding-left": 20}),
+                                    width={'offset': 0, 'size': 2}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='fluorescence-intensity-max', type='number', placeholder='max',
+                                              style={'width': '120%', 'height': '30px'}, debounce=True),
+                                    width={'size': 3}
+                                ),
+                                dbc.Col(
+                                    dbc.Label("a.u."),
+                                    width={'size': 1}
+                                )
+                            ],
+                                justify='start'
+                            ),
+                        ],
                     ),
                 ],
-            ),
+                gap=1)
+
 
         ]
     ),
@@ -362,7 +385,7 @@ card_su = dbc.Card(
                         ),
                         dbc.Col(
                             dcc.Input(id='su-excitation-lower-bound', type='number', placeholder='max',
-                                      style={'width': '120%', 'height': '20px'}, debounce=True, value=349),
+                                      style={'width': '120%', 'height': '30px'}, debounce=True, value=349),
                             width={'size': 3}
                         ),
                         dbc.Col(
@@ -377,7 +400,7 @@ card_su = dbc.Card(
                         ),
                         dbc.Col(
                             dcc.Input(id='su-excitation-upper-bound', type='number', placeholder='max',
-                                      style={'width': '120%', 'height': '20px'}, debounce=True, value=351),
+                                      style={'width': '120%', 'height': '30px'}, debounce=True, value=351),
                             width={'size': 3}
                         ),
                         dbc.Col(
@@ -393,7 +416,7 @@ card_su = dbc.Card(
                         dbc.Col(
                             dbc.Col(
                                 dcc.Input(id='su-emission-width', type='number', placeholder='max',
-                                          style={'width': '120%', 'height': '20px'}, debounce=True, value=5)
+                                          style={'width': '120%', 'height': '30px'}, debounce=True, value=5)
                             )
                         ),
                         dbc.Col(
@@ -408,7 +431,7 @@ card_su = dbc.Card(
                         dbc.Col(
                             dbc.Col(
                                 dcc.Input(id='su-normalization-factor', type='number', placeholder='max',
-                                          style={'width': '100%', 'height': '20px'}, debounce=True, value=1000),
+                                          style={'width': '100%', 'height': '30px'}, debounce=True, value=1000),
                                 width={'size': 6}
                             )
                         ),
@@ -487,7 +510,7 @@ card_rayleigh = dbc.Card(
                             dbc.Col(
                                 dcc.Input(id='rayleigh-o1-width',
                                           type='number', placeholder='max',
-                                          style={'width': '100%', 'height': '20px'}, debounce=True, value=20)
+                                          style={'width': '100%', 'height': '30px'}, debounce=True, value=20)
                             ),
                         ]
                     ),
@@ -534,7 +557,7 @@ card_rayleigh = dbc.Card(
                             dbc.Col(
                                 dcc.Input(id='rayleigh-o2-width',
                                           type='number', placeholder='max',
-                                          style={'width': '100%', 'height': '20px'}, debounce=True, value=20)
+                                          style={'width': '100%', 'height': '30px'}, debounce=True, value=20)
                             ),
                         ]
                     )
@@ -602,7 +625,7 @@ card_raman = dbc.Card(
                         dbc.Col(
                             dcc.Input(id='raman-width',
                                       type='number', placeholder='max',
-                                      style={'width': '100%', 'height': '20px'}, debounce=True, value=15)
+                                      style={'width': '100%', 'height': '30px'}, debounce=True, value=15)
                         ),
                     ]),
                 ],
@@ -642,7 +665,7 @@ card_smoothing = dbc.Card(
                         dbc.Col(
                             dcc.Input(id='gaussian-sigma',
                                       type='number', placeholder='max',
-                                      style={'width': '100%', 'height': '20px'}, debounce=True, value=1),
+                                      style={'width': '100%', 'height': '30px'}, debounce=True, value=1),
                         ),
                     ]),
 
@@ -654,7 +677,7 @@ card_smoothing = dbc.Card(
                             dbc.Col(
                                 dcc.Input(id='gaussian-truncate',
                                           type='number', placeholder='max',
-                                          style={'width': '100%', 'height': '20px'}, debounce=True, value=3),
+                                          style={'width': '100%', 'height': '30px'}, debounce=True, value=3),
                             )
                         ])
                 ]
@@ -689,7 +712,7 @@ card_eem_downloading = dbc.Card(
                     ),
                 ]),
                 dbc.Row([
-                    dbc.Col(dbc.Button("Export", id='eem-export', className='col-5')
+                    dbc.Col(dbc.Button("Export", id='export-eem', className='col-5')
                             )])
             ], gap=2)
         ]
@@ -714,7 +737,8 @@ card_built_eem_dataset = dbc.Card(
                 ]),
                 dbc.Row([
                     dbc.Col(
-                        dbc.Button("Build", id='eem-download', className='col-5')
+                        dbc.Button([dbc.Spinner(size="sm", id='build-eem-dataset-spinner'), " Build"],
+                                   id='build-eem-dataset', className='col-5')
                     )
                 ])
             ], gap=2)
@@ -771,29 +795,50 @@ page1 = html.Div([
 ])
 
 # -------------Callbacks of page #1
+
+#   ---------------Update file list according to input data folder path
+
+
+@app.callback(
+    [
+        Output('filename-dropdown', 'options'),
+        Output('filename-dropdown', 'value')
+    ],
+    [
+        Input('folder-path-input', 'value'),
+        Input('file-keyword-mandatory', 'value'),
+        Input('file-keyword-optional', 'value'),
+        Input('file-keyword-sample', 'value'),
+     ]
+)
+def update_filenames(folder_path, kw_mandatory, kw_optional, kw_eem):
+    # Get list of filenames in the specified folder
+    if folder_path:
+        try:
+            filenames = [f for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
+            if kw_mandatory or kw_optional:
+                kw_mandatory = string_to_list(kw_mandatory) if kw_mandatory else []
+                kw_optional = string_to_list(kw_optional) if kw_optional else []
+                kw_eem = string_to_list(kw_eem) if kw_eem else []
+                filenames = get_filelist(folder_path, kw_mandatory+kw_eem, kw_optional)
+            options = [{'label': f, 'value': f} for f in filenames]
+            return options, None
+        except FileNotFoundError:
+            return ['Folder not found - please check the folder path'], None
+    else:
+        return [], None
+
+#   ---------------Update Data plot with changes of parameters
+
+
+#   ---------------Export EEM
+
+
+#   ---------------Build EEM dataset
+
 #
-#
-# @app.callback(
-#     [Output('filename-dropdown', 'options'),
-#      Output('filename-dropdown', 'value')],
-#     [Input('folder-path-input', 'value'),
-#      Input('filename-keyword', 'value')]
-# )
-# def update_filenames(folder_path, kw):
-#     # Get list of filenames in the specified folder
-#     if folder_path:
-#         try:
-#             filenames = [f for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
-#             if kw:
-#                 filenames = [file for file in filenames if kw in file]
-#             options = [{'label': filename, 'value': filename} for filename in filenames]
-#             return options, None
-#         except FileNotFoundError:
-#             return ['Folder not found - please check the folder path'], None
-#     else:
-#         return [], None
-#
-#
+
+
 # @app.callback(
 #     Output('index-display', 'children'),
 #     [Input('filename-dropdown', 'value'),
@@ -889,7 +934,7 @@ sidebar = html.Div(
                 dbc.NavLink("Homepage", href="/", active="exact"),
                 dbc.NavLink("EEM pre-processing", href="/eem-pre-processing", active="exact"),
                 dbc.NavLink("PARAFAC", href="/parafac", active="exact"),
-                dbc.NavLink("K-PARAFAC", href="/k-parafacs", active="exact"),
+                dbc.NavLink("K-PARAFACs", href="/k-parafacs", active="exact"),
             ],
             vertical=True,
             pills=True
