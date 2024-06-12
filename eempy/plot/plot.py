@@ -17,7 +17,7 @@ from matplotlib.colors import LogNorm, TABLEAU_COLORS
 
 
 def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_type='linear', vmin=0, vmax=10000,
-             n_cbar_ticks=5, cbar=True, cmap='jet', figure_size=(10, 7), label_font_size=20,
+             n_cbar_ticks=5, cbar=True, cmap='jet', figure_size=(10, 7), label_font_size=18,
              cbar_label="Intensity (a.u.)", cbar_font_size=16, fix_aspect_ratio=True, rotate=False,
              plot_tool='matplotlib', display=True, title=None):
     """
@@ -159,7 +159,8 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
         if title:
             fig.update_layout(
                 title=dict(text=title, font=dict(size=20)),
-                margin=dict(pad=0.5)
+                margin=dict(pad=0.5),
+                title_x=0.5
             )
 
         if display:
@@ -168,7 +169,8 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
         return fig
 
 
-def plot_abs(absorbance, ex_range, xmax=0.05, ex_range_display=(200, 800), plot_tool='matplotlib', display=True):
+def plot_abs(absorbance, ex_range, xmax=0.05, ex_range_display=(200, 800), plot_tool='matplotlib', display=True,
+             figure_size=(6.5, 2)):
     """
     Plot the UV absorbance data
 
@@ -186,6 +188,8 @@ def plot_abs(absorbance, ex_range, xmax=0.05, ex_range_display=(200, 800), plot_
         Which python package to use for plotting.
     display: bool
         Whether to display the figure when calling the function.
+    figure_size: tuple (width, height)
+        The size of the plot.
 
     Returns
     ----------------
@@ -193,7 +197,7 @@ def plot_abs(absorbance, ex_range, xmax=0.05, ex_range_display=(200, 800), plot_
     ax: array of matplotlib axes (if plot_tool == 'matplotlib')
     """
     if plot_tool == 'matplotlib':
-        fig, ax = plt.subplots(figsize=(6.5, 2))
+        fig, ax = plt.subplots(figsize=figure_size)
         ax.plot(ex_range, absorbance)
         ax.set_xlim(ex_range_display)
         ax.set_ylim([0, xmax])
@@ -206,6 +210,7 @@ def plot_abs(absorbance, ex_range, xmax=0.05, ex_range_display=(200, 800), plot_
     elif plot_tool == 'plotly':
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=ex_range, y=absorbance, mode='lines', name='Absorbance'))
+        fig.update_layout(width=figure_size[0]*100, height=figure_size[1]*100)
         fig.update_xaxes(title_text='Wavelength [nm]', range=ex_range_display)
         fig.update_yaxes(title_text='Absorbance [a.u.]', range=[0, xmax])
         if display:

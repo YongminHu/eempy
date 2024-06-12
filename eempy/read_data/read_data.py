@@ -46,7 +46,7 @@ def read_eem(file_path: str, index_pos: Union[Tuple, List, None] = None, data_fo
         The index of the EEM.
     """
     if index_pos:
-        index = os.path.basename(file_path)[index_pos[0]:index_pos[1] + 1]
+        index = os.path.basename(file_path)[index_pos[0]-1:index_pos[1]]
     else:
         index = None
     with open(file_path, 'r') as of:

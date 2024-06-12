@@ -1,13 +1,24 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
-from eempy.read_data import read_eem_dataset, read_abs_dataset
-from eempy.eem_processing import EEMDataset, PARAFAC
+from eempy.read_data import read_eem_dataset, read_abs_dataset, read_eem
+from eempy.eem_processing import EEMDataset, PARAFAC, eem_raman_normalization, eem_cutting
 from eempy.plot import plot_eem, plot_loadings
 import re
 
 
-# folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240313_BSA_Ecoli'
+eem_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240313_BSA_Ecoli/B1S12024-03-11-Ecoli_BSA_50to50+0gLKIPEM.dat'
+blank_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240313_BSA_Ecoli/B1S12024-03-11-Ecoli_BSA_50to50+0gLKIBEM.dat'
+folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240313_BSA_Ecoli'
+
+intensity, ex_range, em_range, index = read_eem(eem_path)
+blank, ex_range_blank, em_range_blank, _ = read_eem(blank_path)
+# blank_cut, ex_range_cut, em_range_cut = eem_cutting(intensity, ex_range, em_range, 349, 351, 400, 410)
+# print(blank_cut)
+
+intensity_n, _ = eem_raman_normalization(intensity, from_blank=True, blank=blank, ex_range_blank=ex_range_blank,
+                                         em_range_blank=em_range_blank)
+
 #
 # eem_stack, ex_range, em_range, index = read_eem_dataset(folder_path=folder_path, index_pos=(0, -7), kw='SYM.dat')
 # abs_stack, ex_range_abs, _, _ = read_abs_dataset(folder_path=folder_path, index_pos=(0, -7))
@@ -94,4 +105,4 @@ import re
 #             plt.title(key +  k)
 #             plt.show()
 
-print('ac' in 'a-c')
+

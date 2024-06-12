@@ -7,10 +7,12 @@ from dash.dependencies import Input, Output
 import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 
-from eempy.plot import plot_eem
-from eempy.read_data import read_eem, get_filelist
-from eempy.eem_processing import eem_rayleigh_masking, eem_raman_masking
+from eempy.plot import plot_eem, plot_abs
+from eempy.read_data import read_eem, read_abs, get_filelist
+from eempy.eem_processing import (eem_cutting, eem_raman_normalization, eem_ife_correction,
+                                  eem_raman_scattering_removal, eem_rayleigh_scattering_removal, eem_gaussian_filter)
 from eempy.utils import string_to_list
 from matplotlib import pyplot as plt
 
@@ -147,7 +149,7 @@ card_selecting_files = dbc.Card(
                             dbc.Label("Index end position"),
                         ),
                         dbc.Col(
-                            dcc.Input(id='index-pos-right', type='text', placeholder='',
+                            dcc.Input(id='index-pos-right', type='number', placeholder='',
                                       style={'width': '100%', 'height': '30px'}, debounce=True),
                         ),
                     ]),
@@ -186,15 +188,21 @@ card_eem_display = dbc.Card(
                     dbc.Row(
                         [
                             dbc.Col(
-                                dcc.Dropdown(id='filename-dropdown', options=[], placeholder='Please select a '
-                                                                                             'eem file...'),
+                                dcc.Dropdown(id='filename-sample-dropdown', options=[], placeholder='Please select a '
+                                                                                                    'eem file...'),
                             ),
                         ],
                         justify='end'
                     ),
 
-                    dcc.Graph(id='eem-graph'),
-                    dcc.Graph(id='absorbance-graph'),
+                    dbc.Row([
+                        dcc.Graph(id='eem-graph'),
+                    ]),
+
+                    dbc.Row([
+                        dcc.Graph(id='absorbance-graph'),
+                    ])
+
                 ]
             ),
         ]
@@ -216,7 +224,7 @@ card_range_selection = dbc.Card(
                             dbc.Row([
                                 dbc.Col(
                                     dcc.Input(id='excitation-wavelength-min', type='number', placeholder='min',
-                                              style={'width': '120%', 'height': '30px'}, debounce=True),
+                                              style={'width': '120%', 'height': '30px'}, debounce=True, value=240),
                                     width={'size': 3}
                                 ),
                                 dbc.Col(
@@ -230,7 +238,7 @@ card_range_selection = dbc.Card(
                                 ),
                                 dbc.Col(
                                     dcc.Input(id='excitation-wavelength-max', type='number', placeholder='max',
-                                              style={'width': '120%', 'height': '30px'}, debounce=True),
+                                              style={'width': '120%', 'height': '30px'}, debounce=True, value=500),
                                     width={'size': 3}
                                 ),
                                 dbc.Col(
@@ -248,7 +256,7 @@ card_range_selection = dbc.Card(
                             dbc.Row([
                                 dbc.Col(
                                     dcc.Input(id='emission-wavelength-min', type='number', placeholder='min',
-                                              style={'width': '120%', 'height': '30px'}, debounce=True),
+                                              style={'width': '120%', 'height': '30px'}, debounce=True, value=300),
                                     width={'size': 3}
                                 ),
                                 dbc.Col(
@@ -262,7 +270,7 @@ card_range_selection = dbc.Card(
                                 ),
                                 dbc.Col(
                                     dcc.Input(id='emission-wavelength-max', type='number', placeholder='max',
-                                              style={'width': '120%', 'height': '30px'}, debounce=True),
+                                              style={'width': '120%', 'height': '30px'}, debounce=True, value=800),
                                     width={'size': 3}
                                 ),
                                 dbc.Col(
@@ -281,7 +289,7 @@ card_range_selection = dbc.Card(
                             dbc.Row([
                                 dbc.Col(
                                     dcc.Input(id='fluorescence-intensity-min', type='number', placeholder='min',
-                                              style={'width': '120%', 'height': '30px'}, debounce=True),
+                                              style={'width': '120%', 'height': '30px'}, debounce=True, value=0),
                                     width={'size': 3}
                                 ),
                                 dbc.Col(
@@ -295,7 +303,7 @@ card_range_selection = dbc.Card(
                                 ),
                                 dbc.Col(
                                     dcc.Input(id='fluorescence-intensity-max', type='number', placeholder='max',
-                                              style={'width': '120%', 'height': '30px'}, debounce=True),
+                                              style={'width': '120%', 'height': '30px'}, debounce=True, value=1000),
                                     width={'size': 3}
                                 ),
                                 dbc.Col(
@@ -310,50 +318,9 @@ card_range_selection = dbc.Card(
                 ],
                 gap=1)
 
-
         ]
     ),
     className="w-100",
-)
-
-#       -----------dbc card for IFE correction
-
-card_ife = dbc.Card(
-    dbc.CardBody(
-        [
-            html.Div(
-                [
-                    dbc.Row(
-                        [
-                            dbc.Col(
-                                [
-                                    html.H5("Inner filter effect correction"),
-                                ],
-                                width={'size': 10}),
-                            dbc.Col([
-                                dbc.Checklist(id='ife-button', options=[{'label': ' ', 'value': "ife"}], switch=True,
-                                              style={'transform': 'scale(1.3)'})
-                            ], width={'size': 2})
-                        ],
-                        align='start'
-                    ),
-
-                    dbc.Row([
-                        dbc.Col(
-                            dbc.Label("method"),
-                        ),
-                        dbc.Col(
-                            dcc.Dropdown(id='ife-methods', options=[{'label': 'default', 'value': 'default'}],
-                                         value='default', placeholder='Select IFE correction method',
-                                         style={'width': '100%'})
-                        )
-                    ]),
-
-                ]
-            ),
-        ]
-    ),
-    className="w-100"
 )
 
 #       -----------dbc card for automatic Raman scattering unit normalization
@@ -361,7 +328,7 @@ card_ife = dbc.Card(
 card_su = dbc.Card(
     dbc.CardBody(
         [
-            html.Div(
+            dbc.Stack(
                 [
                     dbc.Row(
                         [
@@ -437,11 +404,117 @@ card_su = dbc.Card(
                         ),
                     ])
 
+                ], gap=1
+            ),
+        ]
+    ),
+    className="w-100"
+)
+
+#       -----------dbc card for IFE correction
+
+card_ife = dbc.Card(
+    dbc.CardBody(
+        [
+            html.Div(
+                [
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                [
+                                    html.H5("Inner filter effect correction"),
+                                ],
+                                width={'size': 10}),
+                            dbc.Col([
+                                dbc.Checklist(id='ife-button', options=[{'label': ' ', 'value': "ife"}], switch=True,
+                                              style={'transform': 'scale(1.3)'})
+                            ], width={'size': 2})
+                        ],
+                        align='start'
+                    ),
+
+                    dbc.Row([
+                        dbc.Col(
+                            dbc.Label("method"),
+                        ),
+                        dbc.Col(
+                            dcc.Dropdown(id='ife-methods', options=[{'label': 'default', 'value': 'default'}],
+                                         value='default', placeholder='Select IFE correction method',
+                                         style={'width': '100%'})
+                        )
+                    ]),
+
                 ]
             ),
         ]
     ),
     className="w-100"
+)
+
+#       -----------dbc card for Raman scattering interpolation
+
+card_raman = dbc.Card(
+    dbc.CardBody(
+        [
+            dbc.Stack(
+                [
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                [
+                                    html.H5("Raman scattering removal"),
+                                ],
+                                width={'size': 10}),
+                            dbc.Col([
+                                dbc.Checklist(id='raman-button', options=[{'label': ' ', 'value': "raman"}],
+                                              switch=True,
+                                              style={'transform': 'scale(1.3)'})
+                            ], width={'size': 2})
+                        ],
+                        align='start'
+                    ),
+
+                    dbc.Row([
+                        dbc.Col(
+                            dbc.Label("method"),
+                        ),
+                        dbc.Col(
+                            dcc.Dropdown(id='raman-methods',
+                                         options=[{'label': 'linear', 'value': 'linear'},
+                                                  {'label': 'cubic', 'value': 'cubic'},
+                                                  {'label': 'nan', 'value': 'nan'}],
+                                         value='linear', placeholder='', style={'width': '100%'})
+                        ),
+                    ]),
+
+                    dbc.Row([
+                        dbc.Col(
+                            dbc.Label("dimension")
+                        ),
+                        dbc.Col(
+                            dcc.Dropdown(id='raman-dimension',
+                                         options=[{'label': '1d-ex', 'value': '1d-ex'},
+                                                  {'label': '1d-em', 'value': '1d-em'},
+                                                  {'label': '2d', 'value': '2d'}],
+                                         value='2d', placeholder='', style={'width': '100%'})
+                        )
+                    ]),
+
+                    dbc.Row([
+                        dbc.Col(
+                            dbc.Label("width")
+                        ),
+                        dbc.Col(
+                            dcc.Input(id='raman-width',
+                                      type='number', placeholder='max',
+                                      style={'width': '100%', 'height': '30px'}, debounce=True, value=15)
+                        ),
+                    ]),
+                ],
+                gap=1
+            )
+        ]
+    )
 )
 
 #       -----------dbc card for Rayleigh scattering interpolation
@@ -569,78 +642,12 @@ card_rayleigh = dbc.Card(
     className="w-100"
 )
 
-#       -----------dbc card for Raman scattering interpolation
-
-card_raman = dbc.Card(
-    dbc.CardBody(
-        [
-            dbc.Stack(
-                [
-                    dbc.Row(
-                        [
-                            dbc.Col(
-                                [
-                                    html.H5("Raman scattering removal"),
-                                ],
-                                width={'size': 10}),
-                            dbc.Col([
-                                dbc.Checklist(id='raman-button', options=[{'label': ' ', 'value': "raman"}],
-                                              switch=True,
-                                              style={'transform': 'scale(1.3)'})
-                            ], width={'size': 2})
-                        ],
-                        align='start'
-                    ),
-
-                    dbc.Row([
-                        dbc.Col(
-                            dbc.Label("method"),
-                        ),
-                        dbc.Col(
-                            dcc.Dropdown(id='raman-methods',
-                                         options=[{'label': 'linear', 'value': 'linear'},
-                                                  {'label': 'cubic', 'value': 'cubic'},
-                                                  {'label': 'nan', 'value': 'nan'}],
-                                         value='linear', placeholder='', style={'width': '100%'})
-                        ),
-                    ]),
-
-                    dbc.Row([
-                        dbc.Col(
-                            dbc.Label("dimension")
-                        ),
-                        dbc.Col(
-                            dcc.Dropdown(id='raman-dimension',
-                                         options=[{'label': '1d-ex', 'value': '1d-ex'},
-                                                  {'label': '1d-em', 'value': '1d-em'},
-                                                  {'label': '2d', 'value': '2d'}],
-                                         value='2d', placeholder='', style={'width': '100%'})
-                        )
-                    ]),
-
-                    dbc.Row([
-                        dbc.Col(
-                            dbc.Label("width")
-                        ),
-                        dbc.Col(
-                            dcc.Input(id='raman-width',
-                                      type='number', placeholder='max',
-                                      style={'width': '100%', 'height': '30px'}, debounce=True, value=15)
-                        ),
-                    ]),
-                ],
-                gap=1
-            )
-        ]
-    )
-)
-
 #       -----------dbc card for Gaussian smoothing
 
 card_smoothing = dbc.Card(
     dbc.CardBody(
         [
-            html.Div(
+            dbc.Stack(
                 [
                     dbc.Row(
                         [
@@ -680,7 +687,8 @@ card_smoothing = dbc.Card(
                                           style={'width': '100%', 'height': '30px'}, debounce=True, value=3),
                             )
                         ])
-                ]
+                ],
+                gap=1
             )
         ]
     ),
@@ -794,6 +802,7 @@ page1 = html.Div([
     )
 ])
 
+
 # -------------Callbacks of page #1
 
 #   ---------------Update file list according to input data folder path
@@ -801,26 +810,25 @@ page1 = html.Div([
 
 @app.callback(
     [
-        Output('filename-dropdown', 'options'),
-        Output('filename-dropdown', 'value')
+        Output('filename-sample-dropdown', 'options'),
+        Output('filename-sample-dropdown', 'value')
     ],
     [
         Input('folder-path-input', 'value'),
         Input('file-keyword-mandatory', 'value'),
         Input('file-keyword-optional', 'value'),
         Input('file-keyword-sample', 'value'),
-     ]
+    ]
 )
 def update_filenames(folder_path, kw_mandatory, kw_optional, kw_eem):
-    # Get list of filenames in the specified folder
     if folder_path:
         try:
             filenames = [f for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
-            if kw_mandatory or kw_optional:
+            if kw_mandatory or kw_optional or kw_eem:
                 kw_mandatory = string_to_list(kw_mandatory) if kw_mandatory else []
                 kw_optional = string_to_list(kw_optional) if kw_optional else []
                 kw_eem = string_to_list(kw_eem) if kw_eem else []
-                filenames = get_filelist(folder_path, kw_mandatory+kw_eem, kw_optional)
+                filenames = get_filelist(folder_path, kw_mandatory + kw_eem, kw_optional)
             options = [{'label': f, 'value': f} for f in filenames]
             return options, None
         except FileNotFoundError:
@@ -828,7 +836,179 @@ def update_filenames(folder_path, kw_mandatory, kw_optional, kw_eem):
     else:
         return [], None
 
+
 #   ---------------Update Data plot with changes of parameters
+
+@app.callback(
+    [
+        Output('eem-graph', 'figure'),
+        Output('absorbance-graph', 'figure')
+    ],
+    [
+        Input('folder-path-input', 'value'),
+        Input('filename-sample-dropdown', 'value'),
+        Input('eem-data-format', 'value'),
+        Input('abs-data-format', 'value'),
+        Input('file-keyword-mandatory', 'value'),
+        Input('file-keyword-optional', 'value'),
+        Input('file-keyword-sample', 'value'),
+        Input('file-keyword-absorbance', 'value'),
+        Input('file-keyword-blank', 'value'),
+        Input('index-pos-left', 'value'),
+        Input('index-pos-right', 'value'),
+        Input('timestamp-checkbox', 'value'),
+        Input('timestamp-format', 'value'),
+        Input('excitation-wavelength-min', 'value'),
+        Input('excitation-wavelength-max', 'value'),
+        Input('emission-wavelength-min', 'value'),
+        Input('emission-wavelength-max', 'value'),
+        Input('fluorescence-intensity-min', 'value'),
+        Input('fluorescence-intensity-max', 'value'),
+        Input('su-button', 'value'),
+        Input('su-excitation-lower-bound', 'value'),
+        Input('su-excitation-upper-bound', 'value'),
+        Input('su-emission-width', 'value'),
+        Input('su-normalization-factor', 'value'),
+        Input('ife-button', 'value'),
+        Input('ife-methods', 'value'),
+        Input('raman-button', 'value'),
+        Input('raman-methods', 'value'),
+        Input('raman-dimension', 'value'),
+        Input('raman-width', 'value'),
+        Input('rayleigh-button', 'value'),
+        Input('rayleigh-o1-methods', 'value'),
+        Input('rayleigh-o1-dimension', 'value'),
+        Input('rayleigh-o1-width', 'value'),
+        Input('rayleigh-o2-methods', 'value'),
+        Input('rayleigh-o2-dimension', 'value'),
+        Input('rayleigh-o2-width', 'value'),
+        Input('gaussian-button', 'value'),
+        Input('gaussian-sigma', 'value'),
+        Input('gaussian-truncate', 'value'),
+    ]
+)
+def update_eem_plot(folder_path, file_name_sample,
+                    eem_data_format, abs_data_format,
+                    file_kw_mandatory, file_kw_optional, file_kw_sample, file_kw_abs, file_kw_blank,
+                    index_pos_left, index_pos_right, timestamp, timestamp_format,
+                    ex_range_min, ex_range_max, em_range_min, em_range_max, intensity_range_min, intensity_range_max,
+                    su, su_ex_lb, su_ex_ub, su_em_width, su_normalization_factor,
+                    ife, ife_method,
+                    raman, raman_method, raman_dimension, raman_width,
+                    rayleigh, rayleigh_o1_method, rayleigh_o1_dimension, rayleigh_o1_width,
+                    rayleigh_o2_method, rayleigh_o2_dimension, rayleigh_o2_width,
+                    gaussian, gaussian_sigma, gaussian_truncate):
+    try:
+        full_path_sample = os.path.join(folder_path, file_name_sample)
+        intensity, ex_range, em_range, index = read_eem(full_path_sample,
+                                                        index_pos=(index_pos_left, index_pos_right)
+                                                        if (index_pos_left and index_pos_right) else None,
+                                                        data_format=eem_data_format)
+        # Cut EEM
+        if (ex_range_min and ex_range_max) or (em_range_min and em_range_max):
+            ex_range_min = ex_range_min if ex_range_min else np.min(ex_range)
+            ex_range_max = ex_range_max if ex_range_max else np.max(ex_range)
+            em_range_min = em_range_min if em_range_min else np.min(em_range)
+            em_range_max = em_range_max if em_range_max else np.max(em_range)
+            intensity, ex_range, em_range = eem_cutting(intensity, ex_range, em_range, ex_range_min, ex_range_max,
+                                                        em_range_min, em_range_max)
+
+        # Scattering unit normalization
+        if file_kw_blank and su:
+            file_name_blank = file_name_sample.replace(file_kw_sample, file_kw_blank)
+            full_path_blank = os.path.join(folder_path, file_name_blank)
+            intensity_blank, ex_range_blank, em_range_blank, _ = read_eem(full_path_blank, data_format=eem_data_format)
+            intensity, _ = eem_raman_normalization(intensity, blank=intensity_blank, ex_range_blank=ex_range_blank,
+                                                   em_range_blank=em_range_blank, from_blank=True, ex_lb=su_ex_lb,
+                                                   ex_ub=su_ex_ub,
+                                                   bandwidth=su_em_width, bandwidth_type='wavelength',
+                                                   rsu_standard=su_normalization_factor)
+
+        # IFE correction
+        if file_kw_abs and ife:
+            file_name_abs = file_name_sample.replace(file_kw_sample, file_kw_abs)
+            full_path_abs = os.path.join(folder_path, file_name_abs)
+            absorbance, ex_range_abs, _ = read_abs(full_path_abs, data_format=abs_data_format)
+            intensity = eem_ife_correction(intensity, ex_range, em_range, absorbance, ex_range_abs)
+
+        # Raman scattering removal
+        if all([raman, raman_method, raman_width, raman_dimension]):
+            intensity, _ = eem_raman_scattering_removal(intensity, ex_range, em_range,
+                                                        interpolation_method=raman_method,
+                                                        width=raman_width, interpolation_dimension=raman_dimension)
+
+        # Rayleigh scattering removal
+        if all([rayleigh, rayleigh_o1_method, rayleigh_o1_dimension, rayleigh_o1_width,
+                rayleigh_o2_method, rayleigh_o2_dimension, rayleigh_o2_width]):
+            intensity, _, _ = eem_rayleigh_scattering_removal(intensity, ex_range, em_range,
+                                                              width_o1=rayleigh_o1_width, width_o2=rayleigh_o2_width,
+                                                              interpolation_method_o1=rayleigh_o1_method,
+                                                              interpolation_method_o2=rayleigh_o2_method,
+                                                              interpolation_dimension_o1=rayleigh_o1_dimension,
+                                                              interpolation_dimension_o2=rayleigh_o2_dimension)
+
+        # Gaussian smoothing
+        if gaussian:
+            intensity = eem_gaussian_filter(intensity, gaussian_sigma, gaussian_truncate)
+
+        # Plot EEM
+        fig_eem = plot_eem(intensity, ex_range, em_range, vmin=intensity_range_min, vmax=intensity_range_max,
+                           plot_tool='plotly', display=False, auto_intensity_range=False, cmap='jet',
+                           figure_size=(7, 4), fix_aspect_ratio=True, title=index if index else None)
+
+        # Plot absorbance (if exists)
+    except:
+        # Create an empty scatter plot
+        fig_eem = go.Figure()
+
+        # Add a black border
+        fig_eem.update_layout(
+            xaxis=dict(showline=False, linewidth=0, linecolor="black"),
+            yaxis=dict(showline=False, linewidth=0, linecolor="black"),
+            width=700,
+            height=400,
+            margin=dict(l=50, r=50, b=50, t=50),
+        )
+
+        # Add centered text annotation
+        fig_eem.add_annotation(
+            xref="paper",
+            yref="paper",
+            x=0.5,
+            y=0.5,
+            text="EEM file or parameters missing",
+            showarrow=False,
+            font=dict(size=16),
+        )
+
+    try:
+        file_name_abs = file_name_sample.replace(file_kw_sample, file_kw_abs)
+        full_path_abs = os.path.join(folder_path, file_name_abs)
+        absorbance, ex_range_abs, _ = read_abs(full_path_abs, data_format=abs_data_format)
+        fig_abs = plot_abs(absorbance, ex_range_abs, figure_size=(7, 2.5), plot_tool='plotly', display=False)
+    except:
+        fig_abs = go.Figure()
+
+        fig_abs.update_layout(
+            xaxis=dict(showline=False, linewidth=0, linecolor="black"),
+            yaxis=dict(showline=False, linewidth=0, linecolor="black"),
+            width=700,
+            height=200,
+            margin=dict(l=50, r=50, b=50, t=50)
+        )
+
+        # Add centered text annotation
+        fig_abs.add_annotation(
+            xref="paper",
+            yref="paper",
+            x=0.5,
+            y=0.5,
+            text="Absorbance file or parameters missing",
+            showarrow=False,
+            font=dict(size=16),
+        )
+
+    return fig_eem, fig_abs
 
 
 #   ---------------Export EEM
@@ -856,40 +1036,6 @@ def update_filenames(folder_path, kw_mandatory, kw_optional, kw_eem):
 #     return None
 #
 #
-# @app.callback(
-#     Output('eem-graph', 'figure'),
-#     [Input('folder-path-input', 'value'),
-#      Input('filename-dropdown', 'value'),
-#      Input('data-format', 'value'),
-#      Input('intensity-scale-min', 'value'),
-#      Input('intensity-scale-max', 'value'),
-#      Input('rayleigh-scattering', 'value'),
-#      Input('raman-interpolation-button', 'value'),
-#      Input('raman-interpolation-method', 'value'),
-#      Input('raman-interpolation-axis', 'value'),
-#      Input('raman-interpolation-width', 'value')]
-# )
-# def update_eem_plot(file_path, filename, data_format, vmin, vmax, rayleigh_button, raman_button, raman_method,
-#                     raman_axis, raman_width):
-#     intensity = np.zeros([100, 100])
-#     ex_range = np.arange(100)
-#     em_range = np.array(100)
-#     try:
-#         full_path = os.path.join(file_path, filename)
-#     except:
-#         pass
-#     try:
-#         intensity, ex_range, em_range, _ = read_eem(full_path, index_pos=None, data_format=data_format)
-#         if rayleigh_button:
-#             intensity, _, _ = eem_rayleigh_masking(intensity, ex_range, em_range)
-#         if raman_button:
-#             intensity, _ = eem_raman_masking(intensity, ex_range, em_range, interpolation_method=raman_method,
-#                                              interpolation_axis=raman_axis, width=raman_width)
-#     except:
-#         pass
-#     fig = plot_eem(intensity, ex_range, em_range, vmin=vmin, vmax=vmax, plot_tool='plotly', display=False,
-#                    auto_intensity_range=False, cmap='jet')
-#     return fig
 
 
 # -----------Page #2: PARAFAC--------------

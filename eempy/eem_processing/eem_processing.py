@@ -192,7 +192,7 @@ def eem_gaussian_filter(intensity, sigma=1, truncate=3):
     return intensity_filtered
 
 
-def eem_cutting(intensity, ex_range, em_range, em_min, em_max, ex_min, ex_max):
+def eem_cutting(intensity, ex_range_old, em_range_old, ex_min_new, ex_max_new, em_min_new, em_max_new):
     """
     To cut the EEM.
 
@@ -200,17 +200,17 @@ def eem_cutting(intensity, ex_range, em_range, em_min, em_max, ex_min, ex_max):
     ----------
     intensity: np.ndarray (2d)
         The EEM.
-    ex_range: np.ndarray (1d)
+    ex_range_old: np.ndarray (1d)
         The excitation wavelengths.
-    em_range: np.ndarray (1d)
+    em_range_old: np.ndarray (1d)
         The emission wavelengths.
-    ex_min: float
+    ex_min_new: float
         The lower boundary of excitation wavelength of the EEM after cutting.
-    ex_max: float
+    ex_max_new: float
         The upper boundary of excitation wavelength of the EEM after cutting.
-    em_min: float
+    em_min_new: float
         The lower boundary of emission wavelength of the EEM after cutting.
-    em_max: float
+    em_max_new: float
         The upper boundary of emission wavelength of the EEM after cutting.
 
     Returns
@@ -222,14 +222,14 @@ def eem_cutting(intensity, ex_range, em_range, em_min, em_max, ex_min, ex_max):
     em_range_cut:np.ndarray
         The cut em wavelengths.
     """
-    em_min_idx = dichotomy_search(em_range, em_min)
-    em_max_idx = dichotomy_search(em_range, em_max)
-    ex_min_idx = dichotomy_search(ex_range, ex_min)
-    ex_max_idx = dichotomy_search(ex_range, ex_max)
-    intensity_cut = intensity[ex_range.shape[0] - ex_max_idx - 1:ex_range.shape[0] - ex_min_idx,
-                              em_min_idx:em_max_idx + 1]
-    em_range_cut = em_range[em_min_idx:em_max_idx + 1]
-    ex_range_cut = ex_range[ex_min_idx:ex_max_idx + 1]
+    em_min_idx = dichotomy_search(em_range_old, em_min_new)
+    em_max_idx = dichotomy_search(em_range_old, em_max_new)
+    ex_min_idx = dichotomy_search(ex_range_old, ex_min_new)
+    ex_max_idx = dichotomy_search(ex_range_old, ex_max_new)
+    intensity_cut = intensity[ex_range_old.shape[0] - ex_max_idx - 1:ex_range_old.shape[0] - ex_min_idx,
+                    em_min_idx:em_max_idx + 1]
+    em_range_cut = em_range_old[em_min_idx:em_max_idx + 1]
+    ex_range_cut = ex_range_old[ex_min_idx:ex_max_idx + 1]
     return intensity_cut, ex_range_cut, em_range_cut
 
 
@@ -284,8 +284,8 @@ def eem_nan_imputing(intensity, ex_range, em_range, method: str = 'linear', fill
     return intensity_imputed
 
 
-def eem_raman_normalization(intensity, blank=None, ex_range_blank=None, em_range_blank=None, from_blank=False,
-                            integration_time=1, ex_lb=349, ex_ub=351, bandwidth=1800, bandwidth_type='wavelength',
+def eem_raman_normalization(intensity, blank=None, ex_range_blank=None, em_range_blank=None, from_blank=True,
+                            integration_time=1, ex_lb=349, ex_ub=351, bandwidth=5, bandwidth_type='wavelength',
                             rsu_standard=20000, manual_rsu: Optional[float] = 1):
     """
     Normalize the EEM using the Raman scattering unit (RSU) given directly or calculated from a blank EEM.
@@ -334,9 +334,10 @@ def eem_raman_normalization(intensity, blank=None, ex_range_blank=None, em_range
         rsu_tot = 0
         for ex in ex_range_cut.tolist():
             if bandwidth_type == 'wavelength':
+                em_target = -ex / (0.00036 * ex - 1)
                 rsu, _ = eem_regional_integration(blank, ex_range_blank, em_range_blank,
-                                                  ex_min=ex, ex_max=ex, em_min=ex - bandwidth/2,
-                                                  em_max=ex + bandwidth/2)
+                                                  ex_min=ex, ex_max=ex, em_min=em_target - bandwidth / 2,
+                                                  em_max=em_target + bandwidth / 2)
             # elif bandwidth_type == 'wavenumber':
             #     em_target = -ex / (0.00036 * ex - 1)
             #     wn_target = 10000000 / em_target
@@ -352,7 +353,8 @@ def eem_raman_normalization(intensity, blank=None, ex_range_blank=None, em_range
     return intensity_normalized, rsu_final
 
 
-def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_method='linear', interpolation_axis='2d'):
+def eem_raman_scattering_removal(intensity, ex_range, em_range, width=5, interpolation_method='linear',
+                                 interpolation_dimension='2d'):
     """
     Remove and interpolate the Raman scattering.
 
@@ -368,7 +370,7 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_meth
         The width of Raman scattering.
     interpolation_method: str, {"linear", "cubic", "nan"}
         The method used to interpolate the Raman scattering.
-    interpolation_axis: str, {"1d-ex", "1d-em", "2d"}
+    interpolation_dimension: str, {"1d-ex", "1d-em", "2d"}
         The axis along which the Raman scattering is interpolated. "1d-ex": interpolation is conducted along the excitation
         wavelength; "1d-em": interpolation is conducted along the emission wavelength; "2d": interpolation is conducted
         on the 2D grid of both excitation and emission wavelengths.
@@ -381,7 +383,7 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_meth
         Indicate the pixels that are interpolated. 0: pixel is interpolated; 1: pixel is not interpolated.
     """
     intensity_masked = np.array(intensity)
-    width = width/2
+    width = width / 2
     raman_mask = np.ones(intensity.shape)
     lambda_em = -ex_range / (0.00036 * ex_range - 1)
     tol_emidx = int(np.round(width / (em_range[1] - em_range[0])))
@@ -400,7 +402,7 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_meth
     if interpolation_method == 'nan':
         intensity_masked[np.where(raman_mask == 0)] = np.nan
     else:
-        if interpolation_axis == '1d-ex':
+        if interpolation_dimension == '1d-ex':
             for j in range(0, intensity.shape[1]):
                 try:
                     x = np.flipud(ex_range)[np.where(raman_mask[:, j] == 1)]
@@ -411,7 +413,7 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_meth
                 except ValueError:
                     continue
 
-        if interpolation_axis == '1d-em':
+        if interpolation_dimension == '1d-em':
             for i in range(0, intensity.shape[0]):
                 try:
                     x = em_range[np.where(raman_mask[i, :] == 1)]
@@ -422,7 +424,7 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_meth
                 except ValueError:
                     continue
 
-        if interpolation_axis == '2d':
+        if interpolation_dimension == '2d':
             old_nan = np.isnan(intensity)
             intensity_masked[np.where(raman_mask == 0)] = np.nan
             intensity_masked = eem_nan_imputing(intensity_masked, ex_range, em_range, method=interpolation_method)
@@ -431,9 +433,10 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_meth
     return intensity_masked, raman_mask
 
 
-def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15,
-                         interpolation_axis_o1='2d', interpolation_axis_o2='2d', interpolation_method_o1='zero',
-                         interpolation_method_o2='linear'):
+def eem_rayleigh_scattering_removal(intensity, ex_range, em_range, width_o1=15, width_o2=15,
+                                    interpolation_dimension_o1='2d', interpolation_dimension_o2='2d',
+                                    interpolation_method_o1='zero',
+                                    interpolation_method_o2='linear'):
     """
     Remove and interpolate the Rayleigh scattering.
 
@@ -449,11 +452,11 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15
         The width or 1st order Rayleigh scattering.
     width_o2: float
         The width or 2nd order Rayleigh scattering.
-    interpolation_axis_o1: str, {"1d-ex", "1d-em", "2d"}
+    interpolation_dimension_o1: str, {"1d-ex", "1d-em", "2d"}
         The axis along which the 1st order Rayleigh scattering is interpolated. "ex": interpolation is conducted along
         the excitation wavelength; "em": interpolation is conducted along the emission wavelength; "2d": interpolation
         is conducted on the 2D grid of both excitation and emission wavelengths.
-    interpolation_axis_o2: str, {"1d-ex", "1d-em", "2d"}
+    interpolation_dimension_o2: str, {"1d-ex", "1d-em", "2d"}
         The axis along which the 2nd order Rayleigh scattering is interpolated.
     interpolation_method_o1: str, {"linear", "cubic", "nan"}
         The method used to interpolate the 1st order Rayleigh scattering.
@@ -475,8 +478,8 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15
     rayleigh_mask_o1 = np.ones(intensity.shape)
     rayleigh_mask_o2 = np.ones(intensity.shape)
     # convert the entire width to half-width
-    width_o1 = width_o1/2
-    width_o2 = width_o2/2
+    width_o1 = width_o1 / 2
+    width_o2 = width_o2 / 2
     lambda_em_o1 = ex_range
     tol_emidx_o1 = int(np.round(width_o1 / (em_range[1] - em_range[0])))
     for s in range(0, intensity_masked.shape[0]):
@@ -506,7 +509,7 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15
             emidx = dichotomy_search(em_range, lambda_em_o2[s] - width_o2)
             rayleigh_mask_o2[exidx, emidx: min(em_range.shape[0], emidx + 2 * tol_emidx_o2 + 1)] = 0
 
-    for axis, itp, mask in zip([interpolation_axis_o1, interpolation_axis_o2],
+    for axis, itp, mask in zip([interpolation_dimension_o1, interpolation_dimension_o2],
                                [interpolation_method_o1, interpolation_method_o2],
                                [rayleigh_mask_o1, rayleigh_mask_o2]):
         if itp == 'zero':
@@ -548,7 +551,7 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15
     return intensity_masked, rayleigh_mask_o1, rayleigh_mask_o2
 
 
-def eem_ife_correction(intensity, ex_range, em_range, absorbance, ex_range_abs, cuvette_length=1):
+def eem_ife_correction(intensity, ex_range_eem, em_range_eem, absorbance, ex_range_abs):
     """
     Correct the inner filter effect (IFE).
 
@@ -556,9 +559,9 @@ def eem_ife_correction(intensity, ex_range, em_range, absorbance, ex_range_abs, 
     ----------
     intensity: np.ndarray (2d)
         The EEM.
-    ex_range: np.ndarray (1d)
+    ex_range_eem: np.ndarray (1d)
         The excitation wavelengths of EEM.
-    em_range: np.ndarray (1d)
+    em_range_eem: np.ndarray (1d)
         The emission wavelengths of EEM.
     absorbance: np.ndarray
         The absorbance. If this function is called alone, an array of shape (i, ) should be passed, where i is the
@@ -566,8 +569,6 @@ def eem_ife_correction(intensity, ex_range, em_range, absorbance, ex_range_abs, 
         should be passed, where n is the number samples, and i is the length of the absorbance spectrum.
     ex_range_abs: np.ndarray (1d)
         The excitation wavelengths of absorbance.
-    cuvette_length: float
-        The pathlength of cuvette in measurement.
 
     Returns
     -------
@@ -577,10 +578,10 @@ def eem_ife_correction(intensity, ex_range, em_range, absorbance, ex_range_abs, 
     # if absorbance.ndim == 1:
     #     absorbance_reshape = absorbance.reshape((1, absorbance.shape[0]))
     f1 = interp1d(ex_range_abs, absorbance, kind='linear', bounds_error=False, fill_value='extrapolate')
-    absorbance_ex = np.fliplr(np.array([f1(ex_range)]))
-    absorbance_em = np.array([f1(em_range)])
-    ife_factors = 10 ** (cuvette_length * (absorbance_ex.T.dot(np.ones(absorbance_em.shape)) +
-                                           np.ones(absorbance_ex.shape).T.dot(absorbance_em)) / 2)
+    absorbance_ex = np.fliplr(np.array([f1(ex_range_eem)]))
+    absorbance_em = np.array([f1(em_range_eem)])
+    ife_factors = 10 ** ((absorbance_ex.T.dot(np.ones(absorbance_em.shape)) +
+                          np.ones(absorbance_ex.shape).T.dot(absorbance_em)) / 2)
     intensity_corrected = intensity * ife_factors
     return intensity_corrected
 
@@ -614,8 +615,8 @@ def eem_regional_integration(intensity, ex_range, em_range, ex_min, ex_max, em_m
         The average fluorescence intensity in the region.
     """
     intensity_cut, em_range_cut, ex_range_cut = eem_cutting(intensity, ex_range, em_range,
-                                                            em_min=em_min, em_max=em_max,
-                                                            ex_min=ex_min, ex_max=ex_max)
+                                                            em_min_new=em_min, em_max_new=em_max,
+                                                            ex_min_new=ex_min, ex_max_new=ex_max)
     if intensity_cut.shape[0] == 1:
         integration = np.trapz(intensity_cut, em_range_cut, axis=1)
     elif intensity_cut.shape[1] == 1:
@@ -1063,9 +1064,10 @@ class EEMDataset:
         em_range_cut:np.ndarray
             The cut em wavelengths.
         """
-        eem_stack_cut, new_ranges = process_eem_stack(self.eem_stack, eem_cutting, ex_range=self.ex_range,
-                                                      em_range=self.em_range,
-                                                      ex_min=ex_min, ex_max=ex_max, em_min=em_min, em_max=em_max)
+        eem_stack_cut, new_ranges = process_eem_stack(self.eem_stack, eem_cutting, ex_range_old=self.ex_range,
+                                                      em_range_old=self.em_range,
+                                                      ex_min_new=ex_min, ex_max_new=ex_max, em_min_new=em_min,
+                                                      em_max_new=em_max)
         if not copy:
             self.eem_stack = eem_stack_cut
             self.ex_range = new_ranges[0][0]
@@ -1145,14 +1147,14 @@ class EEMDataset:
             self.eem_stack = eem_stack_normalized
         return eem_stack_normalized, weights
 
-    def raman_masking(self, width=5, interpolation_method='linear', interpolation_axis='2d', copy=True):
+    def raman_scattering_removal(self, width=5, interpolation_method='linear', interpolation_dimension='2d', copy=True):
         """
         Remove and interpolate the Raman scattering.
 
         Parameters
         ----------
-        width, interpolation_method, interpolation_axis:
-            See eempy.eem_processing.eem_raman_masking
+        width, interpolation_method, interpolation_dimension:
+            See eempy.eem_processing.eem_raman_scattering_removal
         copy: bool
             if False, overwrite the EEMDataset object with the processed EEMs.
 
@@ -1161,23 +1163,24 @@ class EEMDataset:
         eem_stack_masked: np.ndarray
             The EEM with Raman scattering interpolated.
         """
-        eem_stack_masked, _ = process_eem_stack(self.eem_stack, eem_raman_masking, ex_range=self.ex_range,
+        eem_stack_masked, _ = process_eem_stack(self.eem_stack, eem_raman_scattering_removal, ex_range=self.ex_range,
                                                 em_range=self.em_range, width=width,
                                                 interpolation_method=interpolation_method,
-                                                interpolation_axis=interpolation_axis)
+                                                interpolation_dimension=interpolation_dimension)
         if not copy:
             self.eem_stack = eem_stack_masked
         return eem_stack_masked
 
-    def rayleigh_masking(self, width_o1=15, width_o2=15, interpolation_axis_o1='2d', interpolation_axis_o2='2d',
-                         interpolation_method_o1='zero', interpolation_method_o2='linear', copy=True):
+    def rayleigh_scattering_removal(self, width_o1=15, width_o2=15, interpolation_dimension_o1='2d',
+                                    interpolation_dimension_o2='2d', interpolation_method_o1='zero',
+                                    interpolation_method_o2='linear', copy=True):
         """
         Remove and interpolate the Rayleigh scattering.
 
         Parameters
         ----------
-        width_o1, width_o2, interpolation_axis_o1, interpolation_axis_o2, interpolation_method_o1, interpolation_method_o2:
-            See eempy.eem_processing.eem_rayleigh_masking
+        width_o1, width_o2, interpolation_dimension_o1, interpolation_dimension_o2, interpolation_method_o1, interpolation_method_o2:
+            See eempy.eem_processing.eem_rayleigh_scattering_removal
         copy: bool
             if False, overwrite the EEMDataset object with the processed EEMs.
 
@@ -1186,10 +1189,11 @@ class EEMDataset:
         eem_stack_masked: np.ndarray
             The EEM with Rayleigh scattering interpolated.
         """
-        eem_stack_masked, _ = process_eem_stack(self.eem_stack, eem_rayleigh_masking, ex_range=self.ex_range,
+        eem_stack_masked, _ = process_eem_stack(self.eem_stack, eem_rayleigh_scattering_removal, ex_range=self.ex_range,
                                                 em_range=self.em_range, width_o1=width_o1,
-                                                width_o2=width_o2, interpolation_axis_o1=interpolation_axis_o1,
-                                                interpolation_axis_o2=interpolation_axis_o2,
+                                                width_o2=width_o2,
+                                                interpolation_dimension_o1=interpolation_dimension_o1,
+                                                interpolation_dimension_o2=interpolation_dimension_o2,
                                                 interpolation_method_o1=interpolation_method_o1,
                                                 interpolation_method_o2=interpolation_method_o2)
         if not copy:
@@ -1212,8 +1216,8 @@ class EEMDataset:
         eem_stack_corrected: np.ndarray
             The corrected EEM.
         """
-        eem_stack_corrected = process_eem_stack(self.eem_stack, eem_ife_correction, ex_range=self.ex_range,
-                                                em_range=self.em_range, absorbance=absorbance,
+        eem_stack_corrected = process_eem_stack(self.eem_stack, eem_ife_correction, ex_range_eem=self.ex_range,
+                                                em_range_eem=self.em_range, absorbance=absorbance,
                                                 ex_range_abs=ex_range_abs, cuvette_length=cuvette_length)
         if not copy:
             self.eem_stack = eem_stack_corrected
@@ -2394,7 +2398,7 @@ class EEMPCA:
         X = eem_dataset.eem_stack.reshape([n_samples, -1])
         score = decomposer.fit_transform(X)
         score = pd.DataFrame(score, index=eem_dataset.index,
-                             columns=["component {i}".format(i=i+1) for i in range(self.n_components)])
+                             columns=["component {i}".format(i=i + 1) for i in range(self.n_components)])
         components = decomposer.components_.reshape([self.n_components, eem_dataset.eem_stack.shape[1],
                                                      eem_dataset.eem_stack.shape[2]])
         self.score = score
@@ -2420,12 +2424,10 @@ class EEMNMF:
         X = eem_dataset.eem_stack.reshape([n_samples, -1])
         score = decomposer.fit_transform(X)
         score = pd.DataFrame(score, index=eem_dataset.index,
-                             columns=["component {i}".format(i=i+1) for i in range(self.n_components)])
+                             columns=["component {i}".format(i=i + 1) for i in range(self.n_components)])
         components = decomposer.components_.reshape([self.n_components, eem_dataset.eem_stack.shape[1],
                                                      eem_dataset.eem_stack.shape[2]])
         self.score = score
         self.components = components
 
         return self
-
-
