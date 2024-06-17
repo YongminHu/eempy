@@ -3,16 +3,16 @@ import dash
 import datetime
 import numpy as np
 from dash import dcc, html
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from dash.exceptions import PreventUpdate
 
 from eempy.plot import plot_eem, plot_abs
-from eempy.read_data import read_eem, read_abs, get_filelist
-from eempy.eem_processing import (eem_cutting, eem_raman_normalization, eem_ife_correction,
-                                  eem_raman_scattering_removal, eem_rayleigh_scattering_removal, eem_gaussian_filter)
+from eempy.read_data import *
+from eempy.eem_processing import *
 from eempy.utils import string_to_list
 from matplotlib import pyplot as plt
 
@@ -20,7 +20,7 @@ app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_e
 
 # -----------Global variables--------------
 
-eem_dataset_working = None  # The EEM dataset that the user would build and analyse
+# eem_dataset_working = None  # The EEM dataset that the user would build and analyse
 
 # -----------Page #0: Homepage
 
@@ -347,27 +347,12 @@ card_su = dbc.Card(
 
                     dbc.Row([
                         dbc.Col(
-                            dbc.Label("RS Ex lower bound"),
+                            dbc.Label("RS Ex"),
                             width={'size': 6}
                         ),
                         dbc.Col(
-                            dcc.Input(id='su-excitation-lower-bound', type='number', placeholder='max',
-                                      style={'width': '120%', 'height': '30px'}, debounce=True, value=349),
-                            width={'size': 3}
-                        ),
-                        dbc.Col(
-                            dbc.Label('nm')
-                        )
-                    ]),
-
-                    dbc.Row([
-                        dbc.Col(
-                            dbc.Label("RS Ex upper bound"),
-                            width={'size': 6}
-                        ),
-                        dbc.Col(
-                            dcc.Input(id='su-excitation-upper-bound', type='number', placeholder='max',
-                                      style={'width': '120%', 'height': '30px'}, debounce=True, value=351),
+                            dcc.Input(id='su-excitation', type='number', placeholder='max',
+                                      style={'width': '120%', 'height': '30px'}, debounce=True, value=350),
                             width={'size': 3}
                         ),
                         dbc.Col(
@@ -402,6 +387,10 @@ card_su = dbc.Card(
                                 width={'size': 6}
                             )
                         ),
+                    ]),
+
+                    dbc.Row([
+                        html.Div(id='rsu-display')
                     ])
 
                 ], gap=1
@@ -748,7 +737,8 @@ card_built_eem_dataset = dbc.Card(
                         dbc.Button([dbc.Spinner(size="sm", id='build-eem-dataset-spinner'), " Build"],
                                    id='build-eem-dataset', className='col-5')
                     )
-                ])
+                ]),
+                dbc.Row([html.Div(id='info-eem-dataset')])
             ], gap=2)
         ]
     ),
@@ -820,19 +810,19 @@ page1 = html.Div([
         Input('file-keyword-sample', 'value'),
     ]
 )
-def update_filenames(folder_path, kw_mandatory, kw_optional, kw_eem):
+def update_filenames(folder_path, kw_mandatory, kw_optional, kw_sample):
     if folder_path:
         try:
             filenames = [f for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
-            if kw_mandatory or kw_optional or kw_eem:
+            if kw_mandatory or kw_optional or kw_sample:
                 kw_mandatory = string_to_list(kw_mandatory) if kw_mandatory else []
                 kw_optional = string_to_list(kw_optional) if kw_optional else []
-                kw_eem = string_to_list(kw_eem) if kw_eem else []
-                filenames = get_filelist(folder_path, kw_mandatory + kw_eem, kw_optional)
+                kw_sample = string_to_list(kw_sample) if kw_sample else []
+                filenames = get_filelist(folder_path, kw_mandatory + kw_sample, kw_optional)
             options = [{'label': f, 'value': f} for f in filenames]
             return options, None
         except FileNotFoundError:
-            return ['Folder not found - please check the folder path'], None
+            return ['Files not found - please check the settings'], None
     else:
         return [], None
 
@@ -842,22 +832,19 @@ def update_filenames(folder_path, kw_mandatory, kw_optional, kw_eem):
 @app.callback(
     [
         Output('eem-graph', 'figure'),
-        Output('absorbance-graph', 'figure')
+        Output('absorbance-graph', 'figure'),
+        Output('rsu-display', 'children')
     ],
     [
         Input('folder-path-input', 'value'),
         Input('filename-sample-dropdown', 'value'),
         Input('eem-data-format', 'value'),
         Input('abs-data-format', 'value'),
-        Input('file-keyword-mandatory', 'value'),
-        Input('file-keyword-optional', 'value'),
         Input('file-keyword-sample', 'value'),
         Input('file-keyword-absorbance', 'value'),
         Input('file-keyword-blank', 'value'),
         Input('index-pos-left', 'value'),
         Input('index-pos-right', 'value'),
-        Input('timestamp-checkbox', 'value'),
-        Input('timestamp-format', 'value'),
         Input('excitation-wavelength-min', 'value'),
         Input('excitation-wavelength-max', 'value'),
         Input('emission-wavelength-min', 'value'),
@@ -865,8 +852,7 @@ def update_filenames(folder_path, kw_mandatory, kw_optional, kw_eem):
         Input('fluorescence-intensity-min', 'value'),
         Input('fluorescence-intensity-max', 'value'),
         Input('su-button', 'value'),
-        Input('su-excitation-lower-bound', 'value'),
-        Input('su-excitation-upper-bound', 'value'),
+        Input('su-excitation', 'value'),
         Input('su-emission-width', 'value'),
         Input('su-normalization-factor', 'value'),
         Input('ife-button', 'value'),
@@ -889,10 +875,10 @@ def update_filenames(folder_path, kw_mandatory, kw_optional, kw_eem):
 )
 def update_eem_plot(folder_path, file_name_sample,
                     eem_data_format, abs_data_format,
-                    file_kw_mandatory, file_kw_optional, file_kw_sample, file_kw_abs, file_kw_blank,
-                    index_pos_left, index_pos_right, timestamp, timestamp_format,
+                    file_kw_sample, file_kw_abs, file_kw_blank,
+                    index_pos_left, index_pos_right,
                     ex_range_min, ex_range_max, em_range_min, em_range_max, intensity_range_min, intensity_range_max,
-                    su, su_ex_lb, su_ex_ub, su_em_width, su_normalization_factor,
+                    su, su_ex, su_em_width, su_normalization_factor,
                     ife, ife_method,
                     raman, raman_method, raman_dimension, raman_width,
                     rayleigh, rayleigh_o1_method, rayleigh_o1_dimension, rayleigh_o1_width,
@@ -918,11 +904,13 @@ def update_eem_plot(folder_path, file_name_sample,
             file_name_blank = file_name_sample.replace(file_kw_sample, file_kw_blank)
             full_path_blank = os.path.join(folder_path, file_name_blank)
             intensity_blank, ex_range_blank, em_range_blank, _ = read_eem(full_path_blank, data_format=eem_data_format)
-            intensity, _ = eem_raman_normalization(intensity, blank=intensity_blank, ex_range_blank=ex_range_blank,
-                                                   em_range_blank=em_range_blank, from_blank=True, ex_lb=su_ex_lb,
-                                                   ex_ub=su_ex_ub,
-                                                   bandwidth=su_em_width, bandwidth_type='wavelength',
-                                                   rsu_standard=su_normalization_factor)
+            intensity, rsu_value = eem_raman_normalization(intensity, blank=intensity_blank,
+                                                           ex_range_blank=ex_range_blank,
+                                                           em_range_blank=em_range_blank, from_blank=True,
+                                                           ex_target=su_ex,
+                                                           bandwidth=su_em_width, rsu_standard=su_normalization_factor)
+        else:
+            rsu_value = None
 
         # IFE correction
         if file_kw_abs and ife:
@@ -948,7 +936,7 @@ def update_eem_plot(folder_path, file_name_sample,
                                                               interpolation_dimension_o2=rayleigh_o2_dimension)
 
         # Gaussian smoothing
-        if gaussian:
+        if all([gaussian, gaussian_sigma, gaussian_truncate]):
             intensity = eem_gaussian_filter(intensity, gaussian_sigma, gaussian_truncate)
 
         # Plot EEM
@@ -981,6 +969,8 @@ def update_eem_plot(folder_path, file_name_sample,
             font=dict(size=16),
         )
 
+        rsu_value = None
+
     try:
         file_name_abs = file_name_sample.replace(file_kw_sample, file_kw_abs)
         full_path_abs = os.path.join(folder_path, file_name_abs)
@@ -1008,7 +998,7 @@ def update_eem_plot(folder_path, file_name_sample,
             font=dict(size=16),
         )
 
-    return fig_eem, fig_abs
+    return fig_eem, fig_abs, f'RSU: {rsu_value}'
 
 
 #   ---------------Export EEM
@@ -1016,26 +1006,147 @@ def update_eem_plot(folder_path, file_name_sample,
 
 #   ---------------Build EEM dataset
 
-#
+@app.callback(
+    [
+        Output('eem-dataset', 'data'),
+        Output('info-eem-dataset', 'children')
+    ],
+    [
+        Input('build-eem-dataset', 'n_clicks'),
+        Input('folder-path-input', 'value'),
+        Input('eem-data-format', 'value'),
+        Input('abs-data-format', 'value'),
+        Input('filename-sample-dropdown', 'options'),
+        Input('file-keyword-sample', 'value'),
+        Input('file-keyword-absorbance', 'value'),
+        Input('file-keyword-blank', 'value'),
+        Input('index-pos-left', 'value'),
+        Input('index-pos-right', 'value'),
+        Input('timestamp-checkbox', 'value'),
+        Input('timestamp-format', 'value'),
+        Input('excitation-wavelength-min', 'value'),
+        Input('excitation-wavelength-max', 'value'),
+        Input('emission-wavelength-min', 'value'),
+        Input('emission-wavelength-max', 'value'),
+        Input('su-button', 'value'),
+        Input('su-excitation', 'value'),
+        Input('su-emission-width', 'value'),
+        Input('su-normalization-factor', 'value'),
+        Input('ife-button', 'value'),
+        Input('ife-methods', 'value'),
+        Input('raman-button', 'value'),
+        Input('raman-methods', 'value'),
+        Input('raman-dimension', 'value'),
+        Input('raman-width', 'value'),
+        Input('rayleigh-button', 'value'),
+        Input('rayleigh-o1-methods', 'value'),
+        Input('rayleigh-o1-dimension', 'value'),
+        Input('rayleigh-o1-width', 'value'),
+        Input('rayleigh-o2-methods', 'value'),
+        Input('rayleigh-o2-dimension', 'value'),
+        Input('rayleigh-o2-width', 'value'),
+        Input('gaussian-button', 'value'),
+        Input('gaussian-sigma', 'value'),
+        Input('gaussian-truncate', 'value'),
+        Input('align-exem', 'value'),
+    ]
+)
+def on_build_eem_dataset(n_clicks,
+                         folder_path,
+                         eem_data_format, abs_data_format,
+                         file_name_sample_options, file_kw_sample, file_kw_abs, file_kw_blank,
+                         index_pos_left, index_pos_right, timestamp, timestamp_format,
+                         ex_range_min, ex_range_max, em_range_min, em_range_max,
+                         su, su_ex, su_em_width, su_normalization_factor,
+                         ife, ife_method,
+                         raman, raman_method, raman_dimension, raman_width,
+                         rayleigh, rayleigh_o1_method, rayleigh_o1_dimension, rayleigh_o1_width,
+                         rayleigh_o2_method, rayleigh_o2_dimension, rayleigh_o2_width,
+                         gaussian, gaussian_sigma, gaussian_truncate,
+                         align_exem
+                         ):
+    if n_clicks is None:
+        raise PreventUpdate
+    try:
+        file_name_sample_options = file_name_sample_options or {}
+        file_name_sample_list = [f['value'] for f in file_name_sample_options]
+        eem_stack, ex_range, em_range, indexes = read_eem_dataset(
+            folder_path=folder_path, mandatory_keywords=[], optional_keywords=[], data_format=eem_data_format,
+            index_pos=(index_pos_left, index_pos_right) if index_pos_left and index_pos_right else None,
+            custom_filename_list=file_name_sample_list, wavelength_alignment=True if align_exem else False,
+            interpolation_method='linear'
+        )
+    except IndexError:
+        error_message = ("EEM dataset building failed. Are there any non-EEM files mixed in? "
+                         "Please check data folder path and file searching keywords settings. If the Ex/Em "
+                         "ranges/intervals are different between EEMs, make sure you select the 'Align Ex/Em' checkbox.")
+        return None, error_message
 
+    steps_track = ("EEM dataset building successful! \n Number of EEMs: {n} \n Pre-processing steps implemented: "
+                   "\n ").format(n=eem_stack.shape[0])
+    # EEM cutting
+    eem_dataset = EEMDataset(eem_stack, ex_range, em_range, index=indexes)
+    if any([np.min(ex_range) != ex_range_min, np.max(ex_range) != ex_range_max,
+            np.min(em_range) != em_range_min, np.max(em_range) != em_range_max]):
+        eem_dataset.cutting(ex_min=ex_range_min, ex_max=ex_range_max,
+                            em_min=em_range_min, em_max=em_range_max, copy=False)
+        steps_track += "- EEM cutting \n"
 
-# @app.callback(
-#     Output('index-display', 'children'),
-#     [Input('filename-dropdown', 'value'),
-#      Input('index-pos-left', 'value'),
-#      Input('index-pos-right', 'value'),
-#      Input('timestamp-checkbox', 'value'),
-#      Input('timestamp-format', 'value')]
-# )
-# def update_index_display(filename, pos_left, pos_right, ts_option, ts_format):
-#     if pos_left and pos_right:
-#         index = filename[pos_left:pos_right]
-#         if ts_option:
-#             index = datetime.strptime(index, ts_format)
-#         return index
-#     return None
-#
-#
+    # RSU normalization
+    if file_kw_blank and su:
+        file_name_blank_list = [f.replace(file_kw_sample, file_kw_blank) for f in file_name_sample_list]
+        blank_stack, ex_range_blank, em_range_blank, _ = read_eem_dataset(
+            folder_path=folder_path, mandatory_keywords=[], optional_keywords=[], data_format=eem_data_format,
+            index_pos=None,
+            custom_filename_list=file_name_blank_list, wavelength_alignment=True if align_exem else False,
+            interpolation_method='linear'
+        )
+        eem_dataset.raman_normalization(blank=blank_stack,
+                                        ex_range_blank=ex_range_blank,
+                                        em_range_blank=em_range_blank, from_blank=True,
+                                        ex_target=su_ex,
+                                        bandwidth=su_em_width, rsu_standard=su_normalization_factor,
+                                        copy=False)
+        steps_track += "- Raman scattering unit normalization \n"
+
+    # IFE correction
+    if file_kw_abs and ife:
+        file_name_abs_list = [f.replace(file_kw_sample, file_kw_abs) for f in file_name_sample_list]
+        abs_stack, ex_range_abs, _ = read_abs_dataset(
+            folder_path=folder_path, mandatory_keywords=[], optional_keywords=[], data_format=abs_data_format,
+            index_pos=None,
+            custom_filename_list=file_name_abs_list, wavelength_alignment=True if align_exem else False,
+            interpolation_method='linear'
+        )
+        eem_dataset.ife_correction(absorbance=abs_stack, ex_range_abs=ex_range_abs, copy=False)
+        steps_track += "- Inner filter effect correction \n"
+
+    # Raman scattering removal
+    if all([raman, raman_method, raman_width, raman_dimension]):
+        eem_dataset.raman_scattering_removal(interpolation_method=raman_method, width=raman_width,
+                                             interpolation_dimension=raman_dimension, copy=False)
+        steps_track += "- Raman scattering removal \n"
+
+    # Rayleigh scattering removal
+    if all([rayleigh, rayleigh_o1_method, rayleigh_o1_dimension, rayleigh_o1_width,
+            rayleigh_o2_method, rayleigh_o2_dimension, rayleigh_o2_width]):
+        eem_dataset.rayleigh_scattering_removal(width_o1=rayleigh_o1_width, width_o2=rayleigh_o2_width,
+                                                interpolation_method_o1=rayleigh_o1_method,
+                                                interpolation_method_o2=rayleigh_o2_method,
+                                                interpolation_dimension_o1=rayleigh_o1_dimension,
+                                                interpolation_dimension_o2=rayleigh_o2_dimension,
+                                                copy=False)
+        steps_track += "- Rayleigh scattering removal \n"
+
+    # Gaussian smoothing
+    if all([gaussian, gaussian_sigma, gaussian_truncate]):
+        eem_dataset.gaussian_filter(sigma=gaussian_sigma, truncate=gaussian_truncate)
+        steps_track += "- Gaussian smoothing \n"
+
+    notation = ("EEM dataset building successful! \n Number of EEMs: {n} \n Pre-processing steps implemented: "
+                "\n ").format(n=eem_stack.shape[0])
+
+    return {'eem_dataset': eem_dataset}, notation
 
 
 # -----------Page #2: PARAFAC--------------
@@ -1070,49 +1181,117 @@ CONTENT_STYLE = {
 
 sidebar = html.Div(
     [
-        html.H2("eempy-interactive", className="display-4"),
+        html.H2("eempy-vis", className="display-5"),
         html.Hr(),
         html.P(
             "A interactive python toolkit for EEM analysis", className="lead"
         ),
-        dbc.Nav(
-            [
-                dbc.NavLink("Homepage", href="/", active="exact"),
-                dbc.NavLink("EEM pre-processing", href="/eem-pre-processing", active="exact"),
-                dbc.NavLink("PARAFAC", href="/parafac", active="exact"),
-                dbc.NavLink("K-PARAFACs", href="/k-parafacs", active="exact"),
+        dbc.Tabs(
+            id='tabs-content',
+            children=[
+                dbc.Tab(label='Homepage', tab_id='homepage', children=html.P('Homepage')),
+                dbc.Tab(label='EEM pre-processing', tab_id='eem-pre-processing', children=[page1]),
+                dbc.Tab(label='PARAFAC', tab_id='parafac', children=html.P('PARAFAC')),
+                dbc.Tab(label='K-PARAFACs', tab_id='k-parafacs', children=html.P('K-PARAFAC')),
             ],
-            vertical=True,
-            pills=True
+            active_tab="homepage",
+            persistence=True,
+            persistence_type='session'
         ),
     ],
     style=SIDEBAR_STYLE,
 )
 
-content = html.Div(id="page-content", style=CONTENT_STYLE)
+# @app.callback(Output('store-eem-pre-processing', 'data'),
+#               Input('su-excitation', 'value'),
+#               State('store-eem-pre-processing', 'data'),)
+# def on_parameters_record(su_excitation, data):
+#     data = data or {'su-excitation': None}
+#     if data['su-excitation'] == 350:
+#         raise PreventUpdate
+#     else:
+#         data['su-excitation'] = su_excitation
+#         return data
+#
+#
+# @app.callback(Output('su-excitation', 'value'),
+#               Input('store-eem-pre-processing', 'data'))
+# def on_parameters_retrieve(data):
+#     if data is None:
+#         raise PreventUpdate
+#     elif data['su-excitation'] is None:
+#         raise PreventUpdate
+#     elif data['su-excitation'] == 350:
+#         raise PreventUpdate
+#     else:
+#         return data['su-excitation']
 
-app.layout = html.Div([dcc.Location(id="url"), sidebar, content])
+# content = html.Div(id="page-content", style=CONTENT_STYLE)
+content = html.Div(
+    [
+        html.H2("eempy-vis", className="display-5"),
+        html.Hr(),
+        html.P(
+            "An interactive python toolkit for EEM analysis", className="lead"
+        ),
+        dbc.Tabs(
+            id='tabs-content',
+            children=[
+                dcc.Tab(label='Homepage', id='homepage', children=html.P('Homepage')),
+                dcc.Tab(label='EEM pre-processing', id='eem-pre-processing', children=html.P(page1)),
+                dcc.Tab(label='PARAFAC', id='parafac', children=html.P('PARAFAC')),
+                dcc.Tab(label='K-PARAFACs', id='k-parafacs', children=html.P('K-PARAFAC')),
+            ],
+            # value="homepage",
+            persistence=True,
+            persistence_type='session',
+        ),
+    ],
+)
 
 
-@app.callback(Output("page-content", "children"), [Input("url", "pathname")])
-def render_page_content(pathname):
-    if pathname == "/":
-        return html.P("This is the content of the home page!")
-    elif pathname == "/eem-pre-processing":
-        return page1
-    elif pathname == "/parafac":
-        return html.P("Oh cool, this is page 2!")
-    elif pathname == "/k-parafacs":
-        return html.P("Oh cool, this is page 3!")
-    # If the user tries to reach a different page, return a 404 message
-    return html.Div(
-        [
-            html.H1("404: Not found", className="text-danger"),
-            html.Hr(),
-            html.P(f"The pathname {pathname} was not recognised..."),
-        ],
-        className="p-3 bg-light rounded-3",
-    )
+def serve_layout():
+    return html.Div([
+        dcc.Store(id='pre-processed-eem'),
+        dcc.Store(id='eem-dataset'),
+        dcc.Location(id="url"),
+        content])
+
+
+app.layout = serve_layout
+
+# @app.callback(Output('page-content', 'children'),
+#               Input('tabs-content', 'active_tab'))
+# def render_page_content(tab):
+#     if tab == 'homepage':
+#         return html.P("This is the content of the home page!")
+#     elif tab == "eem-pre-processing":
+#         return page1
+#     elif tab == "parafac":
+#         return html.P("Oh cool, this is page 2!")
+#     elif tab == "k-parafacs":
+#         return html.P("Oh cool, this is page 3!")
+
+
+# @app.callback(Output("page-content", "children"), [Input("url", "pathname")])
+# def render_page_content(pathname):
+#     if pathname == "/":
+#         return html.P("This is the content of the home page!")
+#     elif pathname == "/eem-pre-processing":
+#         return page1
+#     elif pathname == "/parafac":
+#         return html.P("Oh cool, this is page 2!")
+#     elif pathname == "/k-parafacs":
+#         return html.P("Oh cool, this is page 3!")
+#     # If the user tries to reach a different page, return a 404 message
+#     return html.Div(
+#         [
+#             html.H1("404: Not found", className="text-danger"),
+#             html.Hr(),
+#             html.P(f"The pathname {pathname} was not recognised..."),
+#         ],
+#         className="p-3 bg-light rounded-3",
+#     )
 
 
 if __name__ == '__main__':

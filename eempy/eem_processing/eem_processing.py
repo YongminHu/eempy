@@ -285,7 +285,7 @@ def eem_nan_imputing(intensity, ex_range, em_range, method: str = 'linear', fill
 
 
 def eem_raman_normalization(intensity, blank=None, ex_range_blank=None, em_range_blank=None, from_blank=True,
-                            integration_time=1, ex_lb=349, ex_ub=351, bandwidth=5, bandwidth_type='wavelength',
+                            integration_time=1, ex_target=350, bandwidth=5,
                             rsu_standard=20000, manual_rsu: Optional[float] = 1):
     """
     Normalize the EEM using the Raman scattering unit (RSU) given directly or calculated from a blank EEM.
@@ -306,14 +306,10 @@ def eem_raman_normalization(intensity, blank=None, ex_range_blank=None, em_range
         Whether to calculate the RSU from a blank. If False, manual_rsu will be used.
     integration_time: float
         The integration time of the blank measurement.
-    ex_lb: float
-        The lower boundary of excitation wavelength range within which the RSU is calculated.
-    ex_ub: float
-        The upper boundary of excitation wavelength range within which the RSU is calculated.
+    ex_target: float
+        The excitation wavelength at which the RSU is calculated.
     bandwidth: float
         The bandwidth of Raman scattering peak.
-    bandwidth_type: str, {"wavenumber", "wavelength"}
-        The type of bandwidth. "wavenumber": (1/cm); "wavelength": (nm).
     rsu_standard: float
         A factor used to divide the raw RSU. This is used to control the magnitude of RSU so that the normalized
         intensity of EEM would not be numerically too high or too low.
@@ -330,25 +326,18 @@ def eem_raman_normalization(intensity, blank=None, ex_range_blank=None, em_range
     if not from_blank:
         return intensity / manual_rsu, manual_rsu
     else:
-        ex_range_cut = ex_range_blank[(ex_range_blank >= ex_lb) & (ex_range_blank <= ex_ub)]
-        rsu_tot = 0
-        for ex in ex_range_cut.tolist():
-            if bandwidth_type == 'wavelength':
-                em_target = -ex / (0.00036 * ex - 1)
-                rsu, _ = eem_regional_integration(blank, ex_range_blank, em_range_blank,
-                                                  ex_min=ex, ex_max=ex, em_min=em_target - bandwidth / 2,
-                                                  em_max=em_target + bandwidth / 2)
-            # elif bandwidth_type == 'wavenumber':
-            #     em_target = -ex / (0.00036 * ex - 1)
-            #     wn_target = 10000000 / em_target
-            #     em_lb = 10000000 / (wn_target + bandwidth)
-            #     em_rb = 10000000 / (wn_target - bandwidth)
-            #     rsu, _ = eem_regional_integration(blank, ex_range_blank, em_range_blank,
-            #                                       ex_min=ex, ex_max=ex, em_min=em_lb, em_max=em_rb)
-            else:
-                raise ValueError("'bandwidth_type' should be either 'wavenumber' or 'wavelength'.")
-            rsu_tot += rsu
-    rsu_final = rsu_tot / (integration_time * rsu_standard)
+        em_target = -ex_target / (0.00036 * ex_target - 1)
+        rsu, _ = eem_regional_integration(blank, ex_range_blank, em_range_blank,
+                                          ex_min=ex_target, ex_max=ex_target, em_min=em_target - bandwidth / 2,
+                                          em_max=em_target + bandwidth / 2)
+        # elif bandwidth_type == 'wavenumber':
+        #     em_target = -ex / (0.00036 * ex - 1)
+        #     wn_target = 10000000 / em_target
+        #     em_lb = 10000000 / (wn_target + bandwidth)
+        #     em_rb = 10000000 / (wn_target - bandwidth)
+        #     rsu, _ = eem_regional_integration(blank, ex_range_blank, em_range_blank,
+        #                                       ex_min=ex, ex_max=ex, em_min=em_lb, em_max=em_rb)
+    rsu_final = rsu / (integration_time * rsu_standard)
     intensity_normalized = intensity / rsu_final
     return intensity_normalized, rsu_final
 
@@ -564,8 +553,8 @@ def eem_ife_correction(intensity, ex_range_eem, em_range_eem, absorbance, ex_ran
     em_range_eem: np.ndarray (1d)
         The emission wavelengths of EEM.
     absorbance: np.ndarray
-        The absorbance. If this function is called alone, an array of shape (i, ) should be passed, where i is the
-        length of the absorbance spectrum. If this function is called with process_eem_stack(), an array of shape (n, i)
+        The absorbance. If this function is called by itself, an array of shape (i, ) should be passed, where i is the
+        length of the absorbance spectrum. If this function is called by process_eem_stack(), an array of shape (n, i)
         should be passed, where n is the number samples, and i is the length of the absorbance spectrum.
     ex_range_abs: np.ndarray (1d)
         The excitation wavelengths of absorbance.
@@ -614,9 +603,17 @@ def eem_regional_integration(intensity, ex_range, em_range, ex_min, ex_max, em_m
     avg_regional_intensity:
         The average fluorescence intensity in the region.
     """
-    intensity_cut, em_range_cut, ex_range_cut = eem_cutting(intensity, ex_range, em_range,
-                                                            em_min_new=em_min, em_max_new=em_max,
-                                                            ex_min_new=ex_min, ex_max_new=ex_max)
+
+    ex_range_interpolated = np.sort(np.unique(np.concatenate([ex_range, [ex_min, ex_max]])))
+    print(ex_range_interpolated)
+    em_range_interpolated = np.sort(np.unique(np.concatenate([em_range, [em_min, em_max]])))
+    print(em_range_interpolated)
+    intensity_interpolated = eem_interpolation(intensity, ex_range, em_range, ex_range_interpolated,
+                                               em_range_interpolated, method='linear')
+    intensity_cut, ex_range_cut, em_range_cut = eem_cutting(intensity_interpolated, ex_range_interpolated,
+                                                            em_range_interpolated,
+                                                            ex_min_new=ex_min, ex_max_new=ex_max,
+                                                            em_min_new=ex_min, em_max_new=em_max)
     if intensity_cut.shape[0] == 1:
         integration = np.trapz(intensity_cut, em_range_cut, axis=1)
     elif intensity_cut.shape[1] == 1:
@@ -656,12 +653,9 @@ def eem_interpolation(intensity, ex_range_old, em_range_old, ex_range_new, em_ra
     intensity_interpolated: np.ndarray
         The interpolated EEM.
     """
-    interp = RegularGridInterpolator((ex_range_old[::-1], em_range_old), intensity, method=method)
-    x, y = np.meshgrid(em_range_new, ex_range_new[::-1])
-    xx = x.flatten()
-    yy = y.flatten()
-    coordinates_new = np.concatenate([xx[:, np.newaxis], yy[:, np.newaxis]], axis=1)
-    intensity_interpolated = interp(coordinates_new).reshape(ex_range_new.shape[0], em_range_new.shape[0])
+    interp = RegularGridInterpolator((ex_range_old[::-1], em_range_old), intensity, method=method, bounds_error=False)
+    x, y = np.meshgrid(ex_range_new[::-1], em_range_new, indexing='ij')
+    intensity_interpolated = interp((x, y)).reshape(ex_range_new.shape[0], em_range_new.shape[0])
     return intensity_interpolated
 
 
@@ -1097,7 +1091,7 @@ class EEMDataset:
         return eem_stack_imputed
 
     def raman_normalization(self, ex_range_blank=None, em_range_blank=None, blank=None, from_blank=False,
-                            integration_time=1, ex_lb=349, ex_ub=351, bandwidth_type='wavenumber', bandwidth=1800,
+                            integration_time=1, ex_target=350, bandwidth=1800,
                             rsu_standard=20000, manual_rsu=1, copy=True):
         """
         Normalize the EEM using the Raman scattering unit (RSU) given directly or calculated from a blank EEM.
@@ -1105,7 +1099,7 @@ class EEMDataset:
 
         Parameters
         ----------
-        blank, ex_range_blank, em_range_blank, from_blank, integration_time, ex_lb, ex_ub, bandwidth, bandwidth_type
+        blank, ex_range_blank, em_range_blank, from_blank, integration_time, ex_target, bandwidth
             See eempy.eem_processing.eem_raman_normalization
         rsu_standard, manual_rsu
             See eempy.eem_processing.eem_raman_normalization
@@ -1119,9 +1113,8 @@ class EEMDataset:
         """
         eem_stack_normalized = process_eem_stack(self.eem_stack, eem_raman_normalization, ex_range_blank=ex_range_blank,
                                                  em_range_blank=em_range_blank, blank=blank, from_blank=from_blank,
-                                                 integration_time=integration_time, ex_lb=ex_lb, ex_ub=ex_ub,
-                                                 bandwidth_type=bandwidth_type, bandwidth=bandwidth,
-                                                 rsu_standard=rsu_standard, manual_rsu=manual_rsu)
+                                                 integration_time=integration_time, ex_target=ex_target,
+                                                 bandwidth=bandwidth, rsu_standard=rsu_standard, manual_rsu=manual_rsu)
         if not copy:
             self.eem_stack = eem_stack_normalized
         return eem_stack_normalized

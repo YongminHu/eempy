@@ -100,7 +100,7 @@ def read_eem(file_path: str, index_pos: Union[Tuple, List, None] = None, data_fo
     return intensity, ex_range, em_range, index
 
 
-def read_eem_dataset(folder_path: str, mandatory_keywords, optional_keywords, data_format: str = 'aqualog',
+def read_eem_dataset(folder_path: str, mandatory_keywords=None, optional_keywords=None, data_format: str = 'aqualog',
                      index_pos: Union[Tuple, List, None] = None,
                      custom_filename_list: Union[Tuple, List, None] = None, wavelength_alignment=False,
                      interpolation_method: str = 'linear'):
@@ -143,7 +143,7 @@ def read_eem_dataset(folder_path: str, mandatory_keywords, optional_keywords, da
     indexes: list or None
         The list of EEM indexes (if index_pos is specified).
     """
-    if not custom_filename_list:
+    if custom_filename_list is None:
         filename_list = get_filelist(folder_path, mandatory_keywords, optional_keywords)
     else:
         filename_list = custom_filename_list
@@ -243,11 +243,44 @@ def read_abs(file_path, index_pos: Union[Tuple, List, None] = None, data_format=
     return absorbance, ex_range, index
 
 
-def read_abs_dataset(folder_path, kw: str = 'ABS.dat', data_format: str = 'aqualog',
+def read_abs_dataset(folder_path, mandatory_keywords='ABS', optional_keywords=[], data_format: str = 'aqualog',
                      index_pos: Union[Tuple, List, None] = None, custom_filename_list: Union[Tuple, List, None] = None,
                      wavelength_alignment=False, interpolation_method: str = 'linear'):
+    """
+
+    Parameters
+    ----------
+    folder_path: str
+        The path to the folder containing absorbance files.
+    mandatory_keywords: list of str
+        Keywords for searching absorbance files whose filenames contain all the mandatory keywords.
+    optional_keywords: list of str
+        Keywords for searching absorbance files whose filenames contain any of the optional keywords.
+    data_format: str
+        Specify the type of absorbance data format.
+    index_pos: str
+        The starting and ending positions of index in filenames. For example, if you want to read the index "2024_01_01"
+        from the file with the name "ABS_2024_01_01_PEM.dat", a tuple (4, 13) should be passed to this parameter.
+    custom_filename_list: list or None
+        If a list is passed, only the absorbance files whose filenames are specified in the list will be imported.
+    wavelength_alignment: bool
+        Align the ex range of the absorbance files. This is useful if the absorbance are measured with different ex
+        range. Note that ex will be aligned according to the ex ranges with the smallest intervals among all the
+        imported absorbance files.
+    interpolation_method: str
+        The interpolation method used for aligning ex. It is only useful if wavelength_alignment=True.
+
+    Returns
+    -------
+    abs_stack: np.ndarray (2d)
+        A stack of imported absorbance files.
+    ex_range: np.ndarray (1d)
+        The excitation wavelengths
+    indexes: list or None
+        The list of absorbance file indexes (if index_pos is specified).
+    """
     if not custom_filename_list:
-        filename_list = get_filelist(folder_path, kw)
+        filename_list = get_filelist(folder_path, mandatory_keywords, optional_keywords)
     else:
         filename_list = custom_filename_list
     path = folder_path + '/' + filename_list[0]
@@ -275,7 +308,7 @@ def read_abs_dataset(folder_path, kw: str = 'ABS.dat', data_format: str = 'aqual
                 abs_stack = abs_stack_new
         abs_stack[n, :] = absorbance
         ex_range_old = ex_range
-    return abs_stack, ex_range, filename_list, indexes
+    return abs_stack, ex_range, indexes
 
 
 def read_reference_from_text(filepath):

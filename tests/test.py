@@ -2,25 +2,30 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from eempy.read_data import read_eem_dataset, read_abs_dataset, read_eem
-from eempy.eem_processing import EEMDataset, PARAFAC, eem_raman_normalization, eem_cutting
+from eempy.eem_processing import EEMDataset, PARAFAC, eem_raman_normalization, eem_cutting, eem_interpolation
 from eempy.plot import plot_eem, plot_loadings
 import re
 
 
-eem_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240313_BSA_Ecoli/B1S12024-03-11-Ecoli_BSA_50to50+0gLKIPEM.dat'
-blank_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240313_BSA_Ecoli/B1S12024-03-11-Ecoli_BSA_50to50+0gLKIBEM.dat'
-folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240313_BSA_Ecoli'
+# eem_path = 'C:/PhD/Fluo-detect/_data/_greywater/20220929_GW_C3/B1S12022-09-29-09-10-M3PEM.dat'
+# blank_path = 'C:/PhD/Fluo-detect/_data/_greywater/20220929_GW_C3/B1S12022-09-29-09-10-M3BEM.dat'
+# folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/20220929_GW_C3'
 
-intensity, ex_range, em_range, index = read_eem(eem_path)
-blank, ex_range_blank, em_range_blank, _ = read_eem(blank_path)
+# intensity, ex_range, em_range, index = read_eem(eem_path)
+# blank, ex_range_blank, em_range_blank, _ = read_eem(blank_path)
+# em_range_blank_interpolated = np.unique(np.sort(np.concatenate([em_range_blank, [399.5, 401.5]])))
+# blank_interpolated = eem_interpolation(blank, ex_range_blank, em_range_blank, ex_range_blank, em_range_blank_interpolated)
+# plot_eem(blank, ex_range_blank, em_range_blank)
+# plot_eem(blank_interpolated, ex_range_blank, em_range_blank_interpolated)
 # blank_cut, ex_range_cut, em_range_cut = eem_cutting(intensity, ex_range, em_range, 349, 351, 400, 410)
 # print(blank_cut)
 
-intensity_n, _ = eem_raman_normalization(intensity, from_blank=True, blank=blank, ex_range_blank=ex_range_blank,
-                                         em_range_blank=em_range_blank)
+# intensity_n, _ = eem_raman_normalization(intensity, from_blank=True, blank=blank, ex_range_blank=ex_range_blank,
+#                                          em_range_blank=em_range_blank, ex_lb=349, ex_ub=351, bandwidth=5)
 
 #
-# eem_stack, ex_range, em_range, index = read_eem_dataset(folder_path=folder_path, index_pos=(0, -7), kw='SYM.dat')
+eem_stack, ex_range, em_range, index = read_eem_dataset(folder_path=folder_path, index_pos=(0, -7),
+                                                        mandatory_keywords='.dat')
 # abs_stack, ex_range_abs, _, _ = read_abs_dataset(folder_path=folder_path, index_pos=(0, -7))
 #
 # fig = plot_eem(eem_stack[0], ex_range, em_range, auto_intensity_range=False, vmin=0, vmax=2000, plot_tool='plotly',
@@ -104,5 +109,3 @@ intensity_n, _ = eem_raman_normalization(intensity, from_blank=True, blank=blank
 #                      auto_intensity_range=False, figure_size=(15, 7), n_cbar_ticks=4)
 #             plt.title(key +  k)
 #             plt.show()
-
-

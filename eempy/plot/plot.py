@@ -169,7 +169,7 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
         return fig
 
 
-def plot_abs(absorbance, ex_range, xmax=0.05, ex_range_display=(200, 800), plot_tool='matplotlib', display=True,
+def plot_abs(absorbance, ex_range, xmax=0.1, ex_range_display=(200, 800), plot_tool='matplotlib', display=True,
              figure_size=(6.5, 2)):
     """
     Plot the UV absorbance data
