@@ -7,9 +7,9 @@ from eempy.plot import plot_eem, plot_loadings
 import re
 
 
-# eem_path = 'C:/PhD/Fluo-detect/_data/_greywater/20220929_GW_C3/B1S12022-09-29-09-10-M3PEM.dat'
-# blank_path = 'C:/PhD/Fluo-detect/_data/_greywater/20220929_GW_C3/B1S12022-09-29-09-10-M3BEM.dat'
-# folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/20220929_GW_C3'
+eem_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240215_NEST_M3/B1S12024-02-12-M3+0gLKIPEM.dat'
+blank_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240215_NEST_M3/B1S12024-02-12-M3+0gLKIBEM.dat'
+folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240215_NEST_M3/'
 
 # intensity, ex_range, em_range, index = read_eem(eem_path)
 # blank, ex_range_blank, em_range_blank, _ = read_eem(blank_path)
@@ -24,8 +24,18 @@ import re
 #                                          em_range_blank=em_range_blank, ex_lb=349, ex_ub=351, bandwidth=5)
 
 #
-eem_stack, ex_range, em_range, index = read_eem_dataset(folder_path=folder_path, index_pos=(0, -7),
-                                                        mandatory_keywords='.dat')
+eem_stack, ex_range, em_range, index = read_eem_dataset(folder_path=folder_path,
+                                                        mandatory_keywords='PEM.dat')
+blank_stack, ex_range_blank, em_range_blank, _ = read_eem_dataset(folder_path=folder_path,
+                                                        mandatory_keywords='BEM.dat')
+# intensity_normalized, rsu_final = eem_raman_normalization(eem_stack[0], blank_stack[0], ex_range_blank, em_range_blank, from_blank=True)
+
+eem_dataset = EEMDataset(eem_stack, ex_range, em_range)
+eem_dataset.raman_normalization(ex_range_blank, em_range_blank, blank_stack, from_blank=True, copy=False)
+print(eem_dataset.eem_stack.shape)
+
+
+
 # abs_stack, ex_range_abs, _, _ = read_abs_dataset(folder_path=folder_path, index_pos=(0, -7))
 #
 # fig = plot_eem(eem_stack[0], ex_range, em_range, auto_intensity_range=False, vmin=0, vmax=2000, plot_tool='plotly',

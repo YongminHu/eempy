@@ -734,11 +734,16 @@ card_built_eem_dataset = dbc.Card(
                 ]),
                 dbc.Row([
                     dbc.Col(
-                        dbc.Button([dbc.Spinner(size="sm", id='build-eem-dataset-spinner'), " Build"],
+                        dbc.Button([dbc.Spinner(size="sm", id='build-eem-dataset-spinner')],
                                    id='build-eem-dataset', className='col-5')
                     )
                 ]),
-                dbc.Row([html.Div(id='info-eem-dataset')])
+                dbc.Row([
+                    dbc.Col(
+                        html.Div(id='info-eem-dataset', style={'width': '300px'}),
+                        width={"size": 12, "offset": 0}
+                    )
+                ])
             ], gap=2)
         ]
     ),
@@ -1009,46 +1014,47 @@ def update_eem_plot(folder_path, file_name_sample,
 @app.callback(
     [
         Output('eem-dataset', 'data'),
-        Output('info-eem-dataset', 'children')
+        Output('info-eem-dataset', 'children'),
+        Output('build-eem-dataset-spinner', 'children')
     ],
     [
         Input('build-eem-dataset', 'n_clicks'),
-        Input('folder-path-input', 'value'),
-        Input('eem-data-format', 'value'),
-        Input('abs-data-format', 'value'),
-        Input('filename-sample-dropdown', 'options'),
-        Input('file-keyword-sample', 'value'),
-        Input('file-keyword-absorbance', 'value'),
-        Input('file-keyword-blank', 'value'),
-        Input('index-pos-left', 'value'),
-        Input('index-pos-right', 'value'),
-        Input('timestamp-checkbox', 'value'),
-        Input('timestamp-format', 'value'),
-        Input('excitation-wavelength-min', 'value'),
-        Input('excitation-wavelength-max', 'value'),
-        Input('emission-wavelength-min', 'value'),
-        Input('emission-wavelength-max', 'value'),
-        Input('su-button', 'value'),
-        Input('su-excitation', 'value'),
-        Input('su-emission-width', 'value'),
-        Input('su-normalization-factor', 'value'),
-        Input('ife-button', 'value'),
-        Input('ife-methods', 'value'),
-        Input('raman-button', 'value'),
-        Input('raman-methods', 'value'),
-        Input('raman-dimension', 'value'),
-        Input('raman-width', 'value'),
-        Input('rayleigh-button', 'value'),
-        Input('rayleigh-o1-methods', 'value'),
-        Input('rayleigh-o1-dimension', 'value'),
-        Input('rayleigh-o1-width', 'value'),
-        Input('rayleigh-o2-methods', 'value'),
-        Input('rayleigh-o2-dimension', 'value'),
-        Input('rayleigh-o2-width', 'value'),
-        Input('gaussian-button', 'value'),
-        Input('gaussian-sigma', 'value'),
-        Input('gaussian-truncate', 'value'),
-        Input('align-exem', 'value'),
+        State('folder-path-input', 'value'),
+        State('eem-data-format', 'value'),
+        State('abs-data-format', 'value'),
+        State('filename-sample-dropdown', 'options'),
+        State('file-keyword-sample', 'value'),
+        State('file-keyword-absorbance', 'value'),
+        State('file-keyword-blank', 'value'),
+        State('index-pos-left', 'value'),
+        State('index-pos-right', 'value'),
+        State('timestamp-checkbox', 'value'),
+        State('timestamp-format', 'value'),
+        State('excitation-wavelength-min', 'value'),
+        State('excitation-wavelength-max', 'value'),
+        State('emission-wavelength-min', 'value'),
+        State('emission-wavelength-max', 'value'),
+        State('su-button', 'value'),
+        State('su-excitation', 'value'),
+        State('su-emission-width', 'value'),
+        State('su-normalization-factor', 'value'),
+        State('ife-button', 'value'),
+        State('ife-methods', 'value'),
+        State('raman-button', 'value'),
+        State('raman-methods', 'value'),
+        State('raman-dimension', 'value'),
+        State('raman-width', 'value'),
+        State('rayleigh-button', 'value'),
+        State('rayleigh-o1-methods', 'value'),
+        State('rayleigh-o1-dimension', 'value'),
+        State('rayleigh-o1-width', 'value'),
+        State('rayleigh-o2-methods', 'value'),
+        State('rayleigh-o2-dimension', 'value'),
+        State('rayleigh-o2-width', 'value'),
+        State('gaussian-button', 'value'),
+        State('gaussian-sigma', 'value'),
+        State('gaussian-truncate', 'value'),
+        State('align-exem', 'value'),
     ]
 )
 def on_build_eem_dataset(n_clicks,
@@ -1066,7 +1072,8 @@ def on_build_eem_dataset(n_clicks,
                          align_exem
                          ):
     if n_clicks is None:
-        raise PreventUpdate
+        return None, None, "Build"
+        # raise PreventUpdate
     try:
         file_name_sample_options = file_name_sample_options or {}
         file_name_sample_list = [f['value'] for f in file_name_sample_options]
@@ -1076,14 +1083,17 @@ def on_build_eem_dataset(n_clicks,
             custom_filename_list=file_name_sample_list, wavelength_alignment=True if align_exem else False,
             interpolation_method='linear'
         )
-    except IndexError:
+    except (UnboundLocalError, IndexError) as e:
         error_message = ("EEM dataset building failed. Are there any non-EEM files mixed in? "
                          "Please check data folder path and file searching keywords settings. If the Ex/Em "
                          "ranges/intervals are different between EEMs, make sure you select the 'Align Ex/Em' checkbox.")
-        return None, error_message
+        return None, error_message, "Build"
 
-    steps_track = ("EEM dataset building successful! \n Number of EEMs: {n} \n Pre-processing steps implemented: "
-                   "\n ").format(n=eem_stack.shape[0])
+    steps_track = [
+        "EEM dataset building successful!\n",
+        "Number of EEMs: {n}\n".format(n=eem_stack.shape[0]),
+        "Pre-processing steps implemented:\n",
+    ]
     # EEM cutting
     eem_dataset = EEMDataset(eem_stack, ex_range, em_range, index=indexes)
     if any([np.min(ex_range) != ex_range_min, np.max(ex_range) != ex_range_max,
@@ -1107,7 +1117,7 @@ def on_build_eem_dataset(n_clicks,
                                         ex_target=su_ex,
                                         bandwidth=su_em_width, rsu_standard=su_normalization_factor,
                                         copy=False)
-        steps_track += "- Raman scattering unit normalization \n"
+        steps_track += ["- Raman scattering unit normalization\n"]
 
     # IFE correction
     if file_kw_abs and ife:
@@ -1119,13 +1129,13 @@ def on_build_eem_dataset(n_clicks,
             interpolation_method='linear'
         )
         eem_dataset.ife_correction(absorbance=abs_stack, ex_range_abs=ex_range_abs, copy=False)
-        steps_track += "- Inner filter effect correction \n"
+        steps_track += ["- Inner filter effect correction\n"]
 
     # Raman scattering removal
     if all([raman, raman_method, raman_width, raman_dimension]):
         eem_dataset.raman_scattering_removal(interpolation_method=raman_method, width=raman_width,
                                              interpolation_dimension=raman_dimension, copy=False)
-        steps_track += "- Raman scattering removal \n"
+        steps_track += ["- Raman scattering removal\n"]
 
     # Rayleigh scattering removal
     if all([rayleigh, rayleigh_o1_method, rayleigh_o1_dimension, rayleigh_o1_width,
@@ -1136,20 +1146,173 @@ def on_build_eem_dataset(n_clicks,
                                                 interpolation_dimension_o1=rayleigh_o1_dimension,
                                                 interpolation_dimension_o2=rayleigh_o2_dimension,
                                                 copy=False)
-        steps_track += "- Rayleigh scattering removal \n"
+        steps_track += ["- Rayleigh scattering removal\n"]
 
     # Gaussian smoothing
     if all([gaussian, gaussian_sigma, gaussian_truncate]):
         eem_dataset.gaussian_filter(sigma=gaussian_sigma, truncate=gaussian_truncate)
-        steps_track += "- Gaussian smoothing \n"
+        steps_track += ["- Gaussian smoothing\n"]
 
-    notation = ("EEM dataset building successful! \n Number of EEMs: {n} \n Pre-processing steps implemented: "
-                "\n ").format(n=eem_stack.shape[0])
+    # convert eem_dataset to a dict whose values are json serializable
+    eem_dataset_json_dict = {
+        'eem_stack': eem_dataset.eem_stack.tolist(),
+        'ex_range': eem_dataset.ex_range.tolist(),
+        'em_range': eem_dataset.em_range.tolist(),
+        'index': eem_dataset.index,
+        'ref': eem_dataset.ref.tolist() if eem_dataset.ref is not None else None
+    }
 
-    return {'eem_dataset': eem_dataset}, notation
+    return eem_dataset_json_dict, dbc.Label(steps_track, style={'whiteSpace': 'pre'}), "Build"
 
 
 # -----------Page #2: PARAFAC--------------
+
+#   -------------Setting up the dbc cards
+
+#       -----------------dbc card for PARAFAC parameters
+card_parafac_param = dbc.Card(
+    dbc.CardBody(
+        [
+            html.H5("Parameters selection", className="card-title"),
+            html.Div(
+                [
+                    dbc.Stack(
+                        [
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Rank"), width={'size': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='parafac-rank', type='number',
+                                                  placeholder='i.e., number of components',
+                                                  style={'width': '300px', 'height': '30px'}, debounce=True),
+                                        width={'size': 2}
+                                    ),
+
+                                    dbc.Col(
+                                        dbc.Label("Initialization"), width={'size': 1, 'offset': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Dropdown(options=[
+                                            {'label': 'SVD', 'value': 'svd'},
+                                            {'label': 'random', 'value': 'random'}
+                                        ],
+                                            value='svd', style={'width': '300px'}, id='parafac-init-method'
+                                        ),
+                                        width={'size': 2}
+                                    ),
+
+                                    dbc.Col(
+                                        dbc.Checklist(options=[{'label': html.Span("Apply non-negativity constraint",
+                                                                                   style={"font-size": 15,
+                                                                                          "padding-left": 10}),
+                                                                'value': 'non_negative'}],
+                                                      id='parafac-nn-checkbox', switch=True, value='non_negative'),
+                                        width={"size": 2, 'offset': 1}
+                                    ),
+                                ]
+                            ),
+                            dbc.Row([
+                                dbc.Col(
+                                    dbc.Label("Additional analysis"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Dropdown(
+                                        options=[
+                                            {'label': 'Core consistency', 'value': 'core_consistency'},
+                                            {'label': 'Leverage', 'value': 'leverage'},
+                                            {'label': 'Split-half validation', 'value': 'split_half'},
+                                        ],
+                                        multi=True, id='parafac-additional-analysis'),
+                                    width={'size': 4}
+                                ),
+                            ]),
+                            dbc.Row(
+                                dbc.Col(
+                                    dbc.Button([dbc.Spinner(size="sm", id='parafac-spinner')],
+                                               id='build-parafac-model', className='col-2')
+                                )
+                            )
+                        ],
+                        gap=2
+                    )
+
+                ]
+            ),
+        ]
+    ),
+    className='w-100'
+)
+
+#   -------------Layout of page #2
+
+page2 = html.Div([
+    dbc.Stack(
+        [
+            dbc.Row(
+                card_parafac_param
+            ),
+            dbc.Row(
+                dcc.Tabs(
+                    id='parafac-results',
+                    children=[
+                        dcc.Tab(label='Excitation loadings', id='parafac-excitation-loadings'),
+                        dcc.Tab(label='Emission loadings', id='parafac-emission-loadings'),
+                        dcc.Tab(label='Components', id='parafac-components'),
+                        dcc.Tab(label='Scores', id='parafac-scores'),
+                        dcc.Tab(label='Fmax', id='parafac-fmax'),
+                        dcc.Tab(label='Core consistency', id='parafac-core-consistency'),
+                        dcc.Tab(label='Leverage', id='parafac-leverage'),
+                        dcc.Tab(label='Split-half validation', id='parafac-split-half'),
+                    ],
+                    vertical=True
+                )
+            ),
+        ],
+        gap=3
+    )
+
+])
+
+#   -------------Callbacks of page #2
+
+@app.callback(
+    [
+        Output('parafac-excitation-loadings', 'children'),
+        Output('parafac-emission-loadings', 'children'),
+        Output('parafac-components', 'children'),
+        Output('parafac-scores', 'children'),
+        Output('parafac-fmax', 'children'),
+        Output('parafac-core-consistency', 'children'),
+        Output('parafac-leverage', 'children'),
+        Output('parafac-split-half', 'children'),
+        Output('parafac-spinner', 'children'),
+        Output('parafac-model', 'data'),
+    ],
+    [
+        Input('build-parafac-model', 'n_clicks'),
+        State('parafac-rank', 'value'),
+        State('parafac-init-method', 'value'),
+        State('parafa-nn-checkbox', 'value'),
+        State('parafa-additional-analysis', 'value'),
+        State('eem-dataset', 'data')
+    ]
+)
+def on_build_parafac_model():
+    return
+
+
+# -----------Page #3: K-PARAFACs--------------
+
+#   -------------Setting up the dbc cards
+
+#   -------------Layout of page #2
+
+#   -------------Callbacks of page #2
+
+
+# -----------Page #4: NMF--------------
 
 #   -------------Setting up the dbc cards
 
@@ -1160,73 +1323,6 @@ def on_build_eem_dataset(n_clicks,
 
 # -----------Setup the sidebar-----------------
 
-# the style arguments for the sidebar. We use position:fixed and a fixed width
-SIDEBAR_STYLE = {
-    "position": "fixed",
-    "top": 0,
-    "left": 0,
-    "bottom": 0,
-    "width": "16rem",
-    "padding": "2rem 1rem",
-    "background-color": "#f8f9fa",
-}
-
-# the styles for the main content position it to the right of the sidebar and
-# add some padding.
-CONTENT_STYLE = {
-    "margin-left": "18rem",
-    "margin-right": "2rem",
-    "padding": "2rem 1rem",
-}
-
-sidebar = html.Div(
-    [
-        html.H2("eempy-vis", className="display-5"),
-        html.Hr(),
-        html.P(
-            "A interactive python toolkit for EEM analysis", className="lead"
-        ),
-        dbc.Tabs(
-            id='tabs-content',
-            children=[
-                dbc.Tab(label='Homepage', tab_id='homepage', children=html.P('Homepage')),
-                dbc.Tab(label='EEM pre-processing', tab_id='eem-pre-processing', children=[page1]),
-                dbc.Tab(label='PARAFAC', tab_id='parafac', children=html.P('PARAFAC')),
-                dbc.Tab(label='K-PARAFACs', tab_id='k-parafacs', children=html.P('K-PARAFAC')),
-            ],
-            active_tab="homepage",
-            persistence=True,
-            persistence_type='session'
-        ),
-    ],
-    style=SIDEBAR_STYLE,
-)
-
-# @app.callback(Output('store-eem-pre-processing', 'data'),
-#               Input('su-excitation', 'value'),
-#               State('store-eem-pre-processing', 'data'),)
-# def on_parameters_record(su_excitation, data):
-#     data = data or {'su-excitation': None}
-#     if data['su-excitation'] == 350:
-#         raise PreventUpdate
-#     else:
-#         data['su-excitation'] = su_excitation
-#         return data
-#
-#
-# @app.callback(Output('su-excitation', 'value'),
-#               Input('store-eem-pre-processing', 'data'))
-# def on_parameters_retrieve(data):
-#     if data is None:
-#         raise PreventUpdate
-#     elif data['su-excitation'] is None:
-#         raise PreventUpdate
-#     elif data['su-excitation'] == 350:
-#         raise PreventUpdate
-#     else:
-#         return data['su-excitation']
-
-# content = html.Div(id="page-content", style=CONTENT_STYLE)
 content = html.Div(
     [
         html.H2("eempy-vis", className="display-5"),
@@ -1239,7 +1335,7 @@ content = html.Div(
             children=[
                 dcc.Tab(label='Homepage', id='homepage', children=html.P('Homepage')),
                 dcc.Tab(label='EEM pre-processing', id='eem-pre-processing', children=html.P(page1)),
-                dcc.Tab(label='PARAFAC', id='parafac', children=html.P('PARAFAC')),
+                dcc.Tab(label='PARAFAC', id='parafac', children=html.P(page2)),
                 dcc.Tab(label='K-PARAFACs', id='k-parafacs', children=html.P('K-PARAFAC')),
             ],
             # value="homepage",
@@ -1254,45 +1350,13 @@ def serve_layout():
     return html.Div([
         dcc.Store(id='pre-processed-eem'),
         dcc.Store(id='eem-dataset'),
-        dcc.Location(id="url"),
+        dcc.Store(id='parafac-model'),
+        dcc.Store(id='k-parafacs-model'),
+        dcc.Store(id='nmf-model'),
         content])
 
 
 app.layout = serve_layout
-
-# @app.callback(Output('page-content', 'children'),
-#               Input('tabs-content', 'active_tab'))
-# def render_page_content(tab):
-#     if tab == 'homepage':
-#         return html.P("This is the content of the home page!")
-#     elif tab == "eem-pre-processing":
-#         return page1
-#     elif tab == "parafac":
-#         return html.P("Oh cool, this is page 2!")
-#     elif tab == "k-parafacs":
-#         return html.P("Oh cool, this is page 3!")
-
-
-# @app.callback(Output("page-content", "children"), [Input("url", "pathname")])
-# def render_page_content(pathname):
-#     if pathname == "/":
-#         return html.P("This is the content of the home page!")
-#     elif pathname == "/eem-pre-processing":
-#         return page1
-#     elif pathname == "/parafac":
-#         return html.P("Oh cool, this is page 2!")
-#     elif pathname == "/k-parafacs":
-#         return html.P("Oh cool, this is page 3!")
-#     # If the user tries to reach a different page, return a 404 message
-#     return html.Div(
-#         [
-#             html.H1("404: Not found", className="text-danger"),
-#             html.Hr(),
-#             html.P(f"The pathname {pathname} was not recognised..."),
-#         ],
-#         className="p-3 bg-light rounded-3",
-#     )
-
 
 if __name__ == '__main__':
     app.run_server(debug=True)

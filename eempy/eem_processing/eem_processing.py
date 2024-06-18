@@ -12,6 +12,7 @@ import numpy as np
 import itertools
 import string
 import warnings
+import json
 from math import sqrt
 from sklearn.metrics import mean_squared_error, explained_variance_score, r2_score
 # from sklearn.ensemble import IsolationForest
@@ -54,7 +55,7 @@ def process_eem_stack(eem_stack, f, **kwargs):
         The processed EEM stack.
     other_outputs: tuple, optional
         If the EEM processing function have more than 1 returns, the rest of the returns will be stored in a tuple,
-        where each element is the return of EEM processing function applied on one EEM.
+        where each element is the return of EEM processing function applied to every EEM.
     """
     processed_eem_stack = []
     other_outputs = []
@@ -605,9 +606,7 @@ def eem_regional_integration(intensity, ex_range, em_range, ex_min, ex_max, em_m
     """
 
     ex_range_interpolated = np.sort(np.unique(np.concatenate([ex_range, [ex_min, ex_max]])))
-    print(ex_range_interpolated)
     em_range_interpolated = np.sort(np.unique(np.concatenate([em_range, [em_min, em_max]])))
-    print(em_range_interpolated)
     intensity_interpolated = eem_interpolation(intensity, ex_range, em_range, ex_range_interpolated,
                                                em_range_interpolated, method='linear')
     intensity_cut, ex_range_cut, em_range_cut = eem_cutting(intensity_interpolated, ex_range_interpolated,
@@ -810,6 +809,12 @@ class EEMDataset:
         self.ref = ref
         self.index = index
         self.extent = (self.em_range.min(), self.em_range.max(), self.ex_range.min(), self.ex_range.max())
+
+    def to_json_serializable(self):
+        self.eem_stack = self.eem_stack.tolist()
+        self.ex_range = self.ex_range.tolist()
+        self.em_range = self.em_range.tolist()
+        self.ref = self.ref.tolist() if self.ref else None
 
     # --------------------EEM dataset features--------------------
     def zscore(self):
@@ -1031,9 +1036,11 @@ class EEMDataset:
         eem_stack_masked: np.ndarray
             The masked EEM.
         """
-        eem_stack_masked, _ = process_eem_stack(self.eem_stack, eem_region_masking, ex_range=self.ex_range,
-                                                em_range=self.em_range, ex_min=ex_min, ex_max=ex_max, em_min=em_min,
-                                                em_max=em_max, fill_value=fill_value)
+        eem_stack_masked, _ = process_eem_stack(
+            self.eem_stack, eem_region_masking, ex_range=self.ex_range,
+            em_range=self.em_range, ex_min=ex_min, ex_max=ex_max, em_min=em_min,
+            em_max=em_max, fill_value=fill_value
+        )
         if not copy:
             self.eem_stack = eem_stack_masked
         return eem_stack_masked
@@ -1058,10 +1065,12 @@ class EEMDataset:
         em_range_cut:np.ndarray
             The cut em wavelengths.
         """
-        eem_stack_cut, new_ranges = process_eem_stack(self.eem_stack, eem_cutting, ex_range_old=self.ex_range,
-                                                      em_range_old=self.em_range,
-                                                      ex_min_new=ex_min, ex_max_new=ex_max, em_min_new=em_min,
-                                                      em_max_new=em_max)
+        eem_stack_cut, new_ranges = process_eem_stack(
+            self.eem_stack, eem_cutting, ex_range_old=self.ex_range,
+            em_range_old=self.em_range,
+            ex_min_new=ex_min, ex_max_new=ex_max, em_min_new=em_min,
+            em_max_new=em_max
+        )
         if not copy:
             self.eem_stack = eem_stack_cut
             self.ex_range = new_ranges[0][0]
@@ -1091,7 +1100,7 @@ class EEMDataset:
         return eem_stack_imputed
 
     def raman_normalization(self, ex_range_blank=None, em_range_blank=None, blank=None, from_blank=False,
-                            integration_time=1, ex_target=350, bandwidth=1800,
+                            integration_time=1, ex_target=350, bandwidth=5,
                             rsu_standard=20000, manual_rsu=1, copy=True):
         """
         Normalize the EEM using the Raman scattering unit (RSU) given directly or calculated from a blank EEM.
@@ -1111,13 +1120,15 @@ class EEMDataset:
         eem_stack_normalized: np.ndarray
             The normalized EEM.
         """
-        eem_stack_normalized = process_eem_stack(self.eem_stack, eem_raman_normalization, ex_range_blank=ex_range_blank,
-                                                 em_range_blank=em_range_blank, blank=blank, from_blank=from_blank,
-                                                 integration_time=integration_time, ex_target=ex_target,
-                                                 bandwidth=bandwidth, rsu_standard=rsu_standard, manual_rsu=manual_rsu)
+        eem_stack_normalized, rsu = process_eem_stack(
+            self.eem_stack, eem_raman_normalization, ex_range_blank=ex_range_blank,
+            em_range_blank=em_range_blank, blank=blank, from_blank=from_blank,
+            integration_time=integration_time, ex_target=ex_target,
+            bandwidth=bandwidth, rsu_standard=rsu_standard, manual_rsu=manual_rsu
+        )
         if not copy:
             self.eem_stack = eem_stack_normalized
-        return eem_stack_normalized
+        return eem_stack_normalized, rsu
 
     def tf_normalization(self, copy=True):
         """
@@ -1156,10 +1167,12 @@ class EEMDataset:
         eem_stack_masked: np.ndarray
             The EEM with Raman scattering interpolated.
         """
-        eem_stack_masked, _ = process_eem_stack(self.eem_stack, eem_raman_scattering_removal, ex_range=self.ex_range,
-                                                em_range=self.em_range, width=width,
-                                                interpolation_method=interpolation_method,
-                                                interpolation_dimension=interpolation_dimension)
+        eem_stack_masked, _ = process_eem_stack(
+            self.eem_stack, eem_raman_scattering_removal, ex_range=self.ex_range,
+            em_range=self.em_range, width=width,
+            interpolation_method=interpolation_method,
+            interpolation_dimension=interpolation_dimension
+        )
         if not copy:
             self.eem_stack = eem_stack_masked
         return eem_stack_masked
@@ -1182,24 +1195,26 @@ class EEMDataset:
         eem_stack_masked: np.ndarray
             The EEM with Rayleigh scattering interpolated.
         """
-        eem_stack_masked, _ = process_eem_stack(self.eem_stack, eem_rayleigh_scattering_removal, ex_range=self.ex_range,
-                                                em_range=self.em_range, width_o1=width_o1,
-                                                width_o2=width_o2,
-                                                interpolation_dimension_o1=interpolation_dimension_o1,
-                                                interpolation_dimension_o2=interpolation_dimension_o2,
-                                                interpolation_method_o1=interpolation_method_o1,
-                                                interpolation_method_o2=interpolation_method_o2)
+        eem_stack_masked, _ = process_eem_stack(
+            self.eem_stack, eem_rayleigh_scattering_removal, ex_range=self.ex_range,
+            em_range=self.em_range, width_o1=width_o1,
+            width_o2=width_o2,
+            interpolation_dimension_o1=interpolation_dimension_o1,
+            interpolation_dimension_o2=interpolation_dimension_o2,
+            interpolation_method_o1=interpolation_method_o1,
+            interpolation_method_o2=interpolation_method_o2
+        )
         if not copy:
             self.eem_stack = eem_stack_masked
         return eem_stack_masked
 
-    def ife_correction(self, absorbance, ex_range_abs, cuvette_length=1, copy=True):
+    def ife_correction(self, absorbance, ex_range_abs, copy=True):
         """
         Correct the inner filter effect (IFE).
 
         Parameters
         ----------
-        absorbance, ex_range_abs, cuvette_length:
+        absorbance, ex_range_abs:
             See eempy.eem_processing.eem_ife_correction
         copy: bool
             if False, overwrite the EEMDataset object with the processed EEMs.
@@ -1209,9 +1224,11 @@ class EEMDataset:
         eem_stack_corrected: np.ndarray
             The corrected EEM.
         """
-        eem_stack_corrected = process_eem_stack(self.eem_stack, eem_ife_correction, ex_range_eem=self.ex_range,
-                                                em_range_eem=self.em_range, absorbance=absorbance,
-                                                ex_range_abs=ex_range_abs, cuvette_length=cuvette_length)
+        eem_stack_corrected = process_eem_stack(
+            self.eem_stack, eem_ife_correction, ex_range_eem=self.ex_range,
+            em_range_eem=self.em_range, absorbance=absorbance,
+            ex_range_abs=ex_range_abs
+        )
         if not copy:
             self.eem_stack = eem_stack_corrected
         return eem_stack_corrected
@@ -1234,9 +1251,11 @@ class EEMDataset:
         eem_stack_interpolated: np.ndarray
             The interpolated EEM.
         """
-        eem_stack_interpolated = process_eem_stack(self.eem_stack, eem_interpolation, ex_range_old=self.ex_range,
-                                                   em_range_old=self.em_range, ex_range_new=ex_range_new,
-                                                   em_range_new=em_range_new, method=method)
+        eem_stack_interpolated = process_eem_stack(
+            self.eem_stack, eem_interpolation, ex_range_old=self.ex_range,
+            em_range_old=self.em_range, ex_range_new=ex_range_new,
+            em_range_new=em_range_new, method=method
+        )
         if not copy:
             self.eem_stack = eem_stack_interpolated
             self.ex_range = ex_range_new
