@@ -1294,12 +1294,13 @@ page2 = html.Div([
         Input('build-parafac-model', 'n_clicks'),
         State('parafac-rank', 'value'),
         State('parafac-init-method', 'value'),
-        State('parafa-nn-checkbox', 'value'),
-        State('parafa-additional-analysis', 'value'),
+        State('parafac-nn-checkbox', 'value'),
+        State('parafac-additional-analysis', 'value'),
         State('eem-dataset', 'data')
     ]
 )
-def on_build_parafac_model():
+def on_build_parafac_model(n_clicks, rank, init, nn, additional_analysis, eem_dataset):
+
     return
 
 
