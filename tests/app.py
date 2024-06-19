@@ -1,11 +1,7 @@
-import os
 import dash
-import datetime
-import numpy as np
 from dash import dcc, html
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
-import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from dash.exceptions import PreventUpdate
@@ -13,7 +9,7 @@ from dash.exceptions import PreventUpdate
 from eempy.plot import plot_eem, plot_abs
 from eempy.read_data import *
 from eempy.eem_processing import *
-from eempy.utils import string_to_list
+from eempy.utils import str_string_to_list, num_string_to_list
 from matplotlib import pyplot as plt
 
 app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
@@ -820,9 +816,9 @@ def update_filenames(folder_path, kw_mandatory, kw_optional, kw_sample):
         try:
             filenames = [f for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
             if kw_mandatory or kw_optional or kw_sample:
-                kw_mandatory = string_to_list(kw_mandatory) if kw_mandatory else []
-                kw_optional = string_to_list(kw_optional) if kw_optional else []
-                kw_sample = string_to_list(kw_sample) if kw_sample else []
+                kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
+                kw_optional = str_string_to_list(kw_optional) if kw_optional else []
+                kw_sample = str_string_to_list(kw_sample) if kw_sample else []
                 filenames = get_filelist(folder_path, kw_mandatory + kw_sample, kw_optional)
             options = [{'label': f, 'value': f} for f in filenames]
             return options, None
@@ -1077,11 +1073,13 @@ def on_build_eem_dataset(n_clicks,
     try:
         file_name_sample_options = file_name_sample_options or {}
         file_name_sample_list = [f['value'] for f in file_name_sample_options]
+        if index_pos_left and index_pos_right:
+            index = (index_pos_left, index_pos_right)
         eem_stack, ex_range, em_range, indexes = read_eem_dataset(
             folder_path=folder_path, mandatory_keywords=[], optional_keywords=[], data_format=eem_data_format,
             index_pos=(index_pos_left, index_pos_right) if index_pos_left and index_pos_right else None,
             custom_filename_list=file_name_sample_list, wavelength_alignment=True if align_exem else False,
-            interpolation_method='linear'
+            interpolation_method='linear', as_timestamp='timestamp' in timestamp, timestamp_format=timestamp_format
         )
     except (UnboundLocalError, IndexError) as e:
         error_message = ("EEM dataset building failed. Are there any non-EEM files mixed in? "
@@ -1181,13 +1179,13 @@ card_parafac_param = dbc.Card(
                             dbc.Row(
                                 [
                                     dbc.Col(
-                                        dbc.Label("Rank"), width={'size': 1}
+                                        dbc.Label("Num. components"), width={'size': 1}
                                     ),
                                     dbc.Col(
-                                        dcc.Input(id='parafac-rank', type='number',
-                                                  placeholder='i.e., number of components',
-                                                  style={'width': '300px', 'height': '30px'}, debounce=True),
-                                        width={'size': 2}
+                                        dcc.Input(id='parafac-rank', type='text',
+                                                  placeholder='Multiple values possible, e.g., 3, 4',
+                                                  style={'width': '250px', 'height': '30px'}, debounce=True),
+                                        width={'size': 1}
                                     ),
 
                                     dbc.Col(
@@ -1198,9 +1196,9 @@ card_parafac_param = dbc.Card(
                                             {'label': 'SVD', 'value': 'svd'},
                                             {'label': 'random', 'value': 'random'}
                                         ],
-                                            value='svd', style={'width': '300px'}, id='parafac-init-method'
+                                            value='svd', style={'width': '150px'}, id='parafac-init-method'
                                         ),
-                                        width={'size': 2}
+                                        width={'size': 1}
                                     ),
 
                                     dbc.Col(
@@ -1208,14 +1206,26 @@ card_parafac_param = dbc.Card(
                                                                                    style={"font-size": 15,
                                                                                           "padding-left": 10}),
                                                                 'value': 'non_negative'}],
-                                                      id='parafac-nn-checkbox', switch=True, value='non_negative'),
+                                                      id='parafac-nn-checkbox', switch=True, value='non_negative'
+                                                      ),
                                         width={"size": 2, 'offset': 1}
+                                    ),
+
+                                    dbc.Col(
+                                        dbc.Checklist(options=[{'label': html.Span("Normalize EEM by total fluorescence",
+                                                                                   style={"font-size": 15,
+                                                                                          "padding-left": 10}),
+                                                                'value': 'tf_normalization'}],
+                                                      id='parafac-tf-checkbox', switch=True,
+                                                      value='tf_normalization'
+                                                      ),
+                                        width={"size": 3, 'offset': 1}
                                     ),
                                 ]
                             ),
                             dbc.Row([
                                 dbc.Col(
-                                    dbc.Label("Additional analysis"), width={'size': 1}
+                                    dbc.Label("Validations"), width={'size': 1}
                                 ),
                                 dbc.Col(
                                     dcc.Dropdown(
@@ -1224,7 +1234,7 @@ card_parafac_param = dbc.Card(
                                             {'label': 'Leverage', 'value': 'leverage'},
                                             {'label': 'Split-half validation', 'value': 'split_half'},
                                         ],
-                                        multi=True, id='parafac-additional-analysis'),
+                                        multi=True, id='parafac-validations'),
                                     width={'size': 4}
                                 ),
                             ]),
@@ -1295,11 +1305,30 @@ page2 = html.Div([
         State('parafac-rank', 'value'),
         State('parafac-init-method', 'value'),
         State('parafac-nn-checkbox', 'value'),
-        State('parafac-additional-analysis', 'value'),
+        State('parafac-tf-checkbox', 'value'),
+        State('parafac-validations', 'value'),
         State('eem-dataset', 'data')
     ]
 )
-def on_build_parafac_model(n_clicks, rank, init, nn, additional_analysis, eem_dataset):
+def on_build_parafac_model(n_clicks, rank, init, nn, tf, validations, eem_dataset_dict):
+    if n_clicks is None:
+        raise PreventUpdate
+    eem_dataset = EEMDataset(
+        eem_stack=eem_dataset_dict['eem_stack'],
+        ex_range=eem_dataset_dict['ex_range'],
+        em_range=eem_dataset_dict['em_range'],
+        index=eem_dataset_dict['index']
+                             )
+
+
+
+    # if additional_analysis:
+    #     ranks = np.arange(1, rank + 3)
+    #     parafac_rs = {}
+    #     for r in ranks:
+    #         parafac_r = PARAFAC(rank=rank, init=init, non_negativity='non_negative' in nn,
+    #                             tf_normalization='tf_normalization' in tf, sort_em=True)
+    #         parafac_rs[r] = parafac_r
 
     return
 
