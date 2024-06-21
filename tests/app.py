@@ -2,15 +2,13 @@ import dash
 from dash import dcc, html
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
-import plotly.express as px
 import plotly.graph_objects as go
 from dash.exceptions import PreventUpdate
 
-from eempy.plot import plot_eem, plot_abs
+from eempy.plot import plot_eem, plot_abs, plot_loadings
 from eempy.read_data import *
 from eempy.eem_processing import *
 from eempy.utils import str_string_to_list, num_string_to_list
-from matplotlib import pyplot as plt
 
 app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
 
@@ -1079,7 +1077,7 @@ def on_build_eem_dataset(n_clicks,
             folder_path=folder_path, mandatory_keywords=[], optional_keywords=[], data_format=eem_data_format,
             index_pos=(index_pos_left, index_pos_right) if index_pos_left and index_pos_right else None,
             custom_filename_list=file_name_sample_list, wavelength_alignment=True if align_exem else False,
-            interpolation_method='linear', as_timestamp='timestamp' in timestamp, timestamp_format=timestamp_format
+            interpolation_method='linear', as_timestamp=True if timestamp else False, timestamp_format=timestamp_format
         )
     except (UnboundLocalError, IndexError) as e:
         error_message = ("EEM dataset building failed. Are there any non-EEM files mixed in? "
@@ -1212,13 +1210,14 @@ card_parafac_param = dbc.Card(
                                     ),
 
                                     dbc.Col(
-                                        dbc.Checklist(options=[{'label': html.Span("Normalize EEM by total fluorescence",
-                                                                                   style={"font-size": 15,
-                                                                                          "padding-left": 10}),
-                                                                'value': 'tf_normalization'}],
-                                                      id='parafac-tf-checkbox', switch=True,
-                                                      value='tf_normalization'
-                                                      ),
+                                        dbc.Checklist(
+                                            options=[{'label': html.Span("Normalize EEM by total fluorescence",
+                                                                         style={"font-size": 15,
+                                                                                "padding-left": 10}),
+                                                      'value': 'tf_normalization'}],
+                                            id='parafac-tf-checkbox', switch=True,
+                                            value='tf_normalization'
+                                            ),
                                         width={"size": 3, 'offset': 1}
                                     ),
                                 ]
@@ -1267,8 +1266,7 @@ page2 = html.Div([
                 dcc.Tabs(
                     id='parafac-results',
                     children=[
-                        dcc.Tab(label='Excitation loadings', id='parafac-excitation-loadings'),
-                        dcc.Tab(label='Emission loadings', id='parafac-emission-loadings'),
+                        dcc.Tab(label='ex/em loadings', id='parafac-loadings'),
                         dcc.Tab(label='Components', id='parafac-components'),
                         dcc.Tab(label='Scores', id='parafac-scores'),
                         dcc.Tab(label='Fmax', id='parafac-fmax'),
@@ -1285,12 +1283,12 @@ page2 = html.Div([
 
 ])
 
+
 #   -------------Callbacks of page #2
 
 @app.callback(
     [
-        Output('parafac-excitation-loadings', 'children'),
-        Output('parafac-emission-loadings', 'children'),
+        Output('parafac-loadings', 'children'),
         Output('parafac-components', 'children'),
         Output('parafac-scores', 'children'),
         Output('parafac-fmax', 'children'),
@@ -1298,7 +1296,7 @@ page2 = html.Div([
         Output('parafac-leverage', 'children'),
         Output('parafac-split-half', 'children'),
         Output('parafac-spinner', 'children'),
-        Output('parafac-model', 'data'),
+        Output('parafac-models', 'data'),
     ],
     [
         Input('build-parafac-model', 'n_clicks'),
@@ -1312,25 +1310,65 @@ page2 = html.Div([
 )
 def on_build_parafac_model(n_clicks, rank, init, nn, tf, validations, eem_dataset_dict):
     if n_clicks is None:
-        raise PreventUpdate
+        return None, None, None, None, None, None, None, 'build model', None
     eem_dataset = EEMDataset(
-        eem_stack=eem_dataset_dict['eem_stack'],
-        ex_range=eem_dataset_dict['ex_range'],
-        em_range=eem_dataset_dict['em_range'],
+        eem_stack=np.array(eem_dataset_dict['eem_stack']),
+        ex_range=np.array(eem_dataset_dict['ex_range']),
+        em_range=np.array(eem_dataset_dict['em_range']),
         index=eem_dataset_dict['index']
-                             )
+    )
+    rank_list = num_string_to_list(rank)
+    parafacs_dict = {}
+    loadings_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
 
+    for r in rank_list:
+        parafac_r = PARAFAC(rank=r, init=init, non_negativity=True if nn else False,
+                            tf_normalization=True if tf else False,
+                            sort_em=True)
+        parafac_r.fit(eem_dataset)
+        parafacs_dict[r] = parafac_r
+        loadings_tabs.children[0].children.append(
+            dcc.Tab(label=f'{r}-component',
+                    children=[
+                        dbc.Row(
+                            [
+                                dbc.Col(
+                                    [
+                                        dcc.Graph(figure=plot_loadings({f'{r}-component': parafac_r},
+                                                                       plot_tool='plotly',
+                                                                       display=False),
+                                                  config={'autosizable': False}
+                                                  )
+                                    ]
+                                )
+                            ]
+                        ),
+                        dbc.Row(
+                            [
+                                dbc.Col(
+                                    [
+                                        dbc.Table.from_dataframe(parafac_r.ex_loadings,
+                                                                 bordered=True, hover=True, index=True)
+                                    ]
+                                ),
 
+                            ]
+                        ),
+                        dbc.Row(
+                            [
+                                dbc.Col(
+                                    [
+                                        dbc.Table.from_dataframe(parafac_r.em_loadings,
+                                                                 bordered=True, hover=True, index=True)
+                                    ]
+                                )
+                            ]
+                        )
+                    ]
+                    )
+        )
 
-    # if additional_analysis:
-    #     ranks = np.arange(1, rank + 3)
-    #     parafac_rs = {}
-    #     for r in ranks:
-    #         parafac_r = PARAFAC(rank=rank, init=init, non_negativity='non_negative' in nn,
-    #                             tf_normalization='tf_normalization' in tf, sort_em=True)
-    #         parafac_rs[r] = parafac_r
-
-    return
+    return loadings_tabs, None, None, None, None, None, None, 'build model', None
 
 
 # -----------Page #3: K-PARAFACs--------------
@@ -1358,7 +1396,7 @@ content = html.Div(
         html.H2("eempy-vis", className="display-5"),
         html.Hr(),
         html.P(
-            "An interactive python toolkit for EEM analysis", className="lead"
+            "An open-source, interactive toolkit for EEM analysis", className="lead"
         ),
         dbc.Tabs(
             id='tabs-content',
@@ -1380,13 +1418,16 @@ def serve_layout():
     return html.Div([
         dcc.Store(id='pre-processed-eem'),
         dcc.Store(id='eem-dataset'),
-        dcc.Store(id='parafac-model'),
-        dcc.Store(id='k-parafacs-model'),
-        dcc.Store(id='nmf-model'),
+        dcc.Store(id='parafac-models'),
+        dcc.Store(id='k-parafacs-models'),
+        dcc.Store(id='nmf-models'),
         content])
 
 
 app.layout = serve_layout
 
+
 if __name__ == '__main__':
     app.run_server(debug=True)
+
+

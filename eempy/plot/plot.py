@@ -210,7 +210,7 @@ def plot_abs(absorbance, ex_range, xmax=0.1, ex_range_display=(200, 800), plot_t
     elif plot_tool == 'plotly':
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=ex_range, y=absorbance, mode='lines', name='Absorbance'))
-        fig.update_layout(width=figure_size[0]*100, height=figure_size[1]*100)
+        fig.update_layout(width=figure_size[0] * 100, height=figure_size[1] * 100)
         fig.update_xaxes(title_text='Wavelength [nm]', range=ex_range_display)
         fig.update_yaxes(title_text='Absorbance [a.u.]', range=[0, xmax])
         if display:
@@ -304,7 +304,7 @@ def plot_fi_correlation(fi: pd.DataFrame, ref):
 
 
 def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()), component_labels_dict=None,
-                  plot_tool='matplotlib', display=True):
+                  n_cols=None, plot_tool='matplotlib', display=True):
     """
     Plot the excitation and emission loadings for PARAFAC models.
 
@@ -317,6 +317,8 @@ def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()
     component_labels_dict: dict or None
         A dictionary of component names for each PARAFAC model. The keys of the dict should be identical to those of the
         parafac_models_dict. The value of each key is a list of component names.
+    n_cols: int or None
+        Maximum number of subplots at each row. if None, subplots will be shown in-line.
     plot_tool: str, {'matplotlib', 'plotly'}
         Which python package to use for plotting.
     display: bool
@@ -333,21 +335,23 @@ def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()
         n_tot_components = len(set(component_labels_dict.values()))
     else:
         n_tot_components = max([m.rank for m in parafac_models_dict.values()])
-    n_rows = (n_tot_components-1)//4+1
-    n_cols = min(n_tot_components, 4)
+    n_rows = (n_tot_components - 1) // 4 + 1 if n_cols else 1
+    n_cols = min(n_tot_components, n_cols) if n_cols else n_tot_components
 
     if plot_tool == 'matplotlib':
-        fig, ax = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=(3.3*n_cols, 4*n_rows), sharey='row', sharex='col')
+        fig, ax = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=(3.3 * n_cols, 4 * n_rows), sharey='row',
+                               sharex='col')
         fig.subplots_adjust(wspace=0, hspace=10)
         for k, (model_name, model) in enumerate(parafac_models_dict.items()):
             for i in range(model.rank):
                 component_label = component_labels_dict[model_name][i] if component_labels_dict else f'C{i + 1}'
                 pos = list(set(component_labels_dict.values())).index(component_label) if component_labels_dict else i
                 if n_rows > 1:
-                    ax[pos//n_cols, pos%n_cols].plot(model.ex_range, model.ex_loadings.iloc[:, i], '--', c=colors[k])
-                    ax[pos//n_cols, pos%n_cols].plot(model.em_range, model.em_loadings.iloc[:, i], label=model_name,
-                                                     c=colors[k])
-                    ax[pos//n_cols, pos%n_cols].tick_params(labelsize=14)
+                    ax[pos // n_cols, pos % n_cols].plot(model.ex_range, model.ex_loadings.iloc[:, i], '--',
+                                                         c=colors[k])
+                    ax[pos // n_cols, pos % n_cols].plot(model.em_range, model.em_loadings.iloc[:, i], label=model_name,
+                                                         c=colors[k])
+                    ax[pos // n_cols, pos % n_cols].tick_params(labelsize=14)
                 else:
                     ax[pos].plot(model.ex_range, model.ex_loadings.iloc[:, i], '--', c=colors[k])
                     ax[pos].plot(model.em_range, model.em_loadings.iloc[:, i], label=model_name, c=colors[k])
@@ -356,11 +360,11 @@ def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()
         for j in range(n_tot_components):
             if component_labels_dict:
                 if n_rows > 1:
-                    ax[j//n_rows, j%n_cols].set_title(list(set(component_labels_dict.values()))[j], fontsize=18)
+                    ax[j // n_rows, j % n_cols].set_title(list(set(component_labels_dict.values()))[j], fontsize=18)
                 else:
                     ax[j].set_title(list(set(component_labels_dict.values()))[j], fontsize=18)
             else:
-                ax[j].set_title('C{i}'.format(i=j+1), fontsize=18)
+                ax[j].set_title('C{i}'.format(i=j + 1), fontsize=18)
             ax[j].legend(fontsize=12)
 
         leg_ax = fig.add_subplot(111)
@@ -377,28 +381,31 @@ def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()
     elif plot_tool == 'plotly':
         fig = make_subplots(rows=n_rows, cols=n_cols, shared_xaxes=True, shared_yaxes=True,
                             subplot_titles=set(component_labels_dict.values()) if component_labels_dict
-                            else [f'C{i+1}' for i in range(n_tot_components)], horizontal_spacing=0.05,
-                            vertical_spacing=0.1)
+                            else [f'C{i + 1}' for i in range(n_tot_components)], horizontal_spacing=0.1-0.008*n_cols,
+                            vertical_spacing=0.2)
 
         for k, (model_name, model) in enumerate(parafac_models_dict.items()):
             for i in range(model.rank):
                 component_label = component_labels_dict[model_name][i] if component_labels_dict else f'C{i + 1}'
                 pos = list(set(component_labels_dict.values())).index(component_label) if component_labels_dict else i
                 fig.add_trace(go.Scatter(x=model.ex_range, y=model.ex_loadings.iloc[:, i],
-                                         mode='lines', line=dict(color=colors[k], dash='dash'), showlegend=False
+                                         mode='lines', line=dict(color=colors[k], dash='dash'),
+                                         name='{model_name}-C{r}-ex'.format(model_name=model_name, r=i + 1),
+                                         showlegend=True
                                          ),
                               row=(pos // n_cols) + 1, col=(pos % n_cols) + 1)
                 fig.add_trace(go.Scatter(x=model.em_range, y=model.em_loadings.iloc[:, i],
                                          mode='lines', line=dict(color=colors[k]),
-                                         name=model_name, showlegend=True if i == 0 else False),
+                                         name='{model_name}-C{r}-em'.format(model_name=model_name, r=i + 1),
+                                         showlegend=True),
                               row=(pos // n_cols) + 1, col=(pos % n_cols) + 1)
 
         fig.update_xaxes(showline=True, linewidth=1, linecolor='black', mirror=True)
         fig.update_yaxes(showline=True, linewidth=1, linecolor='black', mirror=True)
 
         fig.update_layout(
-            legend=dict(x=0.45, y=-0.2, orientation='h', font=dict(size=16)),
-            height=400 * n_rows,
+            legend=dict(x=0, y=0.1-0.2*n_cols, orientation='h', font=dict(size=16)),
+            height=600 * n_rows,
         )
 
         fig.update_xaxes(title_text="Wavelengths")
@@ -408,5 +415,3 @@ def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()
             fig.show()
 
         return fig
-
-

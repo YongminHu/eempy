@@ -20,6 +20,6 @@ setup(
         "tlviz",
         "plotly",
         "dash",
-        "dash-bootstrap-components"
+        "dash-bootstrap-components",
     ]
 )
