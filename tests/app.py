@@ -5,7 +5,7 @@ import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 from dash.exceptions import PreventUpdate
 
-from eempy.plot import plot_eem, plot_abs, plot_loadings
+from eempy.plot import plot_eem, plot_abs, plot_loadings, plot_components
 from eempy.read_data import *
 from eempy.eem_processing import *
 from eempy.utils import str_string_to_list, num_string_to_list
@@ -1217,7 +1217,7 @@ card_parafac_param = dbc.Card(
                                                       'value': 'tf_normalization'}],
                                             id='parafac-tf-checkbox', switch=True,
                                             value='tf_normalization'
-                                            ),
+                                        ),
                                         width={"size": 3, 'offset': 1}
                                     ),
                                 ]
@@ -1273,6 +1273,35 @@ page2 = html.Div([
                         dcc.Tab(label='Core consistency', id='parafac-core-consistency'),
                         dcc.Tab(label='Leverage', id='parafac-leverage'),
                         dcc.Tab(label='Split-half validation', id='parafac-split-half'),
+                        dcc.Tab(
+                            children=[
+                                dbc.Card(
+                                    dbc.Stack(
+                                        [
+                                            html.H5("Select established model"),
+                                            dbc.Row(
+                                                [
+                                                    dbc.Col(
+                                                        dcc.Dropdown(
+                                                            options=None, id='parafac-test-model-selection'
+                                                        )
+                                                    ),
+                                                    dbc.Col(
+                                                        dbc.Button([dbc.Spinner(size="sm", id='test-parafac-spinner')],
+                                                                   id='test-parafac-model', className='col-2')
+                                                    )
+                                                ]
+                                            )
+                                        ], gap=2
+                                    ),
+                                ),
+                                dbc.Card(
+                                    children=None,
+                                    id='parafac-test-result-card'
+                                )
+                            ],
+                            label='Predict', id='parafac-predict'
+                        )
                     ],
                     vertical=True
                 )
@@ -1320,6 +1349,12 @@ def on_build_parafac_model(n_clicks, rank, init, nn, tf, validations, eem_datase
     rank_list = num_string_to_list(rank)
     parafacs_dict = {}
     loadings_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    components_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    scores_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    fmax_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    core_consistency_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    leverage_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    split_half_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
 
     for r in rank_list:
         parafac_r = PARAFAC(rank=r, init=init, non_negativity=True if nn else False,
@@ -1327,6 +1362,8 @@ def on_build_parafac_model(n_clicks, rank, init, nn, tf, validations, eem_datase
                             sort_em=True)
         parafac_r.fit(eem_dataset)
         parafacs_dict[r] = parafac_r
+
+        # ex/em loadings
         loadings_tabs.children[0].children.append(
             dcc.Tab(label=f'{r}-component',
                     children=[
@@ -1335,7 +1372,7 @@ def on_build_parafac_model(n_clicks, rank, init, nn, tf, validations, eem_datase
                                 dbc.Col(
                                     [
                                         dcc.Graph(figure=plot_loadings({f'{r}-component': parafac_r},
-                                                                       plot_tool='plotly',
+                                                                       plot_tool='plotly', n_cols=3,
                                                                        display=False),
                                                   config={'autosizable': False}
                                                   )
@@ -1348,7 +1385,9 @@ def on_build_parafac_model(n_clicks, rank, init, nn, tf, validations, eem_datase
                                 dbc.Col(
                                     [
                                         dbc.Table.from_dataframe(parafac_r.ex_loadings,
-                                                                 bordered=True, hover=True, index=True)
+                                                                 bordered=True, hover=True, index=True,
+
+                                                                 )
                                     ]
                                 ),
 
@@ -1368,7 +1407,29 @@ def on_build_parafac_model(n_clicks, rank, init, nn, tf, validations, eem_datase
                     )
         )
 
-    return loadings_tabs, None, None, None, None, None, None, 'build model', None
+        # components
+        components_tabs.children[0].children.append(
+            dcc.Tab(label=f'{r}-component',
+                    children=[
+                        dbc.Row(
+                            [
+                                dbc.Col(
+                                    [
+                                        dcc.Graph(figure=plot_components(parafac_r,
+                                                                         n_cols=3,
+                                                                         display=False
+                                                                         ),
+                                                  config={'autosizable': False}
+                                                  )
+                                    ]
+                                )
+                            ]
+                        ),
+                    ]
+                    )
+        )
+
+    return loadings_tabs, components_tabs, None, None, None, None, None, 'build model', None
 
 
 # -----------Page #3: K-PARAFACs--------------
@@ -1426,8 +1487,5 @@ def serve_layout():
 
 app.layout = serve_layout
 
-
 if __name__ == '__main__':
     app.run_server(debug=True)
-
-

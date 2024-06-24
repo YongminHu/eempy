@@ -11,6 +11,7 @@ import scipy.stats as stats
 import pandas as pd
 import math
 import plotly.graph_objects as go
+from eempy.eem_processing import PARAFAC
 from plotly.subplots import make_subplots
 from sklearn.linear_model import LinearRegression
 from matplotlib.colors import LogNorm, TABLEAU_COLORS
@@ -335,7 +336,7 @@ def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()
         n_tot_components = len(set(component_labels_dict.values()))
     else:
         n_tot_components = max([m.rank for m in parafac_models_dict.values()])
-    n_rows = (n_tot_components - 1) // 4 + 1 if n_cols else 1
+    n_rows = (n_tot_components - 1) // n_cols + 1 if n_cols else 1
     n_cols = min(n_tot_components, n_cols) if n_cols else n_tot_components
 
     if plot_tool == 'matplotlib':
@@ -379,9 +380,9 @@ def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()
         return fig, ax
 
     elif plot_tool == 'plotly':
-        fig = make_subplots(rows=n_rows, cols=n_cols, shared_xaxes=True, shared_yaxes=True,
+        fig = make_subplots(rows=n_rows, cols=n_cols, shared_xaxes=False, shared_yaxes=True,
                             subplot_titles=set(component_labels_dict.values()) if component_labels_dict
-                            else [f'C{i + 1}' for i in range(n_tot_components)], horizontal_spacing=0.1-0.008*n_cols,
+                            else [f'C{i + 1}' for i in range(n_tot_components)], horizontal_spacing=0.2-0.008*n_cols,
                             vertical_spacing=0.2)
 
         for k, (model_name, model) in enumerate(parafac_models_dict.items()):
@@ -404,8 +405,9 @@ def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()
         fig.update_yaxes(showline=True, linewidth=1, linecolor='black', mirror=True)
 
         fig.update_layout(
-            legend=dict(x=0, y=0.1-0.2*n_cols, orientation='h', font=dict(size=16)),
-            height=600 * n_rows,
+            legend=dict(x=0, y=0-0.1*n_cols, orientation='h', font=dict(size=16)),
+            height=400 * n_rows,
+            width=400*n_cols
         )
 
         fig.update_xaxes(title_text="Wavelengths")
@@ -415,3 +417,43 @@ def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()
             fig.show()
 
         return fig
+
+
+def plot_components(parafac_model: PARAFAC, component_labels=None, n_cols=None, rotate=False, display=True):
+    component_stack = parafac_model.component_stack
+    n_tot_components = component_stack.shape[0]
+    ex_range = parafac_model.ex_range
+    em_range = parafac_model.em_range
+    n_rows = (n_tot_components - 1) // n_cols + 1 if n_cols else 1
+    n_cols = min(n_tot_components, n_cols) if n_cols else n_tot_components
+    fig = make_subplots(rows=n_rows, cols=n_cols,
+                        subplot_titles=component_labels if component_labels
+                        else [f'C{i + 1}' for i in range(n_tot_components)], horizontal_spacing=0.2 - 0.008 * n_cols,
+                        vertical_spacing=0.5)
+    for i in range(n_tot_components):
+        component = component_stack[i]
+        trace = go.Heatmap(
+            z=component if not rotate else np.flipud(np.fliplr(component.T)),
+            x=em_range if not rotate else ex_range,
+            y=ex_range[::-1] if not rotate else em_range[::-1],
+            colorscale="jet",
+            zmin=0 if not np.min(component) >= -1e-3 else None,
+            zmax=None,
+            colorbar=dict(title="intensity (a.u.)", tickfont=dict(size=16)),
+            colorbar_x=0.33*((i % n_cols) + 1)
+        )
+        fig.add_trace(trace, row = (i // n_cols) + 1, col=(i % n_cols) + 1)
+
+    fig.update_layout(
+        legend=dict(x=0, y=0.1-0.2*n_cols, orientation='h', font=dict(size=16)),
+        height=400 * n_rows,
+        width=400 * n_cols
+    )
+
+    fig.update_xaxes(title_text='Emission wavelength [nm]' if not rotate else 'Excitation wavelength [nm]')
+    fig.update_yaxes(title_text='Excitation wavelength [nm]' if not rotate else 'Emission wavelength [nm]')
+
+    if display:
+        fig.show()
+
+    return fig
