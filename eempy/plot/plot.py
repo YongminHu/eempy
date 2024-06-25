@@ -20,7 +20,7 @@ from matplotlib.colors import LogNorm, TABLEAU_COLORS
 def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_type='linear', vmin=0, vmax=10000,
              n_cbar_ticks=5, cbar=True, cmap='jet', figure_size=(10, 7), label_font_size=18,
              cbar_label="Intensity (a.u.)", cbar_font_size=16, fix_aspect_ratio=True, rotate=False,
-             plot_tool='matplotlib', display=True, title=None):
+             plot_tool='matplotlib', display=True, title=None, title_font_size=20):
     """
     plot EEM or EEM-like data.
 
@@ -70,6 +70,7 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
     fig：matplotlib figure
     ax: array of matplotlib axes (if plot_tool == 'matplotlib')
     """
+
     if plot_tool == 'matplotlib':
         fig, ax = plt.subplots(figsize=figure_size)
         font = {'size': label_font_size}
@@ -108,7 +109,7 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
             cbar.ax.tick_params(labelsize=cbar_font_size)
 
         if title:
-            ax.set_title(title, pad=20, fontsize=20)
+            ax.set_title(title, pad=20, fontsize=title_font_size)
 
         if display:
             plt.show()
@@ -118,6 +119,8 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
     elif plot_tool == 'plotly':
 
         if scale_type == 'log':
+            vmin = np.min(intensity) if (not auto_intensity_range and vmax is None) else vmin
+            vmax = np.max(intensity) if (not auto_intensity_range and vmin is None) else vmax
             t_cbar = np.logspace(math.log(vmin), math.log(vmax), n_cbar_ticks)
             trace = go.Heatmap(z=np.log10(intensity) if not rotate else np.flipud(np.fliplr(np.log10(intensity).T)),
                                x=em_range if not rotate else ex_range,
@@ -138,7 +141,7 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
                 zmin=vmin if not auto_intensity_range else None,
                 zmax=vmax if not auto_intensity_range else None,
                 colorbar=dict(title=cbar_label,
-                              tickvals=np.linspace(vmin, vmax, n_cbar_ticks),
+                              # tickvals=np.linspace(vmin, vmax, n_cbar_ticks),
                               tickfont=dict(size=cbar_font_size)) if not auto_intensity_range
                 else dict(title=cbar_label,
                           tickfont=dict(size=cbar_font_size)))
@@ -149,19 +152,25 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
             xaxis=dict(title=xaxis_title),
             yaxis=dict(title=yaxis_title),
             font=dict(size=label_font_size),
-            width=figure_size[0] * 100,
-            height=figure_size[1] * 100,
+            # width=figure_size[0] * 100,
+            # height=figure_size[1] * 100 if not fix_aspect_ratio else None,
             yaxis_scaleanchor="x" if fix_aspect_ratio else None,
-            autosize=True
+            # yaxis_constrain = 'domain',
+            xaxis_constrain = 'domain',
+            autosize=True,
+            xaxis_showgrid=False,
+            yaxis_showgrid=False,
+            xaxis_zeroline=False,
+            yaxis_zeroline=False
         )
 
         fig = go.Figure(data=[trace], layout=layout)
 
         if title:
             fig.update_layout(
-                title=dict(text=title, font=dict(size=20)),
+                title=dict(text=title, font=dict(size=title_font_size)),
                 margin=dict(pad=0.5),
-                title_x=0.5
+                title_x=0.45
             )
 
         if display:
@@ -405,7 +414,7 @@ def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()
         fig.update_yaxes(showline=True, linewidth=1, linecolor='black', mirror=True)
 
         fig.update_layout(
-            legend=dict(x=0, y=0-0.1*n_cols, orientation='h', font=dict(size=16)),
+            legend=dict(x=0, y=-0.2, orientation='h', font=dict(size=16)),
             height=400 * n_rows,
             width=400*n_cols
         )
@@ -436,11 +445,9 @@ def plot_components(parafac_model: PARAFAC, component_labels=None, n_cols=None, 
             z=component if not rotate else np.flipud(np.fliplr(component.T)),
             x=em_range if not rotate else ex_range,
             y=ex_range[::-1] if not rotate else em_range[::-1],
-            colorscale="jet",
+            coloraxis="coloraxis",
             zmin=0 if not np.min(component) >= -1e-3 else None,
             zmax=None,
-            colorbar=dict(title="intensity (a.u.)", tickfont=dict(size=16)),
-            colorbar_x=0.33*((i % n_cols) + 1)
         )
         fig.add_trace(trace, row = (i // n_cols) + 1, col=(i % n_cols) + 1)
 
@@ -449,7 +456,7 @@ def plot_components(parafac_model: PARAFAC, component_labels=None, n_cols=None, 
         height=400 * n_rows,
         width=400 * n_cols
     )
-
+    fig.update_layout(coloraxis = {'colorscale': 'jet'}, coloraxis_colorbar=dict(title="intensity (a.u.)"))
     fig.update_xaxes(title_text='Emission wavelength [nm]' if not rotate else 'Excitation wavelength [nm]')
     fig.update_yaxes(title_text='Excitation wavelength [nm]' if not rotate else 'Emission wavelength [nm]')
 

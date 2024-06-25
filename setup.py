@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='eem-python',
-    python_requires='>3.12',
+    python_requires='>3.9',
     version='1.3',
     author='Yongmin Hu',
     author_email='yongminhu@outlook.com',

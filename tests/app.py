@@ -189,8 +189,24 @@ card_eem_display = dbc.Card(
                         justify='end'
                     ),
 
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                dbc.Checklist(options=[
+                                    {'label': 'Fix aspect ratio to 1', 'value': 'aspect_one'},
+                                    {'label': 'Rotate EEM', 'value': 'rotate'},
+                                ],
+                                    id='eem-graph-options', inline=True, value=[]),
+                                width={"size": 12}
+                            )
+                        ]
+                    ),
+
                     dbc.Row([
-                        dcc.Graph(id='eem-graph'),
+                        dcc.Graph(id='eem-graph',
+                                  # config={'responsive': 'auto'},
+                                  style={'width': '700', 'height': '900'}
+                                  ),
                     ]),
 
                     dbc.Row([
@@ -837,6 +853,7 @@ def update_filenames(folder_path, kw_mandatory, kw_optional, kw_sample):
     [
         Input('folder-path-input', 'value'),
         Input('filename-sample-dropdown', 'value'),
+        Input('eem-graph-options', 'value'),
         Input('eem-data-format', 'value'),
         Input('abs-data-format', 'value'),
         Input('file-keyword-sample', 'value'),
@@ -872,7 +889,7 @@ def update_filenames(folder_path, kw_mandatory, kw_optional, kw_sample):
         Input('gaussian-truncate', 'value'),
     ]
 )
-def update_eem_plot(folder_path, file_name_sample,
+def update_eem_plot(folder_path, file_name_sample, graph_options,
                     eem_data_format, abs_data_format,
                     file_kw_sample, file_kw_abs, file_kw_blank,
                     index_pos_left, index_pos_right,
@@ -941,7 +958,9 @@ def update_eem_plot(folder_path, file_name_sample,
         # Plot EEM
         fig_eem = plot_eem(intensity, ex_range, em_range, vmin=intensity_range_min, vmax=intensity_range_max,
                            plot_tool='plotly', display=False, auto_intensity_range=False, cmap='jet',
-                           figure_size=(7, 4), fix_aspect_ratio=True, title=index if index else None)
+                           fix_aspect_ratio=True if 'aspect_one' in graph_options else False,
+                           rotate=True if 'rotate' in graph_options else False,
+                           title=index if index else None)
 
         # Plot absorbance (if exists)
     except:
@@ -952,8 +971,8 @@ def update_eem_plot(folder_path, file_name_sample,
         fig_eem.update_layout(
             xaxis=dict(showline=False, linewidth=0, linecolor="black"),
             yaxis=dict(showline=False, linewidth=0, linecolor="black"),
-            width=700,
-            height=400,
+            # width=700,
+            # height=400,
             margin=dict(l=50, r=50, b=50, t=50),
         )
 
@@ -1303,6 +1322,9 @@ page2 = html.Div([
                             label='Predict', id='parafac-predict'
                         )
                     ],
+                    # style={
+                    #     'width': '100%'
+                    # },
                     vertical=True
                 )
             ),
@@ -1329,6 +1351,7 @@ page2 = html.Div([
     ],
     [
         Input('build-parafac-model', 'n_clicks'),
+        State('eem-graph-options', 'value'),
         State('parafac-rank', 'value'),
         State('parafac-init-method', 'value'),
         State('parafac-nn-checkbox', 'value'),
@@ -1337,7 +1360,7 @@ page2 = html.Div([
         State('eem-dataset', 'data')
     ]
 )
-def on_build_parafac_model(n_clicks, rank, init, nn, tf, validations, eem_dataset_dict):
+def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, validations, eem_dataset_dict):
     if n_clicks is None:
         return None, None, None, None, None, None, None, 'build model', None
     eem_dataset = EEMDataset(
@@ -1363,70 +1386,236 @@ def on_build_parafac_model(n_clicks, rank, init, nn, tf, validations, eem_datase
         parafac_r.fit(eem_dataset)
         parafacs_dict[r] = parafac_r
 
+        # for component graphs, determine the layout according to the number of components
+        n_rows = (r - 1) // 3 + 1
+
         # ex/em loadings
         loadings_tabs.children[0].children.append(
             dcc.Tab(label=f'{r}-component',
                     children=[
-                        dbc.Row(
-                            [
-                                dbc.Col(
-                                    [
-                                        dcc.Graph(figure=plot_loadings({f'{r}-component': parafac_r},
-                                                                       plot_tool='plotly', n_cols=3,
-                                                                       display=False),
-                                                  config={'autosizable': False}
-                                                  )
-                                    ]
-                                )
-                            ]
-                        ),
-                        dbc.Row(
-                            [
-                                dbc.Col(
-                                    [
-                                        dbc.Table.from_dataframe(parafac_r.ex_loadings,
-                                                                 bordered=True, hover=True, index=True,
+                        html.Div([
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dcc.Graph(figure=plot_loadings({f'{r}-component': parafac_r},
+                                                                           plot_tool='plotly', n_cols=3,
+                                                                           display=False),
+                                                      config={'autosizable': False}
+                                                      )
+                                        ]
+                                    )
+                                ]
+                            ),
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dbc.Table.from_dataframe(parafac_r.ex_loadings,
+                                                                     bordered=True, hover=True, index=True,
 
-                                                                 )
-                                    ]
-                                ),
+                                                                     )
+                                        ]
+                                    ),
 
-                            ]
-                        ),
-                        dbc.Row(
-                            [
-                                dbc.Col(
-                                    [
-                                        dbc.Table.from_dataframe(parafac_r.em_loadings,
-                                                                 bordered=True, hover=True, index=True)
-                                    ]
-                                )
-                            ]
-                        )
-                    ]
+                                ]
+                            ),
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dbc.Table.from_dataframe(parafac_r.em_loadings,
+                                                                     bordered=True, hover=True, index=True)
+                                        ]
+                                    )
+                                ]
+                            )
+                        ]),
+                    ],
+                    style={'padding': '0', 'line-width': '100%'},
+                    selected_style={'padding': '0', 'line-width': '100%'}
                     )
         )
 
-        # components
         components_tabs.children[0].children.append(
+            # html.Div(
             dcc.Tab(label=f'{r}-component',
-                    children=[
-                        dbc.Row(
-                            [
-                                dbc.Col(
-                                    [
-                                        dcc.Graph(figure=plot_components(parafac_r,
-                                                                         n_cols=3,
-                                                                         display=False
-                                                                         ),
-                                                  config={'autosizable': False}
-                                                  )
-                                    ]
-                                )
-                            ]
-                        ),
-                    ]
-                    )
+                    children=
+                    html.Div(
+                        [
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dcc.Graph(
+                                            figure=plot_eem(parafac_r.component_stack[3 * i],
+                                                            ex_range=parafac_r.ex_range,
+                                                            em_range=parafac_r.em_range,
+                                                            vmin=0 if np.min(
+                                                                parafac_r.component_stack[3 * i]) > -1e-3 else None,
+                                                            vmax=None,
+                                                            auto_intensity_range=False,
+                                                            plot_tool='plotly',
+                                                            display=False,
+                                                            figure_size=(5, 3.5),
+                                                            label_font_size=14,
+                                                            cbar_font_size=12,
+                                                            title_font_size=16,
+                                                            title=f'C{3 * i + 1}',
+                                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options else False,
+                                                            rotate=True if 'rotate' in eem_graph_options else False,
+                                                            ) if 3 * i + 1 <= r else go.Figure(
+                                                layout={'width': 400, 'height': 300}),
+                                            style={'width': '500', 'height': '500'}
+                                        ),
+                                        width={'size': 4},
+                                    ),
+
+                                    dbc.Col(
+                                        dcc.Graph(
+                                            figure=plot_eem(parafac_r.component_stack[3 * i + 1],
+                                                            ex_range=parafac_r.ex_range,
+                                                            em_range=parafac_r.em_range,
+                                                            vmin=0 if np.min(
+                                                                parafac_r.component_stack[
+                                                                    3 * i + 1]) > -1e-3 else None,
+                                                            vmax=None,
+                                                            auto_intensity_range=False,
+                                                            plot_tool='plotly',
+                                                            display=False,
+                                                            figure_size=(5, 3.5),
+                                                            label_font_size=14,
+                                                            cbar_font_size=12,
+                                                            title_font_size=16,
+                                                            title=f'C{3 * i + 2}',
+                                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options else False,
+                                                            rotate=True if 'rotate' in eem_graph_options else False,
+                                                            ) if 3 * i + 2 <= r else go.Figure(
+                                                layout={'width': 400, 'height': 300}),
+                                            style={'width': '500', 'height': '500'}
+                                        ),
+                                        width={'size': 4},
+                                    ),
+
+                                    dbc.Col(
+                                        dcc.Graph(
+                                            figure=plot_eem(parafac_r.component_stack[3 * i + 2],
+                                                            ex_range=parafac_r.ex_range,
+                                                            em_range=parafac_r.em_range,
+                                                            vmin=0 if np.min(
+                                                                parafac_r.component_stack[
+                                                                    3 * i + 2]) > -1e-3 else None,
+                                                            vmax=None,
+                                                            auto_intensity_range=False,
+                                                            plot_tool='plotly',
+                                                            display=False,
+                                                            figure_size=(5, 3.5),
+                                                            label_font_size=14,
+                                                            cbar_font_size=12,
+                                                            title_font_size=16,
+                                                            title=f'C{3 * i + 3}',
+                                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options else False,
+                                                            rotate=True if 'rotate' in eem_graph_options else False,
+                                                            ) if 3 * i + 3 <= r else go.Figure(
+                                                layout={'width': 400, 'height': 300}),
+                                            style={'width': '500', 'height': '500'}
+                                        ),
+                                        width={'size': 4},
+                                    ),
+                                ]
+                            ) for i in range(n_rows)
+                        ],
+                        style={'width': '90vw'}
+                    ),
+                    style={'padding': '0', 'line-width': '100%'},
+                    selected_style={'padding': '0', 'line-width': '100%'}
+                    ),
+            #     style={'width': '90vw'}
+            # ),
+            # dcc.Tab(label=f'{r}-component',
+            #         children=
+            #         [
+            #             dbc.Row(
+            #                 [
+            #                     dbc.Col(
+            #                         dcc.Graph(
+            #                             figure=plot_eem(parafac_r.component_stack[3 * i],
+            #                                             ex_range=parafac_r.ex_range,
+            #                                             em_range=parafac_r.em_range,
+            #                                             vmin=0 if np.min(
+            #                                                 parafac_r.component_stack[3 * i]) > -1e-3 else None,
+            #                                             vmax=None,
+            #                                             auto_intensity_range=False,
+            #                                             plot_tool='plotly',
+            #                                             display=False,
+            #                                             figure_size=(5, 3.5),
+            #                                             label_font_size=14,
+            #                                             cbar_font_size=12,
+            #                                             title_font_size=14,
+            #                                             title=f'C{3 * i + 1}',
+            #                                             fix_aspect_ratio=True if 'aspect_one' in eem_graph_options else False,
+            #                                             rotate=True if 'rotate' in eem_graph_options else False,
+            #                                             ) if 3 * i + 1 <= r else go.Figure(
+            #                                 layout={'width': 400, 'height': 300}),
+            #                             style={'width': '500', 'height': '500'}
+            #                         ),
+            #                         width={'size': 4},
+            #                     ),
+            #
+            #                     dbc.Col(
+            #                         dcc.Graph(
+            #                             figure=plot_eem(parafac_r.component_stack[3 * i + 1],
+            #                                             ex_range=parafac_r.ex_range,
+            #                                             em_range=parafac_r.em_range,
+            #                                             vmin=0 if np.min(
+            #                                                 parafac_r.component_stack[3 * i + 1]) > -1e-3 else None,
+            #                                             vmax=None,
+            #                                             auto_intensity_range=False,
+            #                                             plot_tool='plotly',
+            #                                             display=False,
+            #                                             figure_size=(5, 3.5),
+            #                                             label_font_size=14,
+            #                                             cbar_font_size=12,
+            #                                             title_font_size=14,
+            #                                             title=f'C{3 * i + 2}',
+            #                                             fix_aspect_ratio=True if 'aspect_one' in eem_graph_options else False,
+            #                                             rotate=True if 'rotate' in eem_graph_options else False,
+            #                                             ) if 3 * i + 2 <= r else go.Figure(
+            #                                 layout={'width': 400, 'height': 300}),
+            #                             style={'width': '500', 'height': '500'}
+            #                         ),
+            #                         width={'size': 4},
+            #                     ),
+            #
+            #                     dbc.Col(
+            #                         dcc.Graph(
+            #                             figure=plot_eem(parafac_r.component_stack[3 * i + 2],
+            #                                             ex_range=parafac_r.ex_range,
+            #                                             em_range=parafac_r.em_range,
+            #                                             vmin=0 if np.min(
+            #                                                 parafac_r.component_stack[3 * i + 2]) > -1e-3 else None,
+            #                                             vmax=None,
+            #                                             auto_intensity_range=False,
+            #                                             plot_tool='plotly',
+            #                                             display=False,
+            #                                             figure_size=(5, 3.5),
+            #                                             label_font_size=14,
+            #                                             cbar_font_size=12,
+            #                                             title_font_size=14,
+            #                                             title=f'C{3 * i + 3}',
+            #                                             fix_aspect_ratio=True if 'aspect_one' in eem_graph_options else False,
+            #                                             rotate=True if 'rotate' in eem_graph_options else False,
+            #                                             ) if 3 * i + 3 <= r else go.Figure(
+            #                                 layout={'width': 400, 'height': 300}),
+            #                             style={'width': '500', 'height': '400'}
+            #                         ),
+            #                         width={'size': 4},
+            #                     ),
+            #                 ]
+            #             ) for i in range(n_rows)
+            #         ],
+            #         style={'padding': '0', 'line-width': '100%'},
+            #         selected_style={'padding': '0', 'line-width': '100%'}
+            #         )
         )
 
     return loadings_tabs, components_tabs, None, None, None, None, None, 'build model', None
@@ -1468,8 +1657,8 @@ content = html.Div(
                 dcc.Tab(label='K-PARAFACs', id='k-parafacs', children=html.P('K-PARAFAC')),
             ],
             # value="homepage",
-            persistence=True,
-            persistence_type='session',
+            # persistence=True,
+            # persistence_type='session',
         ),
     ],
 )
