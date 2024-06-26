@@ -3,13 +3,13 @@ from matplotlib import pyplot as plt
 
 from eempy.read_data import read_eem_dataset, read_abs_dataset, read_eem
 from eempy.eem_processing import EEMDataset, PARAFAC, eem_raman_normalization, eem_cutting, eem_interpolation
-from eempy.plot import plot_eem, plot_loadings, plot_components
+from eempy.plot import plot_eem, plot_loadings, plot_score
 import re
 
 
 eem_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240215_NEST_M3/B1S12024-02-12-M3+0gLKIPEM.dat'
 blank_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240215_NEST_M3/B1S12024-02-12-M3+0gLKIBEM.dat'
-folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/20220929_GW_C3/'
+folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240215_NEST_M3/'
 
 # intensity, ex_range, em_range, index = read_eem(eem_path)
 # blank, ex_range_blank, em_range_blank, _ = read_eem(blank_path)
@@ -30,7 +30,7 @@ eem_stack, ex_range, em_range, index = read_eem_dataset(folder_path=folder_path,
 #                                                         mandatory_keywords='BEM.dat')
 # intensity_normalized, rsu_final = eem_raman_normalization(eem_stack[0], blank_stack[0], ex_range_blank, em_range_blank, from_blank=True)
 
-eem_dataset = EEMDataset(eem_stack[0:10], ex_range, em_range)
+eem_dataset = EEMDataset(eem_stack[0:8], ex_range, em_range)
 eem_dataset.rayleigh_scattering_removal(copy=False)
 # eem_dataset.raman_normalization(ex_range_blank, em_range_blank, blank_stack, from_blank=True, copy=False)
 # print(eem_dataset.eem_stack.shape)
@@ -38,8 +38,10 @@ eem_dataset.rayleigh_scattering_removal(copy=False)
 parafac_model = PARAFAC(rank=4)
 parafac_model.fit(eem_dataset)
 
+print(parafac_model.score.shape)
+print(parafac_model.score.iloc[:, 0])
+plot_score(parafac_model)
 
-plot_components(parafac_model, display=True, n_cols=3)
 
 # abs_stack, ex_range_abs, _, _ = read_abs_dataset(folder_path=folder_path, index_pos=(0, -7))
 #

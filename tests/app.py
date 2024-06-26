@@ -5,7 +5,7 @@ import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 from dash.exceptions import PreventUpdate
 
-from eempy.plot import plot_eem, plot_abs, plot_loadings, plot_components
+from eempy.plot import plot_eem, plot_abs, plot_loadings, plot_score, plot_fmax
 from eempy.read_data import *
 from eempy.eem_processing import *
 from eempy.utils import str_string_to_list, num_string_to_list
@@ -153,7 +153,7 @@ card_selecting_files = dbc.Card(
                             dbc.Checklist(options=[{'label': html.Span("Read index as timestamp",
                                                                        style={"font-size": 15, "padding-left": 10}),
                                                     'value': 'timestamp'}],
-                                          id='timestamp-checkbox', switch=True),
+                                          value=[], id='timestamp-checkbox', switch=True),
                             width={"size": 6}
                         ),
                         dbc.Col(
@@ -1096,7 +1096,8 @@ def on_build_eem_dataset(n_clicks,
             folder_path=folder_path, mandatory_keywords=[], optional_keywords=[], data_format=eem_data_format,
             index_pos=(index_pos_left, index_pos_right) if index_pos_left and index_pos_right else None,
             custom_filename_list=file_name_sample_list, wavelength_alignment=True if align_exem else False,
-            interpolation_method='linear', as_timestamp=True if timestamp else False, timestamp_format=timestamp_format
+            interpolation_method='linear', as_timestamp=True if 'timestamp' in timestamp else False,
+            timestamp_format=timestamp_format
         )
     except (UnboundLocalError, IndexError) as e:
         error_message = ("EEM dataset building failed. Are there any non-EEM files mixed in? "
@@ -1437,6 +1438,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
                     )
         )
 
+        # components
         components_tabs.children[0].children.append(
             # html.Div(
             dcc.Tab(label=f'{r}-component',
@@ -1531,7 +1533,81 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
                     )
         )
 
-    return loadings_tabs, components_tabs, None, None, None, None, None, 'build model', None
+        # scores
+        scores_tabs.children[0].children.append(
+            dcc.Tab(label=f'{r}-component',
+                    children=[
+                        html.Div([
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dcc.Graph(figure=plot_score(parafac_r,
+                                                                        display=False
+                                                                        ),
+                                                      config={'autosizable': False},
+                                                      style={'width': 1700, 'height': 800}
+                                                      )
+                                        ]
+                                    )
+                                ]
+                            ),
+
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dbc.Table.from_dataframe(parafac_r.score,
+                                                                     bordered=True, hover=True, index=True)
+                                        ]
+                                    )
+                                ]
+                            )
+                        ]),
+                    ],
+                    style={'padding': '0', 'line-width': '100%'},
+                    selected_style={'padding': '0', 'line-width': '100%'}
+                    )
+        )
+
+        # fmax
+        fmax_tabs.children[0].children.append(
+            dcc.Tab(label=f'{r}-component',
+                    children=[
+                        html.Div([
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dcc.Graph(figure=plot_fmax(parafac_r,
+                                                                        display=False
+                                                                        ),
+                                                      config={'autosizable': False},
+                                                      style={'width': 1700, 'height': 800}
+                                                      )
+                                        ]
+                                    )
+                                ]
+                            ),
+
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dbc.Table.from_dataframe(parafac_r.fmax,
+                                                                     bordered=True, hover=True, index=True)
+                                        ]
+                                    )
+                                ]
+                            )
+                        ]),
+                    ],
+                    style={'padding': '0', 'line-width': '100%'},
+                    selected_style={'padding': '0', 'line-width': '100%'}
+                    )
+        )
+
+    return loadings_tabs, components_tabs, scores_tabs, fmax_tabs, None, None, None, 'build model', None
 
 
 # -----------Page #3: K-PARAFACs--------------
