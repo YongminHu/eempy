@@ -9,7 +9,7 @@ import re
 
 eem_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240215_NEST_M3/B1S12024-02-12-M3+0gLKIPEM.dat'
 blank_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240215_NEST_M3/B1S12024-02-12-M3+0gLKIBEM.dat'
-folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240215_NEST_M3/'
+folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/20220929_GW_C3/'
 
 # intensity, ex_range, em_range, index = read_eem(eem_path)
 # blank, ex_range_blank, em_range_blank, _ = read_eem(blank_path)
@@ -38,9 +38,7 @@ eem_dataset.rayleigh_scattering_removal(copy=False)
 parafac_model = PARAFAC(rank=4)
 parafac_model.fit(eem_dataset)
 
-print(parafac_model.score.shape)
-print(parafac_model.score.iloc[:, 0])
-plot_score(parafac_model)
+print(parafac_model.leverage('sample'))
 
 
 # abs_stack, ex_range_abs, _, _ = read_abs_dataset(folder_path=folder_path, index_pos=(0, -7))

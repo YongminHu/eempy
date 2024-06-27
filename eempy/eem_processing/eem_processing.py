@@ -1696,7 +1696,7 @@ class PARAFAC:
 
         Returns
         -------
-        ev: float
+        cc: float
             core consistency
         """
         cc = core_consistency(self.cptensors, self.eem_stack_train)
@@ -1719,13 +1719,16 @@ class PARAFAC:
         """
         if mode == 'ex':
             lvr = compute_leverage(self.ex_loadings)
+            lvr.columns = ['leverage-ex']
         elif mode == 'em':
             lvr = compute_leverage(self.em_loadings)
+            lvr.columns = ['leverage-em']
         elif mode == 'sample':
             lvr = compute_leverage(self.score)
+            lvr.columns = ['leverage-sample']
         else:
             raise ValueError("'mode' should be 'ex' or 'em' or 'sample'.")
-        lvr.index = lvr.index.set_levels(['leverage of {m}'.format(m=mode)] * len(lvr.index.levels[0]), level=0)
+        # lvr.index = lvr.index.set_levels(['leverage of {m}'.format(m=mode)] * len(lvr.index.levels[0]), level=0)
         return lvr
 
     def sample_rmse(self):

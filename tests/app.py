@@ -3,6 +3,7 @@ from dash import dcc, html
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
+import plotly.express as px
 from dash.exceptions import PreventUpdate
 
 from eempy.plot import plot_eem, plot_abs, plot_loadings, plot_score, plot_fmax
@@ -1253,7 +1254,7 @@ card_parafac_param = dbc.Card(
                                             {'label': 'Leverage', 'value': 'leverage'},
                                             {'label': 'Split-half validation', 'value': 'split_half'},
                                         ],
-                                        multi=True, id='parafac-validations'),
+                                        multi=True, id='parafac-validations', value=[]),
                                     width={'size': 4}
                                 ),
                             ]),
@@ -1376,9 +1377,10 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
     components_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     scores_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     fmax_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
-    core_consistency_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    core_consistency_tabs = dbc.Card()
     leverage_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     split_half_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    cc = []
 
     for r in rank_list:
         parafac_r = PARAFAC(rank=r, init=init, non_negativity=True if nn else False,
@@ -1580,8 +1582,8 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
                                     dbc.Col(
                                         [
                                             dcc.Graph(figure=plot_fmax(parafac_r,
-                                                                        display=False
-                                                                        ),
+                                                                       display=False
+                                                                       ),
                                                       config={'autosizable': False},
                                                       style={'width': 1700, 'height': 800}
                                                       )
@@ -1607,7 +1609,112 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
                     )
         )
 
-    return loadings_tabs, components_tabs, scores_tabs, fmax_tabs, None, None, None, 'build model', None
+        # core consistency
+        if 'core_consistency' in validations:
+            cc.append(parafac_r.core_consistency())
+
+        # leverage
+        if 'leverage' in validations:
+            lvr_sample = parafac_r.leverage('sample')
+            lvr_ex = parafac_r.leverage('ex')
+            lvr_em = parafac_r.leverage('em')
+            leverage_tabs.children[0].children.append(
+                dcc.Tab(label=f'{r}-component',
+                        children=[
+                            html.Div([
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            [
+                                                dcc.Graph(
+                                                    figure=px.line(
+                                                        x=lvr_sample.index,
+                                                        y=lvr_sample.iloc[:, 0],
+                                                        markers=True,
+                                                        labels={'x': 'index-sample', 'y':'leverage-sample'},
+                                                    ),
+                                                    config={'autosizable': False},
+                                                    style={'width': 1700, 'height': 400}
+                                                )
+                                            ]
+                                        )
+                                    ]
+                                ),
+
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            [
+                                                dcc.Graph(
+                                                    figure=px.line(
+                                                        x=lvr_ex.index,
+                                                        y=lvr_ex.iloc[:, 0],
+                                                        markers=True,
+                                                        labels={'x': 'index-ex', 'y': 'leverage-ex'},
+                                                    ),
+                                                    config={'autosizable': False},
+                                                    style={'width': 1700, 'height': 400}
+                                                )
+                                            ]
+                                        )
+                                    ]
+                                ),
+
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            [
+                                                dcc.Graph(
+                                                    figure=px.line(
+                                                        x=lvr_em.index,
+                                                        y=lvr_em.iloc[:, 0],
+                                                        markers=True,
+                                                        labels={'x': 'index-em', 'y': 'leverage-em'},
+                                                    ),
+                                                    config={'autosizable': False},
+                                                    style={'width': 1700, 'height': 400}
+                                                )
+                                            ]
+                                        )
+                                    ]
+                                ),
+
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            [
+                                                dbc.Table.from_dataframe(lvr_sample,
+                                                                         bordered=True, hover=True, index=True,
+                                                                         )
+                                            ]
+                                        ),
+
+                                        dbc.Col(
+                                            [
+                                                dbc.Table.from_dataframe(lvr_ex,
+                                                                         bordered=True, hover=True, index=True,
+                                                                         )
+                                            ]
+                                        ),
+
+                                        dbc.Col(
+                                            [
+                                                dbc.Table.from_dataframe(lvr_em,
+                                                                         bordered=True, hover=True, index=True,
+                                                                         )
+                                            ]
+                                        ),
+
+                                    ]
+                                ),
+                            ]),
+                        ],
+                        style={'padding': '0', 'line-width': '100%'},
+                        selected_style={'padding': '0', 'line-width': '100%'}
+                        )
+            )
+
+    return loadings_tabs, components_tabs, scores_tabs, fmax_tabs, None, leverage_tabs, None, 'build model', None
 
 
 # -----------Page #3: K-PARAFACs--------------
