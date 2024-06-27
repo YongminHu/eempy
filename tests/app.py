@@ -1225,7 +1225,7 @@ card_parafac_param = dbc.Card(
                                                                                    style={"font-size": 15,
                                                                                           "padding-left": 10}),
                                                                 'value': 'non_negative'}],
-                                                      id='parafac-nn-checkbox', switch=True, value='non_negative'
+                                                      id='parafac-nn-checkbox', switch=True, value=['non_negative']
                                                       ),
                                         width={"size": 2, 'offset': 1}
                                     ),
@@ -1237,7 +1237,7 @@ card_parafac_param = dbc.Card(
                                                                                 "padding-left": 10}),
                                                       'value': 'tf_normalization'}],
                                             id='parafac-tf-checkbox', switch=True,
-                                            value='tf_normalization'
+                                            value=['tf_normalization']
                                         ),
                                         width={"size": 3, 'offset': 1}
                                     ),
@@ -1383,8 +1383,8 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
     cc = []
 
     for r in rank_list:
-        parafac_r = PARAFAC(rank=r, init=init, non_negativity=True if nn else False,
-                            tf_normalization=True if tf else False,
+        parafac_r = PARAFAC(rank=r, init=init, non_negativity=True if 'non_negative' in nn else False,
+                            tf_normalization=True if 'tf_normalization' in tf else False,
                             sort_em=True)
         parafac_r.fit(eem_dataset)
         parafacs_dict[r] = parafac_r
@@ -1713,6 +1713,10 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
                         selected_style={'padding': '0', 'line-width': '100%'}
                         )
             )
+
+        # if 'split_half' in validations:
+        #     split_validation = SplitValidation(rank=r, non_negativity=)
+
 
     return loadings_tabs, components_tabs, scores_tabs, fmax_tabs, None, leverage_tabs, None, 'build model', None
 

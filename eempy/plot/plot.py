@@ -515,3 +515,25 @@ def plot_fmax(parafac_model: PARAFAC, component_labels=None, display=True):
         fig.show()
 
     return fig
+
+
+def plot_greedy_selection(fmax_sequence, xlabel=None, ylabel=None, col=[0, 1], series_names=[], filter_kw=None):
+    markers = ['o', 's', '^', 'D', 'v', "<", ">", 'p', 'P', "x", '2', 'P', 'h']
+    fig, ax = plt.subplots()
+    for i, fmax in enumerate(fmax_sequence):
+        if filter_kw:
+            fmax = fmax.filter(like=filter_kw, axis=0)
+        if not xlabel:
+            xlabel = fmax.columns[col[0]]
+        if not ylabel:
+            ylabel = fmax.columns[col[1]]
+        x = fmax.iloc[:, col[0]]
+        y = fmax.iloc[:, col[1]]
+        if series_names:
+            name = series_names[i]
+        else:
+            name = i
+        ax.plot(x, y, '-', label=name, alpha=0.5, marker=markers[i], markersize=8)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+    ax.legend(fontsize=12)

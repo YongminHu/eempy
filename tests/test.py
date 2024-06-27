@@ -9,7 +9,7 @@ import re
 
 eem_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240215_NEST_M3/B1S12024-02-12-M3+0gLKIPEM.dat'
 blank_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240215_NEST_M3/B1S12024-02-12-M3+0gLKIBEM.dat'
-folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/20220929_GW_C3/'
+folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240508_NEST/'
 
 # intensity, ex_range, em_range, index = read_eem(eem_path)
 # blank, ex_range_blank, em_range_blank, _ = read_eem(blank_path)
@@ -26,19 +26,23 @@ folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/20220929_GW_C3/'
 #
 eem_stack, ex_range, em_range, index = read_eem_dataset(folder_path=folder_path,
                                                         mandatory_keywords='PEM.dat')
+from tensorly.decomposition import parafac
+a = parafac(eem_stack, rank=3)
+print(len(a[1]))
+
 # blank_stack, ex_range_blank, em_range_blank, _ = read_eem_dataset(folder_path=folder_path,
 #                                                         mandatory_keywords='BEM.dat')
 # intensity_normalized, rsu_final = eem_raman_normalization(eem_stack[0], blank_stack[0], ex_range_blank, em_range_blank, from_blank=True)
 
-eem_dataset = EEMDataset(eem_stack[0:8], ex_range, em_range)
-eem_dataset.rayleigh_scattering_removal(copy=False)
-# eem_dataset.raman_normalization(ex_range_blank, em_range_blank, blank_stack, from_blank=True, copy=False)
-# print(eem_dataset.eem_stack.shape)
-
-parafac_model = PARAFAC(rank=4)
-parafac_model.fit(eem_dataset)
-
-print(parafac_model.leverage('sample'))
+# eem_dataset = EEMDataset(eem_stack[0:8], ex_range, em_range)
+# eem_dataset.rayleigh_scattering_removal(copy=False)
+# # eem_dataset.raman_normalization(ex_range_blank, em_range_blank, blank_stack, from_blank=True, copy=False)
+# # print(eem_dataset.eem_stack.shape)
+#
+# parafac_model = PARAFAC(rank=4)
+# parafac_model.fit(eem_dataset)
+#
+# print(parafac_model.leverage('sample'))
 
 
 # abs_stack, ex_range_abs, _, _ = read_abs_dataset(folder_path=folder_path, index_pos=(0, -7))

@@ -3,6 +3,7 @@ Functions for EEM preprocessing and post-processing
 Author: Yongmin Hu (yongmin.hu@eawag.ch, yongminhu@outlook.com)
 Last update: 2024-02-13
 """
+from matplotlib import pyplot as plt
 
 from eempy.utils import *
 import scipy.stats as stats
@@ -1529,9 +1530,9 @@ class PARAFAC:
             if not self.non_negativity:
                 if np.isnan(eem_dataset.eem_stack).any():
                     mask = np.where(np.isnan(eem_dataset.eem_stack), 0, 1)
-                    cptensors, _ = parafac(eem_dataset.eem_stack, rank=self.rank, mask=mask, init=self.init)
+                    cptensors = parafac(eem_dataset.eem_stack, rank=self.rank, mask=mask, init=self.init)
                 else:
-                    cptensors, _ = parafac(eem_dataset.eem_stack, rank=self.rank, init=self.init)
+                    cptensors = parafac(eem_dataset.eem_stack, rank=self.rank, init=self.init)
             else:
                 if np.isnan(eem_dataset.eem_stack).any():
                     mask = np.where(np.isnan(eem_dataset.eem_stack), 0, 1)
@@ -1972,8 +1973,8 @@ class SplitValidation:
         Dictionary of PARAFAC models established on sub-datasets.
     """
 
-    def __init__(self, rank, n_split, combination_size, rule, similarity_metric='TCC', non_negativity=True,
-                 tf_normalization=True):
+    def __init__(self, rank, n_split=4, combination_size='half', rule='random', similarity_metric='TCC',
+                 non_negativity=True, tf_normalization=True):
         # ---------------Parameters-------------------
         self.rank = rank
         self.n_split = n_split
@@ -2400,14 +2401,291 @@ class KPARAFACs:
         return best_model_label, score_all, fmax_all, sample_error
 
 
+# class EEMPCA:
+#
+#     def __init__(self, n_components):
+#         self.n_components = n_components
+#         self.score = None
+#         self.components = None
+#
+#     def fit(self, eem_dataset: EEMDataset):
+#         decomposer = PCA(n_components=self.n_components)
+#         n_samples = eem_dataset.eem_stack.shape[0]
+#         X = eem_dataset.eem_stack.reshape([n_samples, -1])
+#         score = decomposer.fit_transform(X)
+#         score = pd.DataFrame(score, index=eem_dataset.index,
+#                              columns=["component {i}".format(i=i + 1) for i in range(self.n_components)])
+#         components = decomposer.components_.reshape([self.n_components, eem_dataset.eem_stack.shape[1],
+#                                                      eem_dataset.eem_stack.shape[2]])
+#         self.score = score
+#         self.components = components
+#
+#         return self
+#
+#
+# class EEMNMF:
+#
+#     def __init__(self, n_components, alpha_W, alpha_H, l1_ratio):
+#         self.n_components = n_components
+#         self.alpha_W = alpha_W
+#         self.alpha_H = alpha_H
+#         self.l1_ratio = l1_ratio
+#         self.score = None
+#         self.components = None
+#
+#     def fit(self, eem_dataset: EEMDataset):
+#         decomposer = NMF(n_components=self.n_components, alpha_W=self.alpha_W, alpha_H=self.alpha_H,
+#                          l1_ratio=self.l1_ratio)
+#         n_samples = eem_dataset.eem_stack.shape[0]
+#         X = eem_dataset.eem_stack.reshape([n_samples, -1])
+#         score = decomposer.fit_transform(X)
+#         score = pd.DataFrame(score, index=eem_dataset.index,
+#                              columns=["component {i}".format(i=i + 1) for i in range(self.n_components)])
+#         components = decomposer.components_.reshape([self.n_components, eem_dataset.eem_stack.shape[1],
+#                                                      eem_dataset.eem_stack.shape[2]])
+#         self.score = score
+#         self.components = components
+#
+#         return self
+
+
+
+
+
+class EEMNMF:
+
+    def __init__(self, n_components, solver='cd', beta_loss='frobenius', alpha_W=0, alpha_H=0, l1_ratio=1,
+                 normalization='pixel_std'):
+        self.n_components = n_components
+        self.solver = solver
+        self.beta_loss = beta_loss
+        self.alpha_W = alpha_W
+        self.alpha_H = alpha_H
+        self.l1_ratio = l1_ratio
+        self.normalization = normalization
+        self.eem_stack_unfolded = None
+        self.nmf_score = None
+        self.nnls_score = None
+        self.components = None
+        self.decomposer = None
+        self.residual = None
+        self.normalization_factor_std = None
+        self.normalization_factor_max = None
+        self.reconstruction_error = None
+        self.eem_dataset_train = None
+
+    def fit(self, eem_dataset, sort_em=True):
+        decomposer = NMF(n_components=self.n_components, solver=self.solver, beta_loss=self.beta_loss,
+                         alpha_W=self.alpha_W, alpha_H=self.alpha_H,
+                         l1_ratio=self.l1_ratio)
+        n_samples = eem_dataset.eem_stack.shape[0]
+        X = eem_dataset.eem_stack.reshape([n_samples, -1])
+        #         if self.normalization == 'intensity_max':
+        #             factor = np.max(X, axis=1)[:, np.newaxis]
+        #             X = X / factor
+        #             score = decomposer.fit_transform(X) * factor
+        if self.normalization == 'pixel_std':
+            factor_std = np.std(X, axis=0)
+            X = X / factor_std
+            X[np.isnan(X)] = 0
+            nmf_score = decomposer.fit_transform(X)
+        else:
+            nmf_score = decomposer.fit_transform(X)
+            factor_std = None
+            factor_max = None
+        nmf_score = pd.DataFrame(nmf_score, index=eem_dataset.index,
+                                 columns=["component {i}".format(i=i + 1) for i in range(self.n_components)])
+        if self.normalization == 'pixel_std':
+            components = decomposer.components_ * factor_std
+        else:
+            components = decomposer.components_
+        factor_max = np.max(components, axis=1)
+        components = components / factor_max[:, None]
+        components = components.reshape([self.n_components, eem_dataset.eem_stack.shape[1],
+                                         eem_dataset.eem_stack.shape[2]])
+        nmf_score = nmf_score.mul(factor_max, axis=1)
+        _, nnls_score, _ = eems_fit_components(eem_dataset.eem_stack, components,
+                                               fit_intercept=False, positive=True)
+        nnls_score = pd.DataFrame(nnls_score, index=eem_dataset.index,
+                                  columns=["component {i}".format(i=i + 1) for i in range(self.n_components)])
+        if sort_em:
+            em_peaks = []
+            for i in range(self.n_components):
+                flat_max_index = components[i].argmax()
+                row_index, col_index = np.unravel_index(flat_max_index, components[i].shape)
+                em_peaks.append(col_index)
+            peak_rank = list(enumerate(stats.rankdata(em_peaks)))
+            order = [i[0] for i in sorted(peak_rank, key=lambda x: x[1])]
+            components = components[order]
+            nmf_score = pd.DataFrame({'component {r} score'.format(r=i + 1): nmf_score.iloc[:, order[i]]
+                                      for i in range(self.n_components)})
+            nnls_score = pd.DataFrame({'component {r} score'.format(r=i + 1): nnls_score.iloc[:, order[i]]
+                                       for i in range(self.n_components)})
+        self.nmf_score = nmf_score
+        self.nnls_score = nnls_score
+        self.components = components
+        self.decomposer = decomposer
+        self.eem_stack_unfolded = X
+        self.normalization_factor_std = factor_std
+        self.normalization_factor_max = factor_max
+        self.reconstruction_error = decomposer.reconstruction_err_
+        self.eem_dataset_train = eem_dataset
+        return self
+
+    def calculate_residual(self, score_type='nmf'):
+        if score_type == 'nmf':
+            X_new = self.decomposer.fit_transform(self.eem_stack_unfolded)
+            X_reversed = self.decomposer.inverse_transform(X_new) * self.normalization_factor
+            n_samples = self.eem_dataset_train.eem_stack.shape[0]
+            residual = X_reversed - self.eem_stack_unfolded
+            residual = residual.reshape([n_samples, self.eem_dataset_train.eem_stack.shape[1],
+                                         self.eem_dataset_train.eem_stack.shape[2]])
+            self.residual = residual
+        #         elif score_type=='nnls':
+        #             X_new = self.decomposer.fit_transform(self.eem_stack_unfolded)
+        #             X_reversed = self.decomposer.inverse_transform(X_new)*self.normalization_factor
+        #             n_samples = eem_dataset.eem_stack.shape[0]
+        #             residual = X_reversed - self.eem_stack_unfolded
+        #             residual = residual.reshape([n_samples, eem_dataset.eem_stack.shape[1], eem_dataset.eem_stack.shape[2]])
+        #             self.residual = residual
+        return residual
+
+    def greedy_selection(self, eem_dataset_train, eem_dataset_test, direction='backwards',
+                         criteria: str = 'reconstruction_error', true_values=None, axis=0, n_steps='max',
+                         index_groups=None):
+        eem_stack = eem_dataset_train.eem_stack
+        if index_groups == None:
+            index_groups = [[i] for i in range(eem_stack.shape[axis])]
+        if n_steps == 'max':
+            n_steps = len(index_groups)
+        eem_datasets_sequence = []
+        err_sequence = []
+        fmax_sequence = []
+        g_tot = []
+
+        for step in range(n_steps):
+            err_list = []
+            eem_dataset_sub_list = []
+            fmax_list = []
+            if direction == 'forwards':
+                eem_stack_sub = []
+            elif direction == 'backwards':
+                eem_stack_sub = eem_stack
+            if direction == 'backwards' and step == 0:
+                eem_dataset_sub = eem_dataset_train
+                self.fit(eem_dataset_sub)
+                score, fmax, eem_stack_pred = eems_fit_components(eem_dataset_test.eem_stack, self.components,
+                                                                  fit_intercept=False, positive=True)
+                if criteria == 'reconstruction_error':
+                    residual = eem_stack_pred - eem_dataset_test.eem_stack
+
+                elif criteria == 'fmax_error':
+                    assert true_values.shape == (eem_dataset_test.eem_stack.shape[0], self.n_components), \
+                        "True values should have a shape of (n_test_samples, n_components)"
+                    residual = fmax - np.array(true_values)
+
+                elif criteria == 'component_error':
+                    assert true_values.shape == (self.n_components, eem_dataset_test.eem_stack.shape[1],
+                                                 eem_dataset_test.eem_stack.shape[2]), \
+                        "True values should have a shape of (n_components, n_ex, n_em)"
+                    residual = self.components - np.array(true_values)
+
+                error = (np.sum(residual ** 2) / np.size(residual)) ** 0.5
+                err_list.append(error)
+                fmax_list.append(fmax)
+                eem_dataset_sub_list.append(eem_dataset_sub)
+
+            else:
+                for g in index_groups:
+                    if direction == 'forwards':
+                        eem_stack_g = np.take(eem_stack, g, axis=axis)
+                        eem_stack_sub.append(eem_stack_g.tolist())
+                        if axis == 0:
+                            if eem_dataset_train.index:
+                                index_sub = [eem_dataset_train.index[i] for i in g_tot + g]
+                            else:
+                                index_sub = None
+                            if eem_dataset_train.ref:
+                                ref_sub = eem_dataset_train.ref[g_tot + g]
+                            else:
+                                ref_sub = None
+                        else:
+                            index_sub = eem_dataset_train.index
+                            ref_sub = eem_dataset_train.ref
+                        eem_dataset_sub = EEMDataset(eem_stack=np.array(eem_stack_sub),
+                                                     ex_range=eem_dataset_train.ex_range,
+                                                     em_range=eem_dataset_train.em_range, index=index_sub, ref=ref_sub)
+
+                    if direction == 'backwards':
+
+                        eem_stack_sub = np.delete(eem_stack, g_tot + g, axis=axis)
+                        if axis == 0:
+                            if eem_dataset_train.index:
+                                index_sub = [eem_dataset_train.index[i] for i in range(eem_stack.shape[0]) if
+                                             i not in g_tot + g]
+                            else:
+                                index_sub = None
+                            if eem_dataset_train.ref:
+                                ref_sub = np.delete(eem_dataset_train.ref, g_tot + g)
+                            else:
+                                ref_sub = None
+                        else:
+                            index_sub = eem_dataset_train.index
+                            ref_sub = eem_dataset_train.ref
+                        eem_dataset_sub = EEMDataset(eem_stack=eem_stack_sub, ex_range=eem_dataset_train.ex_range,
+                                                     em_range=eem_dataset_train.em_range, index=index_sub, ref=ref_sub)
+                    self.fit(eem_dataset_sub)
+                    #                     plot_eem(self.components[0], eem_dataset_test.ex_range, eem_dataset_test.em_range, auto_intensity_range=False,
+                    #                              vmin=0, vmax=1)
+                    score, fmax, eem_stack_pred = eems_fit_components(eem_dataset_test.eem_stack, self.components,
+                                                                      fit_intercept=False, positive=True)
+                    if criteria == 'reconstruction_error':
+                        residual = eem_stack_pred - eem_dataset_test.eem_stack
+
+                    elif criteria == 'fmax_error':
+                        assert true_values.shape == (eem_dataset_test.eem_stack.shape[0], self.n_components), \
+                            "True values should have a shape of (n_test_samples, n_components)"
+                        residual = fmax - np.array(true_values)
+
+                    elif criteria == 'component_error':
+                        assert true_values.shape == (self.n_components, eem_dataset_test.eem_stack.shape[1],
+                                                     eem_dataset_test.eem_stack.shape[2]), \
+                            "True values should have a shape of (n_components, n_ex, n_em)"
+                        residual = self.components - np.array(true_values)
+
+                    error = (np.sum(residual ** 2) / np.size(residual)) ** 0.5
+                    err_list.append(error)
+                    fmax_list.append(fmax)
+                    eem_dataset_sub_list.append(eem_dataset_sub)
+
+            least_err_idx = err_list.index(min(err_list))
+            err_sequence.append(min(err_list))
+            fmax_sequence.append(pd.DataFrame(fmax_list[least_err_idx], index=eem_dataset_test.index,
+                                              columns=["component {i}".format(i=i + 1) for i in
+                                                       range(self.n_components)]))
+            eem_datasets_sequence.append(eem_dataset_sub_list[least_err_idx])
+            if direction == 'backwards' and step == 0:
+                continue
+            else:
+                g_tot += index_groups[least_err_idx]
+                index_groups.pop(least_err_idx)
+
+        return eem_datasets_sequence, err_sequence, fmax_sequence
+
+
 class EEMPCA:
 
     def __init__(self, n_components):
         self.n_components = n_components
+        self.eem_stack_unfolded = None
         self.score = None
         self.components = None
+        self.decomposer = None
+        self.residual = None
+        self.normalization_factor = None
+        self.eem_stack_train = None
 
-    def fit(self, eem_dataset: EEMDataset):
+    def fit(self, eem_dataset: EEMDataset, normalization=None):
         decomposer = PCA(n_components=self.n_components)
         n_samples = eem_dataset.eem_stack.shape[0]
         X = eem_dataset.eem_stack.reshape([n_samples, -1])
@@ -2418,31 +2696,19 @@ class EEMPCA:
                                                      eem_dataset.eem_stack.shape[2]])
         self.score = score
         self.components = components
-
+        self.decomposer = decomposer
+        self.eem_stack_unfolded = X
+        self.eem_stack_train = eem_dataset
         return self
 
+    def calculate_residual(self):
+        X_new = self.decomposer.fit_transform(self.eem_stack_unfolded)
+        X_reversed = self.decomposer.inverse_transform(X_new)
+        n_samples = self.eem_stack_train.eem_stack.shape[0]
+        residual = X_reversed - self.eem_stack_unfolded
+        residual = residual.reshape([n_samples, self.eem_stack_train.eem_stack.shape[1],
+                                     self.eem_stack_train.eem_stack.shape[2]])
+        self.residual = residual
+        return residual
 
-class EEMNMF:
 
-    def __init__(self, n_components, alpha_W, alpha_H, l1_ratio):
-        self.n_components = n_components
-        self.alpha_W = alpha_W
-        self.alpha_H = alpha_H
-        self.l1_ratio = l1_ratio
-        self.score = None
-        self.components = None
-
-    def fit(self, eem_dataset: EEMDataset):
-        decomposer = NMF(n_components=self.n_components, alpha_W=self.alpha_W, alpha_H=self.alpha_H,
-                         l1_ratio=self.l1_ratio)
-        n_samples = eem_dataset.eem_stack.shape[0]
-        X = eem_dataset.eem_stack.reshape([n_samples, -1])
-        score = decomposer.fit_transform(X)
-        score = pd.DataFrame(score, index=eem_dataset.index,
-                             columns=["component {i}".format(i=i + 1) for i in range(self.n_components)])
-        components = decomposer.components_.reshape([self.n_components, eem_dataset.eem_stack.shape[1],
-                                                     eem_dataset.eem_stack.shape[2]])
-        self.score = score
-        self.components = components
-
-        return self
