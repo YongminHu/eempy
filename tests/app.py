@@ -1,4 +1,5 @@
 import dash
+import pandas as pd
 from dash import dcc, html
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
@@ -983,7 +984,7 @@ def update_eem_plot(folder_path, file_name_sample, graph_options,
             yref="paper",
             x=0.5,
             y=0.5,
-            text="EEM file or parameters missing",
+            text="EEM file or parameters unspecified",
             showarrow=False,
             font=dict(size=16),
         )
@@ -1012,7 +1013,7 @@ def update_eem_plot(folder_path, file_name_sample, graph_options,
             yref="paper",
             x=0.5,
             y=0.5,
-            text="Absorbance file or parameters missing",
+            text="Absorbance file or parameters unspecified",
             showarrow=False,
             font=dict(size=16),
         )
@@ -1100,10 +1101,13 @@ def on_build_eem_dataset(n_clicks,
             interpolation_method='linear', as_timestamp=True if 'timestamp' in timestamp else False,
             timestamp_format=timestamp_format
         )
-    except (UnboundLocalError, IndexError) as e:
-        error_message = ("EEM dataset building failed. Are there any non-EEM files mixed in? "
-                         "Please check data folder path and file searching keywords settings. If the Ex/Em "
-                         "ranges/intervals are different between EEMs, make sure you select the 'Align Ex/Em' checkbox.")
+    except (UnboundLocalError, IndexError, TypeError) as e:
+        error_message = ("EEM dataset building failed. Possible causes: (1) There are non-EEM files mixed in the EEM "
+                         "data file list. Please check data folder path and file searching keywords settings. "
+                         "(2) There are necessary parameter boxes that has not been filled in. Please check the "
+                         "parameter boxes. "
+                         "(3) The Ex/Em ranges/intervals are different between EEMs, make sure you select the "
+                         "'Align Ex/Em' checkbox.")
         return None, error_message, "Build"
 
     steps_track = [
@@ -1714,11 +1718,108 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
                         )
             )
 
-        # if 'split_half' in validations:
-        #     split_validation = SplitValidation(rank=r, non_negativity=)
+            if 'split_half' in validations:
+                split_validation = SplitValidation(rank=r,
+                                                   non_negativity=True if 'non_negative' in nn else False,
+                                                   tf_normalization=True if 'tf_normalization' in tf else False)
+                split_validation.fit(eem_dataset)
+                subset_specific_models = split_validation.subset_specific_models
+                similarities_ex, similarities_em = split_validation.compare()
+                split_half_tabs.children[0].children.append(
+                    dcc.Tab(label=f'{r}-component',
+                            children=[
+                                html.Div([
+                                    dbc.Row(
+                                        [
+                                            dbc.Col(
+                                                [
+                                                    dcc.Graph(
+                                                        figure=plot_loadings(subset_specific_models,
+                                                                             n_cols=3,
+                                                                             plot_tool='plotly',
+                                                                             display=False),
+                                                        config={'autosizable': False},
+                                                    )
+                                                ]
+                                            )
+                                        ]
+                                    ),
+
+                                    dbc.Row(
+                                        [
+                                            dbc.Col(
+                                                [
+                                                    dbc.Table.from_dataframe(similarities_ex,
+                                                                             bordered=True, hover=True, index=True,
+                                                                             )
+                                                ]
+                                            ),
+
+                                            dbc.Col(
+                                                [
+                                                    dbc.Table.from_dataframe(similarities_em,
+                                                                             bordered=True, hover=True, index=True,
+                                                                             )
+                                                ]
+                                            ),
+
+                                        ]
+                                    ),
+                                ]),
+                            ],
+                            style={'padding': '0', 'line-width': '100%'},
+                            selected_style={'padding': '0', 'line-width': '100%'}
+                            )
+                )
+
+    if 'core_consistency' in validations:
+        cc_table = pd.DataFrame({'Number of components': rank_list, 'Core consistency': cc})
+        core_consistency_tabs.children.append(
+            html.Div([
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                dcc.Graph(
+                                    figure=px.line(
+                                        x=cc_table['Number of components'],
+                                        y=cc_table['Core consistency'],
+                                        markers=True,
+                                        labels={'x': 'index-em', 'y': 'leverage-em'},
+                                    ),
+                                    config={'autosizable': False},
+                                )
+                            ]
+                        )
+                    ]
+                ),
+
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                dbc.Table.from_dataframe(similarities_ex,
+                                                         bordered=True, hover=True, index=True,
+                                                         )
+                            ]
+                        ),
+
+                        dbc.Col(
+                            [
+                                dbc.Table.from_dataframe(similarities_em,
+                                                         bordered=True, hover=True, index=True,
+                                                         )
+                            ]
+                        ),
+
+                    ]
+                ),
+            ]),
+        )
 
 
-    return loadings_tabs, components_tabs, scores_tabs, fmax_tabs, None, leverage_tabs, None, 'build model', None
+    return (loadings_tabs, components_tabs, scores_tabs, fmax_tabs, core_consistency_tabs, leverage_tabs,
+            split_half_tabs, 'build model', None)
 
 
 # -----------Page #3: K-PARAFACs--------------
