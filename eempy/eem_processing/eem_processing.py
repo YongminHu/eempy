@@ -1427,8 +1427,11 @@ def combine_eem_datasets(list_eem_datasets):
     em_range_0 = list_eem_datasets[0].em_range
     for d in list_eem_datasets:
         eem_stack_combined.append(d.eem_stack)
-        ref_combined.append(d.ref)
-        index_combined = index_combined + d.index
+        ref_combined.append(d.ref if d.ref else np.array(d.eem_stack.shape[0] * [np.nan]))
+        if d.index:
+            index_combined = index_combined + d.index
+        else:
+            index_combined = index_combined + ['N/A' for i in range(d.eem_stack.shape[0])]
         if not np.array_equal(d.ex_range, ex_range_0) or not np.array_equal(d.em_range, em_range_0):
             warnings.warn(
                 'ex_range and em_range of the datasets must be identical. If you want to combine EEM datasets '
@@ -1903,27 +1906,27 @@ def align_parafac_components(models_dict: dict, ex_ref: pd.DataFrame, em_ref: pd
     component_labels_ref = ex_ref.columns
     models_dict_new = {}
     for model_label, model in models_dict.items():
-        m_sim_ex = loadings_similarity(model, ex_ref, wavelength_alignment=wavelength_alignment)
-        m_sim_em = loadings_similarity(model, em_ref, wavelength_alignment=wavelength_alignment)
+        m_sim_ex = loadings_similarity(model.ex_loadings, ex_ref, wavelength_alignment=wavelength_alignment)
+        m_sim_em = loadings_similarity(model.em_loadings, em_ref, wavelength_alignment=wavelength_alignment)
         m_sim = (m_sim_ex + m_sim_em) / 2
         ex_var, em_var = (model.ex_loadings, model.em_loadings)
         matched_index = []
         m_sim_copy = m_sim.copy()
         if ex_var.shape[1] <= ex_ref.shape[1]:
             for n_var in range(ex_var.shape[1]):
-                max_index = np.argmax(m_sim[n_var, :])
+                max_index = np.argmax(m_sim.iloc[n_var, :])
                 while max_index in matched_index:
-                    m_sim_copy[n_var, max_index] = 0
-                    max_index = np.argmax(m_sim_copy[n_var, :])
+                    m_sim_copy.iloc[n_var, max_index] = 0
+                    max_index = np.argmax(m_sim_copy.iloc[n_var, :])
                 matched_index.append(max_index)
             component_labels_var = [component_labels_ref[i] for i in matched_index]
             permutation = get_indices_smallest_to_largest(matched_index)
         else:
             for n_ref in range(ex_ref.shape[1]):
-                max_index = np.argmax(m_sim[:, n_ref])
+                max_index = np.argmax(m_sim.iloc[:, n_ref])
                 while max_index in matched_index:
-                    m_sim_copy[max_index, n_ref] = 0
-                    max_index = np.argmax(m_sim_copy[:, n_ref])
+                    m_sim_copy.iloc[max_index, n_ref] = 0
+                    max_index = np.argmax(m_sim_copy.iloc[:, n_ref])
                 matched_index.append(max_index)
             non_ordered_index = list(set([i for i in range(ex_var.shape[1])]) - set(matched_index))
             permutation = matched_index + non_ordered_index
@@ -1939,9 +1942,9 @@ def align_parafac_components(models_dict: dict, ex_ref: pd.DataFrame, em_ref: pd
         model.em_loadings = model.em_loadings.iloc[:, permutation]
         model.fmax = model.fmax.iloc[:, permutation]
         model.component_stack = model.component_stack[permutation, :, :]
-        model.cptensor = permute_cp_tensor(model.cptensor, permutation)
+        model.cptensor = permute_cp_tensor(model.cptensors, permutation)
         models_dict_new[model_label] = model
-        return models_dict_new
+    return models_dict_new
 
 
 class SplitValidation:
@@ -2011,7 +2014,6 @@ class SplitValidation:
             models[label] = model_subdataset
             subsets[label] = subdataset
         models = align_parafac_components(models, model_complete.ex_loadings, model_complete.em_loadings)
-
         self.eem_subsets = subsets
         self.subset_specific_models = models
         return self
@@ -2038,8 +2040,16 @@ class SplitValidation:
             pair_labels = '{m1} vs. {m2}'.format(m1=labels[k], m2=labels[-1 - k])
             similarities_ex[pair_labels] = sims_ex
             similarities_em[pair_labels] = sims_em
-        similarities_ex = pd.DataFrame(similarities_ex, columns=['C{i}'.format(i=i + 1) for i in range(self.rank)])
-        similarities_em = pd.DataFrame(similarities_em, columns=['C{i}'.format(i=i + 1) for i in range(self.rank)])
+        similarities_ex = pd.DataFrame.from_dict(
+            similarities_ex, orient='index',
+            columns=['Similarities in C{i}-ex'.format(i=i + 1) for i in range(self.rank)]
+        )
+        similarities_ex.index.name = 'Test'
+        similarities_em = pd.DataFrame.from_dict(
+            similarities_em, orient='index',
+            columns=['Similarities in C{i}-em'.format(i=i + 1) for i in range(self.rank)]
+        )
+        similarities_em.index.name = 'Test'
         return similarities_ex, similarities_em
 
 
@@ -2447,9 +2457,6 @@ class KPARAFACs:
 #         self.components = components
 #
 #         return self
-
-
-
 
 
 class EEMNMF:

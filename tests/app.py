@@ -1381,7 +1381,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
     components_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     scores_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     fmax_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
-    core_consistency_tabs = dbc.Card()
+    core_consistency_tabs = dbc.Card(children=[])
     leverage_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     split_half_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     cc = []
@@ -1737,7 +1737,8 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
                                                         figure=plot_loadings(subset_specific_models,
                                                                              n_cols=3,
                                                                              plot_tool='plotly',
-                                                                             display=False),
+                                                                             display=False,
+                                                                             legend_pad=0.2),
                                                         config={'autosizable': False},
                                                     )
                                                 ]
@@ -1754,7 +1755,11 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
                                                                              )
                                                 ]
                                             ),
+                                        ]
+                                    ),
 
+                                    dbc.Row(
+                                        [
                                             dbc.Col(
                                                 [
                                                     dbc.Table.from_dataframe(similarities_em,
@@ -1762,9 +1767,9 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
                                                                              )
                                                 ]
                                             ),
-
                                         ]
                                     ),
+
                                 ]),
                             ],
                             style={'padding': '0', 'line-width': '100%'},
@@ -1785,7 +1790,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
                                         x=cc_table['Number of components'],
                                         y=cc_table['Core consistency'],
                                         markers=True,
-                                        labels={'x': 'index-em', 'y': 'leverage-em'},
+                                        labels={'x': 'Number of components', 'y': 'Core consistency'},
                                     ),
                                     config={'autosizable': False},
                                 )
@@ -1798,20 +1803,11 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
                     [
                         dbc.Col(
                             [
-                                dbc.Table.from_dataframe(similarities_ex,
-                                                         bordered=True, hover=True, index=True,
+                                dbc.Table.from_dataframe(cc_table,
+                                                         bordered=True, hover=True,
                                                          )
                             ]
                         ),
-
-                        dbc.Col(
-                            [
-                                dbc.Table.from_dataframe(similarities_em,
-                                                         bordered=True, hover=True, index=True,
-                                                         )
-                            ]
-                        ),
-
                     ]
                 ),
             ]),

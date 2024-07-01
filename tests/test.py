@@ -1,15 +1,17 @@
 import numpy as np
 from matplotlib import pyplot as plt
+import pandas as pd
 
 from eempy.read_data import read_eem_dataset, read_abs_dataset, read_eem
-from eempy.eem_processing import EEMDataset, PARAFAC, eem_raman_normalization, eem_cutting, eem_interpolation
+from eempy.eem_processing import (EEMDataset, PARAFAC, eem_raman_normalization, eem_cutting, eem_interpolation,
+                                  SplitValidation, loadings_similarity, align_parafac_components)
 from eempy.plot import plot_eem, plot_loadings, plot_score
 import re
 
 
 eem_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240215_NEST_M3/B1S12024-02-12-M3+0gLKIPEM.dat'
 blank_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240215_NEST_M3/B1S12024-02-12-M3+0gLKIBEM.dat'
-folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240508_NEST/'
+folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/20220929_GW_C3/'
 
 # intensity, ex_range, em_range, index = read_eem(eem_path)
 # blank, ex_range_blank, em_range_blank, _ = read_eem(blank_path)
@@ -26,23 +28,68 @@ folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240508_NEST/'
 #
 eem_stack, ex_range, em_range, index = read_eem_dataset(folder_path=folder_path,
                                                         mandatory_keywords='PEM.dat')
-from tensorly.decomposition import parafac
-a = parafac(eem_stack, rank=3)
-print(len(a[1]))
 
 # blank_stack, ex_range_blank, em_range_blank, _ = read_eem_dataset(folder_path=folder_path,
 #                                                         mandatory_keywords='BEM.dat')
 # intensity_normalized, rsu_final = eem_raman_normalization(eem_stack[0], blank_stack[0], ex_range_blank, em_range_blank, from_blank=True)
 
-# eem_dataset = EEMDataset(eem_stack[0:8], ex_range, em_range)
-# eem_dataset.rayleigh_scattering_removal(copy=False)
+eem_dataset1 = EEMDataset(eem_stack[0:25], ex_range, em_range)
+# eem_dataset2 = EEMDataset(eem_stack[10:20], ex_range, em_range)
+eem_dataset1.rayleigh_scattering_removal(copy=False)
+# eem_dataset2.rayleigh_scattering_removal(copy=False)
+# parafac_model1 = PARAFAC(rank=3)
+# parafac_model2 = PARAFAC(rank=3)
+# parafac_model1.fit(eem_dataset1)
+# parafac_model2.fit(eem_dataset2)
+
+# sim = loadings_similarity(parafac_model1.ex_loadings, parafac_model2.ex_loadings)
+# print(sim)
+#
+# models_dict_new = align_parafac_components({'model1': parafac_model1, 'model2': parafac_model2}, parafac_model1.ex_loadings, parafac_model1.em_loadings)
+# print(models_dict_new)
+
 # # eem_dataset.raman_normalization(ex_range_blank, em_range_blank, blank_stack, from_blank=True, copy=False)
 # # print(eem_dataset.eem_stack.shape)
 #
-# parafac_model = PARAFAC(rank=4)
+# parafac_model = PARAFAC(rank=3)
+
 # parafac_model.fit(eem_dataset)
 #
 # print(parafac_model.leverage('sample'))
+
+split_validation = SplitValidation(rank=3)
+split_validation.fit(eem_dataset1)
+subset_specific_models = split_validation.subset_specific_models
+
+labels = sorted(subset_specific_models.keys())
+similarities_ex = {}
+similarities_em = {}
+for k in range(int(len(labels) / 2)):
+    m1 = subset_specific_models[labels[k]]
+    print(m1)
+    m2 = subset_specific_models[labels[-1 - k]]
+    print(m2)
+    sims_ex = loadings_similarity(m1.ex_loadings, m2.ex_loadings).to_numpy().diagonal()
+    print(sims_ex)
+    sims_em = loadings_similarity(m1.em_loadings, m2.em_loadings).to_numpy().diagonal()
+    print(sims_em)
+    pair_labels = '{m1} vs. {m2}'.format(m1=labels[k], m2=labels[-1 - k])
+    similarities_ex[pair_labels] = sims_ex
+    print(similarities_ex)
+    similarities_em[pair_labels] = sims_em
+    print(similarities_em)
+similarities_ex = pd.DataFrame.from_dict(similarities_ex, orient='index', columns=['C{i}'.format(i=i + 1) for i in range(3)])
+similarities_em = pd.DataFrame.from_dict(similarities_em, orient='index', columns=['C{i}'.format(i=i + 1) for i in range(3)])
+
+print(similarities_ex)
+print(similarities_em)
+
+
+# similarities_ex, similarities_em = split_validation.compare()
+#
+# print(subset_specific_models)
+# print(similarities_ex)
+
 
 
 # abs_stack, ex_range_abs, _, _ = read_abs_dataset(folder_path=folder_path, index_pos=(0, -7))

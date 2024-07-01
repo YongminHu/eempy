@@ -315,7 +315,7 @@ def plot_fi_correlation(fi: pd.DataFrame, ref):
 
 
 def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()), component_labels_dict=None,
-                  n_cols=None, plot_tool='matplotlib', display=True):
+                  n_cols=None, plot_tool='matplotlib', display=True, legend_pad=0):
     """
     Plot the excitation and emission loadings for PARAFAC models.
 
@@ -416,7 +416,7 @@ def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()
         fig.update_yaxes(showline=True, linewidth=1, linecolor='black', mirror=True)
 
         fig.update_layout(
-            legend=dict(x=0, y=-0.2, orientation='h', font=dict(size=16)),
+            legend=dict(x=0, y=-0.2-legend_pad, orientation='h', font=dict(size=16)),
             height=400 * n_rows,
             width=400 * n_cols
         )
