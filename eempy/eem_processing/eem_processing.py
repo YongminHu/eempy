@@ -1,7 +1,7 @@
 """
 Functions for EEM preprocessing and post-processing
 Author: Yongmin Hu (yongmin.hu@eawag.ch, yongminhu@outlook.com)
-Last update: 2024-02-13
+Last update: 2024-07-03
 """
 from matplotlib import pyplot as plt
 

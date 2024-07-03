@@ -1,7 +1,7 @@
 """
 Functions for plotting EEM-related data
 Author: Yongmin Hu (yongminhu@outlook.com)
-Last update: 2024-02-13
+Last update: 2024-07-03
 """
 
 from eempy.utils import *
