@@ -2,7 +2,7 @@
 
 Author: Yongmin Hu (yongminhu@outlook.com; yongmin.hu@eawag.ch)
 
-Last update: 2024-03-07
+Last update: 2024-07-03
 
 This is a package for Excitation-Emission Matrix (EEM) analysis.
 
