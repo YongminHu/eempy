@@ -3,6 +3,7 @@ Functions for EEM preprocessing and post-processing
 Author: Yongmin Hu (yongmin.hu@eawag.ch, yongminhu@outlook.com)
 Last update: 2024-02-13
 """
+from matplotlib import pyplot as plt
 
 from eempy.utils import *
 import scipy.stats as stats
@@ -12,10 +13,12 @@ import numpy as np
 import itertools
 import string
 import warnings
+import json
 from math import sqrt
 from sklearn.metrics import mean_squared_error, explained_variance_score, r2_score
 # from sklearn.ensemble import IsolationForest
 # from sklearn import svm
+from sklearn.decomposition import PCA, NMF
 from sklearn.linear_model import LinearRegression
 from scipy.ndimage import gaussian_filter
 from scipy.interpolate import RegularGridInterpolator, interp1d, griddata
@@ -53,12 +56,12 @@ def process_eem_stack(eem_stack, f, **kwargs):
         The processed EEM stack.
     other_outputs: tuple, optional
         If the EEM processing function have more than 1 returns, the rest of the returns will be stored in a tuple,
-        where each element is the return of EEM processing function applied on one EEM.
+        where each element is the return of EEM processing function applied to every EEM.
     """
     processed_eem_stack = []
     other_outputs = []
 
-    #------Absorbance and blank are two parameters that are potentially sample-specific--------
+    # ------Absorbance and blank are two parameters that are potentially sample-specific--------
     if "absorbance" in kwargs:
         abs = kwargs.pop('absorbance')
         abs_passed = True
@@ -191,7 +194,7 @@ def eem_gaussian_filter(intensity, sigma=1, truncate=3):
     return intensity_filtered
 
 
-def eem_cutting(intensity, ex_range, em_range, em_min, em_max, ex_min, ex_max):
+def eem_cutting(intensity, ex_range_old, em_range_old, ex_min_new, ex_max_new, em_min_new, em_max_new):
     """
     To cut the EEM.
 
@@ -199,17 +202,17 @@ def eem_cutting(intensity, ex_range, em_range, em_min, em_max, ex_min, ex_max):
     ----------
     intensity: np.ndarray (2d)
         The EEM.
-    ex_range: np.ndarray (1d)
+    ex_range_old: np.ndarray (1d)
         The excitation wavelengths.
-    em_range: np.ndarray (1d)
+    em_range_old: np.ndarray (1d)
         The emission wavelengths.
-    ex_min: float
+    ex_min_new: float
         The lower boundary of excitation wavelength of the EEM after cutting.
-    ex_max: float
+    ex_max_new: float
         The upper boundary of excitation wavelength of the EEM after cutting.
-    em_min: float
+    em_min_new: float
         The lower boundary of emission wavelength of the EEM after cutting.
-    em_max: float
+    em_max_new: float
         The upper boundary of emission wavelength of the EEM after cutting.
 
     Returns
@@ -221,14 +224,14 @@ def eem_cutting(intensity, ex_range, em_range, em_min, em_max, ex_min, ex_max):
     em_range_cut:np.ndarray
         The cut em wavelengths.
     """
-    em_min_idx = dichotomy_search(em_range, em_min)
-    em_max_idx = dichotomy_search(em_range, em_max)
-    ex_min_idx = dichotomy_search(ex_range, ex_min)
-    ex_max_idx = dichotomy_search(ex_range, ex_max)
-    intensity_cut = intensity[ex_range.shape[0] - ex_max_idx - 1:ex_range.shape[0] - ex_min_idx,
-                              em_min_idx:em_max_idx + 1]
-    em_range_cut = em_range[em_min_idx:em_max_idx + 1]
-    ex_range_cut = ex_range[ex_min_idx:ex_max_idx + 1]
+    em_min_idx = dichotomy_search(em_range_old, em_min_new)
+    em_max_idx = dichotomy_search(em_range_old, em_max_new)
+    ex_min_idx = dichotomy_search(ex_range_old, ex_min_new)
+    ex_max_idx = dichotomy_search(ex_range_old, ex_max_new)
+    intensity_cut = intensity[ex_range_old.shape[0] - ex_max_idx - 1:ex_range_old.shape[0] - ex_min_idx,
+                    em_min_idx:em_max_idx + 1]
+    em_range_cut = em_range_old[em_min_idx:em_max_idx + 1]
+    ex_range_cut = ex_range_old[ex_min_idx:ex_max_idx + 1]
     return intensity_cut, ex_range_cut, em_range_cut
 
 
@@ -258,7 +261,6 @@ def eem_nan_imputing(intensity, ex_range, em_range, method: str = 'linear', fill
     xx = x[~np.isnan(intensity)].flatten()
     yy = y[~np.isnan(intensity)].flatten()
     zz = intensity[~np.isnan(intensity)].flatten()
-    intensity_imputed = None
     if isinstance(fill_value, float):
         intensity_imputed = griddata((xx, yy), zz, (x, y), method=method, fill_value=fill_value)
     elif fill_value == 'linear_ex':
@@ -284,8 +286,8 @@ def eem_nan_imputing(intensity, ex_range, em_range, method: str = 'linear', fill
     return intensity_imputed
 
 
-def eem_raman_normalization(intensity, blank=None, ex_range_blank=None, em_range_blank=None, from_blank=False,
-                            integration_time=1, ex_lb=349, ex_ub=351, bandwidth=1800, bandwidth_type='wavenumber',
+def eem_raman_normalization(intensity, blank=None, ex_range_blank=None, em_range_blank=None, from_blank=True,
+                            integration_time=1, ex_target=350, bandwidth=5,
                             rsu_standard=20000, manual_rsu: Optional[float] = 1):
     """
     Normalize the EEM using the Raman scattering unit (RSU) given directly or calculated from a blank EEM.
@@ -306,14 +308,10 @@ def eem_raman_normalization(intensity, blank=None, ex_range_blank=None, em_range
         Whether to calculate the RSU from a blank. If False, manual_rsu will be used.
     integration_time: float
         The integration time of the blank measurement.
-    ex_lb: float
-        The lower boundary of excitation wavelength range within which the RSU is calculated.
-    ex_ub: float
-        The upper boundary of excitation wavelength range within which the RSU is calculated.
+    ex_target: float
+        The excitation wavelength at which the RSU is calculated.
     bandwidth: float
         The bandwidth of Raman scattering peak.
-    bandwidth_type: str, {"wavenumber", "wavelength"}
-        The type of bandwidth. "wavenumber": (1/nm); "wavelength": (nm).
     rsu_standard: float
         A factor used to divide the raw RSU. This is used to control the magnitude of RSU so that the normalized
         intensity of EEM would not be numerically too high or too low.
@@ -330,28 +328,24 @@ def eem_raman_normalization(intensity, blank=None, ex_range_blank=None, em_range
     if not from_blank:
         return intensity / manual_rsu, manual_rsu
     else:
-        ex_range_cut = ex_range_blank[(ex_range_blank >= ex_lb) & (ex_range_blank <= ex_ub)]
-        rsu_tot = 0
-        for ex in ex_range_cut.tolist():
-            if bandwidth_type == 'wavenumber':
-                em_target = -ex / (0.00036 * ex - 1)
-                wn_target = 10000000 / em_target
-                em_lb = 10000000 / (wn_target + bandwidth)
-                em_rb = 10000000 / (wn_target - bandwidth)
-                rsu, _ = eem_regional_integration(blank, ex_range_blank, em_range_blank,
-                                                  ex_min=ex, ex_max=ex, em_min=em_lb, em_max=em_rb)
-            elif bandwidth_type == 'wavelength':
-                rsu, _ = eem_regional_integration(blank, ex_range_blank, em_range_blank,
-                                                  ex_min=ex, ex_max=ex, em_min=ex - bandwidth, em_max=ex + bandwidth)
-            else:
-                raise ValueError("'bandwidth_type' should be either 'wavenumber' or 'wavelength'.")
-            rsu_tot += rsu
-    rsu_final = rsu_tot / (integration_time * rsu_standard)
+        em_target = -ex_target / (0.00036 * ex_target - 1)
+        rsu, _ = eem_regional_integration(blank, ex_range_blank, em_range_blank,
+                                          ex_min=ex_target, ex_max=ex_target, em_min=em_target - bandwidth / 2,
+                                          em_max=em_target + bandwidth / 2)
+        # elif bandwidth_type == 'wavenumber':
+        #     em_target = -ex / (0.00036 * ex - 1)
+        #     wn_target = 10000000 / em_target
+        #     em_lb = 10000000 / (wn_target + bandwidth)
+        #     em_rb = 10000000 / (wn_target - bandwidth)
+        #     rsu, _ = eem_regional_integration(blank, ex_range_blank, em_range_blank,
+        #                                       ex_min=ex, ex_max=ex, em_min=em_lb, em_max=em_rb)
+    rsu_final = rsu / (integration_time * rsu_standard)
     intensity_normalized = intensity / rsu_final
     return intensity_normalized, rsu_final
 
 
-def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_method='linear', interpolation_axis='grid'):
+def eem_raman_scattering_removal(intensity, ex_range, em_range, width=5, interpolation_method='linear',
+                                 interpolation_dimension='2d'):
     """
     Remove and interpolate the Raman scattering.
 
@@ -367,9 +361,9 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_meth
         The width of Raman scattering.
     interpolation_method: str, {"linear", "cubic", "nan"}
         The method used to interpolate the Raman scattering.
-    interpolation_axis: str, {"ex", "em", "grid"}
-        The axis along which the Raman scattering is interpolated. "ex": interpolation is conducted along the excitation
-        wavelength; "em": interpolation is conducted along the emission wavelength; "grid": interpolation is conducted
+    interpolation_dimension: str, {"1d-ex", "1d-em", "2d"}
+        The axis along which the Raman scattering is interpolated. "1d-ex": interpolation is conducted along the excitation
+        wavelength; "1d-em": interpolation is conducted along the emission wavelength; "2d": interpolation is conducted
         on the 2D grid of both excitation and emission wavelengths.
 
     Returns
@@ -380,6 +374,7 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_meth
         Indicate the pixels that are interpolated. 0: pixel is interpolated; 1: pixel is not interpolated.
     """
     intensity_masked = np.array(intensity)
+    width = width / 2
     raman_mask = np.ones(intensity.shape)
     lambda_em = -ex_range / (0.00036 * ex_range - 1)
     tol_emidx = int(np.round(width / (em_range[1] - em_range[0])))
@@ -391,14 +386,14 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_meth
         elif lambda_em[s] - width <= em_range[0] < lambda_em[s]:
             emidx = dichotomy_search(em_range, lambda_em[s])
             raman_mask[exidx, 0: emidx + tol_emidx + 1] = 0
-        elif lambda_em[s] - width > em_range[0]:
+        elif em_range[0] < lambda_em[s] - width < em_range[-1]:
             emidx = dichotomy_search(em_range, lambda_em[s] - width)
-            raman_mask[exidx, emidx: emidx + 2 * tol_emidx + 1] = 0
+            raman_mask[exidx, emidx: min(em_range.shape[0], emidx + 2 * tol_emidx + 1)] = 0
 
     if interpolation_method == 'nan':
         intensity_masked[np.where(raman_mask == 0)] = np.nan
     else:
-        if interpolation_axis == 'ex':
+        if interpolation_dimension == '1d-ex':
             for j in range(0, intensity.shape[1]):
                 try:
                     x = np.flipud(ex_range)[np.where(raman_mask[:, j] == 1)]
@@ -409,7 +404,7 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_meth
                 except ValueError:
                     continue
 
-        if interpolation_axis == 'em':
+        if interpolation_dimension == '1d-em':
             for i in range(0, intensity.shape[0]):
                 try:
                     x = em_range[np.where(raman_mask[i, :] == 1)]
@@ -420,7 +415,7 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_meth
                 except ValueError:
                     continue
 
-        if interpolation_axis == 'grid':
+        if interpolation_dimension == '2d':
             old_nan = np.isnan(intensity)
             intensity_masked[np.where(raman_mask == 0)] = np.nan
             intensity_masked = eem_nan_imputing(intensity_masked, ex_range, em_range, method=interpolation_method)
@@ -429,9 +424,10 @@ def eem_raman_masking(intensity, ex_range, em_range, width=5, interpolation_meth
     return intensity_masked, raman_mask
 
 
-def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15,
-                         interpolation_axis_o1='grid', interpolation_axis_o2='grid', interpolation_method_o1='zero',
-                         interpolation_method_o2='linear'):
+def eem_rayleigh_scattering_removal(intensity, ex_range, em_range, width_o1=15, width_o2=15,
+                                    interpolation_dimension_o1='2d', interpolation_dimension_o2='2d',
+                                    interpolation_method_o1='zero',
+                                    interpolation_method_o2='linear'):
     """
     Remove and interpolate the Rayleigh scattering.
 
@@ -447,11 +443,11 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15
         The width or 1st order Rayleigh scattering.
     width_o2: float
         The width or 2nd order Rayleigh scattering.
-    interpolation_axis_o1: str, {"ex", "em", "grid"}
+    interpolation_dimension_o1: str, {"1d-ex", "1d-em", "2d"}
         The axis along which the 1st order Rayleigh scattering is interpolated. "ex": interpolation is conducted along
-        the excitation wavelength; "em": interpolation is conducted along the emission wavelength; "grid": interpolation
+        the excitation wavelength; "em": interpolation is conducted along the emission wavelength; "2d": interpolation
         is conducted on the 2D grid of both excitation and emission wavelengths.
-    interpolation_axis_o2: str, {"ex", "em", "grid"}
+    interpolation_dimension_o2: str, {"1d-ex", "1d-em", "2d"}
         The axis along which the 2nd order Rayleigh scattering is interpolated.
     interpolation_method_o1: str, {"linear", "cubic", "nan"}
         The method used to interpolate the 1st order Rayleigh scattering.
@@ -472,6 +468,9 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15
     intensity_masked = np.array(intensity)
     rayleigh_mask_o1 = np.ones(intensity.shape)
     rayleigh_mask_o2 = np.ones(intensity.shape)
+    # convert the entire width to half-width
+    width_o1 = width_o1 / 2
+    width_o2 = width_o2 / 2
     lambda_em_o1 = ex_range
     tol_emidx_o1 = int(np.round(width_o1 / (em_range[1] - em_range[0])))
     for s in range(0, intensity_masked.shape[0]):
@@ -482,10 +481,11 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15
         elif lambda_em_o1[s] - width_o1 <= em_range[0] < lambda_em_o1[s]:
             emidx = dichotomy_search(em_range, lambda_em_o1[s])
             rayleigh_mask_o1[exidx, 0: emidx + tol_emidx_o1 + 1] = 0
-        elif lambda_em_o1[s] - width_o1 > em_range[0]:
-            emidx = dichotomy_search(em_range, lambda_em_o1[s])
-            rayleigh_mask_o1[exidx, emidx: emidx + tol_emidx_o1 + 1] = 0
+        elif em_range[0] < lambda_em_o1[s] - width_o1 < em_range[-1]:
+            emidx = dichotomy_search(em_range, lambda_em_o1[s] - width_o1)
+            rayleigh_mask_o1[exidx, emidx: min(em_range.shape[0], emidx + 2 * tol_emidx_o1 + 1)] = 0
             intensity_masked[exidx, 0: emidx] = 0
+
     lambda_em_o2 = ex_range * 2
     tol_emidx_o2 = int(np.round(width_o2 / (em_range[1] - em_range[0])))
     for s in range(0, intensity_masked.shape[0]):
@@ -496,19 +496,21 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15
         elif lambda_em_o2[s] - width_o2 <= em_range[0] < lambda_em_o2[s]:
             emidx = dichotomy_search(em_range, lambda_em_o2[s])
             rayleigh_mask_o2[exidx, 0: emidx + tol_emidx_o2 + 1] = 0
-        elif lambda_em_o2[s] - width_o2 > em_range[0]:
+        elif em_range[0] < lambda_em_o2[s] - width_o2 <= em_range[-1]:
             emidx = dichotomy_search(em_range, lambda_em_o2[s] - width_o2)
-            rayleigh_mask_o2[exidx, emidx: emidx + 2 * tol_emidx_o2 + 1] = 0
+            rayleigh_mask_o2[exidx, emidx: min(em_range.shape[0], emidx + 2 * tol_emidx_o2 + 1)] = 0
 
-    for axis, itp, mask in zip([interpolation_axis_o1, interpolation_axis_o2],
+    for axis, itp, mask in zip([interpolation_dimension_o1, interpolation_dimension_o2],
                                [interpolation_method_o1, interpolation_method_o2],
                                [rayleigh_mask_o1, rayleigh_mask_o2]):
         if itp == 'zero':
             intensity_masked[np.where(mask == 0)] = 0
         elif itp == 'nan':
             intensity_masked[np.where(mask == 0)] = np.nan
+        elif itp == 'none':
+            pass
         else:
-            if axis == 'ex':
+            if axis == '1d-ex':
                 for j in range(0, intensity.shape[1]):
                     try:
                         x = np.flipud(ex_range)[np.where(mask[:, j] == 1)]
@@ -518,7 +520,7 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15
                         intensity_masked[:, j] = y_predict
                     except ValueError:
                         continue
-            if axis == 'em':
+            if axis == '1d-em':
                 for i in range(0, intensity.shape[0]):
                     try:
                         x = em_range[np.where(mask[i, :] == 1)]
@@ -528,18 +530,19 @@ def eem_rayleigh_masking(intensity, ex_range, em_range, width_o1=15, width_o2=15
                         intensity_masked[i, :] = y_predict
                     except ValueError:
                         continue
-            if axis == 'grid':
+            if axis == '2d':
                 old_nan = np.isnan(intensity)
                 old_nan_o1 = np.isnan(intensity_masked)
                 intensity_masked[np.where(mask == 0)] = np.nan
-                intensity_masked = eem_nan_imputing(intensity_masked, ex_range, em_range, method=itp, fill_value='linear_ex')
+                intensity_masked = eem_nan_imputing(intensity_masked, ex_range, em_range, method=itp,
+                                                    fill_value='linear_ex')
                 # restore the nan values in non-raman-scattering region
                 intensity_masked[old_nan] = np.nan
                 intensity_masked[old_nan_o1] = np.nan
     return intensity_masked, rayleigh_mask_o1, rayleigh_mask_o2
 
 
-def eem_ife_correction(intensity, ex_range, em_range, absorbance, ex_range_abs, cuvette_length=1):
+def eem_ife_correction(intensity, ex_range_eem, em_range_eem, absorbance, ex_range_abs):
     """
     Correct the inner filter effect (IFE).
 
@@ -547,18 +550,16 @@ def eem_ife_correction(intensity, ex_range, em_range, absorbance, ex_range_abs, 
     ----------
     intensity: np.ndarray (2d)
         The EEM.
-    ex_range: np.ndarray (1d)
+    ex_range_eem: np.ndarray (1d)
         The excitation wavelengths of EEM.
-    em_range: np.ndarray (1d)
+    em_range_eem: np.ndarray (1d)
         The emission wavelengths of EEM.
     absorbance: np.ndarray
-        The absorbance. If this function is called alone, an array of shape (i, ) should be passed, where i is the
-        length of the absorbance spectrum. If this function is called with process_eem_stack(), an array of shape (n, i)
+        The absorbance. If this function is called by itself, an array of shape (i, ) should be passed, where i is the
+        length of the absorbance spectrum. If this function is called by process_eem_stack(), an array of shape (n, i)
         should be passed, where n is the number samples, and i is the length of the absorbance spectrum.
     ex_range_abs: np.ndarray (1d)
         The excitation wavelengths of absorbance.
-    cuvette_length: float
-        The pathlength of cuvette in measurement.
 
     Returns
     -------
@@ -568,10 +569,10 @@ def eem_ife_correction(intensity, ex_range, em_range, absorbance, ex_range_abs, 
     # if absorbance.ndim == 1:
     #     absorbance_reshape = absorbance.reshape((1, absorbance.shape[0]))
     f1 = interp1d(ex_range_abs, absorbance, kind='linear', bounds_error=False, fill_value='extrapolate')
-    absorbance_ex = np.fliplr(np.array([f1(ex_range)]))
-    absorbance_em = np.array([f1(em_range)])
-    ife_factors = 10 ** (cuvette_length * (absorbance_ex.T.dot(np.ones(absorbance_em.shape)) +
-                                           np.ones(absorbance_ex.shape).T.dot(absorbance_em)) / 2)
+    absorbance_ex = np.fliplr(np.array([f1(ex_range_eem)]))
+    absorbance_em = np.array([f1(em_range_eem)])
+    ife_factors = 10 ** ((absorbance_ex.T.dot(np.ones(absorbance_em.shape)) +
+                          np.ones(absorbance_ex.shape).T.dot(absorbance_em)) / 2)
     intensity_corrected = intensity * ife_factors
     return intensity_corrected
 
@@ -604,9 +605,15 @@ def eem_regional_integration(intensity, ex_range, em_range, ex_min, ex_max, em_m
     avg_regional_intensity:
         The average fluorescence intensity in the region.
     """
-    intensity_cut, em_range_cut, ex_range_cut = eem_cutting(intensity, ex_range, em_range,
-                                                            em_min=em_min, em_max=em_max,
-                                                            ex_min=ex_min, ex_max=ex_max)
+
+    ex_range_interpolated = np.sort(np.unique(np.concatenate([ex_range, [ex_min, ex_max]])))
+    em_range_interpolated = np.sort(np.unique(np.concatenate([em_range, [em_min, em_max]])))
+    intensity_interpolated = eem_interpolation(intensity, ex_range, em_range, ex_range_interpolated,
+                                               em_range_interpolated, method='linear')
+    intensity_cut, ex_range_cut, em_range_cut = eem_cutting(intensity_interpolated, ex_range_interpolated,
+                                                            em_range_interpolated,
+                                                            ex_min_new=ex_min, ex_max_new=ex_max,
+                                                            em_min_new=ex_min, em_max_new=em_max)
     if intensity_cut.shape[0] == 1:
         integration = np.trapz(intensity_cut, em_range_cut, axis=1)
     elif intensity_cut.shape[1] == 1:
@@ -646,12 +653,9 @@ def eem_interpolation(intensity, ex_range_old, em_range_old, ex_range_new, em_ra
     intensity_interpolated: np.ndarray
         The interpolated EEM.
     """
-    interp = RegularGridInterpolator((ex_range_old[::-1], em_range_old), intensity, method=method)
-    x, y = np.meshgrid(em_range_new, ex_range_new[::-1])
-    xx = x.flatten()
-    yy = y.flatten()
-    coordinates_new = np.concatenate([xx[:, np.newaxis], yy[:, np.newaxis]], axis=1)
-    intensity_interpolated = interp(coordinates_new).reshape(ex_range_new.shape[0], em_range_new.shape[0])
+    interp = RegularGridInterpolator((ex_range_old[::-1], em_range_old), intensity, method=method, bounds_error=False)
+    x, y = np.meshgrid(ex_range_new[::-1], em_range_new, indexing='ij')
+    intensity_interpolated = interp((x, y)).reshape(ex_range_new.shape[0], em_range_new.shape[0])
     return intensity_interpolated
 
 
@@ -739,8 +743,8 @@ def eems_tf_normalization(intensity):
 #     return label
 
 
-def eems_fit_components(eem_stack, component_stack, fit_intercept=False):
-    assert eem_stack.shape[1:] == component_stack.shape, "EEM and component have different shapes"
+def eems_fit_components(eem_stack, component_stack, fit_intercept=False, positive=False):
+    assert eem_stack.shape[1:] == component_stack.shape[1:], "EEM and component have different shapes"
     score_sample = []
     fmax_sample = []
     max_values = np.amax(component_stack, axis=(1, 2))
@@ -748,7 +752,7 @@ def eems_fit_components(eem_stack, component_stack, fit_intercept=False):
     for i in range(eem_stack.shape[0]):
         y_true = eem_stack[i].reshape([-1])
         x = component_stack.reshape([component_stack.shape[0], -1]).T
-        reg = LinearRegression(fit_intercept=fit_intercept)
+        reg = LinearRegression(fit_intercept=fit_intercept, positive=positive)
         reg.fit(x, y_true)
         y_pred = reg.predict(x)
         eem_stack_pred[i, :, :] = y_pred.reshape((eem_stack.shape[1], eem_stack.shape[2]))
@@ -806,6 +810,12 @@ class EEMDataset:
         self.ref = ref
         self.index = index
         self.extent = (self.em_range.min(), self.em_range.max(), self.ex_range.min(), self.ex_range.max())
+
+    def to_json_serializable(self):
+        self.eem_stack = self.eem_stack.tolist()
+        self.ex_range = self.ex_range.tolist()
+        self.em_range = self.em_range.tolist()
+        self.ref = self.ref.tolist() if self.ref else None
 
     # --------------------EEM dataset features--------------------
     def zscore(self):
@@ -1027,9 +1037,11 @@ class EEMDataset:
         eem_stack_masked: np.ndarray
             The masked EEM.
         """
-        eem_stack_masked, _ = process_eem_stack(self.eem_stack, eem_region_masking, ex_range=self.ex_range,
-                                                em_range=self.em_range, ex_min=ex_min, ex_max=ex_max, em_min=em_min,
-                                                em_max=em_max, fill_value=fill_value)
+        eem_stack_masked, _ = process_eem_stack(
+            self.eem_stack, eem_region_masking, ex_range=self.ex_range,
+            em_range=self.em_range, ex_min=ex_min, ex_max=ex_max, em_min=em_min,
+            em_max=em_max, fill_value=fill_value
+        )
         if not copy:
             self.eem_stack = eem_stack_masked
         return eem_stack_masked
@@ -1054,9 +1066,12 @@ class EEMDataset:
         em_range_cut:np.ndarray
             The cut em wavelengths.
         """
-        eem_stack_cut, new_ranges = process_eem_stack(self.eem_stack, eem_cutting, ex_range=self.ex_range,
-                                                      em_range=self.em_range,
-                                                      ex_min=ex_min, ex_max=ex_max, em_min=em_min, em_max=em_max)
+        eem_stack_cut, new_ranges = process_eem_stack(
+            self.eem_stack, eem_cutting, ex_range_old=self.ex_range,
+            em_range_old=self.em_range,
+            ex_min_new=ex_min, ex_max_new=ex_max, em_min_new=em_min,
+            em_max_new=em_max
+        )
         if not copy:
             self.eem_stack = eem_stack_cut
             self.ex_range = new_ranges[0][0]
@@ -1086,7 +1101,7 @@ class EEMDataset:
         return eem_stack_imputed
 
     def raman_normalization(self, ex_range_blank=None, em_range_blank=None, blank=None, from_blank=False,
-                            integration_time=1, ex_lb=349, ex_ub=351, bandwidth_type='wavenumber', bandwidth=1800,
+                            integration_time=1, ex_target=350, bandwidth=5,
                             rsu_standard=20000, manual_rsu=1, copy=True):
         """
         Normalize the EEM using the Raman scattering unit (RSU) given directly or calculated from a blank EEM.
@@ -1094,7 +1109,7 @@ class EEMDataset:
 
         Parameters
         ----------
-        blank, ex_range_blank, em_range_blank, from_blank, integration_time, ex_lb, ex_ub, bandwidth, bandwidth_type
+        blank, ex_range_blank, em_range_blank, from_blank, integration_time, ex_target, bandwidth
             See eempy.eem_processing.eem_raman_normalization
         rsu_standard, manual_rsu
             See eempy.eem_processing.eem_raman_normalization
@@ -1106,14 +1121,15 @@ class EEMDataset:
         eem_stack_normalized: np.ndarray
             The normalized EEM.
         """
-        eem_stack_normalized = process_eem_stack(self.eem_stack, eem_raman_normalization, ex_range_blank=ex_range_blank,
-                                                 em_range_blank=em_range_blank, blank=blank, from_blank=from_blank,
-                                                 integration_time=integration_time, ex_lb=ex_lb, ex_ub=ex_ub,
-                                                 bandwidth_type=bandwidth_type, bandwidth=bandwidth,
-                                                 rsu_standard=rsu_standard, manual_rsu=manual_rsu)
+        eem_stack_normalized, rsu = process_eem_stack(
+            self.eem_stack, eem_raman_normalization, ex_range_blank=ex_range_blank,
+            em_range_blank=em_range_blank, blank=blank, from_blank=from_blank,
+            integration_time=integration_time, ex_target=ex_target,
+            bandwidth=bandwidth, rsu_standard=rsu_standard, manual_rsu=manual_rsu
+        )
         if not copy:
             self.eem_stack = eem_stack_normalized
-        return eem_stack_normalized
+        return eem_stack_normalized, rsu
 
     def tf_normalization(self, copy=True):
         """
@@ -1136,14 +1152,14 @@ class EEMDataset:
             self.eem_stack = eem_stack_normalized
         return eem_stack_normalized, weights
 
-    def raman_masking(self, width=5, interpolation_method='linear', interpolation_axis='grid', copy=True):
+    def raman_scattering_removal(self, width=5, interpolation_method='linear', interpolation_dimension='2d', copy=True):
         """
         Remove and interpolate the Raman scattering.
 
         Parameters
         ----------
-        width, interpolation_method, interpolation_axis:
-            See eempy.eem_processing.eem_raman_masking
+        width, interpolation_method, interpolation_dimension:
+            See eempy.eem_processing.eem_raman_scattering_removal
         copy: bool
             if False, overwrite the EEMDataset object with the processed EEMs.
 
@@ -1152,23 +1168,26 @@ class EEMDataset:
         eem_stack_masked: np.ndarray
             The EEM with Raman scattering interpolated.
         """
-        eem_stack_masked, _ = process_eem_stack(self.eem_stack, eem_raman_masking, ex_range=self.ex_range,
-                                                em_range=self.em_range, width=width,
-                                                interpolation_method=interpolation_method,
-                                                interpolation_axis=interpolation_axis)
+        eem_stack_masked, _ = process_eem_stack(
+            self.eem_stack, eem_raman_scattering_removal, ex_range=self.ex_range,
+            em_range=self.em_range, width=width,
+            interpolation_method=interpolation_method,
+            interpolation_dimension=interpolation_dimension
+        )
         if not copy:
             self.eem_stack = eem_stack_masked
         return eem_stack_masked
 
-    def rayleigh_masking(self, width_o1=15, width_o2=15, interpolation_axis_o1='grid', interpolation_axis_o2='grid',
-                         interpolation_method_o1='zero', interpolation_method_o2='linear', copy=True):
+    def rayleigh_scattering_removal(self, width_o1=15, width_o2=15, interpolation_dimension_o1='2d',
+                                    interpolation_dimension_o2='2d', interpolation_method_o1='zero',
+                                    interpolation_method_o2='linear', copy=True):
         """
         Remove and interpolate the Rayleigh scattering.
 
         Parameters
         ----------
-        width_o1, width_o2, interpolation_axis_o1, interpolation_axis_o2, interpolation_method_o1, interpolation_method_o2:
-            See eempy.eem_processing.eem_rayleigh_masking
+        width_o1, width_o2, interpolation_dimension_o1, interpolation_dimension_o2, interpolation_method_o1, interpolation_method_o2:
+            See eempy.eem_processing.eem_rayleigh_scattering_removal
         copy: bool
             if False, overwrite the EEMDataset object with the processed EEMs.
 
@@ -1177,23 +1196,26 @@ class EEMDataset:
         eem_stack_masked: np.ndarray
             The EEM with Rayleigh scattering interpolated.
         """
-        eem_stack_masked, _ = process_eem_stack(self.eem_stack, eem_rayleigh_masking, ex_range=self.ex_range,
-                                                em_range=self.em_range, width_o1=width_o1,
-                                                width_o2=width_o2, interpolation_axis_o1=interpolation_axis_o1,
-                                                interpolation_axis_o2=interpolation_axis_o2,
-                                                interpolation_method_o1=interpolation_method_o1,
-                                                interpolation_method_o2=interpolation_method_o2)
+        eem_stack_masked, _ = process_eem_stack(
+            self.eem_stack, eem_rayleigh_scattering_removal, ex_range=self.ex_range,
+            em_range=self.em_range, width_o1=width_o1,
+            width_o2=width_o2,
+            interpolation_dimension_o1=interpolation_dimension_o1,
+            interpolation_dimension_o2=interpolation_dimension_o2,
+            interpolation_method_o1=interpolation_method_o1,
+            interpolation_method_o2=interpolation_method_o2
+        )
         if not copy:
             self.eem_stack = eem_stack_masked
         return eem_stack_masked
 
-    def ife_correction(self, absorbance, ex_range_abs, cuvette_length=1, copy=True):
+    def ife_correction(self, absorbance, ex_range_abs, copy=True):
         """
         Correct the inner filter effect (IFE).
 
         Parameters
         ----------
-        absorbance, ex_range_abs, cuvette_length:
+        absorbance, ex_range_abs:
             See eempy.eem_processing.eem_ife_correction
         copy: bool
             if False, overwrite the EEMDataset object with the processed EEMs.
@@ -1203,9 +1225,11 @@ class EEMDataset:
         eem_stack_corrected: np.ndarray
             The corrected EEM.
         """
-        eem_stack_corrected = process_eem_stack(self.eem_stack, eem_ife_correction, ex_range=self.ex_range,
-                                                em_range=self.em_range, absorbance=absorbance,
-                                                ex_range_abs=ex_range_abs, cuvette_length=cuvette_length)
+        eem_stack_corrected = process_eem_stack(
+            self.eem_stack, eem_ife_correction, ex_range_eem=self.ex_range,
+            em_range_eem=self.em_range, absorbance=absorbance,
+            ex_range_abs=ex_range_abs
+        )
         if not copy:
             self.eem_stack = eem_stack_corrected
         return eem_stack_corrected
@@ -1228,9 +1252,11 @@ class EEMDataset:
         eem_stack_interpolated: np.ndarray
             The interpolated EEM.
         """
-        eem_stack_interpolated = process_eem_stack(self.eem_stack, eem_interpolation, ex_range_old=self.ex_range,
-                                                   em_range_old=self.em_range, ex_range_new=ex_range_new,
-                                                   em_range_new=em_range_new, method=method)
+        eem_stack_interpolated = process_eem_stack(
+            self.eem_stack, eem_interpolation, ex_range_old=self.ex_range,
+            em_range_old=self.em_range, ex_range_new=ex_range_new,
+            em_range_new=em_range_new, method=method
+        )
         if not copy:
             self.eem_stack = eem_stack_interpolated
             self.ex_range = ex_range_new
@@ -1369,6 +1395,16 @@ class EEMDataset:
         self.ref = np.array(sorted(self.ref))
         return sorted_indices
 
+    def filter_by_index(self, keyword):
+        """
+        Select the samples whose indexes contain the given keyword.
+
+        Returns
+        -------
+
+        """
+        return
+
 
 def combine_eem_datasets(list_eem_datasets):
     """
@@ -1391,8 +1427,11 @@ def combine_eem_datasets(list_eem_datasets):
     em_range_0 = list_eem_datasets[0].em_range
     for d in list_eem_datasets:
         eem_stack_combined.append(d.eem_stack)
-        ref_combined.append(d.ref)
-        index_combined = index_combined + d.index
+        ref_combined.append(d.ref if d.ref else np.array(d.eem_stack.shape[0] * [np.nan]))
+        if d.index:
+            index_combined = index_combined + d.index
+        else:
+            index_combined = index_combined + ['N/A' for i in range(d.eem_stack.shape[0])]
         if not np.array_equal(d.ex_range, ex_range_0) or not np.array_equal(d.em_range, em_range_0):
             warnings.warn(
                 'ex_range and em_range of the datasets must be identical. If you want to combine EEM datasets '
@@ -1437,7 +1476,7 @@ class PARAFAC:
     fmax: pandas.DataFrame
         Fmax table.
     component_stack: np.ndarray
-        PARAFAC Components.
+        PARAFAC components.
     cptensors: tensorly CPTensor
         The output of PARAFAC in the form of tensorly CPTensor.
     eem_stack_train: np.ndarray
@@ -1494,9 +1533,9 @@ class PARAFAC:
             if not self.non_negativity:
                 if np.isnan(eem_dataset.eem_stack).any():
                     mask = np.where(np.isnan(eem_dataset.eem_stack), 0, 1)
-                    cptensors, _ = parafac(eem_dataset.eem_stack, rank=self.rank, mask=mask, init=self.init)
+                    cptensors = parafac(eem_dataset.eem_stack, rank=self.rank, mask=mask, init=self.init)
                 else:
-                    cptensors, _ = parafac(eem_dataset.eem_stack, rank=self.rank, init=self.init)
+                    cptensors = parafac(eem_dataset.eem_stack, rank=self.rank, init=self.init)
             else:
                 if np.isnan(eem_dataset.eem_stack).any():
                     mask = np.where(np.isnan(eem_dataset.eem_stack), 0, 1)
@@ -1545,7 +1584,7 @@ class PARAFAC:
         ex_loadings = pd.DataFrame(np.flipud(b), index=eem_dataset.ex_range)
         em_loadings = pd.DataFrame(c, index=eem_dataset.em_range)
         if self.sort_em:
-            em_peaks = [c[1] for c in em_loadings.idxmax()]
+            em_peaks = [c for c in em_loadings.idxmax()]
             peak_rank = list(enumerate(stats.rankdata(em_peaks)))
             order = [i[0] for i in sorted(peak_rank, key=lambda x: x[1])]
             component_stack = component_stack[order]
@@ -1661,7 +1700,7 @@ class PARAFAC:
 
         Returns
         -------
-        ev: float
+        cc: float
             core consistency
         """
         cc = core_consistency(self.cptensors, self.eem_stack_train)
@@ -1684,13 +1723,16 @@ class PARAFAC:
         """
         if mode == 'ex':
             lvr = compute_leverage(self.ex_loadings)
+            lvr.columns = ['leverage-ex']
         elif mode == 'em':
             lvr = compute_leverage(self.em_loadings)
+            lvr.columns = ['leverage-em']
         elif mode == 'sample':
             lvr = compute_leverage(self.score)
+            lvr.columns = ['leverage-sample']
         else:
             raise ValueError("'mode' should be 'ex' or 'em' or 'sample'.")
-        lvr.index = lvr.index.set_levels(['leverage of {m}'.format(m=mode)] * len(lvr.index.levels[0]), level=0)
+        # lvr.index = lvr.index.set_levels(['leverage of {m}'.format(m=mode)] * len(lvr.index.levels[0]), level=0)
         return lvr
 
     def sample_rmse(self):
@@ -1864,27 +1906,27 @@ def align_parafac_components(models_dict: dict, ex_ref: pd.DataFrame, em_ref: pd
     component_labels_ref = ex_ref.columns
     models_dict_new = {}
     for model_label, model in models_dict.items():
-        m_sim_ex = loadings_similarity(model, ex_ref, wavelength_alignment=wavelength_alignment)
-        m_sim_em = loadings_similarity(model, em_ref, wavelength_alignment=wavelength_alignment)
+        m_sim_ex = loadings_similarity(model.ex_loadings, ex_ref, wavelength_alignment=wavelength_alignment)
+        m_sim_em = loadings_similarity(model.em_loadings, em_ref, wavelength_alignment=wavelength_alignment)
         m_sim = (m_sim_ex + m_sim_em) / 2
         ex_var, em_var = (model.ex_loadings, model.em_loadings)
         matched_index = []
         m_sim_copy = m_sim.copy()
         if ex_var.shape[1] <= ex_ref.shape[1]:
             for n_var in range(ex_var.shape[1]):
-                max_index = np.argmax(m_sim[n_var, :])
+                max_index = np.argmax(m_sim.iloc[n_var, :])
                 while max_index in matched_index:
-                    m_sim_copy[n_var, max_index] = 0
-                    max_index = np.argmax(m_sim_copy[n_var, :])
+                    m_sim_copy.iloc[n_var, max_index] = 0
+                    max_index = np.argmax(m_sim_copy.iloc[n_var, :])
                 matched_index.append(max_index)
             component_labels_var = [component_labels_ref[i] for i in matched_index]
             permutation = get_indices_smallest_to_largest(matched_index)
         else:
             for n_ref in range(ex_ref.shape[1]):
-                max_index = np.argmax(m_sim[:, n_ref])
+                max_index = np.argmax(m_sim.iloc[:, n_ref])
                 while max_index in matched_index:
-                    m_sim_copy[max_index, n_ref] = 0
-                    max_index = np.argmax(m_sim_copy[:, n_ref])
+                    m_sim_copy.iloc[max_index, n_ref] = 0
+                    max_index = np.argmax(m_sim_copy.iloc[:, n_ref])
                 matched_index.append(max_index)
             non_ordered_index = list(set([i for i in range(ex_var.shape[1])]) - set(matched_index))
             permutation = matched_index + non_ordered_index
@@ -1900,9 +1942,9 @@ def align_parafac_components(models_dict: dict, ex_ref: pd.DataFrame, em_ref: pd
         model.em_loadings = model.em_loadings.iloc[:, permutation]
         model.fmax = model.fmax.iloc[:, permutation]
         model.component_stack = model.component_stack[permutation, :, :]
-        model.cptensor = permute_cp_tensor(model.cptensor, permutation)
+        model.cptensor = permute_cp_tensor(model.cptensors, permutation)
         models_dict_new[model_label] = model
-        return models_dict_new
+    return models_dict_new
 
 
 class SplitValidation:
@@ -1934,8 +1976,8 @@ class SplitValidation:
         Dictionary of PARAFAC models established on sub-datasets.
     """
 
-    def __init__(self, rank, n_split, combination_size, rule, similarity_metric='TCC', non_negativity=True,
-                 tf_normalization=True):
+    def __init__(self, rank, n_split=4, combination_size='half', rule='random', similarity_metric='TCC',
+                 non_negativity=True, tf_normalization=True):
         # ---------------Parameters-------------------
         self.rank = rank
         self.n_split = n_split
@@ -1972,7 +2014,6 @@ class SplitValidation:
             models[label] = model_subdataset
             subsets[label] = subdataset
         models = align_parafac_components(models, model_complete.ex_loadings, model_complete.em_loadings)
-
         self.eem_subsets = subsets
         self.subset_specific_models = models
         return self
@@ -1999,8 +2040,16 @@ class SplitValidation:
             pair_labels = '{m1} vs. {m2}'.format(m1=labels[k], m2=labels[-1 - k])
             similarities_ex[pair_labels] = sims_ex
             similarities_em[pair_labels] = sims_em
-        similarities_ex = pd.DataFrame(similarities_ex, columns=['C{i}'.format(i=i + 1) for i in range(self.rank)])
-        similarities_em = pd.DataFrame(similarities_em, columns=['C{i}'.format(i=i + 1) for i in range(self.rank)])
+        similarities_ex = pd.DataFrame.from_dict(
+            similarities_ex, orient='index',
+            columns=['Similarities in C{i}-ex'.format(i=i + 1) for i in range(self.rank)]
+        )
+        similarities_ex.index.name = 'Test'
+        similarities_em = pd.DataFrame.from_dict(
+            similarities_em, orient='index',
+            columns=['Similarities in C{i}-em'.format(i=i + 1) for i in range(self.rank)]
+        )
+        similarities_em.index.name = 'Test'
         return similarities_ex, similarities_em
 
 
@@ -2360,4 +2409,313 @@ class KPARAFACs:
                                     columns=list(self.cluster_specific_models.keys()))
 
         return best_model_label, score_all, fmax_all, sample_error
+
+
+# class EEMPCA:
+#
+#     def __init__(self, n_components):
+#         self.n_components = n_components
+#         self.score = None
+#         self.components = None
+#
+#     def fit(self, eem_dataset: EEMDataset):
+#         decomposer = PCA(n_components=self.n_components)
+#         n_samples = eem_dataset.eem_stack.shape[0]
+#         X = eem_dataset.eem_stack.reshape([n_samples, -1])
+#         score = decomposer.fit_transform(X)
+#         score = pd.DataFrame(score, index=eem_dataset.index,
+#                              columns=["component {i}".format(i=i + 1) for i in range(self.n_components)])
+#         components = decomposer.components_.reshape([self.n_components, eem_dataset.eem_stack.shape[1],
+#                                                      eem_dataset.eem_stack.shape[2]])
+#         self.score = score
+#         self.components = components
+#
+#         return self
+#
+#
+# class EEMNMF:
+#
+#     def __init__(self, n_components, alpha_W, alpha_H, l1_ratio):
+#         self.n_components = n_components
+#         self.alpha_W = alpha_W
+#         self.alpha_H = alpha_H
+#         self.l1_ratio = l1_ratio
+#         self.score = None
+#         self.components = None
+#
+#     def fit(self, eem_dataset: EEMDataset):
+#         decomposer = NMF(n_components=self.n_components, alpha_W=self.alpha_W, alpha_H=self.alpha_H,
+#                          l1_ratio=self.l1_ratio)
+#         n_samples = eem_dataset.eem_stack.shape[0]
+#         X = eem_dataset.eem_stack.reshape([n_samples, -1])
+#         score = decomposer.fit_transform(X)
+#         score = pd.DataFrame(score, index=eem_dataset.index,
+#                              columns=["component {i}".format(i=i + 1) for i in range(self.n_components)])
+#         components = decomposer.components_.reshape([self.n_components, eem_dataset.eem_stack.shape[1],
+#                                                      eem_dataset.eem_stack.shape[2]])
+#         self.score = score
+#         self.components = components
+#
+#         return self
+
+
+class EEMNMF:
+
+    def __init__(self, n_components, solver='cd', beta_loss='frobenius', alpha_W=0, alpha_H=0, l1_ratio=1,
+                 normalization='pixel_std'):
+        self.n_components = n_components
+        self.solver = solver
+        self.beta_loss = beta_loss
+        self.alpha_W = alpha_W
+        self.alpha_H = alpha_H
+        self.l1_ratio = l1_ratio
+        self.normalization = normalization
+        self.eem_stack_unfolded = None
+        self.nmf_score = None
+        self.nnls_score = None
+        self.components = None
+        self.decomposer = None
+        self.residual = None
+        self.normalization_factor_std = None
+        self.normalization_factor_max = None
+        self.reconstruction_error = None
+        self.eem_dataset_train = None
+
+    def fit(self, eem_dataset, sort_em=True):
+        decomposer = NMF(n_components=self.n_components, solver=self.solver, beta_loss=self.beta_loss,
+                         alpha_W=self.alpha_W, alpha_H=self.alpha_H,
+                         l1_ratio=self.l1_ratio)
+        n_samples = eem_dataset.eem_stack.shape[0]
+        X = eem_dataset.eem_stack.reshape([n_samples, -1])
+        #         if self.normalization == 'intensity_max':
+        #             factor = np.max(X, axis=1)[:, np.newaxis]
+        #             X = X / factor
+        #             score = decomposer.fit_transform(X) * factor
+        if self.normalization == 'pixel_std':
+            factor_std = np.std(X, axis=0)
+            X = X / factor_std
+            X[np.isnan(X)] = 0
+            nmf_score = decomposer.fit_transform(X)
+        else:
+            nmf_score = decomposer.fit_transform(X)
+            factor_std = None
+            factor_max = None
+        nmf_score = pd.DataFrame(nmf_score, index=eem_dataset.index,
+                                 columns=["component {i}".format(i=i + 1) for i in range(self.n_components)])
+        if self.normalization == 'pixel_std':
+            components = decomposer.components_ * factor_std
+        else:
+            components = decomposer.components_
+        factor_max = np.max(components, axis=1)
+        components = components / factor_max[:, None]
+        components = components.reshape([self.n_components, eem_dataset.eem_stack.shape[1],
+                                         eem_dataset.eem_stack.shape[2]])
+        nmf_score = nmf_score.mul(factor_max, axis=1)
+        _, nnls_score, _ = eems_fit_components(eem_dataset.eem_stack, components,
+                                               fit_intercept=False, positive=True)
+        nnls_score = pd.DataFrame(nnls_score, index=eem_dataset.index,
+                                  columns=["component {i}".format(i=i + 1) for i in range(self.n_components)])
+        if sort_em:
+            em_peaks = []
+            for i in range(self.n_components):
+                flat_max_index = components[i].argmax()
+                row_index, col_index = np.unravel_index(flat_max_index, components[i].shape)
+                em_peaks.append(col_index)
+            peak_rank = list(enumerate(stats.rankdata(em_peaks)))
+            order = [i[0] for i in sorted(peak_rank, key=lambda x: x[1])]
+            components = components[order]
+            nmf_score = pd.DataFrame({'component {r} score'.format(r=i + 1): nmf_score.iloc[:, order[i]]
+                                      for i in range(self.n_components)})
+            nnls_score = pd.DataFrame({'component {r} score'.format(r=i + 1): nnls_score.iloc[:, order[i]]
+                                       for i in range(self.n_components)})
+        self.nmf_score = nmf_score
+        self.nnls_score = nnls_score
+        self.components = components
+        self.decomposer = decomposer
+        self.eem_stack_unfolded = X
+        self.normalization_factor_std = factor_std
+        self.normalization_factor_max = factor_max
+        self.reconstruction_error = decomposer.reconstruction_err_
+        self.eem_dataset_train = eem_dataset
+        return self
+
+    def calculate_residual(self, score_type='nmf'):
+        if score_type == 'nmf':
+            X_new = self.decomposer.fit_transform(self.eem_stack_unfolded)
+            X_reversed = self.decomposer.inverse_transform(X_new) * self.normalization_factor
+            n_samples = self.eem_dataset_train.eem_stack.shape[0]
+            residual = X_reversed - self.eem_stack_unfolded
+            residual = residual.reshape([n_samples, self.eem_dataset_train.eem_stack.shape[1],
+                                         self.eem_dataset_train.eem_stack.shape[2]])
+            self.residual = residual
+        #         elif score_type=='nnls':
+        #             X_new = self.decomposer.fit_transform(self.eem_stack_unfolded)
+        #             X_reversed = self.decomposer.inverse_transform(X_new)*self.normalization_factor
+        #             n_samples = eem_dataset.eem_stack.shape[0]
+        #             residual = X_reversed - self.eem_stack_unfolded
+        #             residual = residual.reshape([n_samples, eem_dataset.eem_stack.shape[1], eem_dataset.eem_stack.shape[2]])
+        #             self.residual = residual
+        return residual
+
+    def greedy_selection(self, eem_dataset_train, eem_dataset_test, direction='backwards',
+                         criteria: str = 'reconstruction_error', true_values=None, axis=0, n_steps='max',
+                         index_groups=None):
+        eem_stack = eem_dataset_train.eem_stack
+        if index_groups == None:
+            index_groups = [[i] for i in range(eem_stack.shape[axis])]
+        if n_steps == 'max':
+            n_steps = len(index_groups)
+        eem_datasets_sequence = []
+        err_sequence = []
+        fmax_sequence = []
+        g_tot = []
+
+        for step in range(n_steps):
+            err_list = []
+            eem_dataset_sub_list = []
+            fmax_list = []
+            if direction == 'forwards':
+                eem_stack_sub = []
+            elif direction == 'backwards':
+                eem_stack_sub = eem_stack
+            if direction == 'backwards' and step == 0:
+                eem_dataset_sub = eem_dataset_train
+                self.fit(eem_dataset_sub)
+                score, fmax, eem_stack_pred = eems_fit_components(eem_dataset_test.eem_stack, self.components,
+                                                                  fit_intercept=False, positive=True)
+                if criteria == 'reconstruction_error':
+                    residual = eem_stack_pred - eem_dataset_test.eem_stack
+
+                elif criteria == 'fmax_error':
+                    assert true_values.shape == (eem_dataset_test.eem_stack.shape[0], self.n_components), \
+                        "True values should have a shape of (n_test_samples, n_components)"
+                    residual = fmax - np.array(true_values)
+
+                elif criteria == 'component_error':
+                    assert true_values.shape == (self.n_components, eem_dataset_test.eem_stack.shape[1],
+                                                 eem_dataset_test.eem_stack.shape[2]), \
+                        "True values should have a shape of (n_components, n_ex, n_em)"
+                    residual = self.components - np.array(true_values)
+
+                error = (np.sum(residual ** 2) / np.size(residual)) ** 0.5
+                err_list.append(error)
+                fmax_list.append(fmax)
+                eem_dataset_sub_list.append(eem_dataset_sub)
+
+            else:
+                for g in index_groups:
+                    if direction == 'forwards':
+                        eem_stack_g = np.take(eem_stack, g, axis=axis)
+                        eem_stack_sub.append(eem_stack_g.tolist())
+                        if axis == 0:
+                            if eem_dataset_train.index:
+                                index_sub = [eem_dataset_train.index[i] for i in g_tot + g]
+                            else:
+                                index_sub = None
+                            if eem_dataset_train.ref:
+                                ref_sub = eem_dataset_train.ref[g_tot + g]
+                            else:
+                                ref_sub = None
+                        else:
+                            index_sub = eem_dataset_train.index
+                            ref_sub = eem_dataset_train.ref
+                        eem_dataset_sub = EEMDataset(eem_stack=np.array(eem_stack_sub),
+                                                     ex_range=eem_dataset_train.ex_range,
+                                                     em_range=eem_dataset_train.em_range, index=index_sub, ref=ref_sub)
+
+                    if direction == 'backwards':
+
+                        eem_stack_sub = np.delete(eem_stack, g_tot + g, axis=axis)
+                        if axis == 0:
+                            if eem_dataset_train.index:
+                                index_sub = [eem_dataset_train.index[i] for i in range(eem_stack.shape[0]) if
+                                             i not in g_tot + g]
+                            else:
+                                index_sub = None
+                            if eem_dataset_train.ref:
+                                ref_sub = np.delete(eem_dataset_train.ref, g_tot + g)
+                            else:
+                                ref_sub = None
+                        else:
+                            index_sub = eem_dataset_train.index
+                            ref_sub = eem_dataset_train.ref
+                        eem_dataset_sub = EEMDataset(eem_stack=eem_stack_sub, ex_range=eem_dataset_train.ex_range,
+                                                     em_range=eem_dataset_train.em_range, index=index_sub, ref=ref_sub)
+                    self.fit(eem_dataset_sub)
+                    #                     plot_eem(self.components[0], eem_dataset_test.ex_range, eem_dataset_test.em_range, auto_intensity_range=False,
+                    #                              vmin=0, vmax=1)
+                    score, fmax, eem_stack_pred = eems_fit_components(eem_dataset_test.eem_stack, self.components,
+                                                                      fit_intercept=False, positive=True)
+                    if criteria == 'reconstruction_error':
+                        residual = eem_stack_pred - eem_dataset_test.eem_stack
+
+                    elif criteria == 'fmax_error':
+                        assert true_values.shape == (eem_dataset_test.eem_stack.shape[0], self.n_components), \
+                            "True values should have a shape of (n_test_samples, n_components)"
+                        residual = fmax - np.array(true_values)
+
+                    elif criteria == 'component_error':
+                        assert true_values.shape == (self.n_components, eem_dataset_test.eem_stack.shape[1],
+                                                     eem_dataset_test.eem_stack.shape[2]), \
+                            "True values should have a shape of (n_components, n_ex, n_em)"
+                        residual = self.components - np.array(true_values)
+
+                    error = (np.sum(residual ** 2) / np.size(residual)) ** 0.5
+                    err_list.append(error)
+                    fmax_list.append(fmax)
+                    eem_dataset_sub_list.append(eem_dataset_sub)
+
+            least_err_idx = err_list.index(min(err_list))
+            err_sequence.append(min(err_list))
+            fmax_sequence.append(pd.DataFrame(fmax_list[least_err_idx], index=eem_dataset_test.index,
+                                              columns=["component {i}".format(i=i + 1) for i in
+                                                       range(self.n_components)]))
+            eem_datasets_sequence.append(eem_dataset_sub_list[least_err_idx])
+            if direction == 'backwards' and step == 0:
+                continue
+            else:
+                g_tot += index_groups[least_err_idx]
+                index_groups.pop(least_err_idx)
+
+        return eem_datasets_sequence, err_sequence, fmax_sequence
+
+
+class EEMPCA:
+
+    def __init__(self, n_components):
+        self.n_components = n_components
+        self.eem_stack_unfolded = None
+        self.score = None
+        self.components = None
+        self.decomposer = None
+        self.residual = None
+        self.normalization_factor = None
+        self.eem_stack_train = None
+
+    def fit(self, eem_dataset: EEMDataset, normalization=None):
+        decomposer = PCA(n_components=self.n_components)
+        n_samples = eem_dataset.eem_stack.shape[0]
+        X = eem_dataset.eem_stack.reshape([n_samples, -1])
+        score = decomposer.fit_transform(X)
+        score = pd.DataFrame(score, index=eem_dataset.index,
+                             columns=["component {i}".format(i=i + 1) for i in range(self.n_components)])
+        components = decomposer.components_.reshape([self.n_components, eem_dataset.eem_stack.shape[1],
+                                                     eem_dataset.eem_stack.shape[2]])
+        self.score = score
+        self.components = components
+        self.decomposer = decomposer
+        self.eem_stack_unfolded = X
+        self.eem_stack_train = eem_dataset
+        return self
+
+    def calculate_residual(self):
+        X_new = self.decomposer.fit_transform(self.eem_stack_unfolded)
+        X_reversed = self.decomposer.inverse_transform(X_new)
+        n_samples = self.eem_stack_train.eem_stack.shape[0]
+        residual = X_reversed - self.eem_stack_unfolded
+        residual = residual.reshape([n_samples, self.eem_stack_train.eem_stack.shape[1],
+                                     self.eem_stack_train.eem_stack.shape[2]])
+        self.residual = residual
+        return residual
+
 

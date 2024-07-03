@@ -95,3 +95,22 @@ def get_indices_smallest_to_largest(my_list):
     sorted_list = sorted(indexed_list, key=lambda x: x[0])
     indices = [index for _, index in sorted_list]
     return indices
+
+
+def str_string_to_list(input_string):
+    try:
+        # Split the input string by commas and remove any leading/trailing spaces
+        str_list = [item.strip() for item in input_string.split(",")]
+        return str_list
+    except ValueError:
+        return None
+
+
+def num_string_to_list(input_string):
+    try:
+        # Split the input string by commas and convert each part to an integer
+        num_list = [int(num.strip()) for num in input_string.split(',')]
+        return num_list
+    except ValueError:
+        # Handle invalid input (e.g., non-numeric characters)
+        return None

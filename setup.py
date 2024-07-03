@@ -2,7 +2,8 @@ from setuptools import setup, find_packages
 
 setup(
     name='eem-python',
-    version='1.21',
+    python_requires='>3.9',
+    version='1.3',
     author='Yongmin Hu',
     author_email='yongminhu@outlook.com',
     packages=find_packages(),
@@ -16,6 +17,9 @@ setup(
         "scikit-learn",
         "matplotlib",
         "pandas",
-        "tlviz"
+        "tlviz",
+        "plotly",
+        "dash",
+        "dash-bootstrap-components",
     ]
 )
