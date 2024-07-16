@@ -1300,29 +1300,35 @@ page2 = html.Div([
                         dcc.Tab(label='Split-half validation', id='parafac-split-half'),
                         dcc.Tab(
                             children=[
-                                dbc.Card(
-                                    dbc.Stack(
-                                        [
-                                            html.H5("Select established model"),
-                                            dbc.Row(
+                                html.Div(
+                                    [
+                                        dbc.Card(
+                                            dbc.Stack(
                                                 [
-                                                    dbc.Col(
-                                                        dcc.Dropdown(
-                                                            options=None, id='parafac-test-model-selection'
-                                                        )
-                                                    ),
-                                                    dbc.Col(
-                                                        dbc.Button([dbc.Spinner(size="sm", id='test-parafac-spinner')],
-                                                                   id='test-parafac-model', className='col-2')
+                                                    html.H5("Select established model"),
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[], id='parafac-test-model-selection'
+                                                                )
+                                                            ),
+                                                            dbc.Col(
+                                                                dbc.Button(
+                                                                    [dbc.Spinner(size="sm", id='test-parafac-spinner')],
+                                                                    id='test-parafac-model', className='col-2')
+                                                            )
+                                                        ]
                                                     )
-                                                ]
-                                            )
-                                        ], gap=2
-                                    ),
-                                ),
-                                dbc.Card(
-                                    children=None,
-                                    id='parafac-test-result-card'
+                                                ], gap=2
+                                            ),
+                                        ),
+                                        dbc.Card(
+                                            children=None,
+                                            id='parafac-test-result-card'
+                                        )
+                                    ],
+                                    style={'width': '90vw'}
                                 )
                             ],
                             label='Predict', id='parafac-predict'
@@ -1441,7 +1447,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
                     ],
                     style={'padding': '0', 'line-width': '100%'},
                     selected_style={'padding': '0', 'line-width': '100%'}
-                    )
+            )
         )
 
         # components
@@ -1830,8 +1836,161 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
 # -----------Page #4: NMF--------------
 
 #   -------------Setting up the dbc cards
+card_nmf_param = dbc.Card(
+    dbc.CardBody(
+        [
+            html.H5("Parameters selection", className="card-title"),
+            html.Div(
+                [
+                    dbc.Stack(
+                        [
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Num. components"), width={'size': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='nmf-rank', type='text',
+                                                  placeholder='Multiple values possible, e.g., 3, 4',
+                                                  style={'width': '250px', 'height': '30px'}, debounce=True),
+                                        width={'size': 2}
+                                    ),
 
-#   -------------Layout of page #2
+                                    dbc.Col(
+                                        dbc.Label("Solver"), width={'size': 1, 'offset': 0}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Dropdown(options=[
+                                            {'label': 'Coordinate Descent solver', 'value': 'cd'},
+                                            {'label': 'Multiplicative Update solver', 'value': 'mu'}
+                                        ],
+                                            value='cd', style={'width': '300px'}, id='nmf-solver'
+                                        ),
+                                        width={'size': 2}
+                                    ),
+
+                                    dbc.Col(
+                                        dbc.Checklist(options=[{'label': html.Span("Normalize pixels by STD",
+                                                                                   style={"font-size": 15,
+                                                                                          "padding-left": 10}),
+                                                                'value': 'pixel_std'}],
+                                                      id='nmf-normalization-checkbox', switch=True, value=['pixel_std']
+                                                      ),
+                                        width={"size": 2, 'offset': 1}
+                                    ),
+                                ]
+                            ),
+                            dbc.Row([
+                                dbc.Col(
+                                    dbc.Label("alpha_W"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='nmf-alpha-w', type='number',
+                                              # placeholder='Multiple values possible, e.g., 3, 4',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0),
+                                    width={'size': 2},
+                                ),
+
+                                dbc.Col(
+                                    dbc.Label("alpha_H"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='nmf-alpha-h', type='number',
+                                              # placeholder='Multiple values possible, e.g., 3, 4',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0),
+                                    width={'size': 3},
+                                ),
+
+                                dbc.Col(
+                                    dbc.Label("l1 ratio"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='nmf-l1-ratio', type='number',
+                                              # placeholder='Multiple values possible, e.g., 3, 4',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0),
+                                    width={'size': 2},
+                                ),
+                            ]),
+                            dbc.Row(
+                                dbc.Col(
+                                    dbc.Button([dbc.Spinner(size="sm", id='nmf-spinner')],
+                                               id='build-nmf-model', className='col-2')
+                                )
+                            )
+                        ],
+                        gap=2
+                    )
+
+                ]
+            ),
+        ]
+    ),
+    className='w-100'
+)
+
+#   -------------Layout of page #4
+
+page4 = html.Div([
+    dbc.Stack(
+        [
+            dbc.Row(
+                card_nmf_param
+            ),
+            dbc.Row(
+                dcc.Tabs(
+                    id='nmf-results',
+                    children=[
+                        dcc.Tab(label='Components', id='nmf-components'),
+                        dcc.Tab(label='Fmax', id='nmf-fmax'),
+                        dcc.Tab(label='Residual', id='nmf-leverage'),
+                        dcc.Tab(label='Split-half validation', id='nmf-split-half'),
+                        dcc.Tab(
+                            children=[
+                                html.Div(
+                                    [
+                                        dbc.Card(
+                                            dbc.Stack(
+                                                [
+                                                    html.H5("Select established model"),
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[], id='nmf-test-model-selection'
+                                                                )
+                                                            ),
+                                                            dbc.Col(
+                                                                dbc.Button(
+                                                                    [dbc.Spinner(size="sm", id='test-nmf-spinner')],
+                                                                    id='test-nmf-model', className='col-2')
+                                                            )
+                                                        ]
+                                                    )
+                                                ], gap=2
+                                            ),
+                                        ),
+                                        dbc.Card(
+                                            children=None,
+                                            id='nmf-test-result-card'
+                                        )
+                                    ],
+                                    style={'width': '90vw'}
+                                )
+                            ],
+                            label='Predict', id='nmf-predict'
+                        )
+                    ],
+                    # style={
+                    #     'width': '100%'
+                    # },
+                    vertical=True
+                )
+            ),
+        ],
+        gap=3
+    )
+
+])
 
 #   -------------Callbacks of page #2
 
@@ -1852,6 +2011,7 @@ content = html.Div(
                 dcc.Tab(label='EEM pre-processing', id='eem-pre-processing', children=html.P(page1)),
                 dcc.Tab(label='PARAFAC', id='parafac', children=html.P(page2)),
                 dcc.Tab(label='K-PARAFACs', id='k-parafacs', children=html.P('K-PARAFAC')),
+                dcc.Tab(label='NMF', id='nmf', children=html.P(page4)),
             ],
             # value="homepage",
             # persistence=True,
@@ -1874,4 +2034,4 @@ def serve_layout():
 app.layout = serve_layout
 
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    app.run_server(debug=False)
