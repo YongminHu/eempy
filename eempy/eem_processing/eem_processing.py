@@ -20,7 +20,7 @@ from sklearn.metrics import mean_squared_error, explained_variance_score, r2_sco
 # from sklearn import svm
 from sklearn.decomposition import PCA, NMF
 from sklearn.linear_model import LinearRegression
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import gaussian_filter, median_filter
 from scipy.interpolate import RegularGridInterpolator, interp1d, griddata
 from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.spatial.distance import squareform
@@ -174,7 +174,7 @@ def eem_region_masking(intensity, ex_range, em_range, ex_min=230, ex_max=500, em
 
 def eem_gaussian_filter(intensity, sigma=1, truncate=3):
     """
-    Apply Gaussian filtering to an EEM.
+    Apply Gaussian filtering to an EEM. Reference: scipy.ndimage.gaussian_filter
 
     Parameters
     ----------
@@ -191,6 +191,29 @@ def eem_gaussian_filter(intensity, sigma=1, truncate=3):
         The filtered EEM.
     """
     intensity_filtered = gaussian_filter(intensity, sigma=sigma, truncate=truncate)
+    return intensity_filtered
+
+
+def eem_median_filter(intensity, footprint=(3,3), mode='reflect'):
+    """
+    Apply Median filtering to an EEM. Reference: scipy.ndimage.median_filter
+
+    Parameters
+    ----------
+    intensity: np.ndarray (2d)
+        The EEM.
+    footprint: tuple of two integers
+        Gives the shape that is taken from the input array, at every element position, to define the input to the filter
+        function.
+    mode: str, {‘reflect’, ‘constant’, ‘nearest’, ‘mirror’, ‘wrap’}
+        The mode parameter determines how the input array is extended beyond its boundaries.
+
+    Returns
+    -------
+    eem_stack_filtered: np.ndarray
+        The filtered EEM.
+    """
+    intensity_filtered = median_filter(intensity, footprint=np.ones(footprint), mode=mode)
     return intensity_filtered
 
 
@@ -1017,6 +1040,25 @@ class EEMDataset:
             The filtered EEM.
         """
         eem_stack_filtered = process_eem_stack(self.eem_stack, eem_gaussian_filter, sigma=sigma, truncate=truncate)
+        if not copy:
+            self.eem_stack = eem_stack_filtered
+        return eem_stack_filtered
+
+    def median_filter(self, footprint=(3,3), mode='reflect'):
+        """
+        Apply median filtering to an EEM.
+
+        Parameters
+        ----------
+        footprint
+        mode
+
+        Returns
+        -------
+        eem_stack_filtered: np.ndarray
+            The filtered EEM.
+        """
+        eem_stack_filtered = process_eem_stack(self.eem_stack, eem_median_filter, footprint=(3,3), mode='reflect')
         if not copy:
             self.eem_stack = eem_stack_filtered
         return eem_stack_filtered

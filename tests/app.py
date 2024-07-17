@@ -696,6 +696,79 @@ card_smoothing = dbc.Card(
     className="w-100"
 )
 
+#       -----------dbc card for median filter
+
+card_median_filter = dbc.Card(
+    dbc.CardBody(
+        [
+            dbc.Stack(
+                [
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                [
+                                    html.H5("Median filter"),
+                                ],
+                                width={'size': 10}),
+                            dbc.Col([
+                                dbc.Checklist(id='median-filter-button', options=[{'label': ' ', 'value': "median_filter"}],
+                                              switch=True,
+                                              style={'transform': 'scale(1.3)'})
+                            ], width={'size': 2})
+                        ],
+                        align='start'
+                    ),
+
+                    dbc.Row([
+                        dbc.Col(
+                            dbc.Label("window size-ex"),
+                        ),
+                        dbc.Col(
+                            dcc.Input(id='median-filter-window-ex',
+                                      type='number', placeholder='max',
+                                      style={'width': '100%', 'height': '30px'}, debounce=True, value=3),
+                        ),
+                    ]),
+
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                dbc.Label("window size-em")
+                            ),
+                            dbc.Col(
+                                dcc.Input(id='median-filter-window-em',
+                                          type='number', placeholder='max',
+                                          style={'width': '100%', 'height': '30px'}, debounce=True, value=3),
+                            )
+                        ]),
+
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                dbc.Label("edge processing mode")
+                            ),
+                            dbc.Col(
+                                dcc.Dropdown(id='median-filter-mode',
+                                             options=[
+                                                 {'label': 'reflect', 'value': 'reflect'},
+                                                 {'label': 'constant', 'value': 'constant'},
+                                                 {'label': 'nearest', 'value': 'nearest'},
+                                                 {'label': 'mirror', 'value': 'mirror'},
+                                                 {'label': 'wrap', 'value': 'wrap'}
+                                             ],
+                                             value='reflect', placeholder='', style={'width': '100%'})
+                            )
+                        ]
+                    )
+                ],
+                gap=1
+            )
+        ]
+    ),
+    className="w-100"
+)
+
+
 #       -----------dbc card for downloading pre-processed EEM
 
 card_eem_downloading = dbc.Card(
@@ -786,7 +859,7 @@ page1 = html.Div([
                             card_range_selection,
                             card_su,
                             card_ife,
-                            card_raman
+                            card_rayleigh
                         ],
                         gap=3)
                 ],
@@ -796,7 +869,8 @@ page1 = html.Div([
                 [
                     dbc.Stack(
                         [
-                            card_rayleigh,
+                            card_raman,
+                            card_median_filter,
                             card_smoothing,
                             card_eem_downloading,
                             card_built_eem_dataset
@@ -889,6 +963,10 @@ def update_filenames(folder_path, kw_mandatory, kw_optional, kw_sample):
         Input('gaussian-button', 'value'),
         Input('gaussian-sigma', 'value'),
         Input('gaussian-truncate', 'value'),
+        Input('median-filter-button', 'value'),
+        Input('median-filter-window-ex', 'value'),
+        Input('median-filter-window-em', 'value'),
+        Input('median-filter-mode', 'value')
     ]
 )
 def update_eem_plot(folder_path, file_name_sample, graph_options,
@@ -901,7 +979,8 @@ def update_eem_plot(folder_path, file_name_sample, graph_options,
                     raman, raman_method, raman_dimension, raman_width,
                     rayleigh, rayleigh_o1_method, rayleigh_o1_dimension, rayleigh_o1_width,
                     rayleigh_o2_method, rayleigh_o2_dimension, rayleigh_o2_width,
-                    gaussian, gaussian_sigma, gaussian_truncate):
+                    gaussian, gaussian_sigma, gaussian_truncate,
+                    median_filter, median_filter_window_ex, median_filter_window_em, median_filter_mode):
     try:
         full_path_sample = os.path.join(folder_path, file_name_sample)
         intensity, ex_range, em_range, index = read_eem(full_path_sample,
@@ -952,6 +1031,11 @@ def update_eem_plot(folder_path, file_name_sample, graph_options,
                                                               interpolation_method_o2=rayleigh_o2_method,
                                                               interpolation_dimension_o1=rayleigh_o1_dimension,
                                                               interpolation_dimension_o2=rayleigh_o2_dimension)
+
+        # Median filter
+        if all([median_filter, median_filter_window_ex, median_filter_window_em, median_filter_mode]):
+            intensity = eem_median_filter(intensity, footprint=(median_filter_window_ex, median_filter_window_em),
+                                          mode=median_filter_mode)
 
         # Gaussian smoothing
         if all([gaussian, gaussian_sigma, gaussian_truncate]):
@@ -2034,4 +2118,4 @@ def serve_layout():
 app.layout = serve_layout
 
 if __name__ == '__main__':
-    app.run_server(debug=False)
+    app.run_server(debug=True)
