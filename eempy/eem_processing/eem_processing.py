@@ -1044,14 +1044,19 @@ class EEMDataset:
             self.eem_stack = eem_stack_filtered
         return eem_stack_filtered
 
-    def median_filter(self, footprint=(3,3), mode='reflect'):
+    def median_filter(self, footprint=(3,3), mode='reflect', copy=True):
         """
         Apply median filtering to an EEM.
 
         Parameters
         ----------
-        footprint
-        mode
+        footprint: tuple of two integers
+            Gives the shape that is taken from the input array, at every element position, to define the input to the filter
+            function.
+        mode: str, {‘reflect’, ‘constant’, ‘nearest’, ‘mirror’, ‘wrap’}
+            The mode parameter determines how the input array is extended beyond its boundaries.
+        copy: bool
+            if False, overwrite the EEMDataset object with the processed EEMs.
 
         Returns
         -------
@@ -2566,9 +2571,9 @@ class EEMNMF:
             peak_rank = list(enumerate(stats.rankdata(em_peaks)))
             order = [i[0] for i in sorted(peak_rank, key=lambda x: x[1])]
             components = components[order]
-            nmf_score = pd.DataFrame({'component {r} score'.format(r=i + 1): nmf_score.iloc[:, order[i]]
+            nmf_score = pd.DataFrame({'component {r} NMF-score'.format(r=i + 1): nmf_score.iloc[:, order[i]]
                                       for i in range(self.n_components)})
-            nnls_score = pd.DataFrame({'component {r} score'.format(r=i + 1): nnls_score.iloc[:, order[i]]
+            nnls_score = pd.DataFrame({'component {r} NNLS-score'.format(r=i + 1): nnls_score.iloc[:, order[i]]
                                        for i in range(self.n_components)})
         self.nmf_score = nmf_score
         self.nnls_score = nnls_score

@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from dash.exceptions import PreventUpdate
 
-from eempy.plot import plot_eem, plot_abs, plot_loadings, plot_score, plot_fmax
+from eempy.plot import plot_eem, plot_abs, plot_loadings, plot_score
 from eempy.read_data import *
 from eempy.eem_processing import *
 from eempy.utils import str_string_to_list, num_string_to_list
@@ -711,7 +711,8 @@ card_median_filter = dbc.Card(
                                 ],
                                 width={'size': 10}),
                             dbc.Col([
-                                dbc.Checklist(id='median-filter-button', options=[{'label': ' ', 'value': "median_filter"}],
+                                dbc.Checklist(id='median-filter-button',
+                                              options=[{'label': ' ', 'value': "median_filter"}],
                                               switch=True,
                                               style={'transform': 'scale(1.3)'})
                             ], width={'size': 2})
@@ -767,7 +768,6 @@ card_median_filter = dbc.Card(
     ),
     className="w-100"
 )
-
 
 #       -----------dbc card for downloading pre-processed EEM
 
@@ -1531,7 +1531,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
                     ],
                     style={'padding': '0', 'line-width': '100%'},
                     selected_style={'padding': '0', 'line-width': '100%'}
-            )
+                    )
         )
 
         # components
@@ -1638,7 +1638,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
                                 [
                                     dbc.Col(
                                         [
-                                            dcc.Graph(figure=plot_score(parafac_r,
+                                            dcc.Graph(figure=plot_score(parafac_r.score,
                                                                         display=False
                                                                         ),
                                                       config={'autosizable': False},
@@ -1675,9 +1675,10 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
                                 [
                                     dbc.Col(
                                         [
-                                            dcc.Graph(figure=plot_fmax(parafac_r,
-                                                                       display=False
-                                                                       ),
+                                            dcc.Graph(figure=plot_score(parafac_r.fmax,
+                                                                        display=False,
+                                                                        yaxis_title='Fmax'
+                                                                        ),
                                                       config={'autosizable': False},
                                                       style={'width': 1700, 'height': 800}
                                                       )
@@ -1725,7 +1726,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
                                                         x=lvr_sample.index,
                                                         y=lvr_sample.iloc[:, 0],
                                                         markers=True,
-                                                        labels={'x': 'index-sample', 'y':'leverage-sample'},
+                                                        labels={'x': 'index-sample', 'y': 'leverage-sample'},
                                                     ),
                                                     config={'autosizable': False},
                                                     style={'width': 1700, 'height': 400}
@@ -1903,7 +1904,6 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
             ]),
         )
 
-
     return (loadings_tabs, components_tabs, scores_tabs, fmax_tabs, core_consistency_tabs, leverage_tabs,
             split_half_tabs, 'build model', None)
 
@@ -1995,6 +1995,22 @@ card_nmf_param = dbc.Card(
                                     width={'size': 2},
                                 ),
                             ]),
+
+                            dbc.Row([
+                                dbc.Col(
+                                    dbc.Label("Validations"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Dropdown(
+                                        options=[
+                                            {'label': 'Residual', 'value': 'leverage'},
+                                            {'label': 'Split-half validation', 'value': 'split_half'},
+                                        ],
+                                        multi=True, id='nmf-validations', value=[]),
+                                    width={'size': 4}
+                                ),
+                            ]),
+
                             dbc.Row(
                                 dbc.Col(
                                     dbc.Button([dbc.Spinner(size="sm", id='nmf-spinner')],
@@ -2026,7 +2042,7 @@ page4 = html.Div([
                     children=[
                         dcc.Tab(label='Components', id='nmf-components'),
                         dcc.Tab(label='Fmax', id='nmf-fmax'),
-                        dcc.Tab(label='Residual', id='nmf-leverage'),
+                        dcc.Tab(label='Residual', id='nmf-residual'),
                         dcc.Tab(label='Split-half validation', id='nmf-split-half'),
                         dcc.Tab(
                             children=[
@@ -2076,7 +2092,216 @@ page4 = html.Div([
 
 ])
 
-#   -------------Callbacks of page #2
+
+#   -------------Callbacks of page #4
+
+@app.callback(
+    [
+        Output('nmf-components', 'children'),
+        Output('nmf-fmax', 'children'),
+        Output('nmf-residual', 'children'),
+        Output('nmf-split-half', 'children'),
+        Output('nmf-spinner', 'children'),
+        Output('nmf-models', 'data'),
+    ],
+    [
+        Input('build-nmf-model', 'n_clicks'),
+        State('eem-graph-options', 'value'),
+        State('nmf-rank', 'value'),
+        State('nmf-solver', 'value'),
+        State('nmf-normalization-checkbox', 'value'),
+        State('nmf-alpha-w', 'value'),
+        State('nmf-alpha-h', 'value'),
+        State('nmf-l1-ratio', 'value'),
+        State('nmf-validations', 'value'),
+        State('eem-dataset', 'data')
+    ]
+)
+def on_build_nmf_model(n_clicks, eem_graph_options, rank, solver, normalization, alpha_w, alpha_h, l1_ratio,
+                       validations, eem_dataset_dict):
+    if n_clicks is None:
+        return None, None, None, None, 'build model', None
+    eem_dataset = EEMDataset(
+        eem_stack=np.array(eem_dataset_dict['eem_stack']),
+        ex_range=np.array(eem_dataset_dict['ex_range']),
+        em_range=np.array(eem_dataset_dict['em_range']),
+        index=eem_dataset_dict['index']
+    )
+    rank_list = num_string_to_list(rank)
+    nmfs_dict = {}
+    components_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    fmax_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    residual_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    split_half_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+
+    for r in rank_list:
+        nmf_r = EEMNMF(
+            n_components=r, solver=solver, normalization=normalization[0], alpha_H=alpha_h, alpha_W=alpha_w,
+            l1_ratio=l1_ratio
+        )
+        nmf_r.fit(eem_dataset)
+        nmfs_dict[r] = nmf_r
+
+        # for component graphs, determine the layout according to the number of components
+        n_rows = (r - 1) // 3 + 1
+
+        # components
+        components_tabs.children[0].children.append(
+            # html.Div(
+            dcc.Tab(label=f'{r}-component',
+                    children=
+                    html.Div(
+                        [
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dcc.Graph(
+                                            figure=plot_eem(nmf_r.components[3 * i],
+                                                            ex_range=eem_dataset.ex_range,
+                                                            em_range=eem_dataset.em_range,
+                                                            vmin=0 if np.min(
+                                                                nmf_r.components[3 * i]) > -1e-3 else None,
+                                                            vmax=None,
+                                                            auto_intensity_range=False,
+                                                            plot_tool='plotly',
+                                                            display=False,
+                                                            figure_size=(5, 3.5),
+                                                            label_font_size=14,
+                                                            cbar_font_size=12,
+                                                            title_font_size=16,
+                                                            title=f'C{3 * i + 1}',
+                                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options else False,
+                                                            rotate=True if 'rotate' in eem_graph_options else False,
+                                                            ) if 3 * i + 1 <= r else go.Figure(
+                                                layout={'width': 400, 'height': 300}),
+                                            style={'width': '500', 'height': '500'}
+                                        ),
+                                        width={'size': 4},
+                                    ),
+
+                                    dbc.Col(
+                                        dcc.Graph(
+                                            figure=plot_eem(nmf_r.components[3 * i + 1],
+                                                            ex_range=eem_dataset.ex_range,
+                                                            em_range=eem_dataset.em_range,
+                                                            vmin=0 if np.min(
+                                                                nmf_r.components[
+                                                                    3 * i + 1]) > -1e-3 else None,
+                                                            vmax=None,
+                                                            auto_intensity_range=False,
+                                                            plot_tool='plotly',
+                                                            display=False,
+                                                            figure_size=(5, 3.5),
+                                                            label_font_size=14,
+                                                            cbar_font_size=12,
+                                                            title_font_size=16,
+                                                            title=f'C{3 * i + 2}',
+                                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options else False,
+                                                            rotate=True if 'rotate' in eem_graph_options else False,
+                                                            ) if 3 * i + 2 <= r else go.Figure(
+                                                layout={'width': 400, 'height': 300}),
+                                            style={'width': '500', 'height': '500'}
+                                        ),
+                                        width={'size': 4},
+                                    ),
+
+                                    dbc.Col(
+                                        dcc.Graph(
+                                            figure=plot_eem(nmf_r.components[3 * i + 2],
+                                                            ex_range=eem_dataset.ex_range,
+                                                            em_range=eem_dataset.em_range,
+                                                            vmin=0 if np.min(
+                                                                nmf_r.components[
+                                                                    3 * i + 2]) > -1e-3 else None,
+                                                            vmax=None,
+                                                            auto_intensity_range=False,
+                                                            plot_tool='plotly',
+                                                            display=False,
+                                                            figure_size=(5, 3.5),
+                                                            label_font_size=14,
+                                                            cbar_font_size=12,
+                                                            title_font_size=16,
+                                                            title=f'C{3 * i + 3}',
+                                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options else False,
+                                                            rotate=True if 'rotate' in eem_graph_options else False,
+                                                            ) if 3 * i + 3 <= r else go.Figure(
+                                                layout={'width': 400, 'height': 300}),
+                                            style={'width': '500', 'height': '500'}
+                                        ),
+                                        width={'size': 4},
+                                    ),
+                                ]
+                            ) for i in range(n_rows)
+                        ],
+                        style={'width': '90vw'}
+                    ),
+                    style={'padding': '0', 'line-width': '100%'},
+                    selected_style={'padding': '0', 'line-width': '100%'}
+                    )
+        )
+
+        # scores
+        fmax_tabs.children[0].children.append(
+            dcc.Tab(label=f'{r}-component',
+                    children=[
+                        html.Div([
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dcc.Graph(figure=plot_score(nmf_r.nnls_score,
+                                                                        display=False
+                                                                        ),
+                                                      config={'autosizable': False},
+                                                      style={'width': 1700, 'height': 800}
+                                                      )
+                                        ]
+                                    )
+                                ]
+                            ),
+
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dbc.Table.from_dataframe(nmf_r.nnls_score,
+                                                                     bordered=True, hover=True, index=True)
+                                        ]
+                                    )
+                                ]
+                            ),
+
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dcc.Graph(figure=plot_score(nmf_r.nmf_score,
+                                                                        display=False
+                                                                        ),
+                                                      config={'autosizable': False},
+                                                      style={'width': 1700, 'height': 800}
+                                                      )
+                                        ]
+                                    )
+                                ]
+                            ),
+
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dbc.Table.from_dataframe(nmf_r.nmf_score,
+                                                                     bordered=True, hover=True, index=True)
+                                        ]
+                                    )
+                                ]
+                            )
+                        ]),
+                    ],
+                    style={'padding': '0', 'line-width': '100%'},
+                    selected_style={'padding': '0', 'line-width': '100%'}
+                    )
+        )
 
 
 # -----------Setup the sidebar-----------------
