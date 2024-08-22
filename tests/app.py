@@ -1,11 +1,10 @@
+import math
 import dash
-import pandas as pd
 from dash import dcc, html
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import plotly.express as px
-from dash.exceptions import PreventUpdate
 
 from eempy.plot import plot_eem, plot_abs, plot_loadings, plot_score
 from eempy.read_data import *
@@ -1016,6 +1015,11 @@ def update_eem_plot(folder_path, file_name_sample, graph_options,
             absorbance, ex_range_abs, _ = read_abs(full_path_abs, data_format=abs_data_format)
             intensity = eem_ife_correction(intensity, ex_range, em_range, absorbance, ex_range_abs)
 
+        # Median filter
+        if all([median_filter, median_filter_window_ex, median_filter_window_em, median_filter_mode]):
+            intensity = eem_median_filter(intensity, footprint=(median_filter_window_ex, median_filter_window_em),
+                                          mode=median_filter_mode)
+
         # Raman scattering removal
         if all([raman, raman_method, raman_width, raman_dimension]):
             intensity, _ = eem_raman_scattering_removal(intensity, ex_range, em_range,
@@ -1032,10 +1036,6 @@ def update_eem_plot(folder_path, file_name_sample, graph_options,
                                                               interpolation_dimension_o1=rayleigh_o1_dimension,
                                                               interpolation_dimension_o2=rayleigh_o2_dimension)
 
-        # Median filter
-        if all([median_filter, median_filter_window_ex, median_filter_window_em, median_filter_mode]):
-            intensity = eem_median_filter(intensity, footprint=(median_filter_window_ex, median_filter_window_em),
-                                          mode=median_filter_mode)
 
         # Gaussian smoothing
         if all([gaussian, gaussian_sigma, gaussian_truncate]):
@@ -1153,6 +1153,10 @@ def update_eem_plot(folder_path, file_name_sample, graph_options,
         State('gaussian-button', 'value'),
         State('gaussian-sigma', 'value'),
         State('gaussian-truncate', 'value'),
+        State('median-filter-button', 'value'),
+        State('median-filter-window-ex', 'value'),
+        State('median-filter-window-em', 'value'),
+        State('median-filter-mode', 'value'),
         State('align-exem', 'value'),
     ]
 )
@@ -1168,6 +1172,7 @@ def on_build_eem_dataset(n_clicks,
                          rayleigh, rayleigh_o1_method, rayleigh_o1_dimension, rayleigh_o1_width,
                          rayleigh_o2_method, rayleigh_o2_dimension, rayleigh_o2_width,
                          gaussian, gaussian_sigma, gaussian_truncate,
+                         median_filter, median_filter_ex, median_filter_em, median_filter_mode,
                          align_exem
                          ):
     if n_clicks is None:
@@ -1236,6 +1241,11 @@ def on_build_eem_dataset(n_clicks,
         eem_dataset.ife_correction(absorbance=abs_stack, ex_range_abs=ex_range_abs, copy=False)
         steps_track += ["- Inner filter effect correction\n"]
 
+    # Median filter
+    if all([median_filter, median_filter_ex, median_filter_em, median_filter_mode]):
+        eem_dataset.median_filter(footprint=(median_filter_ex, median_filter_em), mode=median_filter_mode, copy=False)
+        steps_track += ["- Median filter\n"]
+
     # Raman scattering removal
     if all([raman, raman_method, raman_width, raman_dimension]):
         eem_dataset.raman_scattering_removal(interpolation_method=raman_method, width=raman_width,
@@ -1255,12 +1265,13 @@ def on_build_eem_dataset(n_clicks,
 
     # Gaussian smoothing
     if all([gaussian, gaussian_sigma, gaussian_truncate]):
-        eem_dataset.gaussian_filter(sigma=gaussian_sigma, truncate=gaussian_truncate)
+        eem_dataset.gaussian_filter(sigma=gaussian_sigma, truncate=gaussian_truncate, copy=False)
         steps_track += ["- Gaussian smoothing\n"]
 
     # convert eem_dataset to a dict whose values are json serializable
     eem_dataset_json_dict = {
-        'eem_stack': eem_dataset.eem_stack.tolist(),
+        'eem_stack': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for sublist in
+                      eem_dataset.eem_stack.tolist()],
         'ex_range': eem_dataset.ex_range.tolist(),
         'em_range': eem_dataset.em_range.tolist(),
         'index': eem_dataset.index,
@@ -1460,7 +1471,8 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
     if n_clicks is None:
         return None, None, None, None, None, None, None, 'build model', None
     eem_dataset = EEMDataset(
-        eem_stack=np.array(eem_dataset_dict['eem_stack']),
+        eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+                            in eem_dataset_dict['eem_stack']]),
         ex_range=np.array(eem_dataset_dict['ex_range']),
         em_range=np.array(eem_dataset_dict['em_range']),
         index=eem_dataset_dict['index']
@@ -2122,7 +2134,8 @@ def on_build_nmf_model(n_clicks, eem_graph_options, rank, solver, normalization,
     if n_clicks is None:
         return None, None, None, None, 'build model', None
     eem_dataset = EEMDataset(
-        eem_stack=np.array(eem_dataset_dict['eem_stack']),
+        eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+                            in eem_dataset_dict['eem_stack']]),
         ex_range=np.array(eem_dataset_dict['ex_range']),
         em_range=np.array(eem_dataset_dict['em_range']),
         index=eem_dataset_dict['index']
@@ -2170,7 +2183,8 @@ def on_build_nmf_model(n_clicks, eem_graph_options, rank, solver, normalization,
                                                             cbar_font_size=12,
                                                             title_font_size=16,
                                                             title=f'C{3 * i + 1}',
-                                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options else False,
+                                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options
+                                                            else False,
                                                             rotate=True if 'rotate' in eem_graph_options else False,
                                                             ) if 3 * i + 1 <= r else go.Figure(
                                                 layout={'width': 400, 'height': 300}),
@@ -2196,7 +2210,8 @@ def on_build_nmf_model(n_clicks, eem_graph_options, rank, solver, normalization,
                                                             cbar_font_size=12,
                                                             title_font_size=16,
                                                             title=f'C{3 * i + 2}',
-                                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options else False,
+                                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options
+                                                            else False,
                                                             rotate=True if 'rotate' in eem_graph_options else False,
                                                             ) if 3 * i + 2 <= r else go.Figure(
                                                 layout={'width': 400, 'height': 300}),
@@ -2222,7 +2237,8 @@ def on_build_nmf_model(n_clicks, eem_graph_options, rank, solver, normalization,
                                                             cbar_font_size=12,
                                                             title_font_size=16,
                                                             title=f'C{3 * i + 3}',
-                                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options else False,
+                                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options
+                                                            else False,
                                                             rotate=True if 'rotate' in eem_graph_options else False,
                                                             ) if 3 * i + 3 <= r else go.Figure(
                                                 layout={'width': 400, 'height': 300}),
@@ -2302,6 +2318,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, rank, solver, normalization,
                     selected_style={'padding': '0', 'line-width': '100%'}
                     )
         )
+        return components_tabs, fmax_tabs, residual_tabs, split_half_tabs, 'build model', None
 
 
 # -----------Setup the sidebar-----------------

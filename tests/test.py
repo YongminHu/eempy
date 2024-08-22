@@ -3,7 +3,7 @@ from matplotlib import pyplot as plt
 import pandas as pd
 
 from eempy.read_data import read_eem_dataset, read_abs_dataset, read_eem
-from eempy.eem_processing import (EEMDataset, PARAFAC, eem_raman_normalization, eem_cutting, eem_interpolation,
+from eempy.eem_processing import (EEMDataset, PARAFAC, EEMNMF, eem_raman_normalization, eem_cutting, eem_interpolation,
                                   SplitValidation, loadings_similarity, align_parafac_components)
 from eempy.plot import plot_eem, plot_loadings, plot_score
 import re
@@ -11,7 +11,7 @@ import re
 
 eem_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240215_NEST_M3/B1S12024-02-12-M3+0gLKIPEM.dat'
 blank_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240215_NEST_M3/B1S12024-02-12-M3+0gLKIBEM.dat'
-folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/20220929_GW_C3/'
+folder_path = 'C:\PhD\Fluo-detect/_data/_greywater/20240706_online_M3_full'
 
 # intensity, ex_range, em_range, index = read_eem(eem_path)
 # blank, ex_range_blank, em_range_blank, _ = read_eem(blank_path)
@@ -27,17 +27,42 @@ folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/20220929_GW_C3/'
 
 #
 eem_stack, ex_range, em_range, index = read_eem_dataset(folder_path=folder_path,
-                                                        mandatory_keywords='PEM.dat')
+                                                        mandatory_keywords=['07-11', 'SYM'])
 
 # blank_stack, ex_range_blank, em_range_blank, _ = read_eem_dataset(folder_path=folder_path,
 #                                                         mandatory_keywords='BEM.dat')
 # intensity_normalized, rsu_final = eem_raman_normalization(eem_stack[0], blank_stack[0], ex_range_blank, em_range_blank, from_blank=True)
 
-eem_dataset1 = EEMDataset(eem_stack[0:25], ex_range, em_range)
+# eem_stack[eem_stack<0] = 0
+
+eem_dataset1 = EEMDataset(eem_stack, ex_range, em_range)
 # eem_dataset2 = EEMDataset(eem_stack[10:20], ex_range, em_range)
-eem_dataset1.rayleigh_scattering_removal(copy=False)
+eem_dataset1.cutting(ex_min=270, ex_max=400, em_min=310, em_max=500, copy=False)
+eem_dataset1.rayleigh_scattering_removal(copy=False, interpolation_method_o1='zero', interpolation_method_o2='nan')
+eem_dataset1.raman_scattering_removal(copy=False, interpolation_method='nan', width=10)
+
+eem_dataset_json_dict = {
+    'eem_stack': eem_dataset1.eem_stack.tolist(),
+    'ex_range': eem_dataset1.ex_range.tolist(),
+    'em_range': eem_dataset1.em_range.tolist(),
+    'index': eem_dataset1.index,
+    'ref': eem_dataset1.ref.tolist() if eem_dataset1.ref is not None else None
+}
+
+eem_dataset = EEMDataset(
+    eem_stack=np.array(eem_dataset_json_dict['eem_stack']),
+    ex_range=np.array(eem_dataset_json_dict['ex_range']),
+    em_range=np.array(eem_dataset_json_dict['em_range']),
+    index=eem_dataset_json_dict['index']
+)
+
+nmf = EEMNMF(n_components=3)
+
+nmf.fit(eem_dataset)
+plot_eem(nmf.components[0], ex_range=eem_dataset1.ex_range, em_range=eem_dataset1.em_range, auto_intensity_range=True)
+
 # eem_dataset2.rayleigh_scattering_removal(copy=False)
-# parafac_model1 = PARAFAC(rank=3)
+# parafac_model1 = PARAFAC(rank=3, non_negativity=True)
 # parafac_model2 = PARAFAC(rank=3)
 # parafac_model1.fit(eem_dataset1)
 # parafac_model2.fit(eem_dataset2)
@@ -57,32 +82,32 @@ eem_dataset1.rayleigh_scattering_removal(copy=False)
 #
 # print(parafac_model.leverage('sample'))
 
-split_validation = SplitValidation(rank=3)
-split_validation.fit(eem_dataset1)
-subset_specific_models = split_validation.subset_specific_models
-
-labels = sorted(subset_specific_models.keys())
-similarities_ex = {}
-similarities_em = {}
-for k in range(int(len(labels) / 2)):
-    m1 = subset_specific_models[labels[k]]
-    print(m1)
-    m2 = subset_specific_models[labels[-1 - k]]
-    print(m2)
-    sims_ex = loadings_similarity(m1.ex_loadings, m2.ex_loadings).to_numpy().diagonal()
-    print(sims_ex)
-    sims_em = loadings_similarity(m1.em_loadings, m2.em_loadings).to_numpy().diagonal()
-    print(sims_em)
-    pair_labels = '{m1} vs. {m2}'.format(m1=labels[k], m2=labels[-1 - k])
-    similarities_ex[pair_labels] = sims_ex
-    print(similarities_ex)
-    similarities_em[pair_labels] = sims_em
-    print(similarities_em)
-similarities_ex = pd.DataFrame.from_dict(similarities_ex, orient='index', columns=['C{i}'.format(i=i + 1) for i in range(3)])
-similarities_em = pd.DataFrame.from_dict(similarities_em, orient='index', columns=['C{i}'.format(i=i + 1) for i in range(3)])
-
-print(similarities_ex)
-print(similarities_em)
+# split_validation = SplitValidation(rank=3)
+# split_validation.fit(eem_dataset1)
+# subset_specific_models = split_validation.subset_specific_models
+#
+# labels = sorted(subset_specific_models.keys())
+# similarities_ex = {}
+# similarities_em = {}
+# for k in range(int(len(labels) / 2)):
+#     m1 = subset_specific_models[labels[k]]
+#     print(m1)
+#     m2 = subset_specific_models[labels[-1 - k]]
+#     print(m2)
+#     sims_ex = loadings_similarity(m1.ex_loadings, m2.ex_loadings).to_numpy().diagonal()
+#     print(sims_ex)
+#     sims_em = loadings_similarity(m1.em_loadings, m2.em_loadings).to_numpy().diagonal()
+#     print(sims_em)
+#     pair_labels = '{m1} vs. {m2}'.format(m1=labels[k], m2=labels[-1 - k])
+#     similarities_ex[pair_labels] = sims_ex
+#     print(similarities_ex)
+#     similarities_em[pair_labels] = sims_em
+#     print(similarities_em)
+# similarities_ex = pd.DataFrame.from_dict(similarities_ex, orient='index', columns=['C{i}'.format(i=i + 1) for i in range(3)])
+# similarities_em = pd.DataFrame.from_dict(similarities_em, orient='index', columns=['C{i}'.format(i=i + 1) for i in range(3)])
+#
+# print(similarities_ex)
+# print(similarities_em)
 
 
 # similarities_ex, similarities_em = split_validation.compare()

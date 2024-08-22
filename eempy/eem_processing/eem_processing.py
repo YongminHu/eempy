@@ -999,13 +999,13 @@ class EEMDataset:
 
     # -----------------EEM dataset processing methods-----------------
 
-    def threshold_masking(self, threshold, mask_type='greater', copy=True):
+    def threshold_masking(self, threshold, fill, mask_type='greater', copy=True):
         """
         Mask the fluorescence intensities above or below a certain threshold in an EEM.
 
         Parameters
         ----------
-        threshold, mask_type:
+        threshold, fill, mask_type:
             See eempy.eem_processing.eem_threshold_masking
         copy: bool
             if False, overwrite the EEMDataset object with the processed EEMs.
@@ -1018,7 +1018,7 @@ class EEMDataset:
             The mask matrix. +1: unmasked area; np.nan: masked area.
         """
         eem_stack_masked, masks = process_eem_stack(self.eem_stack, eem_threshold_masking, threshold=threshold,
-                                                    mask_type=mask_type)
+                                                    fill=fill, mask_type=mask_type)
         if not copy:
             self.eem_stack = eem_stack_masked
         return eem_stack_masked, masks
@@ -2532,8 +2532,10 @@ class EEMNMF:
         decomposer = NMF(n_components=self.n_components, solver=self.solver, beta_loss=self.beta_loss,
                          alpha_W=self.alpha_W, alpha_H=self.alpha_H,
                          l1_ratio=self.l1_ratio)
+        eem_dataset.threshold_masking(0, 0, 'smaller', copy=False)
         n_samples = eem_dataset.eem_stack.shape[0]
         X = eem_dataset.eem_stack.reshape([n_samples, -1])
+        X[np.isnan(X)] = 0
         #         if self.normalization == 'intensity_max':
         #             factor = np.max(X, axis=1)[:, np.newaxis]
         #             X = X / factor
@@ -2548,7 +2550,7 @@ class EEMNMF:
             factor_std = None
             factor_max = None
         nmf_score = pd.DataFrame(nmf_score, index=eem_dataset.index,
-                                 columns=["component {i}".format(i=i + 1) for i in range(self.n_components)])
+                                 columns=["component {i} NMF-score".format(i=i + 1) for i in range(self.n_components)])
         if self.normalization == 'pixel_std':
             components = decomposer.components_ * factor_std
         else:
@@ -2561,7 +2563,7 @@ class EEMNMF:
         _, nnls_score, _ = eems_fit_components(eem_dataset.eem_stack, components,
                                                fit_intercept=False, positive=True)
         nnls_score = pd.DataFrame(nnls_score, index=eem_dataset.index,
-                                  columns=["component {i}".format(i=i + 1) for i in range(self.n_components)])
+                                  columns=["component {i} NNLS-score".format(i=i + 1) for i in range(self.n_components)])
         if sort_em:
             em_peaks = []
             for i in range(self.n_components):
