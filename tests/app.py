@@ -1297,6 +1297,26 @@ card_parafac_param = dbc.Card(
                             dbc.Row(
                                 [
                                     dbc.Col(
+                                        dbc.Label("Index mandatory keywords"), width={'size': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='parafac-sample-kw-mandatory', type='text', placeholder='',
+                                                  style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
+                                        width={"offset": 0, "size": 2}
+                                    ),
+                                    dbc.Col(
+                                        dbc.Label("Index optional keywords"), width={'size': 1, 'offset':1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='parafac-sample-kw-optional', type='text', placeholder='',
+                                                  style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
+                                        width={"offset": 0, "size": 2}
+                                    )
+                                ]
+                            ),
+                            dbc.Row(
+                                [
+                                    dbc.Col(
                                         dbc.Label("Num. components"), width={'size': 1}
                                     ),
                                     dbc.Col(
@@ -1459,6 +1479,8 @@ page2 = html.Div([
     [
         Input('build-parafac-model', 'n_clicks'),
         State('eem-graph-options', 'value'),
+        State('parafac-sample-kw-mandatory', 'value'),
+        State('parafac-sample-kw-optional', 'value'),
         State('parafac-rank', 'value'),
         State('parafac-init-method', 'value'),
         State('parafac-nn-checkbox', 'value'),
@@ -1467,9 +1489,12 @@ page2 = html.Div([
         State('eem-dataset', 'data')
     ]
 )
-def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, validations, eem_dataset_dict):
+def on_build_parafac_model(n_clicks, eem_graph_options, kw_mandatory, kw_optional, rank, init, nn, tf, validations,
+                           eem_dataset_dict):
     if n_clicks is None:
         return None, None, None, None, None, None, None, 'build model', None
+    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
+    kw_optional = str_string_to_list(kw_optional) if kw_optional else []
     eem_dataset = EEMDataset(
         eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
                             in eem_dataset_dict['eem_stack']]),
@@ -1477,6 +1502,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, rank, init, nn, tf, vali
         em_range=np.array(eem_dataset_dict['em_range']),
         index=eem_dataset_dict['index']
     )
+    eem_dataset.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, copy=False)
     rank_list = num_string_to_list(rank)
     parafacs_dict = {}
     loadings_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
@@ -1943,6 +1969,27 @@ card_nmf_param = dbc.Card(
                             dbc.Row(
                                 [
                                     dbc.Col(
+                                        dbc.Label("Index mandatory keywords"), width={'size': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='nmf-sample-kw-mandatory', type='text', placeholder='',
+                                                  style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
+                                        width={"offset": 0, "size": 2}
+                                    ),
+                                    dbc.Col(
+                                        dbc.Label("Index optional keywords"), width={'size': 1, 'offset': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='nmf-sample-kw-optional', type='text', placeholder='',
+                                                  style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
+                                        width={"offset": 0, "size": 2}
+                                    )
+                                ]
+                            ),
+
+                            dbc.Row(
+                                [
+                                    dbc.Col(
                                         dbc.Label("Num. components"), width={'size': 1}
                                     ),
                                     dbc.Col(
@@ -2119,6 +2166,8 @@ page4 = html.Div([
     [
         Input('build-nmf-model', 'n_clicks'),
         State('eem-graph-options', 'value'),
+        State('nmf-sample-kw-mandatory', 'value'),
+        State('nmf-sample-kw-optional', 'value'),
         State('nmf-rank', 'value'),
         State('nmf-solver', 'value'),
         State('nmf-normalization-checkbox', 'value'),
@@ -2129,10 +2178,12 @@ page4 = html.Div([
         State('eem-dataset', 'data')
     ]
 )
-def on_build_nmf_model(n_clicks, eem_graph_options, rank, solver, normalization, alpha_w, alpha_h, l1_ratio,
-                       validations, eem_dataset_dict):
+def on_build_nmf_model(n_clicks, eem_graph_options, kw_mandatory, kw_optional, rank, solver, normalization, alpha_w,
+                       alpha_h, l1_ratio, validations, eem_dataset_dict):
     if n_clicks is None:
         return None, None, None, None, 'build model', None
+    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
+    kw_optional = str_string_to_list(kw_optional) if kw_optional else []
     eem_dataset = EEMDataset(
         eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
                             in eem_dataset_dict['eem_stack']]),
@@ -2140,6 +2191,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, rank, solver, normalization,
         em_range=np.array(eem_dataset_dict['em_range']),
         index=eem_dataset_dict['index']
     )
+    eem_dataset.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, copy=False)
     rank_list = num_string_to_list(rank)
     nmfs_dict = {}
     components_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
@@ -2318,7 +2370,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, rank, solver, normalization,
                     selected_style={'padding': '0', 'line-width': '100%'}
                     )
         )
-        return components_tabs, fmax_tabs, residual_tabs, split_half_tabs, 'build model', None
+    return components_tabs, fmax_tabs, residual_tabs, split_half_tabs, 'build model', None
 
 
 # -----------Setup the sidebar-----------------

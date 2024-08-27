@@ -1380,12 +1380,12 @@ class EEMDataset:
         portion: float
             The portion.
         copy: bool
-            if False, overwrite the EEMDataset object with the processed EEMs.
+            if False, overwrite the EEMDataset object.
 
         Returns
         -------
         eem_stack_new: np.ndarray
-            New EEM dataset.
+            New EEM stack.
         index_new: list.
             New index.
         ref_new: np.ndarray
@@ -1442,15 +1442,60 @@ class EEMDataset:
         self.ref = np.array(sorted(self.ref))
         return sorted_indices
 
-    def filter_by_index(self, keyword):
+    def filter_by_index(self, mandatory_keywords, optional_keywords, copy=True):
         """
         Select the samples whose indexes contain the given keyword.
 
+        Parameters
+        -------
+        mandatory_keywords: str or list of str
+            Keywords for selecting samples whose indexes contain all the mandatory keywords.
+        optional_keywords: str or list of str
+            Keywords for selecting samples whose indexes contain any of the optional keywords.
+        copy: bool
+            if False, overwrite the EEMDataset object.
+
         Returns
         -------
-
+        eem_stack_filtered: np.ndarray
+            Filtered EEM stack.
+        index_filtered: list
+            Filtered sample indexes.
+        ref_filtered: np.ndarray
+            Filtered sample references.
+        sample_number_all_filtered: list
+            Indexes (orders in the list) of samples that have been preserved after filtering.
         """
-        return
+        if self.index is None:
+            return None
+        if isinstance(mandatory_keywords, str):
+            mandatory_keywords = [mandatory_keywords]
+        if isinstance(optional_keywords, str):
+            optional_keywords = [optional_keywords]
+        sample_number_mandatory_filtered = []
+        sample_number_all_filtered = []
+
+        if mandatory_keywords:
+            for i, f in enumerate(self.index):
+                if all(kw in f for kw in mandatory_keywords):
+                    sample_number_mandatory_filtered.append(i)
+        else:
+            sample_number_mandatory_filtered = list(range(len(self.index)))
+
+        if optional_keywords:
+            for j in sample_number_mandatory_filtered:
+                if any(kw in self.index[j] for kw in optional_keywords):
+                    sample_number_all_filtered.append(j)
+        else:
+            sample_number_all_filtered = sample_number_mandatory_filtered
+        eem_stack_filtered = self.eem_stack[sample_number_all_filtered, :, :]
+        index_filtered = [self.index[i] for i in sample_number_all_filtered]
+        ref_filtered = self.ref[sample_number_all_filtered] if self.ref is not None else None
+        if not copy:
+            self.eem_stack = eem_stack_filtered
+            self.index = index_filtered
+            self.ref = ref_filtered
+        return eem_stack_filtered, index_filtered, ref_filtered, sample_number_all_filtered
 
 
 def combine_eem_datasets(list_eem_datasets):
@@ -1647,8 +1692,8 @@ class PARAFAC:
             column_labels = ['component {r}'.format(r=i + 1) for i in range(self.rank)]
             ex_loadings.columns = column_labels
             em_loadings.columns = column_labels
-            score.columns = column_labels
-            fmax = pd.DataFrame(fmax, columns=['component {r}'.format(r=i + 1) for i in range(self.rank)])
+            score.columns = ['component {r} PARAFAC-score'.format(r=i + 1) for i in range(self.rank)]
+            fmax = pd.DataFrame(fmax, columns=['component {r} PARAFAC-Fmax'.format(r=i + 1) for i in range(self.rank)])
 
         ex_loadings.index = eem_dataset.ex_range.tolist()
         em_loadings.index = eem_dataset.em_range.tolist()
