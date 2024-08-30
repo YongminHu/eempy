@@ -770,10 +770,10 @@ card_median_filter = dbc.Card(
 
 #       -----------dbc card for downloading pre-processed EEM
 
-card_eem_downloading = dbc.Card(
+card_eemdataset_downloading = dbc.Card(
     dbc.CardBody(
         [
-            html.H5("Export pre-processed EEM", className="card-title"),
+            html.H5("Export Processed EEM Dataset", className="card-title"),
             dbc.Stack([
                 dbc.Row([
                     dbc.Col(
@@ -871,8 +871,8 @@ page1 = html.Div([
                             card_raman,
                             card_median_filter,
                             card_smoothing,
-                            card_eem_downloading,
-                            card_built_eem_dataset
+                            card_built_eem_dataset,
+                            card_eemdataset_downloading,
                         ],
                         gap=3)
                 ],
