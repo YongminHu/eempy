@@ -1725,7 +1725,7 @@ class PARAFAC:
         Parameters
         ----------
         eem_dataset: EEMDataset
-            The EEM.
+            The EEM dataset to be predicted.
         fit_intercept: bool
             Whether to calculate the intercept.
 
@@ -2460,7 +2460,7 @@ class KPARAFACs:
         Parameters
         ----------
         eem_dataset: EEMDataset
-            EEM dataset.
+            The EEM dataset to be predicted.
 
         Returns
         -------

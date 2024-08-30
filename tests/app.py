@@ -1,6 +1,8 @@
 import math
 import dash
-from dash import dcc, html
+import json
+import pickle
+from dash import dcc, html, ctx
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
@@ -73,7 +75,7 @@ card_selecting_files = dbc.Card(
                         ),
                     ]),
 
-                    html.H6("File searching keywords"),
+                    html.H6("File filtering keywords"),
 
                     dbc.Row([
                         dbc.Col(
@@ -768,39 +770,6 @@ card_median_filter = dbc.Card(
     className="w-100"
 )
 
-#       -----------dbc card for downloading pre-processed EEM
-
-card_eemdataset_downloading = dbc.Card(
-    dbc.CardBody(
-        [
-            html.H5("Export Processed EEM Dataset", className="card-title"),
-            dbc.Stack([
-                dbc.Row([
-                    dbc.Col(
-                        [
-                            dbc.Label("format"),
-                        ],
-                        width={'size': 5}
-                    ),
-                    dbc.Col(
-                        [
-                            dcc.Dropdown(
-                                id="eem-downloading-format",
-                                options=[{'label': 'Horiba Aqualog .dat file', 'value': 'aqualog'}],
-                                value='aqualog', placeholder='Select EEM data file format',
-                                style={'width': '100%'}, optionHeight=50)
-                        ]
-                    ),
-                ]),
-                dbc.Row([
-                    dbc.Col(dbc.Button("Export", id='export-eem', className='col-5')
-                            )])
-            ], gap=2)
-        ]
-    ),
-    className="w-100"
-)
-
 #       -----------dbc card for building EEM dataset
 
 card_built_eem_dataset = dbc.Card(
@@ -825,6 +794,58 @@ card_built_eem_dataset = dbc.Card(
                 dbc.Row([
                     dbc.Col(
                         html.Div(id='info-eem-dataset', style={'width': '300px'}),
+                        width={"size": 12, "offset": 0}
+                    )
+                ])
+            ], gap=2)
+        ]
+    ),
+    className="w-100"
+)
+
+#       -----------dbc card for exporting pre-processed EEM
+
+card_eem_dataset_downloading = dbc.Card(
+    dbc.CardBody(
+        [
+            html.H5("Export Processed EEM Dataset", className="card-title"),
+            dbc.Stack([
+                dbc.Row(
+                    dcc.Input(id='folder-path-export-eem-dataset', type='text',
+                              placeholder='Please enter the output folder path...',
+                              style={'width': '97%', 'height': '30px'}, debounce=True),
+                    justify="center"
+                ),
+                dbc.Row(
+                    dcc.Input(id='filename-export-eem-dataset', type='text',
+                              placeholder='Please enter the output filename (without extension)...',
+                              style={'width': '97%', 'height': '30px'}, debounce=True),
+                    justify="center"
+                ),
+                dbc.Row([
+                    dbc.Col(
+                        [
+                            dbc.Label("format"),
+                        ],
+                        width={'size': 5}
+                    ),
+                    dbc.Col(
+                        [
+                            dcc.Dropdown(
+                                id="eem-dataset-export-format",
+                                options=[{'label': '.json', 'value': 'json'},
+                                         {'label': '.pkl', 'value': 'pkl'}],
+                                value='json', placeholder='Select EEM dateset file format',
+                                style={'width': '100%'}, optionHeight=50)
+                        ]
+                    ),
+                ]),
+                dbc.Row([
+                    dbc.Col(dbc.Button("Export", id='export-eem-dataset', className='col-5')
+                            )]),
+                dbc.Row([
+                    dbc.Col(
+                        html.Div(id='message-eem-dataset-export', style={'width': '300px'}),
                         width={"size": 12, "offset": 0}
                     )
                 ])
@@ -872,7 +893,7 @@ page1 = html.Div([
                             card_median_filter,
                             card_smoothing,
                             card_built_eem_dataset,
-                            card_eemdataset_downloading,
+                            card_eem_dataset_downloading,
                         ],
                         gap=3)
                 ],
@@ -886,7 +907,6 @@ page1 = html.Div([
 # -------------Callbacks of page #1
 
 #   ---------------Update file list according to input data folder path
-
 
 @app.callback(
     [
@@ -911,8 +931,8 @@ def update_filenames(folder_path, kw_mandatory, kw_optional, kw_sample):
                 filenames = get_filelist(folder_path, kw_mandatory + kw_sample, kw_optional)
             options = [{'label': f, 'value': f} for f in filenames]
             return options, None
-        except FileNotFoundError:
-            return ['Files not found - please check the settings'], None
+        except FileNotFoundError as e:
+            return [f'{e}'], None
     else:
         return [], None
 
@@ -1036,7 +1056,6 @@ def update_eem_plot(folder_path, file_name_sample, graph_options,
                                                               interpolation_dimension_o1=rayleigh_o1_dimension,
                                                               interpolation_dimension_o2=rayleigh_o2_dimension)
 
-
         # Gaussian smoothing
         if all([gaussian, gaussian_sigma, gaussian_truncate]):
             intensity = eem_gaussian_filter(intensity, gaussian_sigma, gaussian_truncate)
@@ -1105,9 +1124,6 @@ def update_eem_plot(folder_path, file_name_sample, graph_options,
     return fig_eem, fig_abs, f'RSU: {rsu_value}'
 
 
-#   ---------------Export EEM
-
-
 #   ---------------Build EEM dataset
 
 @app.callback(
@@ -1158,7 +1174,7 @@ def update_eem_plot(folder_path, file_name_sample, graph_options,
         State('median-filter-window-em', 'value'),
         State('median-filter-mode', 'value'),
         State('align-exem', 'value'),
-    ]
+    ],
 )
 def on_build_eem_dataset(n_clicks,
                          folder_path,
@@ -1192,7 +1208,7 @@ def on_build_eem_dataset(n_clicks,
         )
     except (UnboundLocalError, IndexError, TypeError) as e:
         error_message = ("EEM dataset building failed. Possible causes: (1) There are non-EEM files mixed in the EEM "
-                         "data file list. Please check data folder path and file searching keywords settings. "
+                         "data file list. Please check data folder path and file filtering keywords settings. "
                          "(2) There are necessary parameter boxes that has not been filled in. Please check the "
                          "parameter boxes. "
                          "(3) The Ex/Em ranges/intervals are different between EEMs, make sure you select the "
@@ -1281,6 +1297,39 @@ def on_build_eem_dataset(n_clicks,
     return eem_dataset_json_dict, dbc.Label(steps_track, style={'whiteSpace': 'pre'}), "Build"
 
 
+#   ---------------Export EEM
+
+@app.callback(
+    [
+        Output('message-eem-dataset-export', 'children')
+    ],
+    [
+        Input('export-eem-dataset', 'n_clicks'),
+        Input('build-eem-dataset', 'n_clicks'),
+        State('eem-dataset', 'data'),
+        State('folder-path-export-eem-dataset', 'value'),
+        State('filename-export-eem-dataset', 'value'),
+        State('eem-dataset-export-format', 'value'),
+    ]
+)
+def on_export_eem_dataset(n_clicks_export, n_clicks_build, eem_dataset_json_dict, export_folder_path, export_filename,
+                          export_format):
+    if ctx.triggered_id == "build-eem-dataset":
+        return [None]
+    if eem_dataset_json_dict is None:
+        message = ['Please first build the eem dataset.']
+        return message
+    if not os.path.isdir(export_folder_path):
+        message = ['Error: No such file or directory: ' + export_folder_path]
+        return message
+    else:
+        path = export_folder_path + '/' + export_filename + '.' + export_format
+    with open(path, 'w') as file:
+        json.dump(eem_dataset_json_dict, file)
+
+    return ["EEM dataset exported."]
+
+
 # -----------Page #2: PARAFAC--------------
 
 #   -------------Setting up the dbc cards
@@ -1289,31 +1338,58 @@ def on_build_eem_dataset(n_clicks,
 card_parafac_param = dbc.Card(
     dbc.CardBody(
         [
-            html.H5("Parameters selection", className="card-title"),
+            html.H5("Import EEM dataset for model establishment", className="card-title"),
             html.Div(
                 [
                     dbc.Stack(
                         [
+                            dbc.Row(
+                                dcc.Input(id='parafac-eem-dataset-establishment-path-input', type='text',
+                                          placeholder='Please enter the eem dataset path (.json and .pkl are supported).'
+                                                      ' If empty, the model built in "eem pre-processing" '
+                                                      'would be used',
+                                          style={'width': '97%', 'height': '30px'}, debounce=True),
+                                justify="center"
+                            ),
+                            dbc.Row([
+                                dbc.Col(
+                                    html.Div([],
+                                             id='parafac-eem-dataset-establishment-message', style={'width': '1000px'}),
+                                    width={"size": 12, "offset": 0}
+                                )
+                            ]),
                             dbc.Row(
                                 [
                                     dbc.Col(
                                         dbc.Label("Index mandatory keywords"), width={'size': 1}
                                     ),
                                     dbc.Col(
-                                        dcc.Input(id='parafac-sample-kw-mandatory', type='text', placeholder='',
+                                        dcc.Input(id='parafac-establishment-index-kw-mandatory', type='text',
+                                                  placeholder='',
                                                   style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
                                         width={"offset": 0, "size": 2}
                                     ),
                                     dbc.Col(
-                                        dbc.Label("Index optional keywords"), width={'size': 1, 'offset':1}
+                                        dbc.Label("Index optional keywords"), width={'size': 1, 'offset': 1}
                                     ),
                                     dbc.Col(
-                                        dcc.Input(id='parafac-sample-kw-optional', type='text', placeholder='',
+                                        dcc.Input(id='parafac-establishment-index-kw-optional', type='text',
+                                                  placeholder='',
                                                   style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
                                         width={"offset": 0, "size": 2}
                                     )
                                 ]
                             ),
+                        ],
+                        gap=2
+                    )
+                ]
+            ),
+            html.H5("Parameters selection", className="card-title"),
+            html.Div(
+                [
+                    dbc.Stack(
+                        [
                             dbc.Row(
                                 [
                                     dbc.Col(
@@ -1420,6 +1496,51 @@ page2 = html.Div([
                                         dbc.Card(
                                             dbc.Stack(
                                                 [
+                                                    html.H5("Import EEM dataset to be predicted"),
+                                                    dbc.Row(
+                                                        dcc.Input(id='parafac-eem-dataset-predict-path-input',
+                                                                  type='text',
+                                                                  placeholder='Please enter the eem dataset path (.json'
+                                                                              ' and .pkl are supported).',
+                                                                  style={'width': '97%', 'height': '30px'},
+                                                                  debounce=True),
+                                                        justify="center"
+                                                    ),
+                                                    dbc.Row([
+                                                        dbc.Col(
+                                                            html.Div([],
+                                                                     id='parafac-eem-dataset-predict-message',
+                                                                     style={'width': '1000px'}),
+                                                            width={"size": 12, "offset": 0}
+                                                        )
+                                                    ]),
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dbc.Label("Index mandatory keywords"), width={'size': 1}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Input(id='parafac-predict-index-kw-mandatory',
+                                                                          type='text',
+                                                                          placeholder='',
+                                                                          style={'width': '100%', 'height': '30px'},
+                                                                          debounce=True, value=''),
+                                                                width={"offset": 0, "size": 2}
+                                                            ),
+                                                            dbc.Col(
+                                                                dbc.Label("Index optional keywords"),
+                                                                width={'size': 1, 'offset': 1}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Input(id='parafac-predict-index-kw-optional',
+                                                                          type='text',
+                                                                          placeholder='',
+                                                                          style={'width': '100%', 'height': '30px'},
+                                                                          debounce=True, value=''),
+                                                                width={"offset": 0, "size": 2}
+                                                            )
+                                                        ]
+                                                    ),
                                                     html.H5("Select established model"),
                                                     dbc.Row(
                                                         [
@@ -1435,7 +1556,7 @@ page2 = html.Div([
                                                             )
                                                         ]
                                                     )
-                                                ], gap=2
+                                                ], gap=2, style={"margin": "20px"}
                                             ),
                                         ),
                                         dbc.Card(
@@ -1443,7 +1564,7 @@ page2 = html.Div([
                                             id='parafac-test-result-card'
                                         )
                                     ],
-                                    style={'width': '90vw'}
+                                    style={'width': '90vw'},
                                 )
                             ],
                             label='Predict', id='parafac-predict'
@@ -1479,8 +1600,8 @@ page2 = html.Div([
     [
         Input('build-parafac-model', 'n_clicks'),
         State('eem-graph-options', 'value'),
-        State('parafac-sample-kw-mandatory', 'value'),
-        State('parafac-sample-kw-optional', 'value'),
+        State('parafac-establishment-index-kw-mandatory', 'value'),
+        State('parafac-establishment-index-kw-optional', 'value'),
         State('parafac-rank', 'value'),
         State('parafac-init-method', 'value'),
         State('parafac-nn-checkbox', 'value'),
