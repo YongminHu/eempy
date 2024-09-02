@@ -1,7 +1,11 @@
 import math
+import os.path
+
 import dash
 import json
 import pickle
+
+import numpy as np
 from dash import dcc, html, ctx
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
@@ -777,6 +781,12 @@ card_built_eem_dataset = dbc.Card(
         [
             html.H5("Build EEM dataset", className="card-title"),
             dbc.Stack([
+                dbc.Row(
+                    dcc.Input(id='path-reference', type='text',
+                              placeholder='Please enter the reference file path (optional)',
+                              style={'width': '97%', 'height': '30px'}, debounce=True),
+                    justify="center"
+                ),
                 dbc.Row([
                     dcc.Checklist(
                         id="align-exem",
@@ -1145,6 +1155,7 @@ def update_eem_plot(folder_path, file_name_sample, graph_options,
         State('index-pos-right', 'value'),
         State('timestamp-checkbox', 'value'),
         State('timestamp-format', 'value'),
+        State('path-reference', 'value'),
         State('excitation-wavelength-min', 'value'),
         State('excitation-wavelength-max', 'value'),
         State('emission-wavelength-min', 'value'),
@@ -1180,7 +1191,7 @@ def on_build_eem_dataset(n_clicks,
                          folder_path,
                          eem_data_format, abs_data_format,
                          file_name_sample_options, file_kw_sample, file_kw_abs, file_kw_blank,
-                         index_pos_left, index_pos_right, timestamp, timestamp_format,
+                         index_pos_left, index_pos_right, timestamp, timestamp_format, reference_path,
                          ex_range_min, ex_range_max, em_range_min, em_range_max,
                          su, su_ex, su_em_width, su_normalization_factor,
                          ife, ife_method,
@@ -1220,8 +1231,40 @@ def on_build_eem_dataset(n_clicks,
         "Number of EEMs: {n}\n".format(n=eem_stack.shape[0]),
         "Pre-processing steps implemented:\n",
     ]
+
+    if reference_path is not None:
+        if os.path.exists(reference_path):
+            if reference_path.endswith('.csv'):
+                refs_from_file = pd.read_csv(reference_path)
+            elif reference_path.endswith('.xlsx'):
+                refs_from_file = pd.read_excel(reference_path)
+            else:
+                return None, ("Unsupported file format. Please provide a .csv or .xlsx file."), "build"
+
+            if index_pos_left and index_pos_right:
+                # Check for missing indices
+                extra_indices = [
+                    index_from_file for index_from_file in refs_from_file.index if index_from_file not in indexes
+                ]
+                missing_indices = [index for index in indexes if index not in refs_from_file.index]
+                if extra_indices or missing_indices:
+                    message_ref = ["Warning: indices of EEM dataset and reference file are not exactly the "
+                                            "same. The reference value of unmatched indices would be set as NaN"]
+                refs = np.array(
+                    [refs_from_file.iloc[i] if refs_from_file.index[i] in indexes
+                     else np.empty(refs_from_file.shape[1]) for i in range(len(indexes))]
+                )
+            else:
+                if refs_from_file.shape[0] != len(indexes):
+                    return None, ('Error: number of samples in reference file is not the same as the EEM dataset')
+                refs = refs_from_file.to_numpy()
+        else:
+            return None, ('Error: No such file or directory: ' + reference_path), "build"
+    else:
+        refs = None
+
     # EEM cutting
-    eem_dataset = EEMDataset(eem_stack, ex_range, em_range, index=indexes)
+    eem_dataset = EEMDataset(eem_stack, ex_range, em_range, index=indexes, ref=refs)
     if any([np.min(ex_range) != ex_range_min, np.max(ex_range) != ex_range_max,
             np.min(em_range) != em_range_min, np.max(em_range) != em_range_max]):
         eem_dataset.cutting(ex_min=ex_range_min, ex_max=ex_range_max,
@@ -1587,7 +1630,7 @@ page2 = html.Div([
 
 @app.callback(
     [
-        Output('parafac-eem-dataset-establishment-message', 'value'),
+        Output('parafac-eem-dataset-establishment-message', 'children'),
         Output('parafac-loadings', 'children'),
         Output('parafac-components', 'children'),
         Output('parafac-scores', 'children'),
@@ -1596,6 +1639,8 @@ page2 = html.Div([
         Output('parafac-leverage', 'children'),
         Output('parafac-split-half', 'children'),
         Output('build-parafac-spinner', 'children'),
+        Output('parafac-predict-model-selection', 'options'),
+        Output('parafac-predict-model-selection', 'value'),
         Output('parafac-models', 'data'),
     ],
     [
@@ -1615,12 +1660,12 @@ page2 = html.Div([
 def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, rank, init, nn,
                            tf, validations, eem_dataset_dict):
     if n_clicks is None:
-        return None, None, None, None, None, None, None, None, 'build model', None
+        return None, None, None, None, None, None, None, None, 'build model', [], None, None
     if path_establishment is None:
         if eem_dataset_dict is None:
             message = ('Error: No built EEM dataset detected. Please build an EEM dataset first in "EEM pre-processing" '
                        'section, or import an EEM dataset from file.')
-            return message, None, None, None, None, None, None, None, 'build model', None
+            return message, None, None, None, None, None, None, None, 'build model', [None], None
         eem_dataset_establishment = EEMDataset(
             eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
                                 in eem_dataset_dict['eem_stack']]),
@@ -1629,9 +1674,9 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
             index=eem_dataset_dict['index']
         )
     else:
-        if not os.path.isdir(path_establishment):
+        if not os.path.exists(path_establishment):
             message = ('Error: No such file or directory: ' + path_establishment)
-            return message, None, None, None, None, None, None, None, 'build model', None
+            return message, None, None, None, None, None, None, None, 'build model', [], None, None
         else:
             _, file_extension = os.path.splitext(path_establishment)
 
@@ -2097,32 +2142,36 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
             ]),
         )
 
-    return (None, loadings_tabs, components_tabs, scores_tabs, fmax_tabs, core_consistency_tabs, leverage_tabs,
-            split_half_tabs, 'build model', parafac_components_dict)
-
-
-# -----------Update parafac model dropdown list
-@app.callback(
-    [
-        Output('parafac-predict-model-selection', 'options')
-    ],
-    [
-        Input('parafac-models', 'data')
-    ]
-)
-def update_parafac_models_options(parafac_components_all):
-    if parafac_components_all is None:
-        return None
     options = []
-    for r in parafac_components_all.keys():
+    for r in parafac_components_dict.keys():
         options.append({'label': 'component {r}'.format(r=r), 'value': r})
-    return options
+
+    return (None, loadings_tabs, components_tabs, scores_tabs, fmax_tabs, core_consistency_tabs, leverage_tabs,
+            split_half_tabs, 'build model', options, None, parafac_components_dict)
+
+
+# # -----------Update parafac model dropdown list
+# @app.callback(
+#     [
+#         Output('parafac-predict-model-selection', 'options')
+#     ],
+#     [
+#         Input('parafac-models', 'data')
+#     ]
+# )
+# def update_parafac_models_options(parafac_components_all):
+#     if parafac_components_all is None:
+#         return []
+#     options = []
+#     for r in parafac_components_all.keys():
+#         options.append({'label': 'component {r}'.format(r=r), 'value': r})
+#     return options
 
 
 # -----------Make prediction on an EEM dataset using an established PARAFAC model
 @app.callback(
     [
-        Output('parafac-eem-dataset-predict-message', 'value'), # size, intervals?
+        Output('parafac-eem-dataset-predict-message', 'children'), # size, intervals?
         Output('parafac-test-result-card', 'children'),
         Output('predict-parafac-spinner', 'children'),
     ],
@@ -2138,8 +2187,10 @@ def update_parafac_models_options(parafac_components_all):
 def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, model_r, parafac_components_all):
     if n_clicks is None:
         return None, None, 'predict'
-    if not os.path.isdir(path_predict):
-        message = ('Error: No such file or directory: ' + path_predict)
+    if path_predict is None:
+        return None, None, 'predict'
+    if not os.path.exists(path_predict):
+        message = ('Error: No such file: ' + path_predict)
         return message, None, 'predict'
     else:
         _, file_extension = os.path.splitext(path_predict)
@@ -2165,17 +2216,25 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
     eem_dataset_predict.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, copy=False)
 
     score_sample, fmax_sample, eem_stack_pred = eems_fit_components(eem_dataset_predict.eem_stack,
-                                                                    parafac_components_all[model_r],
+                                                                    np.array(
+                                                                        [
+                                                                            [
+                                                                                [np.nan if x is None else x for x in
+                                                                                subsublist] for subsublist in sublist
+                                                                            ]
+                                                                            for sublist in parafac_components_all[str(model_r)]
+                                                                        ]
+                                                                    ),
                                                                     fit_intercept=False)
     score_sample = pd.DataFrame(
-        score_sample, index=eem_dataset_predict.index, columns=['component {i}'.format(i=i) for i+1 in range(model_r)]
+        score_sample, index=eem_dataset_predict.index, columns=['component {i}'.format(i=i+1) for i in range(model_r)]
     )
     fmax_sample = pd.DataFrame(
-        fmax_sample, index=eem_dataset_predict.index, columns=['component {i}'.format(i=i) for i+1 in range(model_r)]
+        fmax_sample, index=eem_dataset_predict.index, columns=['component {i}'.format(i=i+1) for i in range(model_r)]
     )
 
     prediction_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
-    prediction_tabs.children[0].children[0] = dcc.Tab(
+    prediction_tabs.children[0].children.append(dcc.Tab(
         label='Score',
         children=[
             html.Div([
@@ -2183,8 +2242,22 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
                     [
                         dbc.Col(
                             [
+                                dcc.Graph(figure=plot_score(score_sample,
+                                                            display=False
+                                                            ),
+                                          config={'autosizable': False},
+                                          style={'width': 1700, 'height': 800}
+                                          )
+                            ]
+                        )
+                    ]
+                ),
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
                                 dbc.Table.from_dataframe(score_sample,
-                                                         bordered=True, hover=True,
+                                                         bordered=True, hover=True, index=True
                                                          )
                             ]
                         ),
@@ -2192,8 +2265,8 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
                 ),
             ]),
         ]
-    )
-    prediction_tabs.children[0].children[0] = dcc.Tab(
+    ))
+    prediction_tabs.children[0].children.append(dcc.Tab(
         label='Fmax',
         children=[
             html.Div([
@@ -2201,8 +2274,22 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
                     [
                         dbc.Col(
                             [
+                                dcc.Graph(figure=plot_score(fmax_sample,
+                                                            display=False
+                                                            ),
+                                          config={'autosizable': False},
+                                          style={'width': 1700, 'height': 800}
+                                          )
+                            ]
+                        )
+                    ]
+                ),
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
                                 dbc.Table.from_dataframe(fmax_sample,
-                                                         bordered=True, hover=True,
+                                                         bordered=True, hover=True, index=True
                                                          )
                             ]
                         ),
@@ -2210,13 +2297,13 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
                 ),
             ]),
         ]
-    )
-    prediction_tabs.children[0].children[0] = dcc.Tab(
+    ))
+    prediction_tabs.children[0].children.append(dcc.Tab(
         label='Error',
         children=[
 
         ]
-    )
+    ))
     return None, prediction_tabs, 'predict'
 
 # -----------Page #3: K-PARAFACs--------------
@@ -2676,7 +2763,7 @@ def serve_layout():
     return html.Div([
         dcc.Store(id='pre-processed-eem'),
         dcc.Store(id='eem-dataset'),
-        dcc.Store(id='parafac-models'),
+        dcc.Store(id='parafac-models', data=None),
         dcc.Store(id='k-parafacs-models'),
         dcc.Store(id='nmf-models'),
         content])

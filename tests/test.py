@@ -1,4 +1,5 @@
 import numpy as np
+import json
 from matplotlib import pyplot as plt
 import pandas as pd
 
@@ -9,9 +10,17 @@ from eempy.plot import plot_eem, plot_loadings, plot_score
 import re
 
 
-eem_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240215_NEST_M3/B1S12024-02-12-M3+0gLKIPEM.dat'
-blank_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240215_NEST_M3/B1S12024-02-12-M3+0gLKIBEM.dat'
-folder_path = 'C:\PhD\Fluo-detect/_data/_greywater/20240706_online_M3_full'
+# eem_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240215_NEST_M3/B1S12024-02-12-M3+0gLKIPEM.dat'
+# blank_path = 'C:/PhD/Fluo-detect/_data/_greywater/20240215_NEST_M3/B1S12024-02-12-M3+0gLKIBEM.dat'
+# folder_path = 'C:/PhD\Fluo-detect/_data/_greywater/20240706_online_M3_full/20240706_online_full.json'
+#
+# with open(folder_path, 'r') as file:
+#     eem_dataset_dict = json.load(file)
+#
+# print(eem_dataset_dict['index'])
+
+a = pd.DataFrame(np.arange(9).reshape([3,3]), columns=['a', 'b', 'c'])
+print(np.array(a.loc[:,['a']]))
 
 # intensity, ex_range, em_range, index = read_eem(eem_path)
 # blank, ex_range_blank, em_range_blank, _ = read_eem(blank_path)
@@ -26,8 +35,8 @@ folder_path = 'C:\PhD\Fluo-detect/_data/_greywater/20240706_online_M3_full'
 #                                          em_range_blank=em_range_blank, ex_lb=349, ex_ub=351, bandwidth=5)
 
 #
-eem_stack, ex_range, em_range, index = read_eem_dataset(folder_path=folder_path,
-                                                        mandatory_keywords=['07-11', 'SYM'])
+# eem_stack, ex_range, em_range, index = read_eem_dataset(folder_path=folder_path,
+#                                                         mandatory_keywords=['07-11', 'SYM'])
 
 # blank_stack, ex_range_blank, em_range_blank, _ = read_eem_dataset(folder_path=folder_path,
 #                                                         mandatory_keywords='BEM.dat')
@@ -35,31 +44,31 @@ eem_stack, ex_range, em_range, index = read_eem_dataset(folder_path=folder_path,
 
 # eem_stack[eem_stack<0] = 0
 
-eem_dataset1 = EEMDataset(eem_stack, ex_range, em_range)
-# eem_dataset2 = EEMDataset(eem_stack[10:20], ex_range, em_range)
-eem_dataset1.cutting(ex_min=270, ex_max=400, em_min=310, em_max=500, copy=False)
-eem_dataset1.rayleigh_scattering_removal(copy=False, interpolation_method_o1='zero', interpolation_method_o2='nan')
-eem_dataset1.raman_scattering_removal(copy=False, interpolation_method='nan', width=10)
-
-eem_dataset_json_dict = {
-    'eem_stack': eem_dataset1.eem_stack.tolist(),
-    'ex_range': eem_dataset1.ex_range.tolist(),
-    'em_range': eem_dataset1.em_range.tolist(),
-    'index': eem_dataset1.index,
-    'ref': eem_dataset1.ref.tolist() if eem_dataset1.ref is not None else None
-}
-
-eem_dataset = EEMDataset(
-    eem_stack=np.array(eem_dataset_json_dict['eem_stack']),
-    ex_range=np.array(eem_dataset_json_dict['ex_range']),
-    em_range=np.array(eem_dataset_json_dict['em_range']),
-    index=eem_dataset_json_dict['index']
-)
-
-nmf = EEMNMF(n_components=3)
-
-nmf.fit(eem_dataset)
-plot_eem(nmf.components[0], ex_range=eem_dataset1.ex_range, em_range=eem_dataset1.em_range, auto_intensity_range=True)
+# eem_dataset1 = EEMDataset(eem_stack, ex_range, em_range)
+# # eem_dataset2 = EEMDataset(eem_stack[10:20], ex_range, em_range)
+# eem_dataset1.cutting(ex_min=270, ex_max=400, em_min=310, em_max=500, copy=False)
+# eem_dataset1.rayleigh_scattering_removal(copy=False, interpolation_method_o1='zero', interpolation_method_o2='nan')
+# eem_dataset1.raman_scattering_removal(copy=False, interpolation_method='nan', width=10)
+#
+# eem_dataset_json_dict = {
+#     'eem_stack': eem_dataset1.eem_stack.tolist(),
+#     'ex_range': eem_dataset1.ex_range.tolist(),
+#     'em_range': eem_dataset1.em_range.tolist(),
+#     'index': eem_dataset1.index,
+#     'ref': eem_dataset1.ref.tolist() if eem_dataset1.ref is not None else None
+# }
+#
+# eem_dataset = EEMDataset(
+#     eem_stack=np.array(eem_dataset_json_dict['eem_stack']),
+#     ex_range=np.array(eem_dataset_json_dict['ex_range']),
+#     em_range=np.array(eem_dataset_json_dict['em_range']),
+#     index=eem_dataset_json_dict['index']
+# )
+#
+# nmf = EEMNMF(n_components=3)
+#
+# nmf.fit(eem_dataset)
+# plot_eem(nmf.components[0], ex_range=eem_dataset1.ex_range, em_range=eem_dataset1.em_range, auto_intensity_range=True)
 
 # eem_dataset2.rayleigh_scattering_removal(copy=False)
 # parafac_model1 = PARAFAC(rank=3, non_negativity=True)

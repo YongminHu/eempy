@@ -814,8 +814,8 @@ class EEMDataset:
         The excitation wavelengths.
     em_range: np.ndarray (1d)
         The emission wavelengths.
-    ref: np.ndarray (1d) or None
-        Optional. The reference data, e.g., the COD of each sample. It should have a length equal to the number of
+    ref: pd.DataFrame or None
+        Optional. The reference data, e.g., the DOC of each sample. It should have a length equal to the number of
         samples in the eem_stack.
     index: list or None
         Optional. The index used to label each sample. The number of elements in the list should equal the number
@@ -834,11 +834,11 @@ class EEMDataset:
         self.index = index
         self.extent = (self.em_range.min(), self.em_range.max(), self.ex_range.min(), self.ex_range.max())
 
-    def to_json_serializable(self):
-        self.eem_stack = self.eem_stack.tolist()
-        self.ex_range = self.ex_range.tolist()
-        self.em_range = self.em_range.tolist()
-        self.ref = self.ref.tolist() if self.ref else None
+    # def to_json_serializable(self):
+    #     self.eem_stack = self.eem_stack.tolist()
+    #     self.ex_range = self.ex_range.tolist()
+    #     self.em_range = self.em_range.tolist()
+    #     self.ref = self.ref.tolist() if self.ref else None
 
     # --------------------EEM dataset features--------------------
     def zscore(self):
@@ -951,12 +951,14 @@ class EEMDataset:
         em_actual = self.em_range[em_idx]
         return fi, ex_actual, em_actual
 
-    def correlation(self, fit_intercept=True):
+    def correlation(self, variables, fit_intercept=True):
         """
         Analyze the correlation between reference and fluorescence intensity at each pair of ex/em.
 
         Params
         -------
+        variables: list
+            List of variables (i.e., the headers of the reference table) to be fitted
         fit_intercept: bool, optional
             Whether to fit the intercept for linear regression.
 
@@ -966,35 +968,36 @@ class EEMDataset:
             A dictionary containing multiple correlation evaluation metrics.
         """
         m = self.eem_stack
-        x = self.ref
-        x = x.reshape(m.shape[0], 1)
-        w = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
-        b = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
-        r2 = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
-        pc = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
-        pc_p = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
-        sc = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
-        sc_p = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
-        e = np.full(m.shape, fill_value=np.nan)
-        for i in range(m.shape[1]):
-            for j in range(m.shape[2]):
-                try:
-                    y = (m[:, i, j])
-                    reg = LinearRegression(fit_intercept=fit_intercept)
-                    reg.fit(x, y)
-                    w[i, j] = reg.coef_
-                    b[i, j] = reg.intercept_
-                    r2[i, j] = reg.score(x, y)
-                    e[:, i, j] = reg.predict(x) - y
-                    pc[i, j] = stats.pearsonr(x.reshape(-1), y).statistic
-                    pc_p[i, j] = stats.pearsonr(x.reshape(-1), y).pvalue
-                    sc[i, j] = stats.spearmanr(x.reshape(-1), y).statistic
-                    sc_p[i, j] = stats.spearmanr(x.reshape(-1), y).pvalue
-                except ValueError:
-                    pass
-        corr_dict = {'slope': w, 'intercept': b, 'r_square': r2, 'linear regression residual': e,
-                     'Pearson corr. coef.': pc, 'Pearson corr. coef. p-value': pc_p, 'Spearman corr. coef.': sc,
-                     'Spearman corr. coef. p-value': sc_p}
+        corr_dict = {var: None for var in variables}
+        for var in variables:
+            x = np.array(self.ref.loc[:, [var]])
+            w = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
+            b = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
+            r2 = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
+            pc = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
+            pc_p = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
+            sc = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
+            sc_p = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
+            e = np.full(m.shape, fill_value=np.nan)
+            for i in range(m.shape[1]):
+                for j in range(m.shape[2]):
+                    try:
+                        y = (m[:, i, j])
+                        reg = LinearRegression(fit_intercept=fit_intercept)
+                        reg.fit(x, y)
+                        w[i, j] = reg.coef_
+                        b[i, j] = reg.intercept_
+                        r2[i, j] = reg.score(x, y)
+                        e[:, i, j] = reg.predict(x) - y
+                        pc[i, j] = stats.pearsonr(x.reshape(-1), y).statistic
+                        pc_p[i, j] = stats.pearsonr(x.reshape(-1), y).pvalue
+                        sc[i, j] = stats.spearmanr(x.reshape(-1), y).statistic
+                        sc_p[i, j] = stats.spearmanr(x.reshape(-1), y).pvalue
+                    except ValueError:
+                        pass
+            corr_dict.var = {'slope': w, 'intercept': b, 'r_square': r2, 'linear regression residual': e,
+                         'Pearson corr. coef.': pc, 'Pearson corr. coef. p-value': pc_p, 'Spearman corr. coef.': sc,
+                         'Spearman corr. coef. p-value': sc_p}
         return corr_dict
 
     # -----------------EEM dataset processing methods-----------------
@@ -1359,7 +1362,7 @@ class EEMDataset:
             raise ValueError("'rule' should be either 'random' or 'sequential'")
         for split in idx_splits:
             if self.ref:
-                ref = np.array([self.ref[i] for i in split])
+                ref = np.array([self.ref.iloc[i] for i in split])
             else:
                 ref = None
             if self.index:
@@ -1401,7 +1404,7 @@ class EEMDataset:
         else:
             index_new = None
         if self.ref:
-            ref_new = self.ref[selected_indices]
+            ref_new = self.ref.iloc[selected_indices]
         else:
             ref_new = None
         if not copy:
@@ -1422,25 +1425,25 @@ class EEMDataset:
         sorted_indices = np.argsort(self.index)
         self.eem_stack = self.eem_stack[sorted_indices]
         if self.ref:
-            self.ref = self.ref[sorted_indices]
+            self.ref = self.ref.iloc[sorted_indices]
         self.index = sorted(self.index)
         return sorted_indices
 
-    def sort_by_ref(self):
-        """
-        Sort the sample order of eem_stack, reference and index (if exists) by the reference.
-
-        Returns
-        -------
-        sorted_indices: np.ndarray
-            The sorted sample order
-        """
-        sorted_indices = np.argsort(self.ref)
-        self.eem_stack = self.eem_stack[sorted_indices]
-        if self.index:
-            self.index = self.index[sorted_indices]
-        self.ref = np.array(sorted(self.ref))
-        return sorted_indices
+    # def sort_by_ref(self):
+    #     """
+    #     Sort the sample order of eem_stack, reference and index (if exists) by the reference.
+    #
+    #     Returns
+    #     -------
+    #     sorted_indices: np.ndarray
+    #         The sorted sample order
+    #     """
+    #     sorted_indices = np.argsort(self.ref)
+    #     self.eem_stack = self.eem_stack[sorted_indices]
+    #     if self.index:
+    #         self.index = self.index[sorted_indices]
+    #     self.ref = np.array(sorted(self.ref))
+    #     return sorted_indices
 
     def filter_by_index(self, mandatory_keywords, optional_keywords, copy=True):
         """
@@ -1490,7 +1493,7 @@ class EEMDataset:
             sample_number_all_filtered = sample_number_mandatory_filtered
         eem_stack_filtered = self.eem_stack[sample_number_all_filtered, :, :]
         index_filtered = [self.index[i] for i in sample_number_all_filtered]
-        ref_filtered = self.ref[sample_number_all_filtered] if self.ref is not None else None
+        ref_filtered = self.ref.iloc[sample_number_all_filtered] if self.ref is not None else None
         if not copy:
             self.eem_stack = eem_stack_filtered
             self.index = index_filtered
