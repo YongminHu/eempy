@@ -1361,7 +1361,7 @@ card_parafac_param = dbc.Card(
                             dbc.Row(
                                 [
                                     dbc.Col(
-                                        dbc.Label("Index mandatory keywords"), width={'size': 1}
+                                        dbc.Label("Index mandatory keywords"), width={'size': 2}
                                     ),
                                     dbc.Col(
                                         dcc.Input(id='parafac-establishment-index-kw-mandatory', type='text',
@@ -1370,7 +1370,7 @@ card_parafac_param = dbc.Card(
                                         width={"offset": 0, "size": 2}
                                     ),
                                     dbc.Col(
-                                        dbc.Label("Index optional keywords"), width={'size': 1, 'offset': 1}
+                                        dbc.Label("Index optional keywords"), width={'size': 2, 'offset': 1}
                                     ),
                                     dbc.Col(
                                         dcc.Input(id='parafac-establishment-index-kw-optional', type='text',
@@ -1455,7 +1455,7 @@ card_parafac_param = dbc.Card(
                             ]),
                             dbc.Row(
                                 dbc.Col(
-                                    dbc.Button([dbc.Spinner(size="sm", id='parafac-spinner')],
+                                    dbc.Button([dbc.Spinner(size="sm", id='build-parafac-spinner')],
                                                id='build-parafac-model', className='col-2')
                                 )
                             )
@@ -1517,7 +1517,7 @@ page2 = html.Div([
                                                     dbc.Row(
                                                         [
                                                             dbc.Col(
-                                                                dbc.Label("Index mandatory keywords"), width={'size': 1}
+                                                                dbc.Label("Index mandatory keywords"), width={'size': 2}
                                                             ),
                                                             dbc.Col(
                                                                 dcc.Input(id='parafac-predict-index-kw-mandatory',
@@ -1529,7 +1529,7 @@ page2 = html.Div([
                                                             ),
                                                             dbc.Col(
                                                                 dbc.Label("Index optional keywords"),
-                                                                width={'size': 1, 'offset': 1}
+                                                                width={'size': 2, 'offset': 1}
                                                             ),
                                                             dbc.Col(
                                                                 dcc.Input(id='parafac-predict-index-kw-optional',
@@ -1546,13 +1546,13 @@ page2 = html.Div([
                                                         [
                                                             dbc.Col(
                                                                 dcc.Dropdown(
-                                                                    options=[], id='parafac-test-model-selection'
+                                                                    options=[], id='parafac-predict-model-selection'
                                                                 )
                                                             ),
                                                             dbc.Col(
                                                                 dbc.Button(
-                                                                    [dbc.Spinner(size="sm", id='test-parafac-spinner')],
-                                                                    id='test-parafac-model', className='col-2')
+                                                                    [dbc.Spinner(size="sm", id='predict-parafac-spinner')],
+                                                                    id='predict-parafac-model', className='col-2')
                                                             )
                                                         ]
                                                     )
@@ -1587,6 +1587,7 @@ page2 = html.Div([
 
 @app.callback(
     [
+        Output('parafac-eem-dataset-establishment-message', 'value'),
         Output('parafac-loadings', 'children'),
         Output('parafac-components', 'children'),
         Output('parafac-scores', 'children'),
@@ -1594,12 +1595,13 @@ page2 = html.Div([
         Output('parafac-core-consistency', 'children'),
         Output('parafac-leverage', 'children'),
         Output('parafac-split-half', 'children'),
-        Output('parafac-spinner', 'children'),
+        Output('build-parafac-spinner', 'children'),
         Output('parafac-models', 'data'),
     ],
     [
         Input('build-parafac-model', 'n_clicks'),
         State('eem-graph-options', 'value'),
+        State('parafac-eem-dataset-establishment-path-input', 'value'),
         State('parafac-establishment-index-kw-mandatory', 'value'),
         State('parafac-establishment-index-kw-optional', 'value'),
         State('parafac-rank', 'value'),
@@ -1610,22 +1612,52 @@ page2 = html.Div([
         State('eem-dataset', 'data')
     ]
 )
-def on_build_parafac_model(n_clicks, eem_graph_options, kw_mandatory, kw_optional, rank, init, nn, tf, validations,
-                           eem_dataset_dict):
+def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, rank, init, nn,
+                           tf, validations, eem_dataset_dict):
     if n_clicks is None:
-        return None, None, None, None, None, None, None, 'build model', None
+        return None, None, None, None, None, None, None, None, 'build model', None
+    if path_establishment is None:
+        if eem_dataset_dict is None:
+            message = ('Error: No built EEM dataset detected. Please build an EEM dataset first in "EEM pre-processing" '
+                       'section, or import an EEM dataset from file.')
+            return message, None, None, None, None, None, None, None, 'build model', None
+        eem_dataset_establishment = EEMDataset(
+            eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+                                in eem_dataset_dict['eem_stack']]),
+            ex_range=np.array(eem_dataset_dict['ex_range']),
+            em_range=np.array(eem_dataset_dict['em_range']),
+            index=eem_dataset_dict['index']
+        )
+    else:
+        if not os.path.isdir(path_establishment):
+            message = ('Error: No such file or directory: ' + path_establishment)
+            return message, None, None, None, None, None, None, None, 'build model', None
+        else:
+            _, file_extension = os.path.splitext(path_establishment)
+
+            if file_extension == '.json':
+                with open(path_establishment, 'r') as file:
+                    eem_dataset_dict = json.load(file)
+            elif file_extension == '.pkl':
+                with open(path_establishment, 'rb') as file:
+                    eem_dataset_dict = pickle.load(file)
+            else:
+                raise ValueError("Unsupported file extension: {}".format(file_extension))
+            eem_dataset_establishment = EEMDataset(
+                eem_stack=np.array(
+                    [[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+                     in eem_dataset_dict['eem_stack']]),
+                ex_range=np.array(eem_dataset_dict['ex_range']),
+                em_range=np.array(eem_dataset_dict['em_range']),
+                index=eem_dataset_dict['index']
+            )
     kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
     kw_optional = str_string_to_list(kw_optional) if kw_optional else []
-    eem_dataset = EEMDataset(
-        eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
-                            in eem_dataset_dict['eem_stack']]),
-        ex_range=np.array(eem_dataset_dict['ex_range']),
-        em_range=np.array(eem_dataset_dict['em_range']),
-        index=eem_dataset_dict['index']
-    )
-    eem_dataset.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, copy=False)
+    eem_dataset_establishment.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional,
+                                              copy=False)
+
     rank_list = num_string_to_list(rank)
-    parafacs_dict = {}
+    parafac_components_dict = {}
     loadings_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     components_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     scores_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
@@ -1639,8 +1671,10 @@ def on_build_parafac_model(n_clicks, eem_graph_options, kw_mandatory, kw_optiona
         parafac_r = PARAFAC(rank=r, init=init, non_negativity=True if 'non_negative' in nn else False,
                             tf_normalization=True if 'tf_normalization' in tf else False,
                             sort_em=True)
-        parafac_r.fit(eem_dataset)
-        parafacs_dict[r] = parafac_r
+        parafac_r.fit(eem_dataset_establishment)
+
+        parafac_components_dict[r] = [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
+                                      sublist in parafac_r.component_stack.tolist()]
 
         # for component graphs, determine the layout according to the number of components
         n_rows = (r - 1) // 3 + 1
@@ -1972,7 +2006,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, kw_mandatory, kw_optiona
                 split_validation = SplitValidation(rank=r,
                                                    non_negativity=True if 'non_negative' in nn else False,
                                                    tf_normalization=True if 'tf_normalization' in tf else False)
-                split_validation.fit(eem_dataset)
+                split_validation.fit(eem_dataset_establishment)
                 subset_specific_models = split_validation.subset_specific_models
                 similarities_ex, similarities_em = split_validation.compare()
                 split_half_tabs.children[0].children.append(
@@ -2063,9 +2097,127 @@ def on_build_parafac_model(n_clicks, eem_graph_options, kw_mandatory, kw_optiona
             ]),
         )
 
-    return (loadings_tabs, components_tabs, scores_tabs, fmax_tabs, core_consistency_tabs, leverage_tabs,
-            split_half_tabs, 'build model', None)
+    return (None, loadings_tabs, components_tabs, scores_tabs, fmax_tabs, core_consistency_tabs, leverage_tabs,
+            split_half_tabs, 'build model', parafac_components_dict)
 
+
+# -----------Update parafac model dropdown list
+@app.callback(
+    [
+        Output('parafac-predict-model-selection', 'options')
+    ],
+    [
+        Input('parafac-models', 'data')
+    ]
+)
+def update_parafac_models_options(parafac_components_all):
+    if parafac_components_all is None:
+        return None
+    options = []
+    for r in parafac_components_all.keys():
+        options.append({'label': 'component {r}'.format(r=r), 'value': r})
+    return options
+
+
+# -----------Make prediction on an EEM dataset using an established PARAFAC model
+@app.callback(
+    [
+        Output('parafac-eem-dataset-predict-message', 'value'), # size, intervals?
+        Output('parafac-test-result-card', 'children'),
+        Output('predict-parafac-spinner', 'children'),
+    ],
+    [
+        Input('predict-parafac-model', 'n_clicks'),
+        State('parafac-eem-dataset-predict-path-input', 'value'),
+        State('parafac-predict-index-kw-mandatory', 'value'),
+        State('parafac-predict-index-kw-optional', 'value'),
+        State('parafac-predict-model-selection', 'value'),
+        State('parafac-models', 'data')
+    ]
+)
+def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, model_r, parafac_components_all):
+    if n_clicks is None:
+        return None, None, 'predict'
+    if not os.path.isdir(path_predict):
+        message = ('Error: No such file or directory: ' + path_predict)
+        return message, None, 'predict'
+    else:
+        _, file_extension = os.path.splitext(path_predict)
+
+        if file_extension == '.json':
+            with open(path_predict, 'r') as file:
+                eem_dataset_dict = json.load(file)
+        elif file_extension == '.pkl':
+            with open(path_predict, 'rb') as file:
+                eem_dataset_dict = pickle.load(file)
+        else:
+            raise ValueError("Unsupported file extension: {}".format(file_extension))
+        eem_dataset_predict = EEMDataset(
+            eem_stack=np.array(
+                [[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+                 in eem_dataset_dict['eem_stack']]),
+            ex_range=np.array(eem_dataset_dict['ex_range']),
+            em_range=np.array(eem_dataset_dict['em_range']),
+            index=eem_dataset_dict['index']
+        )
+    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
+    kw_optional = str_string_to_list(kw_optional) if kw_optional else []
+    eem_dataset_predict.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, copy=False)
+
+    score_sample, fmax_sample, eem_stack_pred = eems_fit_components(eem_dataset_predict.eem_stack,
+                                                                    parafac_components_all[model_r],
+                                                                    fit_intercept=False)
+    score_sample = pd.DataFrame(
+        score_sample, index=eem_dataset_predict.index, columns=['component {i}'.format(i=i) for i+1 in range(model_r)]
+    )
+    fmax_sample = pd.DataFrame(
+        fmax_sample, index=eem_dataset_predict.index, columns=['component {i}'.format(i=i) for i+1 in range(model_r)]
+    )
+
+    prediction_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    prediction_tabs.children[0].children[0] = dcc.Tab(
+        label='Score',
+        children=[
+            html.Div([
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                dbc.Table.from_dataframe(score_sample,
+                                                         bordered=True, hover=True,
+                                                         )
+                            ]
+                        ),
+                    ]
+                ),
+            ]),
+        ]
+    )
+    prediction_tabs.children[0].children[0] = dcc.Tab(
+        label='Fmax',
+        children=[
+            html.Div([
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                dbc.Table.from_dataframe(fmax_sample,
+                                                         bordered=True, hover=True,
+                                                         )
+                            ]
+                        ),
+                    ]
+                ),
+            ]),
+        ]
+    )
+    prediction_tabs.children[0].children[0] = dcc.Tab(
+        label='Error',
+        children=[
+
+        ]
+    )
+    return None, prediction_tabs, 'predict'
 
 # -----------Page #3: K-PARAFACs--------------
 
