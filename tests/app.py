@@ -12,6 +12,7 @@ from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import plotly.express as px
+from scipy.stats import pearsonr
 
 from eempy.plot import plot_eem, plot_abs, plot_loadings, plot_score
 from eempy.read_data import *
@@ -1141,7 +1142,7 @@ def update_eem_plot(folder_path, file_name_sample, graph_options,
     [
         Output('eem-dataset', 'data'),
         Output('info-eem-dataset', 'children'),
-        Output('build-eem-dataset-spinner', 'children')
+        Output('build-eem-dataset-spinner', 'children'),
     ],
     [
         Input('build-eem-dataset', 'n_clicks'),
@@ -1250,7 +1251,7 @@ def on_build_eem_dataset(n_clicks,
                     [refs_from_file.loc[indexes[i]] if indexes[i] in refs_from_file.index
                      else np.full(shape=(refs_from_file.shape[1]), fill_value=np.nan) for i in range(len(indexes))]
                 )
-                refs = pd.DataFrame(refs, index=refs_from_file.index, columns=refs_from_file.columns)
+                refs = pd.DataFrame(refs, index=indexes, columns=refs_from_file.columns)
             else:
                 if refs_from_file.shape[0] != len(indexes):
                     return None, ('Error: number of samples in reference file is not the same as the EEM dataset'), "build"
@@ -1390,7 +1391,7 @@ card_parafac_param = dbc.Card(
                     dbc.Stack(
                         [
                             dbc.Row(
-                                dcc.Input(id='parafac-eem-dataset-establishment-path-input', type='text',
+                                dcc.Input(id='parafac-eem-dataset-establishment-path-input', type='text', value=None,
                                           placeholder='Please enter the eem dataset path (.json and .pkl are supported).'
                                                       ' If empty, the model built in "eem pre-processing" '
                                                       'would be used',
@@ -1535,7 +1536,76 @@ page2 = html.Div([
                         dcc.Tab(label='Core consistency', id='parafac-core-consistency'),
                         dcc.Tab(label='Leverage', id='parafac-leverage'),
                         dcc.Tab(label='Split-half validation', id='parafac-split-half'),
-                        dcc.Tab(label='Correlations', id='parafac-correlations'),
+                        dcc.Tab(
+                            children=[
+                                html.Div(
+                                    [
+                                        dbc.Card(
+                                            dbc.Stack(
+                                                [
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dbc.Label("Select PARAFAC model"),
+                                                                width={'size': 1, 'offset': 0}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[],
+                                                                    id='parafac-establishment-corr-model-selection'
+                                                                ),
+                                                                width={'size': 2}
+                                                            ),
+                                                            dbc.Col(
+                                                                dbc.Label("Select indicator"),
+                                                                width={'size': 1, 'offset': 1}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[
+                                                                        {'label': 'scores', 'value': 'scores'},
+                                                                        {'label': 'Fmax', 'value': 'fmax'}
+                                                                    ],
+                                                                    id='parafac-establishment-corr-indicator-selection'
+                                                                ),
+                                                                width={'size': 2}
+                                                            ),
+                                                            dbc.Col(
+                                                                dbc.Label("Select reference variable"),
+                                                                width={'size': 1, 'offset': 1}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[],
+                                                                    id='parafac-establishment-corr-ref-selection'
+                                                                ),
+                                                                width={'size': 2}
+                                                            ),
+                                                        ]
+                                                    ),
+
+                                                    dbc.Row([
+                                                        dcc.Graph(id='parafac-establishment-corr-graph',
+                                                                  # config={'responsive': 'auto'},
+                                                                  style={'width': '700', 'height': '900'}
+                                                                  ),
+                                                    ]),
+
+                                                    dbc.Row(
+                                                        html.Div([],
+                                                                 id='parafac-establishment-corr-table')
+                                                    ),
+
+                                                ],
+                                                gap=2, style={"margin": "20px"}
+                                            )
+                                        )
+                                    ],
+                                    style={'width': '90vw'},
+                                )
+                            ],
+                            label='Correlations', id='parafac-establishment-corr'
+                        ),
                         dcc.Tab(
                             children=[
                                 html.Div(
@@ -1603,7 +1673,8 @@ page2 = html.Div([
                                                             )
                                                         ]
                                                     )
-                                                ], gap=2, style={"margin": "20px"}
+                                                ],
+                                                gap=2, style={"margin": "20px"}
                                             ),
                                         ),
                                         dbc.Card(
@@ -1642,8 +1713,11 @@ page2 = html.Div([
         Output('parafac-core-consistency', 'children'),
         Output('parafac-leverage', 'children'),
         Output('parafac-split-half', 'children'),
-        Output('parafac-correlations', 'children'),
         Output('build-parafac-spinner', 'children'),
+        Output('parafac-establishment-corr-model-selection', 'options'),
+        Output('parafac-establishment-corr-model-selection', 'value'),
+        Output('parafac-establishment-corr-ref-selection', 'options'),
+        Output('parafac-establishment-corr-ref-selection', 'value'),
         Output('parafac-predict-model-selection', 'options'),
         Output('parafac-predict-model-selection', 'value'),
         Output('parafac-models', 'data'),
@@ -1665,12 +1739,12 @@ page2 = html.Div([
 def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, rank, init, nn,
                            tf, validations, eem_dataset_dict):
     if n_clicks is None:
-        return None, None, None, None, None, None, None, None, None, 'build model', [], None, None
-    if path_establishment is None:
+        return None, None, None, None, None, None, None, None, 'build model', [], None, [], None, [], None, None
+    if not path_establishment:
         if eem_dataset_dict is None:
             message = ('Error: No built EEM dataset detected. Please build an EEM dataset first in "EEM pre-processing" '
                        'section, or import an EEM dataset from file.')
-            return message, None, None, None, None, None, None, None, None, 'build model', [None], None
+            return message, None, None, None, None, None, None, None, 'build model', [], None, [], None, [], None, None
         eem_dataset_establishment = EEMDataset(
             eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
                                 in eem_dataset_dict['eem_stack']]),
@@ -1682,7 +1756,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
     else:
         if not os.path.exists(path_establishment):
             message = ('Error: No such file or directory: ' + path_establishment)
-            return message, None, None, None, None, None, None, None, None, 'build model', [], None, None
+            return message, None, None, None, None, None, None, None, 'build model', [], None, [], None, [], None, None
         else:
             _, file_extension = os.path.splitext(path_establishment)
 
@@ -1700,7 +1774,8 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                      in eem_dataset_dict['eem_stack']]),
                 ex_range=np.array(eem_dataset_dict['ex_range']),
                 em_range=np.array(eem_dataset_dict['em_range']),
-                index=eem_dataset_dict['index']
+                index=eem_dataset_dict['index'],
+                ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0]),
             )
     kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
     kw_optional = str_string_to_list(kw_optional) if kw_optional else []
@@ -1716,7 +1791,6 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
     core_consistency_tabs = dbc.Card(children=[])
     leverage_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     split_half_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
-    correlations_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     cc = []
 
     for r in rank_list:
@@ -1725,8 +1799,12 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                             sort_em=True)
         parafac_r.fit(eem_dataset_establishment)
 
-        parafac_components_dict[r] = [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
-                                      sublist in parafac_r.component_stack.tolist()]
+        parafac_components_dict[r] = {
+            'component_stack': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
+                                      sublist in parafac_r.component_stack.tolist()],
+            'score': [parafac_r.score.columns.tolist()] + parafac_r.score.values.tolist(),
+            'fmax': [parafac_r.fmax.columns.tolist()] + parafac_r.fmax.values.tolist(),
+        }
 
         # for component graphs, determine the layout according to the number of components
         n_rows = (r - 1) // 3 + 1
@@ -2149,47 +2227,13 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                 ),
             ]),
         )
-        if eem_dataset_establishment.ref is not None:
-            correlations_tabs.children.append(
-                html.Div([
-                    dbc.Row(
-                        [
-                            dbc.Col(
-                                [
-                                    dcc.Graph(
-                                        figure=px.line(
-                                            x=cc_table['Number of components'],
-                                            y=cc_table['Core consistency'],
-                                            markers=True,
-                                            labels={'x': 'Number of components', 'y': 'Core consistency'},
-                                        ),
-                                        config={'autosizable': False},
-                                    )
-                                ]
-                            )
-                        ]
-                    ),
 
-                    dbc.Row(
-                        [
-                            dbc.Col(
-                                [
-                                    dbc.Table.from_dataframe(cc_table,
-                                                             bordered=True, hover=True,
-                                                             )
-                                ]
-                            ),
-                        ]
-                    ),
-                ]),
-            )
-
-    options = []
-    for r in parafac_components_dict.keys():
-        options.append({'label': 'component {r}'.format(r=r), 'value': r})
+    model_options = [{'label': 'component {r}'.format(r=r), 'value': r} for r in parafac_components_dict.keys()]
+    ref_options = [{'label': var, 'value': var} for var in eem_dataset_establishment.ref.columns]
 
     return (None, loadings_tabs, components_tabs, scores_tabs, fmax_tabs, core_consistency_tabs, leverage_tabs,
-            split_half_tabs, 'build model', options, None, parafac_components_dict)
+            split_half_tabs, 'build model', model_options, None, ref_options, None, model_options, None,
+            parafac_components_dict)
 
 
 # # -----------Update parafac model dropdown list
@@ -2210,6 +2254,53 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
 #     return options
 
 
+# -----------Analyze correlations between score/Fmax and reference variables
+
+@app.callback(
+    [
+        Output('parafac-establishment-corr-graph', 'figure'), # size, intervals?
+        Output('parafac-establishment-corr-table', 'children'),
+    ],
+    [
+        Input('parafac-establishment-corr-model-selection', 'value'),
+        Input('parafac-establishment-corr-indicator-selection', 'value'),
+        Input('parafac-establishment-corr-ref-selection', 'value'),
+        State('eem-dataset', 'data'),
+        State('parafac-models', 'data')
+    ]
+)
+def on_parafac_establishment_correlations(r, indicator, ref_var, eem_dataset_establishment, parafac_models):
+    if all([r, indicator, ref_var, eem_dataset_establishment, parafac_models]):
+        ref_df = pd.DataFrame(eem_dataset_establishment['ref'][1:], columns=eem_dataset_establishment[r]['ref'][0],
+                              index=eem_dataset_establishment['index'])
+        ref_var = ref_df[ref_var]
+        parafac_var = pd.DataFrame(parafac_models[r][indicator][1:], columns=parafac_models[r][indicator][0],
+                                   index=eem_dataset_establishment['index'])
+        fig = go.Figure()
+        tbl = pd.DataFrame(columns=['Variable', 'slope', 'intercept', 'R²', 'Pearson Correlation', 'Pearson p-value'])
+        for col in parafac_var.columns:
+            x = ref_var
+            y = parafac_var[col]
+            x = np.array(x).reshape(-1, 1)
+            lm = LinearRegression().fit(x, y)
+            predictions = lm.predict(x)
+            fig.add_trace(go.Scatter(x=x, y=y, mode='markers', name=col))
+            fig.add_trace(go.Scatter(x=x.flatten(), y=predictions, mode='lines', name=f'{col} fit'))
+            r_squared = lm.score(x, y)
+            intercept = lm.intercept_
+            slope = lm.coef_[0]
+            pearson_corr, pearson_p = pearsonr(ref_var, y)
+            tbl = tbl.append({'Variable': col, 'R²': r_squared, 'slope': slope, 'intercept': intercept,
+                                      'Pearson Correlation': pearson_corr, 'Pearson p-value': pearson_p},
+                                     ignore_index=True)
+
+        tbl = dbc.Table.from_dataframe(tbl, bordered=True, hover=True, index=False)
+        return fig, tbl
+    else:
+        return None, None
+
+
+
 # -----------Make prediction on an EEM dataset using an established PARAFAC model
 @app.callback(
     [
@@ -2226,7 +2317,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
         State('parafac-models', 'data')
     ]
 )
-def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, model_r, parafac_components_all):
+def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, model_r, parafac_models):
     if n_clicks is None:
         return None, None, 'predict'
     if path_predict is None:
@@ -2251,7 +2342,8 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
                  in eem_dataset_dict['eem_stack']]),
             ex_range=np.array(eem_dataset_dict['ex_range']),
             em_range=np.array(eem_dataset_dict['em_range']),
-            index=eem_dataset_dict['index']
+            index=eem_dataset_dict['index'],
+            ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0]),
         )
     kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
     kw_optional = str_string_to_list(kw_optional) if kw_optional else []
@@ -2264,7 +2356,8 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
                                                                                 [np.nan if x is None else x for x in
                                                                                 subsublist] for subsublist in sublist
                                                                             ]
-                                                                            for sublist in parafac_components_all[str(model_r)]
+                                                                            for sublist in
+                                                                            parafac_models[str(model_r)]['component_stack']
                                                                         ]
                                                                     ),
                                                                     fit_intercept=False)
@@ -2805,7 +2898,7 @@ def serve_layout():
     return html.Div([
         dcc.Store(id='pre-processed-eem'),
         dcc.Store(id='eem-dataset'),
-        dcc.Store(id='parafac-models', data=None),
+        dcc.Store(id='parafac-models'),
         dcc.Store(id='k-parafacs-models'),
         dcc.Store(id='nmf-models'),
         content])
