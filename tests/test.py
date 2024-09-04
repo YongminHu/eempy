@@ -20,7 +20,7 @@ import re
 # print(eem_dataset_dict['index'])
 
 a = pd.DataFrame(np.arange(9).reshape([3,3]), columns=['a', 'b', 'c'])
-print(np.array(a.loc[:,['a']]))
+print(a.tolist())
 
 # intensity, ex_range, em_range, index = read_eem(eem_path)
 # blank, ex_range_blank, em_range_blank, _ = read_eem(blank_path)

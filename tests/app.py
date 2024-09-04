@@ -6,6 +6,7 @@ import json
 import pickle
 
 import numpy as np
+import pandas as pd
 from dash import dcc, html, ctx
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
@@ -1226,18 +1227,13 @@ def on_build_eem_dataset(n_clicks,
                          "'Align Ex/Em' checkbox.")
         return None, error_message, "Build"
 
-    steps_track = [
-        "EEM dataset building successful!\n",
-        "Number of EEMs: {n}\n".format(n=eem_stack.shape[0]),
-        "Pre-processing steps implemented:\n",
-    ]
-
+    steps_track = []
     if reference_path is not None:
         if os.path.exists(reference_path):
             if reference_path.endswith('.csv'):
-                refs_from_file = pd.read_csv(reference_path)
+                refs_from_file = pd.read_csv(reference_path, index_col=0, header=0)
             elif reference_path.endswith('.xlsx'):
-                refs_from_file = pd.read_excel(reference_path)
+                refs_from_file = pd.read_excel(reference_path, index_col=0, header=0)
             else:
                 return None, ("Unsupported file format. Please provide a .csv or .xlsx file."), "build"
 
@@ -1248,20 +1244,27 @@ def on_build_eem_dataset(n_clicks,
                 ]
                 missing_indices = [index for index in indexes if index not in refs_from_file.index]
                 if extra_indices or missing_indices:
-                    message_ref = ["Warning: indices of EEM dataset and reference file are not exactly the "
-                                            "same. The reference value of unmatched indices would be set as NaN"]
+                    steps_track += ["Warning: indices of EEM dataset and reference file are not \nexactly the "
+                                            "same. The reference value of unmatched \nindices would be set as NaN\n"]
                 refs = np.array(
-                    [refs_from_file.iloc[i] if refs_from_file.index[i] in indexes
-                     else np.empty(refs_from_file.shape[1]) for i in range(len(indexes))]
+                    [refs_from_file.loc[indexes[i]] if indexes[i] in refs_from_file.index
+                     else np.full(shape=(refs_from_file.shape[1]), fill_value=np.nan) for i in range(len(indexes))]
                 )
+                refs = pd.DataFrame(refs, index=refs_from_file.index, columns=refs_from_file.columns)
             else:
                 if refs_from_file.shape[0] != len(indexes):
-                    return None, ('Error: number of samples in reference file is not the same as the EEM dataset')
-                refs = refs_from_file.to_numpy()
+                    return None, ('Error: number of samples in reference file is not the same as the EEM dataset'), "build"
+                refs = refs_from_file
         else:
             return None, ('Error: No such file or directory: ' + reference_path), "build"
     else:
         refs = None
+
+    steps_track += [
+        "EEM dataset building successful!\n",
+        "Number of EEMs: {n}\n".format(n=eem_stack.shape[0]),
+        "Pre-processing steps implemented:\n",
+    ]
 
     # EEM cutting
     eem_dataset = EEMDataset(eem_stack, ex_range, em_range, index=indexes, ref=refs)
@@ -1334,7 +1337,7 @@ def on_build_eem_dataset(n_clicks,
         'ex_range': eem_dataset.ex_range.tolist(),
         'em_range': eem_dataset.em_range.tolist(),
         'index': eem_dataset.index,
-        'ref': eem_dataset.ref.tolist() if eem_dataset.ref is not None else None
+        'ref': [refs.columns.tolist()] + refs.values.tolist() if eem_dataset.ref is not None else None
     }
 
     return eem_dataset_json_dict, dbc.Label(steps_track, style={'whiteSpace': 'pre'}), "Build"
@@ -1532,6 +1535,7 @@ page2 = html.Div([
                         dcc.Tab(label='Core consistency', id='parafac-core-consistency'),
                         dcc.Tab(label='Leverage', id='parafac-leverage'),
                         dcc.Tab(label='Split-half validation', id='parafac-split-half'),
+                        dcc.Tab(label='Correlations', id='parafac-correlations'),
                         dcc.Tab(
                             children=[
                                 html.Div(
@@ -1638,6 +1642,7 @@ page2 = html.Div([
         Output('parafac-core-consistency', 'children'),
         Output('parafac-leverage', 'children'),
         Output('parafac-split-half', 'children'),
+        Output('parafac-correlations', 'children'),
         Output('build-parafac-spinner', 'children'),
         Output('parafac-predict-model-selection', 'options'),
         Output('parafac-predict-model-selection', 'value'),
@@ -1660,23 +1665,24 @@ page2 = html.Div([
 def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, rank, init, nn,
                            tf, validations, eem_dataset_dict):
     if n_clicks is None:
-        return None, None, None, None, None, None, None, None, 'build model', [], None, None
+        return None, None, None, None, None, None, None, None, None, 'build model', [], None, None
     if path_establishment is None:
         if eem_dataset_dict is None:
             message = ('Error: No built EEM dataset detected. Please build an EEM dataset first in "EEM pre-processing" '
                        'section, or import an EEM dataset from file.')
-            return message, None, None, None, None, None, None, None, 'build model', [None], None
+            return message, None, None, None, None, None, None, None, None, 'build model', [None], None
         eem_dataset_establishment = EEMDataset(
             eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
                                 in eem_dataset_dict['eem_stack']]),
             ex_range=np.array(eem_dataset_dict['ex_range']),
             em_range=np.array(eem_dataset_dict['em_range']),
-            index=eem_dataset_dict['index']
+            index=eem_dataset_dict['index'],
+            ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0]),
         )
     else:
         if not os.path.exists(path_establishment):
             message = ('Error: No such file or directory: ' + path_establishment)
-            return message, None, None, None, None, None, None, None, 'build model', [], None, None
+            return message, None, None, None, None, None, None, None, None, 'build model', [], None, None
         else:
             _, file_extension = os.path.splitext(path_establishment)
 
@@ -1710,6 +1716,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
     core_consistency_tabs = dbc.Card(children=[])
     leverage_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     split_half_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    correlations_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     cc = []
 
     for r in rank_list:
@@ -1965,6 +1972,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                                         y=lvr_sample.iloc[:, 0],
                                                         markers=True,
                                                         labels={'x': 'index-sample', 'y': 'leverage-sample'},
+                                                        tickangle=90
                                                     ),
                                                     config={'autosizable': False},
                                                     style={'width': 1700, 'height': 400}
@@ -2141,6 +2149,40 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                 ),
             ]),
         )
+        if eem_dataset_establishment.ref is not None:
+            correlations_tabs.children.append(
+                html.Div([
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                [
+                                    dcc.Graph(
+                                        figure=px.line(
+                                            x=cc_table['Number of components'],
+                                            y=cc_table['Core consistency'],
+                                            markers=True,
+                                            labels={'x': 'Number of components', 'y': 'Core consistency'},
+                                        ),
+                                        config={'autosizable': False},
+                                    )
+                                ]
+                            )
+                        ]
+                    ),
+
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                [
+                                    dbc.Table.from_dataframe(cc_table,
+                                                             bordered=True, hover=True,
+                                                             )
+                                ]
+                            ),
+                        ]
+                    ),
+                ]),
+            )
 
     options = []
     for r in parafac_components_dict.keys():

@@ -823,7 +823,7 @@ class EEMDataset:
     """
 
     def __init__(self, eem_stack: np.ndarray, ex_range: np.ndarray, em_range: np.ndarray,
-                 index: Optional[list] = None, ref: Optional[np.ndarray] = None):
+                 index: Optional[list] = None, ref: Optional[pd.DataFrame] = None):
 
         # ------------------parameters--------------------
         # The Em/Ex ranges should be sorted in ascending order
