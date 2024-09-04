@@ -805,7 +805,7 @@ card_built_eem_dataset = dbc.Card(
                 ]),
                 dbc.Row([
                     dbc.Col(
-                        html.Div(id='info-eem-dataset', style={'width': '300px'}),
+                        html.Div(id='info-eem-dataset', style={'width': '22vw'}),
                         width={"size": 12, "offset": 0}
                     )
                 ])
@@ -853,7 +853,8 @@ card_eem_dataset_downloading = dbc.Card(
                     ),
                 ]),
                 dbc.Row([
-                    dbc.Col(dbc.Button("Export", id='export-eem-dataset', className='col-5')
+                    dbc.Col(dbc.Button([dbc.Spinner(size="sm", id='export-eem-dataset-spinner')],
+                                       id='export-eem-dataset', className='col-5')
                             )]),
                 dbc.Row([
                     dbc.Col(
@@ -1245,8 +1246,9 @@ def on_build_eem_dataset(n_clicks,
                 ]
                 missing_indices = [index for index in indexes if index not in refs_from_file.index]
                 if extra_indices or missing_indices:
-                    steps_track += ["Warning: indices of EEM dataset and reference file are not \nexactly the "
-                                            "same. The reference value of unmatched \nindices would be set as NaN\n"]
+                    steps_track += ["Warning: indices of EEM dataset and reference file are \nnot exactly the "
+                                    "same. The reference value of samples \nwith unmatched indices would be "
+                                    "set as NaN.\n"]
                 refs = np.array(
                     [refs_from_file.loc[indexes[i]] if indexes[i] in refs_from_file.index
                      else np.full(shape=(refs_from_file.shape[1]), fill_value=np.nan) for i in range(len(indexes))]
@@ -1254,7 +1256,8 @@ def on_build_eem_dataset(n_clicks,
                 refs = pd.DataFrame(refs, index=indexes, columns=refs_from_file.columns)
             else:
                 if refs_from_file.shape[0] != len(indexes):
-                    return None, ('Error: number of samples in reference file is not the same as the EEM dataset'), "build"
+                    return None, (
+                        'Error: number of samples in reference file is not the same as the EEM dataset'), "build"
                 refs = refs_from_file
         else:
             return None, ('Error: No such file or directory: ' + reference_path), "build"
@@ -1348,7 +1351,8 @@ def on_build_eem_dataset(n_clicks,
 
 @app.callback(
     [
-        Output('message-eem-dataset-export', 'children')
+        Output('message-eem-dataset-export', 'children'),
+        Output('export-eem-dataset-spinner', 'children'),
     ],
     [
         Input('export-eem-dataset', 'n_clicks'),
@@ -1362,19 +1366,19 @@ def on_build_eem_dataset(n_clicks,
 def on_export_eem_dataset(n_clicks_export, n_clicks_build, eem_dataset_json_dict, export_folder_path, export_filename,
                           export_format):
     if ctx.triggered_id == "build-eem-dataset":
-        return [None]
+        return [None], "Export"
     if eem_dataset_json_dict is None:
         message = ['Please first build the eem dataset.']
-        return message
+        return message, "Export"
     if not os.path.isdir(export_folder_path):
         message = ['Error: No such file or directory: ' + export_folder_path]
-        return message
+        return message, "Export"
     else:
         path = export_folder_path + '/' + export_filename + '.' + export_format
     with open(path, 'w') as file:
         json.dump(eem_dataset_json_dict, file)
 
-    return ["EEM dataset exported."]
+    return ["EEM dataset exported."], "Export"
 
 
 # -----------Page #2: PARAFAC--------------
@@ -1401,7 +1405,7 @@ card_parafac_param = dbc.Card(
                             dbc.Row([
                                 dbc.Col(
                                     html.Div([],
-                                             id='parafac-eem-dataset-establishment-message', style={'width': '1000px'}),
+                                             id='parafac-eem-dataset-establishment-message', style={'width': '80vw'}),
                                     width={"size": 12, "offset": 0}
                                 )
                             ]),
@@ -1563,8 +1567,8 @@ page2 = html.Div([
                                                             dbc.Col(
                                                                 dcc.Dropdown(
                                                                     options=[
-                                                                        {'label': 'scores', 'value': 'scores'},
-                                                                        {'label': 'Fmax', 'value': 'fmax'}
+                                                                        {'label': 'Score', 'value': 'Score'},
+                                                                        {'label': 'Fmax', 'value': 'Fmax'}
                                                                     ],
                                                                     id='parafac-establishment-corr-indicator-selection'
                                                                 ),
@@ -1587,7 +1591,7 @@ page2 = html.Div([
                                                     dbc.Row([
                                                         dcc.Graph(id='parafac-establishment-corr-graph',
                                                                   # config={'responsive': 'auto'},
-                                                                  style={'width': '700', 'height': '900'}
+                                                                  style={'width': '45vw', 'height': '60vh'}
                                                                   ),
                                                     ]),
 
@@ -1668,7 +1672,8 @@ page2 = html.Div([
                                                             ),
                                                             dbc.Col(
                                                                 dbc.Button(
-                                                                    [dbc.Spinner(size="sm", id='predict-parafac-spinner')],
+                                                                    [dbc.Spinner(size="sm",
+                                                                                 id='predict-parafac-spinner')],
                                                                     id='predict-parafac-model', className='col-2')
                                                             )
                                                         ]
@@ -1739,24 +1744,26 @@ page2 = html.Div([
 def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, rank, init, nn,
                            tf, validations, eem_dataset_dict):
     if n_clicks is None:
-        return None, None, None, None, None, None, None, None, 'build model', [], None, [], None, [], None, None
+        return None, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, None
     if not path_establishment:
         if eem_dataset_dict is None:
-            message = ('Error: No built EEM dataset detected. Please build an EEM dataset first in "EEM pre-processing" '
-                       'section, or import an EEM dataset from file.')
-            return message, None, None, None, None, None, None, None, 'build model', [], None, [], None, [], None, None
+            message = (
+                'Error: No built EEM dataset detected. Please build an EEM dataset first in "EEM pre-processing" '
+                'section, or import an EEM dataset from file.')
+            return message, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, None
         eem_dataset_establishment = EEMDataset(
             eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
                                 in eem_dataset_dict['eem_stack']]),
             ex_range=np.array(eem_dataset_dict['ex_range']),
             em_range=np.array(eem_dataset_dict['em_range']),
             index=eem_dataset_dict['index'],
-            ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0]),
+            ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0])
+            if eem_dataset_dict['ref'] is not None else None,
         )
     else:
         if not os.path.exists(path_establishment):
             message = ('Error: No such file or directory: ' + path_establishment)
-            return message, None, None, None, None, None, None, None, 'build model', [], None, [], None, [], None, None
+            return message, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, None
         else:
             _, file_extension = os.path.splitext(path_establishment)
 
@@ -1775,7 +1782,8 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                 ex_range=np.array(eem_dataset_dict['ex_range']),
                 em_range=np.array(eem_dataset_dict['em_range']),
                 index=eem_dataset_dict['index'],
-                ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0]),
+                ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0])
+                if eem_dataset_dict['ref'] is not None else None,
             )
     kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
     kw_optional = str_string_to_list(kw_optional) if kw_optional else []
@@ -1783,7 +1791,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                               copy=False)
 
     rank_list = num_string_to_list(rank)
-    parafac_components_dict = {}
+    parafac_models = {}
     loadings_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     components_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     scores_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
@@ -1799,11 +1807,14 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                             sort_em=True)
         parafac_r.fit(eem_dataset_establishment)
 
-        parafac_components_dict[r] = {
+        parafac_models[r] = {
             'component_stack': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
-                                      sublist in parafac_r.component_stack.tolist()],
-            'score': [parafac_r.score.columns.tolist()] + parafac_r.score.values.tolist(),
-            'fmax': [parafac_r.fmax.columns.tolist()] + parafac_r.fmax.values.tolist(),
+                                sublist in parafac_r.component_stack.tolist()],
+            'Score': [parafac_r.score.columns.tolist()] + parafac_r.score.values.tolist(),
+            'Fmax': [parafac_r.fmax.columns.tolist()] + parafac_r.fmax.values.tolist(),
+            'index': eem_dataset_establishment.index,
+            'ref': [eem_dataset_establishment.ref.columns.tolist()] + eem_dataset_establishment.ref.values.tolist()
+            if eem_dataset_establishment.ref is not None else None
         }
 
         # for component graphs, determine the layout according to the number of components
@@ -2228,12 +2239,12 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
             ]),
         )
 
-    model_options = [{'label': 'component {r}'.format(r=r), 'value': r} for r in parafac_components_dict.keys()]
+    model_options = [{'label': 'component {r}'.format(r=r), 'value': r} for r in parafac_models.keys()]
     ref_options = [{'label': var, 'value': var} for var in eem_dataset_establishment.ref.columns]
 
     return (None, loadings_tabs, components_tabs, scores_tabs, fmax_tabs, core_consistency_tabs, leverage_tabs,
-            split_half_tabs, 'build model', model_options, None, ref_options, None, model_options, None,
-            parafac_components_dict)
+            split_half_tabs, 'Build model', model_options, None, ref_options, None, model_options, None,
+            parafac_models)
 
 
 # # -----------Update parafac model dropdown list
@@ -2258,53 +2269,61 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
 
 @app.callback(
     [
-        Output('parafac-establishment-corr-graph', 'figure'), # size, intervals?
+        Output('parafac-establishment-corr-graph', 'figure'),  # size, intervals?
         Output('parafac-establishment-corr-table', 'children'),
     ],
     [
         Input('parafac-establishment-corr-model-selection', 'value'),
         Input('parafac-establishment-corr-indicator-selection', 'value'),
         Input('parafac-establishment-corr-ref-selection', 'value'),
-        State('eem-dataset', 'data'),
         State('parafac-models', 'data')
     ]
 )
-def on_parafac_establishment_correlations(r, indicator, ref_var, eem_dataset_establishment, parafac_models):
-    if all([r, indicator, ref_var, eem_dataset_establishment, parafac_models]):
-        ref_df = pd.DataFrame(eem_dataset_establishment['ref'][1:], columns=eem_dataset_establishment[r]['ref'][0],
-                              index=eem_dataset_establishment['index'])
-        ref_var = ref_df[ref_var]
-        parafac_var = pd.DataFrame(parafac_models[r][indicator][1:], columns=parafac_models[r][indicator][0],
-                                   index=eem_dataset_establishment['index'])
+def on_parafac_establishment_correlations(r, indicator, ref_var, parafac_models):
+    if all([r, indicator, ref_var, parafac_models]):
+        ref_df = pd.DataFrame(parafac_models[str(r)]['ref'][1:], columns=parafac_models[str(r)]['ref'][0],
+                              index=parafac_models[str(r)]['index'])
+        var = ref_df[ref_var]
+        parafac_var = pd.DataFrame(parafac_models[str(r)][indicator][1:], columns=parafac_models[str(r)][indicator][0],
+                                   index=parafac_models[str(r)]['index'])
         fig = go.Figure()
-        tbl = pd.DataFrame(columns=['Variable', 'slope', 'intercept', 'R²', 'Pearson Correlation', 'Pearson p-value'])
+        stats = []
         for col in parafac_var.columns:
-            x = ref_var
+            x = var
             y = parafac_var[col]
-            x = np.array(x).reshape(-1, 1)
-            lm = LinearRegression().fit(x, y)
-            predictions = lm.predict(x)
-            fig.add_trace(go.Scatter(x=x, y=y, mode='markers', name=col))
-            fig.add_trace(go.Scatter(x=x.flatten(), y=predictions, mode='lines', name=f'{col} fit'))
-            r_squared = lm.score(x, y)
+            nan_rows = x[x.isna()].index
+            x = x.drop(nan_rows)
+            y = y.drop(nan_rows)
+            if x.shape[0] < 1:
+                return go.Figure(), None
+            x_reshaped = np.array(x).reshape(-1, 1)
+            lm = LinearRegression().fit(x_reshaped, y)
+            predictions = lm.predict(x_reshaped)
+            fig.add_trace(go.Scatter(x=x, y=y, mode='markers', name=col, text=[i for i in x.index], hoverinfo='text+x+y'))
+            fig.add_trace(go.Scatter(x=x, y=predictions, mode='lines', name=f'{col} fit'))
+            r_squared = lm.score(x_reshaped, y)
             intercept = lm.intercept_
             slope = lm.coef_[0]
-            pearson_corr, pearson_p = pearsonr(ref_var, y)
-            tbl = tbl.append({'Variable': col, 'R²': r_squared, 'slope': slope, 'intercept': intercept,
-                                      'Pearson Correlation': pearson_corr, 'Pearson p-value': pearson_p},
-                                     ignore_index=True)
+            pearson_corr, pearson_p = pearsonr(x, y)
+            stats.append([col, slope, intercept, r_squared, pearson_corr, pearson_p])
 
+        fig.update_xaxes(title_text=ref_var)
+        fig.update_yaxes(title_text=indicator)
+
+        tbl = pd.DataFrame(
+                stats,
+                columns=['Variable', 'slope', 'intercept', 'R²', 'Pearson Correlation', 'Pearson p-value']
+            )
         tbl = dbc.Table.from_dataframe(tbl, bordered=True, hover=True, index=False)
         return fig, tbl
     else:
-        return None, None
-
+        return go.Figure(), None
 
 
 # -----------Make prediction on an EEM dataset using an established PARAFAC model
 @app.callback(
     [
-        Output('parafac-eem-dataset-predict-message', 'children'), # size, intervals?
+        Output('parafac-eem-dataset-predict-message', 'children'),  # size, intervals?
         Output('parafac-test-result-card', 'children'),
         Output('predict-parafac-spinner', 'children'),
     ],
@@ -2319,12 +2338,12 @@ def on_parafac_establishment_correlations(r, indicator, ref_var, eem_dataset_est
 )
 def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, model_r, parafac_models):
     if n_clicks is None:
-        return None, None, 'predict'
+        return None, None, 'Predict'
     if path_predict is None:
-        return None, None, 'predict'
+        return None, None, 'Predict'
     if not os.path.exists(path_predict):
         message = ('Error: No such file: ' + path_predict)
-        return message, None, 'predict'
+        return message, None, 'Predict'
     else:
         _, file_extension = os.path.splitext(path_predict)
 
@@ -2354,18 +2373,19 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
                                                                         [
                                                                             [
                                                                                 [np.nan if x is None else x for x in
-                                                                                subsublist] for subsublist in sublist
+                                                                                 subsublist] for subsublist in sublist
                                                                             ]
                                                                             for sublist in
-                                                                            parafac_models[str(model_r)]['component_stack']
+                                                                            parafac_models[str(model_r)][
+                                                                                'component_stack']
                                                                         ]
                                                                     ),
                                                                     fit_intercept=False)
     score_sample = pd.DataFrame(
-        score_sample, index=eem_dataset_predict.index, columns=['component {i}'.format(i=i+1) for i in range(model_r)]
+        score_sample, index=eem_dataset_predict.index, columns=['component {i}'.format(i=i + 1) for i in range(model_r)]
     )
     fmax_sample = pd.DataFrame(
-        fmax_sample, index=eem_dataset_predict.index, columns=['component {i}'.format(i=i+1) for i in range(model_r)]
+        fmax_sample, index=eem_dataset_predict.index, columns=['component {i}'.format(i=i + 1) for i in range(model_r)]
     )
 
     prediction_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
@@ -2401,6 +2421,7 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
             ]),
         ]
     ))
+
     prediction_tabs.children[0].children.append(dcc.Tab(
         label='Fmax',
         children=[
@@ -2433,13 +2454,22 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
             ]),
         ]
     ))
+
     prediction_tabs.children[0].children.append(dcc.Tab(
         label='Error',
         children=[
 
         ]
     ))
-    return None, prediction_tabs, 'predict'
+
+    prediction_tabs.children[0].children.append(dcc.Tab(
+        label='Correlations',
+        children=[
+
+        ]
+    ))
+    return None, prediction_tabs, 'Predict'
+
 
 # -----------Page #3: K-PARAFACs--------------
 
@@ -2676,7 +2706,7 @@ page4 = html.Div([
 def on_build_nmf_model(n_clicks, eem_graph_options, kw_mandatory, kw_optional, rank, solver, normalization, alpha_w,
                        alpha_h, l1_ratio, validations, eem_dataset_dict):
     if n_clicks is None:
-        return None, None, None, None, 'build model', None
+        return None, None, None, None, 'Build model', None
     kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
     kw_optional = str_string_to_list(kw_optional) if kw_optional else []
     eem_dataset = EEMDataset(
@@ -2865,7 +2895,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, kw_mandatory, kw_optional, r
                     selected_style={'padding': '0', 'line-width': '100%'}
                     )
         )
-    return components_tabs, fmax_tabs, residual_tabs, split_half_tabs, 'build model', None
+    return components_tabs, fmax_tabs, residual_tabs, split_half_tabs, 'Build model', None
 
 
 # -----------Setup the sidebar-----------------
