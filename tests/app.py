@@ -2557,7 +2557,7 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
         Input('parafac-establishment-corr-model-selection', 'value'),
         Input('parafac-establishment-corr-indicator-selection', 'value'),
         Input('parafac-establishment-corr-ref-selection', 'value'),
-        State('parafac-models', 'data')
+        State('parafac-test-results', 'data')
     ]
 )
 def on_parafac_establishment_correlations(r, indicator, ref_var, parafac_models):
