@@ -20,6 +20,7 @@ from eempy.eem_processing import *
 from eempy.utils import str_string_to_list, num_string_to_list
 
 app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
+colors = ['red', 'blue', 'orange', 'purple', 'cyan', 'green', 'pink', 'brown', 'black']
 
 # -----------Global variables--------------
 
@@ -1641,7 +1642,7 @@ page2 = html.Div([
                                                                 dbc.Label("Index mandatory keywords"), width={'size': 2}
                                                             ),
                                                             dbc.Col(
-                                                                dcc.Input(id='parafac-predict-index-kw-mandatory',
+                                                                dcc.Input(id='parafac-test-index-kw-mandatory',
                                                                           type='text',
                                                                           placeholder='',
                                                                           style={'width': '100%', 'height': '30px'},
@@ -1653,7 +1654,7 @@ page2 = html.Div([
                                                                 width={'size': 2, 'offset': 1}
                                                             ),
                                                             dbc.Col(
-                                                                dcc.Input(id='parafac-predict-index-kw-optional',
+                                                                dcc.Input(id='parafac-test-index-kw-optional',
                                                                           type='text',
                                                                           placeholder='',
                                                                           style={'width': '100%', 'height': '30px'},
@@ -1667,7 +1668,7 @@ page2 = html.Div([
                                                         [
                                                             dbc.Col(
                                                                 dcc.Dropdown(
-                                                                    options=[], id='parafac-predict-model-selection'
+                                                                    options=[], id='parafac-test-model-selection'
                                                                 )
                                                             ),
                                                             dbc.Col(
@@ -1696,9 +1697,70 @@ page2 = html.Div([
                                                         id='parafac-test-fmax'
                                                     ),
                                                     dcc.Tab(
-                                                        label='Error',
+                                                        label='Reconstruction error',
                                                         children=[],
                                                         id='parafac-test-error'
+                                                    ),
+                                                    dcc.Tab(
+                                                        label='Prediction of reference',
+                                                        children=[
+                                                            dbc.Stack(
+                                                                [
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Col(
+                                                                                dbc.Label("Select reference variable"),
+                                                                                width={'size': 2, 'offset': 0}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[],
+                                                                                    id='parafac-test-pred-ref-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dbc.Label(
+                                                                                    "Select model to fit reference "
+                                                                                    "variable with fmax"),
+                                                                                width={'size': 2, 'offset': 2}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[
+                                                                                        {'label': 'Linear least squares',
+                                                                                         'value': 'linear_least_squares'},
+                                                                                    ],
+                                                                                    id='parafac-test-pred-model'
+                                                                                       '-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+                                                                        ]
+                                                                    ),
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Row([
+                                                                                dcc.Graph(
+                                                                                    id='parafac-test-pred-graph',
+                                                                                    # config={'responsive': 'auto'},
+                                                                                    config={'autosizable': False},
+                                                                                    style={'width': 1700, 'height': 800}
+                                                                                ),
+                                                                            ]),
+
+                                                                            dbc.Row(
+                                                                                html.Div(
+                                                                                    children=[],
+                                                                                    id='parafac-test-pred-table'
+                                                                                )
+                                                                            ),
+                                                                        ]
+                                                                    )
+                                                                ],
+                                                                gap=3, style={"margin": "20px"}
+                                                            ),
+                                                        ],
                                                     ),
                                                     dcc.Tab(
                                                         label='Correlations',
@@ -1709,15 +1771,15 @@ page2 = html.Div([
                                                                         [
                                                                             dbc.Col(
                                                                                 dbc.Label("Select indicator"),
-                                                                                width={'size': 1, 'offset': 1}
+                                                                                width={'size': 2, 'offset': 0}
                                                                             ),
                                                                             dbc.Col(
                                                                                 dcc.Dropdown(
                                                                                     options=[
-                                                                                        {'label': 'scores',
-                                                                                         'value': 'scores'},
+                                                                                        {'label': 'Score',
+                                                                                         'value': 'Score'},
                                                                                         {'label': 'Fmax',
-                                                                                         'value': 'fmax'}
+                                                                                         'value': 'Fmax'},
                                                                                     ],
                                                                                     id='parafac-test-corr-indicator-selection'
                                                                                 ),
@@ -1725,7 +1787,7 @@ page2 = html.Div([
                                                                             ),
                                                                             dbc.Col(
                                                                                 dbc.Label("Select reference variable"),
-                                                                                width={'size': 1, 'offset': 1}
+                                                                                width={'size': 2, 'offset': 2}
                                                                             ),
                                                                             dbc.Col(
                                                                                 dcc.Dropdown(
@@ -1756,10 +1818,9 @@ page2 = html.Div([
                                                                         ]
                                                                     )
                                                                 ],
-                                                                gap=3
+                                                                gap=3, style={"margin": "20px"}
                                                             ),
                                                         ],
-                                                        id='parafac-test-score'
                                                     ),
                                                 ],
                                                     persistence=True,
@@ -1789,6 +1850,8 @@ page2 = html.Div([
 
 #   -------------Callbacks of page #2
 
+
+#  ----------Establish PARAFAC model
 @app.callback(
     [
         Output('parafac-eem-dataset-establishment-message', 'children'),
@@ -1804,8 +1867,8 @@ page2 = html.Div([
         Output('parafac-establishment-corr-model-selection', 'value'),
         Output('parafac-establishment-corr-ref-selection', 'options'),
         Output('parafac-establishment-corr-ref-selection', 'value'),
-        Output('parafac-predict-model-selection', 'options'),
-        Output('parafac-predict-model-selection', 'value'),
+        Output('parafac-test-model-selection', 'options'),
+        Output('parafac-test-model-selection', 'value'),
         Output('parafac-models', 'data'),
     ],
     [
@@ -1863,7 +1926,8 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                 ex_range=np.array(eem_dataset_dict['ex_range']),
                 em_range=np.array(eem_dataset_dict['em_range']),
                 index=eem_dataset_dict['index'],
-                ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0])
+                ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0],
+                                 index=eem_dataset_dict['index'])
                 if eem_dataset_dict['ref'] is not None else None,
             )
     kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
@@ -1887,7 +1951,28 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                             tf_normalization=True if 'tf_normalization' in tf else False,
                             sort_em=True)
         parafac_r.fit(eem_dataset_establishment)
-
+        parafac_fit_params_r = {}
+        if eem_dataset_establishment.ref is not None:
+            for ref_var in eem_dataset_establishment.ref.columns:
+                var = eem_dataset_establishment.ref[ref_var]
+                parafac_var = parafac_r.fmax
+                stats = []
+                for f_col in parafac_var.columns:
+                    x = var
+                    y = parafac_var[f_col]
+                    nan_rows = x[x.isna()].index
+                    x = x.drop(nan_rows)
+                    y = y.drop(nan_rows)
+                    if x.shape[0] < 1:
+                        return go.Figure(), None
+                    x_reshaped = np.array(x).reshape(-1, 1)
+                    lm = LinearRegression().fit(x_reshaped, y)
+                    r_squared = lm.score(x_reshaped, y)
+                    intercept = lm.intercept_
+                    slope = lm.coef_[0]
+                    pearson_corr, pearson_p = pearsonr(x, y)
+                    stats.append([f_col, slope, intercept, r_squared, pearson_corr, pearson_p])
+                parafac_fit_params_r[ref_var] = stats
         parafac_models[r] = {
             'component_stack': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
                                 sublist in parafac_r.component_stack.tolist()],
@@ -1895,7 +1980,8 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
             'Fmax': [parafac_r.fmax.columns.tolist()] + parafac_r.fmax.values.tolist(),
             'index': eem_dataset_establishment.index,
             'ref': [eem_dataset_establishment.ref.columns.tolist()] + eem_dataset_establishment.ref.values.tolist()
-            if eem_dataset_establishment.ref is not None else None
+            if eem_dataset_establishment.ref is not None else None,
+            'fitting_params': parafac_fit_params_r
         }
 
         # for component graphs, determine the layout according to the number of components
@@ -2321,30 +2407,12 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
         )
 
     model_options = [{'label': 'component {r}'.format(r=r), 'value': r} for r in parafac_models.keys()]
-    ref_options = [{'label': var, 'value': var} for var in eem_dataset_establishment.ref.columns]
+    ref_options = [{'label': var, 'value': var} for var in eem_dataset_establishment.ref.columns] if (
+        eem_dataset_establishment.ref is not None) else []
 
     return (None, loadings_tabs, components_tabs, scores_tabs, fmax_tabs, core_consistency_tabs, leverage_tabs,
             split_half_tabs, 'Build model', model_options, None, ref_options, None, model_options, None,
             parafac_models)
-
-
-# # -----------Update parafac model dropdown list
-# @app.callback(
-#     [
-#         Output('parafac-predict-model-selection', 'options')
-#     ],
-#     [
-#         Input('parafac-models', 'data')
-#     ]
-# )
-# def update_parafac_models_options(parafac_components_all):
-#     if parafac_components_all is None:
-#         return []
-#     options = []
-#     for r in parafac_components_all.keys():
-#         options.append({'label': 'component {r}'.format(r=r), 'value': r})
-#     return options
-
 
 # -----------Analyze correlations between score/Fmax and reference variables in model establishment
 
@@ -2368,8 +2436,10 @@ def on_parafac_establishment_correlations(r, indicator, ref_var, parafac_models)
         parafac_var = pd.DataFrame(parafac_models[str(r)][indicator][1:], columns=parafac_models[str(r)][indicator][0],
                                    index=parafac_models[str(r)]['index'])
         fig = go.Figure()
-        stats = []
-        for col in parafac_var.columns:
+
+        stats = parafac_models[str(r)]['fitting_params']
+
+        for i, col in enumerate(parafac_var.columns):
             x = var
             y = parafac_var[col]
             nan_rows = x[x.isna()].index
@@ -2377,22 +2447,17 @@ def on_parafac_establishment_correlations(r, indicator, ref_var, parafac_models)
             y = y.drop(nan_rows)
             if x.shape[0] < 1:
                 return go.Figure(), None
-            x_reshaped = np.array(x).reshape(-1, 1)
-            lm = LinearRegression().fit(x_reshaped, y)
-            predictions = lm.predict(x_reshaped)
-            fig.add_trace(go.Scatter(x=x, y=y, mode='markers', name=col, text=[i for i in x.index], hoverinfo='text+x+y'))
-            fig.add_trace(go.Scatter(x=x, y=predictions, mode='lines', name=f'{col} fit'))
-            r_squared = lm.score(x_reshaped, y)
-            intercept = lm.intercept_
-            slope = lm.coef_[0]
-            pearson_corr, pearson_p = pearsonr(x, y)
-            stats.append([col, slope, intercept, r_squared, pearson_corr, pearson_p])
-
+            fig.add_trace(go.Scatter(x=x, y=y, mode='markers', name=col, text=[i for i in x.index],
+                                     marker=dict(color=colors[i%10]), hoverinfo='text+x+y'))
+            fig.add_trace(go.Scatter(x=np.array([x.min(), x.max()]),
+                                     y=stats[ref_var][i][1] * np.array([x.min(), x.max()]) + stats[ref_var][i][2],
+                                     mode='lines', name=f'{col}-Linear Regression Line',
+                                     line=dict(dash='dash', color=colors[i%10])))
         fig.update_xaxes(title_text=ref_var)
         fig.update_yaxes(title_text=indicator)
 
         tbl = pd.DataFrame(
-                stats,
+                stats[ref_var],
                 columns=['Variable', 'slope', 'intercept', 'R²', 'Pearson Correlation', 'Pearson p-value']
             )
         tbl = dbc.Table.from_dataframe(tbl, bordered=True, hover=True, index=False)
@@ -2401,35 +2466,42 @@ def on_parafac_establishment_correlations(r, indicator, ref_var, parafac_models)
         return go.Figure(), None
 
 
-# -----------Make prediction on an EEM dataset using an established PARAFAC model
+# -----------Fit a test EEM dataset using the established PARAFAC model components
 @app.callback(
     [
         Output('parafac-eem-dataset-predict-message', 'children'),  # size, intervals?
         Output('parafac-test-score', 'children'),
         Output('parafac-test-fmax', 'children'),
         Output('parafac-test-error', 'children'),
+        Output('parafac-test-pred-ref-selection', 'options'),
+        Output('parafac-test-pred-ref-selection', 'value'),
         Output('parafac-test-corr-ref-selection', 'options'),
         Output('parafac-test-corr-ref-selection', 'value'),
+        Output('parafac-test-corr-indicator-selection', 'options'),
+        Output('parafac-test-corr-indicator-selection', 'value'),
         Output('parafac-predict-spinner', 'children'),
         Output('parafac-test-results', 'data'),
     ],
     [
         Input('predict-parafac-model', 'n_clicks'),
         State('parafac-eem-dataset-predict-path-input', 'value'),
-        State('parafac-predict-index-kw-mandatory', 'value'),
-        State('parafac-predict-index-kw-optional', 'value'),
-        State('parafac-predict-model-selection', 'value'),
+        State('parafac-test-index-kw-mandatory', 'value'),
+        State('parafac-test-index-kw-optional', 'value'),
+        State('parafac-test-model-selection', 'value'),
         State('parafac-models', 'data')
     ]
 )
 def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, model_r, parafac_models):
     if n_clicks is None:
-        return None, None, None, None, [], None, 'predict', None
+        return (None, None, None, None, [], None, [], None,
+                [{'label': 'Score', 'value': 'Score'}, {'label': 'Fmax', 'value': 'Fmax'}], None, 'predict', None)
     if path_predict is None:
-        return None, None, None, None, [], None, 'predict', None
+        return (None, None, None, None, [], None, [], None,
+                [{'label': 'Score', 'value': 'Score'}, {'label': 'Fmax', 'value': 'Fmax'}], None, 'predict', None)
     if not os.path.exists(path_predict):
         message = ('Error: No such file: ' + path_predict)
-        return message, None, None, None, [], None, 'predict', None
+        return (message, None, None, None, [], None, [], None,
+                [{'label': 'Score', 'value': 'Score'}, {'label': 'Fmax', 'value': 'Fmax'}], None, 'predict', None)
     else:
         _, file_extension = os.path.splitext(path_predict)
 
@@ -2448,7 +2520,8 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
             ex_range=np.array(eem_dataset_dict['ex_range']),
             em_range=np.array(eem_dataset_dict['em_range']),
             index=eem_dataset_dict['index'],
-            ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0]),
+            ref=pd.DataFrame(eem_dataset_dict['ref'][1:], index=eem_dataset_dict['index'],
+                             columns=eem_dataset_dict['ref'][0]) if eem_dataset_dict['ref'] is not None else None,
         )
     kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
     kw_optional = str_string_to_list(kw_optional) if kw_optional else []
@@ -2474,7 +2547,16 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
         fmax_sample, index=eem_dataset_predict.index, columns=['component {i}'.format(i=i + 1) for i in range(model_r)]
     )
 
-    prediction_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    pred = {}
+    if eem_dataset_predict.ref is not None:
+        for ref_var in eem_dataset_predict.ref.columns:
+            params = parafac_models[str(model_r)]['fitting_params'][ref_var]
+            pred_var = fmax_sample.copy()
+            for i, f_col in enumerate(fmax_sample):
+                pred_r = fmax_sample[f_col]-params[i][2]
+                pred_r = pred_r / params[i][1]
+                pred_var[f_col] = pred_r
+            pred[ref_var] = [pred_var.columns.tolist()] + pred_var.values.tolist()
 
     score_tab = html.Div([
                 dbc.Row(
@@ -2534,42 +2616,82 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
 
     error_tab = html.Div(children=[])
 
+    if eem_dataset_predict.ref is not None:
+        indicator_options = [{'label': 'Score', 'value': 'Score'},
+                             {'label': 'Fmax', 'value': 'Fmax'},
+                             {'label': 'Prediction of reference', 'value': 'Prediction of reference'}]
+    else:
+        indicator_options = [{'label': 'Score', 'value': 'Score'}, {'label': 'Fmax', 'value': 'Fmax'}]
+
     ref_options = [{'label': var, 'value': var} for var in eem_dataset_predict.ref.columns]
 
     test_results = {
         'Fmax': [fmax_sample.columns.tolist()] + fmax_sample.values.tolist(),
         'Score': [score_sample.columns.tolist()] + score_sample.values.tolist(),
-        'ref': eem_dataset_dict['ref'],
-        'index': eem_dataset_dict['index']
+        'Prediction of reference': pred,
+        'ref': [eem_dataset_predict.ref.columns.tolist()] + eem_dataset_predict.ref.values.tolist()
+        if eem_dataset_predict.ref is not None else None,
+        'index': eem_dataset_predict.index
     }
 
+    return (None, score_tab, fmax_tab, error_tab, ref_options, None, ref_options, None,
+            indicator_options, None, 'predict', test_results)
 
-    return None, score_tab, fmax_tab, error_tab, ref_options, None, 'predict', test_results
 
+# -----------Predict the corresponding reference variables for the test EEM datasets using the model fitted in the model
+#            establishment step
+@app.callback(
+    [
+        Output('parafac-test-pred-graph', 'figure'),  # size, intervals?
+        Output('parafac-test-pred-table', 'children'),
+    ],
+    [
+        Input('parafac-test-pred-ref-selection', 'value'),
+        Input('parafac-test-pred-model-selection', 'value'),
+        State('parafac-test-results', 'data'),
+    ]
+)
+
+def on_predict_reference_test(ref_var, pred_model, parafac_test_results):
+    if all([ref_var, pred_model, parafac_test_results]):
+        pred = parafac_test_results['Prediction of reference'][ref_var]
+        pred = pd.DataFrame(pred[1:], columns=pred[0], index=parafac_test_results['index'])
+        fig = plot_score(pred, display=False, yaxis_title=ref_var)
+        ref = pd.DataFrame(parafac_test_results['ref'][1:], columns=parafac_test_results['ref'][0],
+                           index=parafac_test_results['index'])
+        tbl = dbc.Table.from_dataframe(pd.concat([pred, ref[ref_var]], axis=1),
+                                       bordered=True, hover=True, index=True)
+        return fig, tbl
+    else:
+        return go.Figure(), None
 
 # -----------Analyze correlations between score/Fmax and reference variables in model testing
 @app.callback(
     [
-        Output('parafac-establishment-corr-graph', 'figure'),  # size, intervals?
-        Output('parafac-establishment-corr-table', 'children'),
+        Output('parafac-test-corr-graph', 'figure'),  # size, intervals?
+        Output('parafac-test-corr-table', 'children'),
     ],
     [
-        Input('parafac-establishment-corr-model-selection', 'value'),
-        Input('parafac-establishment-corr-indicator-selection', 'value'),
-        Input('parafac-establishment-corr-ref-selection', 'value'),
-        State('parafac-test-results', 'data')
+        Input('parafac-test-corr-indicator-selection', 'value'),
+        Input('parafac-test-corr-ref-selection', 'value'),
+        State('parafac-test-results', 'data'),
     ]
 )
-def on_parafac_establishment_correlations(r, indicator, ref_var, parafac_models):
-    if all([r, indicator, ref_var, parafac_models]):
-        ref_df = pd.DataFrame(parafac_models[str(r)]['ref'][1:], columns=parafac_models[str(r)]['ref'][0],
-                              index=parafac_models[str(r)]['index'])
+def on_parafac_establishment_correlations(indicator, ref_var, parafac_test_results):
+    if all([indicator, ref_var, parafac_test_results]):
+        ref_df = pd.DataFrame(parafac_test_results['ref'][1:], columns=parafac_test_results['ref'][0],
+                              index=parafac_test_results['index'])
         var = ref_df[ref_var]
-        parafac_var = pd.DataFrame(parafac_models[str(r)][indicator][1:], columns=parafac_models[str(r)][indicator][0],
-                                   index=parafac_models[str(r)]['index'])
+        if indicator != 'Prediction of reference':
+            parafac_var = pd.DataFrame(parafac_test_results[indicator][1:], columns=parafac_test_results[indicator][0],
+                                       index=parafac_test_results['index'])
+        else:
+            parafac_var = pd.DataFrame(parafac_test_results[indicator][ref_var][1:],
+                                       columns=parafac_test_results[indicator][ref_var][0],
+                                       index=parafac_test_results['index'])
         fig = go.Figure()
         stats = []
-        for col in parafac_var.columns:
+        for i, col in enumerate(parafac_var.columns):
             x = var
             y = parafac_var[col]
             nan_rows = x[x.isna()].index
@@ -2580,8 +2702,10 @@ def on_parafac_establishment_correlations(r, indicator, ref_var, parafac_models)
             x_reshaped = np.array(x).reshape(-1, 1)
             lm = LinearRegression().fit(x_reshaped, y)
             predictions = lm.predict(x_reshaped)
-            fig.add_trace(go.Scatter(x=x, y=y, mode='markers', name=col, text=[i for i in x.index], hoverinfo='text+x+y'))
-            fig.add_trace(go.Scatter(x=x, y=predictions, mode='lines', name=f'{col} fit'))
+            fig.add_trace(go.Scatter(x=x, y=y, mode='markers', name=col, text=[i for i in x.index],
+                                     hoverinfo='text+x+y', marker=dict(color=colors[i%10])))
+            fig.add_trace(go.Scatter(x=x, y=predictions, mode='lines', name=f'{col} fit',
+                                     line=dict(dash='dash', color=colors[i%10])))
             r_squared = lm.score(x_reshaped, y)
             intercept = lm.intercept_
             slope = lm.coef_[0]
@@ -2589,7 +2713,7 @@ def on_parafac_establishment_correlations(r, indicator, ref_var, parafac_models)
             stats.append([col, slope, intercept, r_squared, pearson_corr, pearson_p])
 
         fig.update_xaxes(title_text=ref_var)
-        fig.update_yaxes(title_text=indicator)
+        fig.update_yaxes(title_text="Prediction of " + ref_var if indicator=='Prediction of reference' else indicator)
 
         tbl = pd.DataFrame(
                 stats,
@@ -2765,6 +2889,120 @@ page4 = html.Div([
                                         dbc.Card(
                                             dbc.Stack(
                                                 [
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dbc.Label("Select PARAFAC model"),
+                                                                width={'size': 1, 'offset': 0}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[],
+                                                                    id='nmf-establishment-corr-model-selection'
+                                                                ),
+                                                                width={'size': 2}
+                                                            ),
+                                                            dbc.Col(
+                                                                dbc.Label("Select indicator"),
+                                                                width={'size': 1, 'offset': 1}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[
+                                                                        {'label': 'Fmax', 'value': 'Fmax'}
+                                                                    ],
+                                                                    id='nmf-establishment-corr-indicator-selection'
+                                                                ),
+                                                                width={'size': 2}
+                                                            ),
+                                                            dbc.Col(
+                                                                dbc.Label("Select reference variable"),
+                                                                width={'size': 1, 'offset': 1}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[],
+                                                                    id='nmf-establishment-corr-ref-selection'
+                                                                ),
+                                                                width={'size': 2}
+                                                            ),
+                                                        ]
+                                                    ),
+
+                                                    dbc.Row([
+                                                        dcc.Graph(id='nmf-establishment-corr-graph',
+                                                                  # config={'responsive': 'auto'},
+                                                                  style={'width': '45vw', 'height': '60vh'}
+                                                                  ),
+                                                    ]),
+
+                                                    dbc.Row(
+                                                        html.Div([],
+                                                                 id='nmf-establishment-corr-table')
+                                                    ),
+
+                                                ],
+                                                gap=2, style={"margin": "20px"}
+                                            )
+                                        )
+                                    ],
+                                    style={'width': '90vw'},
+                                )
+                            ],
+                            label='Correlations', id='nmf-establishment-corr'
+                        ),
+                        dcc.Tab(
+                            children=[
+                                html.Div(
+                                    [
+                                        dbc.Card(
+                                            dbc.Stack(
+                                                [
+                                                    html.H5("Import EEM dataset to be predicted"),
+                                                    dbc.Row(
+                                                        dcc.Input(id='nmf-eem-dataset-predict-path-input',
+                                                                  type='text',
+                                                                  placeholder='Please enter the eem dataset path (.json'
+                                                                              ' and .pkl are supported).',
+                                                                  style={'width': '97%', 'height': '30px'},
+                                                                  debounce=True),
+                                                        justify="center"
+                                                    ),
+                                                    dbc.Row([
+                                                        dbc.Col(
+                                                            html.Div([],
+                                                                     id='nmf-eem-dataset-predict-message',
+                                                                     style={'width': '1000px'}),
+                                                            width={"size": 12, "offset": 0}
+                                                        )
+                                                    ]),
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dbc.Label("Index mandatory keywords"), width={'size': 2}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Input(id='nmf-test-index-kw-mandatory',
+                                                                          type='text',
+                                                                          placeholder='',
+                                                                          style={'width': '100%', 'height': '30px'},
+                                                                          debounce=True, value=''),
+                                                                width={"offset": 0, "size": 2}
+                                                            ),
+                                                            dbc.Col(
+                                                                dbc.Label("Index optional keywords"),
+                                                                width={'size': 2, 'offset': 1}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Input(id='nmf-test-index-kw-optional',
+                                                                          type='text',
+                                                                          placeholder='',
+                                                                          style={'width': '100%', 'height': '30px'},
+                                                                          debounce=True, value=''),
+                                                                width={"offset": 0, "size": 2}
+                                                            )
+                                                        ]
+                                                    ),
                                                     html.H5("Select established model"),
                                                     dbc.Row(
                                                         [
@@ -2775,20 +3013,164 @@ page4 = html.Div([
                                                             ),
                                                             dbc.Col(
                                                                 dbc.Button(
-                                                                    [dbc.Spinner(size="sm", id='test-nmf-spinner')],
-                                                                    id='test-nmf-model', className='col-2')
+                                                                    [dbc.Spinner(size="sm",
+                                                                                 id='nmf-predict-spinner')],
+                                                                    id='predict-nmf-model', className='col-2')
                                                             )
                                                         ]
                                                     )
-                                                ], gap=2
+                                                ],
+                                                gap=2, style={"margin": "20px"}
                                             ),
                                         ),
                                         dbc.Card(
-                                            children=None,
-                                            id='nmf-test-result-card'
+                                            [
+                                                dbc.Tabs(children=[
+                                                    dcc.Tab(
+                                                        label='Score',
+                                                        children=[],
+                                                        id='nmf-test-score'
+                                                    ),
+                                                    dcc.Tab(
+                                                        label='Fmax',
+                                                        children=[],
+                                                        id='nmf-test-fmax'
+                                                    ),
+                                                    dcc.Tab(
+                                                        label='Reconstruction error',
+                                                        children=[],
+                                                        id='nmf-test-error'
+                                                    ),
+                                                    dcc.Tab(
+                                                        label='Prediction of reference',
+                                                        children=[
+                                                            dbc.Stack(
+                                                                [
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Col(
+                                                                                dbc.Label("Select reference variable"),
+                                                                                width={'size': 2, 'offset': 0}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[],
+                                                                                    id='nmf-test-pred-ref-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dbc.Label(
+                                                                                    "Select model to fit reference "
+                                                                                    "variable with fmax"),
+                                                                                width={'size': 2, 'offset': 2}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[
+                                                                                        {
+                                                                                            'label': 'Linear least squares',
+                                                                                            'value': 'linear_least_squares'},
+                                                                                    ],
+                                                                                    id='nmf-test-pred-model'
+                                                                                       '-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+                                                                        ]
+                                                                    ),
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Row([
+                                                                                dcc.Graph(
+                                                                                    id='nmf-test-pred-graph',
+                                                                                    # config={'responsive': 'auto'},
+                                                                                    config={'autosizable': False},
+                                                                                    style={'width': 1700, 'height': 800}
+                                                                                ),
+                                                                            ]),
+
+                                                                            dbc.Row(
+                                                                                html.Div(
+                                                                                    children=[],
+                                                                                    id='nmf-test-pred-table'
+                                                                                )
+                                                                            ),
+                                                                        ]
+                                                                    )
+                                                                ],
+                                                                gap=3, style={"margin": "20px"}
+                                                            ),
+                                                        ],
+                                                    ),
+                                                    dcc.Tab(
+                                                        label='Correlations',
+                                                        children=[
+                                                            dbc.Stack(
+                                                                [
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Col(
+                                                                                dbc.Label("Select indicator"),
+                                                                                width={'size': 2, 'offset': 0}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[
+                                                                                        {'label': 'Score',
+                                                                                         'value': 'Score'},
+                                                                                        {'label': 'Fmax',
+                                                                                         'value': 'Fmax'},
+                                                                                    ],
+                                                                                    id='nmf-test-corr-indicator-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dbc.Label("Select reference variable"),
+                                                                                width={'size': 2, 'offset': 2}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[],
+                                                                                    id='nmf-test-corr-ref-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+                                                                        ]
+                                                                    ),
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Row([
+                                                                                dcc.Graph(
+                                                                                    id='nmf-test-corr-graph',
+                                                                                    # config={'responsive': 'auto'},
+                                                                                    style={'width': '700',
+                                                                                           'height': '900'}
+                                                                                ),
+                                                                            ]),
+
+                                                                            dbc.Row(
+                                                                                html.Div(
+                                                                                    children=[],
+                                                                                    id='nmf-test-corr-table'
+                                                                                )
+                                                                            ),
+                                                                        ]
+                                                                    )
+                                                                ],
+                                                                gap=3, style={"margin": "20px"}
+                                                            ),
+                                                        ],
+                                                    ),
+                                                ],
+                                                    persistence=True,
+                                                    persistence_type='session'),
+
+                                            ],
                                         )
                                     ],
-                                    style={'width': '90vw'}
+                                    style={'width': '90vw'},
                                 )
                             ],
                             label='Predict', id='nmf-predict'
