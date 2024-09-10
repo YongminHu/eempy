@@ -766,15 +766,15 @@ def eems_tf_normalization(intensity):
 #     return label
 
 
-def eems_fit_components(eem_stack, component_stack, fit_intercept=False, positive=False):
-    assert eem_stack.shape[1:] == component_stack.shape[1:], "EEM and component have different shapes"
+def eems_fit_components(eem_stack, components, fit_intercept=False, positive=False):
+    assert eem_stack.shape[1:] == components.shape[1:], "EEM and component have different shapes"
     score_sample = []
     fmax_sample = []
-    max_values = np.amax(component_stack, axis=(1, 2))
+    max_values = np.amax(components, axis=(1, 2))
     eem_stack_pred = np.zeros(eem_stack.shape)
     for i in range(eem_stack.shape[0]):
         y_true = eem_stack[i].reshape([-1])
-        x = component_stack.reshape([component_stack.shape[0], -1]).T
+        x = components.reshape([components.shape[0], -1]).T
         reg = LinearRegression(fit_intercept=fit_intercept, positive=positive)
         reg.fit(x, y_true)
         y_pred = reg.predict(x)
@@ -1570,7 +1570,7 @@ class PARAFAC:
         Emission loadings table.
     fmax: pandas.DataFrame
         Fmax table.
-    component_stack: np.ndarray
+    components: np.ndarray
         PARAFAC components.
     cptensors: tensorly CPTensor
         The output of PARAFAC in the form of tensorly CPTensor.
@@ -1600,7 +1600,7 @@ class PARAFAC:
         self.ex_loadings = None
         self.em_loadings = None
         self.fmax = None
-        self.component_stack = None
+        self.components = None
         self.cptensors = None
         self.eem_stack_train = None
         self.eem_stack_reconstructed = None
@@ -1642,7 +1642,7 @@ class PARAFAC:
                 "PARAFAC failed possibly due to the presence of patches of nan values. Please consider cut or "
                 "interpolate the nan values.")
         a, b, c = cptensors[1]
-        component_stack = np.zeros([self.rank, b.shape[0], c.shape[0]])
+        components = np.zeros([self.rank, b.shape[0], c.shape[0]])
         for r in range(self.rank):
 
             # when non_negativity is not applied, ensure the scores are generally positive
@@ -1670,19 +1670,19 @@ class PARAFAC:
                 c[:, r] = c[:, r] / maxc
                 a[:, r] = a[:, r] * maxb * maxc
             component = np.array([b[:, r]]).T.dot(np.array([c[:, r]]))
-            component_stack[r, :, :] = component
+            components[r, :, :] = component
 
         if self.tf_normalization:
             a = np.multiply(a, tf_weights[:, np.newaxis])
         score = pd.DataFrame(a)
-        fmax = a * component_stack.max(axis=(1, 2))
+        fmax = a * components.max(axis=(1, 2))
         ex_loadings = pd.DataFrame(np.flipud(b), index=eem_dataset.ex_range)
         em_loadings = pd.DataFrame(c, index=eem_dataset.em_range)
         if self.sort_em:
             em_peaks = [c for c in em_loadings.idxmax()]
             peak_rank = list(enumerate(stats.rankdata(em_peaks)))
             order = [i[0] for i in sorted(peak_rank, key=lambda x: x[1])]
-            component_stack = component_stack[order]
+            components = components[order]
             ex_loadings = pd.DataFrame({'component {r} ex loadings'.format(r=i + 1): ex_loadings.iloc[:, order[i]]
                                         for i in range(self.rank)})
             em_loadings = pd.DataFrame({'component {r} em loadings'.format(r=i + 1): em_loadings.iloc[:, order[i]]
@@ -1712,7 +1712,7 @@ class PARAFAC:
         self.ex_loadings = ex_loadings
         self.em_loadings = em_loadings
         self.fmax = fmax
-        self.component_stack = component_stack
+        self.components = components
         self.cptensors = cptensors
         self.eem_stack_train = eem_dataset.eem_stack
         self.ex_range = eem_dataset.ex_range
@@ -1741,7 +1741,7 @@ class PARAFAC:
         eem_stack_pred: np.ndarray (3d)
             The EEM dataset reconstructed.
         """
-        score_sample, fmax_sample, eem_stack_pred = eems_fit_components(eem_dataset.eem_stack, self.component_stack,
+        score_sample, fmax_sample, eem_stack_pred = eems_fit_components(eem_dataset.eem_stack, self.components,
                                                                         fit_intercept=fit_intercept)
         score_sample = pd.DataFrame(score_sample, index=eem_dataset.index, columns=self.score.columns)
         fmax_sample = pd.DataFrame(fmax_sample, index=eem_dataset.index, columns=self.fmax.columns)
@@ -1758,7 +1758,7 @@ class PARAFAC:
         """
         max_exem = []
         for r in range(self.rank):
-            max_index = np.unravel_index(np.argmax(self.component_stack[r, :, :]), self.component_stack[r, :, :].shape)
+            max_index = np.unravel_index(np.argmax(self.components[r, :, :]), self.components[r, :, :].shape)
             max_exem.append((self.ex_range[-(max_index[0] + 1)], self.em_range[max_index[1]]))
         return max_exem
 
@@ -2036,7 +2036,7 @@ def align_parafac_components(models_dict: dict, ex_ref: pd.DataFrame, em_ref: pd
         model.ex_loadings = model.ex_loadings.iloc[:, permutation]
         model.em_loadings = model.em_loadings.iloc[:, permutation]
         model.fmax = model.fmax.iloc[:, permutation]
-        model.component_stack = model.component_stack[permutation, :, :]
+        model.components = model.components[permutation, :, :]
         model.cptensor = permute_cp_tensor(model.cptensors, permutation)
         models_dict_new[model_label] = model
     return models_dict_new

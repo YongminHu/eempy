@@ -1974,8 +1974,8 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                     stats.append([f_col, slope, intercept, r_squared, pearson_corr, pearson_p])
                 parafac_fit_params_r[ref_var] = stats
         parafac_models[r] = {
-            'component_stack': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
-                                sublist in parafac_r.component_stack.tolist()],
+            'components': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
+                                sublist in parafac_r.components.tolist()],
             'Score': [parafac_r.score.columns.tolist()] + parafac_r.score.values.tolist(),
             'Fmax': [parafac_r.fmax.columns.tolist()] + parafac_r.fmax.values.tolist(),
             'index': eem_dataset_establishment.index,
@@ -2046,11 +2046,11 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                 [
                                     dbc.Col(
                                         dcc.Graph(
-                                            figure=plot_eem(parafac_r.component_stack[3 * i],
+                                            figure=plot_eem(parafac_r.components[3 * i],
                                                             ex_range=parafac_r.ex_range,
                                                             em_range=parafac_r.em_range,
                                                             vmin=0 if np.min(
-                                                                parafac_r.component_stack[3 * i]) > -1e-3 else None,
+                                                                parafac_r.components[3 * i]) > -1e-3 else None,
                                                             vmax=None,
                                                             auto_intensity_range=False,
                                                             plot_tool='plotly',
@@ -2071,11 +2071,11 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
 
                                     dbc.Col(
                                         dcc.Graph(
-                                            figure=plot_eem(parafac_r.component_stack[3 * i + 1],
+                                            figure=plot_eem(parafac_r.components[3 * i + 1],
                                                             ex_range=parafac_r.ex_range,
                                                             em_range=parafac_r.em_range,
                                                             vmin=0 if np.min(
-                                                                parafac_r.component_stack[
+                                                                parafac_r.components[
                                                                     3 * i + 1]) > -1e-3 else None,
                                                             vmax=None,
                                                             auto_intensity_range=False,
@@ -2097,11 +2097,11 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
 
                                     dbc.Col(
                                         dcc.Graph(
-                                            figure=plot_eem(parafac_r.component_stack[3 * i + 2],
+                                            figure=plot_eem(parafac_r.components[3 * i + 2],
                                                             ex_range=parafac_r.ex_range,
                                                             em_range=parafac_r.em_range,
                                                             vmin=0 if np.min(
-                                                                parafac_r.component_stack[
+                                                                parafac_r.components[
                                                                     3 * i + 2]) > -1e-3 else None,
                                                             vmax=None,
                                                             auto_intensity_range=False,
@@ -2536,7 +2536,7 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
                                                                             ]
                                                                             for sublist in
                                                                             parafac_models[str(model_r)][
-                                                                                'component_stack']
+                                                                                'components']
                                                                         ]
                                                                     ),
                                                                     fit_intercept=False)
@@ -2745,6 +2745,21 @@ card_nmf_param = dbc.Card(
                 [
                     dbc.Stack(
                         [
+                            dbc.Row(
+                                dcc.Input(id='nmf-eem-dataset-establishment-path-input', type='text', value=None,
+                                          placeholder='Please enter the eem dataset path (.json and .pkl are supported).'
+                                                      ' If empty, the model built in "eem pre-processing" '
+                                                      'would be used',
+                                          style={'width': '97%', 'height': '30px'}, debounce=True),
+                                justify="center"
+                            ),
+                            dbc.Row([
+                                dbc.Col(
+                                    html.Div([],
+                                             id='nmf-eem-dataset-establishment-message', style={'width': '80vw'}),
+                                    width={"size": 12, "offset": 0}
+                                )
+                            ]),
                             dbc.Row(
                                 [
                                     dbc.Col(
@@ -3193,16 +3208,24 @@ page4 = html.Div([
 
 @app.callback(
     [
+        Output('nmf-eem-dataset-establishment-message', 'children'),
         Output('nmf-components', 'children'),
         Output('nmf-fmax', 'children'),
         Output('nmf-residual', 'children'),
         Output('nmf-split-half', 'children'),
         Output('nmf-spinner', 'children'),
+        Output('nmf-establishment-corr-model-selection', 'options'),
+        Output('nmf-establishment-corr-model-selection', 'value'),
+        Output('nmf-establishment-corr-ref-selection', 'options'),
+        Output('nmf-establishment-corr-ref-selection', 'value'),
+        Output('nmf-test-model-selection', 'options'),
+        Output('nmf-test-model-selection', 'value'),
         Output('nmf-models', 'data'),
     ],
     [
         Input('build-nmf-model', 'n_clicks'),
         State('eem-graph-options', 'value'),
+        State('nmf-eem-dataset-establishment-path-input', 'value'),
         State('nmf-sample-kw-mandatory', 'value'),
         State('nmf-sample-kw-optional', 'value'),
         State('nmf-rank', 'value'),
@@ -3215,22 +3238,57 @@ page4 = html.Div([
         State('eem-dataset', 'data')
     ]
 )
-def on_build_nmf_model(n_clicks, eem_graph_options, kw_mandatory, kw_optional, rank, solver, normalization, alpha_w,
-                       alpha_h, l1_ratio, validations, eem_dataset_dict):
+def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, rank, solver,
+                       normalization, alpha_w, alpha_h, l1_ratio, validations, eem_dataset_dict):
     if n_clicks is None:
-        return None, None, None, None, 'Build model', None
+        return None, None, None, None, None, 'Build model', [], None, [], None, [], None, None
+    if not path_establishment:
+        if eem_dataset_dict is None:
+            message = (
+                'Error: No built EEM dataset detected. Please build an EEM dataset first in "EEM pre-processing" '
+                'section, or import an EEM dataset from file.')
+            return message, None, None, None, None, 'Build model', [], None, [], None, [], None, None
+        eem_dataset_establishment = EEMDataset(
+            eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+                                in eem_dataset_dict['eem_stack']]),
+            ex_range=np.array(eem_dataset_dict['ex_range']),
+            em_range=np.array(eem_dataset_dict['em_range']),
+            index=eem_dataset_dict['index'],
+            ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0])
+            if eem_dataset_dict['ref'] is not None else None,
+        )
+    else:
+        if not os.path.exists(path_establishment):
+            message = ('Error: No such file or directory: ' + path_establishment)
+            return message, None, None, None, None, 'Build model', [], None, [], None, [], None, None
+        else:
+            _, file_extension = os.path.splitext(path_establishment)
+
+            if file_extension == '.json':
+                with open(path_establishment, 'r') as file:
+                    eem_dataset_dict = json.load(file)
+            elif file_extension == '.pkl':
+                with open(path_establishment, 'rb') as file:
+                    eem_dataset_dict = pickle.load(file)
+            else:
+                raise ValueError("Unsupported file extension: {}".format(file_extension))
+            eem_dataset_establishment = EEMDataset(
+                eem_stack=np.array(
+                    [[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+                     in eem_dataset_dict['eem_stack']]),
+                ex_range=np.array(eem_dataset_dict['ex_range']),
+                em_range=np.array(eem_dataset_dict['em_range']),
+                index=eem_dataset_dict['index'],
+                ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0],
+                                 index=eem_dataset_dict['index'])
+                if eem_dataset_dict['ref'] is not None else None,
+            )
     kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
     kw_optional = str_string_to_list(kw_optional) if kw_optional else []
-    eem_dataset = EEMDataset(
-        eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
-                            in eem_dataset_dict['eem_stack']]),
-        ex_range=np.array(eem_dataset_dict['ex_range']),
-        em_range=np.array(eem_dataset_dict['em_range']),
-        index=eem_dataset_dict['index']
-    )
-    eem_dataset.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, copy=False)
+    eem_dataset_establishment.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional,
+                                              copy=False)
     rank_list = num_string_to_list(rank)
-    nmfs_dict = {}
+    nmf_models = {}
     components_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     fmax_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     residual_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
@@ -3241,8 +3299,38 @@ def on_build_nmf_model(n_clicks, eem_graph_options, kw_mandatory, kw_optional, r
             n_components=r, solver=solver, normalization=normalization[0], alpha_H=alpha_h, alpha_W=alpha_w,
             l1_ratio=l1_ratio
         )
-        nmf_r.fit(eem_dataset)
-        nmfs_dict[r] = nmf_r
+        nmf_r.fit(eem_dataset_establishment)
+        nmf_fit_params_r = {}
+        if eem_dataset_establishment.ref is not None:
+            for ref_var in eem_dataset_establishment.ref.columns:
+                var = eem_dataset_establishment.ref[ref_var]
+                parafac_var = nmf_r.nnls_score
+                stats = []
+                for f_col in parafac_var.columns:
+                    x = var
+                    y = parafac_var[f_col]
+                    nan_rows = x[x.isna()].index
+                    x = x.drop(nan_rows)
+                    y = y.drop(nan_rows)
+                    if x.shape[0] < 1:
+                        return go.Figure(), None
+                    x_reshaped = np.array(x).reshape(-1, 1)
+                    lm = LinearRegression().fit(x_reshaped, y)
+                    r_squared = lm.score(x_reshaped, y)
+                    intercept = lm.intercept_
+                    slope = lm.coef_[0]
+                    pearson_corr, pearson_p = pearsonr(x, y)
+                    stats.append([f_col, slope, intercept, r_squared, pearson_corr, pearson_p])
+                nmf_fit_params_r[ref_var] = stats
+        nmf_models[r] = {
+            'components': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
+                                sublist in nmf_r.components.tolist()],
+            'Fmax': [nmf_r.nnls_score.columns.tolist()] + nmf_r.nnls_score.values.tolist(),
+            'index': eem_dataset_establishment.index,
+            'ref': [eem_dataset_establishment.ref.columns.tolist()] + eem_dataset_establishment.ref.values.tolist()
+            if eem_dataset_establishment.ref is not None else None,
+            'fitting_params': nmf_fit_params_r
+        }
 
         # for component graphs, determine the layout according to the number of components
         n_rows = (r - 1) // 3 + 1
@@ -3259,8 +3347,8 @@ def on_build_nmf_model(n_clicks, eem_graph_options, kw_mandatory, kw_optional, r
                                     dbc.Col(
                                         dcc.Graph(
                                             figure=plot_eem(nmf_r.components[3 * i],
-                                                            ex_range=eem_dataset.ex_range,
-                                                            em_range=eem_dataset.em_range,
+                                                            ex_range=eem_dataset_establishment.ex_range,
+                                                            em_range=eem_dataset_establishment.em_range,
                                                             vmin=0 if np.min(
                                                                 nmf_r.components[3 * i]) > -1e-3 else None,
                                                             vmax=None,
@@ -3285,8 +3373,8 @@ def on_build_nmf_model(n_clicks, eem_graph_options, kw_mandatory, kw_optional, r
                                     dbc.Col(
                                         dcc.Graph(
                                             figure=plot_eem(nmf_r.components[3 * i + 1],
-                                                            ex_range=eem_dataset.ex_range,
-                                                            em_range=eem_dataset.em_range,
+                                                            ex_range=eem_dataset_establishment.ex_range,
+                                                            em_range=eem_dataset_establishment.em_range,
                                                             vmin=0 if np.min(
                                                                 nmf_r.components[
                                                                     3 * i + 1]) > -1e-3 else None,
@@ -3312,8 +3400,8 @@ def on_build_nmf_model(n_clicks, eem_graph_options, kw_mandatory, kw_optional, r
                                     dbc.Col(
                                         dcc.Graph(
                                             figure=plot_eem(nmf_r.components[3 * i + 2],
-                                                            ex_range=eem_dataset.ex_range,
-                                                            em_range=eem_dataset.em_range,
+                                                            ex_range=eem_dataset_establishment.ex_range,
+                                                            em_range=eem_dataset_establishment.em_range,
                                                             vmin=0 if np.min(
                                                                 nmf_r.components[
                                                                     3 * i + 2]) > -1e-3 else None,
@@ -3407,7 +3495,13 @@ def on_build_nmf_model(n_clicks, eem_graph_options, kw_mandatory, kw_optional, r
                     selected_style={'padding': '0', 'line-width': '100%'}
                     )
         )
-    return components_tabs, fmax_tabs, residual_tabs, split_half_tabs, 'Build model', None
+
+    model_options = [{'label': 'component {r}'.format(r=r), 'value': r} for r in nmf_models.keys()]
+    ref_options = [{'label': var, 'value': var} for var in eem_dataset_establishment.ref.columns] if (
+        eem_dataset_establishment.ref is not None) else []
+
+    return (None, components_tabs, fmax_tabs, residual_tabs, split_half_tabs, 'Build model', model_options, None,
+            ref_options, None, model_options, None, nmf_models)
 
 
 # -----------Setup the sidebar-----------------
