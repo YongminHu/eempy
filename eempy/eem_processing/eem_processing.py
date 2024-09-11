@@ -768,6 +768,8 @@ def eems_tf_normalization(intensity):
 
 def eems_fit_components(eem_stack, components, fit_intercept=False, positive=False):
     assert eem_stack.shape[1:] == components.shape[1:], "EEM and component have different shapes"
+    eem_stack[np.isnan(eem_stack)] = 0
+    components[np.isnan(components)] = 0
     score_sample = []
     fmax_sample = []
     max_values = np.amax(components, axis=(1, 2))
@@ -1361,7 +1363,7 @@ class EEMDataset:
         else:
             raise ValueError("'rule' should be either 'random' or 'sequential'")
         for split in idx_splits:
-            if self.ref:
+            if self.ref is not None:
                 ref = np.array([self.ref.iloc[i] for i in split])
             else:
                 ref = None
@@ -1522,7 +1524,7 @@ def combine_eem_datasets(list_eem_datasets):
     em_range_0 = list_eem_datasets[0].em_range
     for d in list_eem_datasets:
         eem_stack_combined.append(d.eem_stack)
-        ref_combined.append(d.ref if d.ref else np.array(d.eem_stack.shape[0] * [np.nan]))
+        ref_combined.append(d.ref if d.ref is not None else np.array(d.eem_stack.shape[0] * [np.nan]))
         if d.index:
             index_combined = index_combined + d.index
         else:

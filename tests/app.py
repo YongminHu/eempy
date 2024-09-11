@@ -1258,7 +1258,8 @@ def on_build_eem_dataset(n_clicks,
             else:
                 if refs_from_file.shape[0] != len(indexes):
                     return None, (
-                        'Error: number of samples in reference file is not the same as the EEM dataset'), "build"
+                        'Error: number of samples in reference file is not the same as the EEM dataset. This error '
+                        'occurs also when index starting/ending positions are not specified.'), "build"
                 refs = refs_from_file
         else:
             return None, ('Error: No such file or directory: ' + reference_path), "build"
@@ -1728,8 +1729,9 @@ page2 = html.Div([
                                                                             dbc.Col(
                                                                                 dcc.Dropdown(
                                                                                     options=[
-                                                                                        {'label': 'Linear least squares',
-                                                                                         'value': 'linear_least_squares'},
+                                                                                        {
+                                                                                            'label': 'Linear least squares',
+                                                                                            'value': 'linear_least_squares'},
                                                                                     ],
                                                                                     id='parafac-test-pred-model'
                                                                                        '-selection'
@@ -1806,7 +1808,7 @@ page2 = html.Div([
                                                                                     # config={'responsive': 'auto'},
                                                                                     style={'width': '700',
                                                                                            'height': '900'}
-                                                                                    ),
+                                                                                ),
                                                                             ]),
 
                                                                             dbc.Row(
@@ -1869,6 +1871,8 @@ page2 = html.Div([
         Output('parafac-establishment-corr-ref-selection', 'value'),
         Output('parafac-test-model-selection', 'options'),
         Output('parafac-test-model-selection', 'value'),
+        Output('parafac-test-pred-ref-selection', 'options'),
+        Output('parafac-test-pred-ref-selection', 'value'),
         Output('parafac-models', 'data'),
     ],
     [
@@ -1888,26 +1892,30 @@ page2 = html.Div([
 def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, rank, init, nn,
                            tf, validations, eem_dataset_dict):
     if n_clicks is None:
-        return None, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, None
+        return (None, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, [], None,
+                None)
     if not path_establishment:
         if eem_dataset_dict is None:
             message = (
                 'Error: No built EEM dataset detected. Please build an EEM dataset first in "EEM pre-processing" '
                 'section, or import an EEM dataset from file.')
-            return message, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, None
+            return (message, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, [],
+                    None, None)
         eem_dataset_establishment = EEMDataset(
             eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
                                 in eem_dataset_dict['eem_stack']]),
             ex_range=np.array(eem_dataset_dict['ex_range']),
             em_range=np.array(eem_dataset_dict['em_range']),
             index=eem_dataset_dict['index'],
-            ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0])
+            ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0],
+                             index=eem_dataset_dict['index'])
             if eem_dataset_dict['ref'] is not None else None,
         )
     else:
         if not os.path.exists(path_establishment):
             message = ('Error: No such file or directory: ' + path_establishment)
-            return message, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, None
+            return (message, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, [],
+                    None, None)
         else:
             _, file_extension = os.path.splitext(path_establishment)
 
@@ -1946,6 +1954,11 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
     split_half_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     cc = []
 
+    if eem_dataset_establishment.ref is not None:
+        valid_ref = eem_dataset_establishment.ref.columns[~eem_dataset_establishment.ref.isna().all()].tolist()
+    else:
+        valid_ref = None
+
     for r in rank_list:
         parafac_r = PARAFAC(rank=r, init=init, non_negativity=True if 'non_negative' in nn else False,
                             tf_normalization=True if 'tf_normalization' in tf else False,
@@ -1953,18 +1966,17 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
         parafac_r.fit(eem_dataset_establishment)
         parafac_fit_params_r = {}
         if eem_dataset_establishment.ref is not None:
-            for ref_var in eem_dataset_establishment.ref.columns:
-                var = eem_dataset_establishment.ref[ref_var]
+            for ref_var in valid_ref:
+                x = eem_dataset_establishment.ref[ref_var]
                 parafac_var = parafac_r.fmax
                 stats = []
+                nan_rows = x[x.isna()].index
+                x = x.drop(nan_rows)
+                if x.shape[0] < 1:
+                    continue
                 for f_col in parafac_var.columns:
-                    x = var
                     y = parafac_var[f_col]
-                    nan_rows = x[x.isna()].index
-                    x = x.drop(nan_rows)
                     y = y.drop(nan_rows)
-                    if x.shape[0] < 1:
-                        return go.Figure(), None
                     x_reshaped = np.array(x).reshape(-1, 1)
                     lm = LinearRegression().fit(x_reshaped, y)
                     r_squared = lm.score(x_reshaped, y)
@@ -1975,7 +1987,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                 parafac_fit_params_r[ref_var] = stats
         parafac_models[r] = {
             'components': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
-                                sublist in parafac_r.components.tolist()],
+                           sublist in parafac_r.components.tolist()],
             'Score': [parafac_r.score.columns.tolist()] + parafac_r.score.values.tolist(),
             'Fmax': [parafac_r.fmax.columns.tolist()] + parafac_r.fmax.values.tolist(),
             'index': eem_dataset_establishment.index,
@@ -2114,8 +2126,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                                             title=f'C{3 * i + 3}',
                                                             fix_aspect_ratio=True if 'aspect_one' in eem_graph_options else False,
                                                             rotate=True if 'rotate' in eem_graph_options else False,
-                                                            ) if 3 * i + 3 <= r else go.Figure(
-                                                layout={'width': 400, 'height': 300}),
+                                                            ) if 3 * i + 3 <= r else go.Figure(),
                                             style={'width': '500', 'height': '500'}
                                         ),
                                         width={'size': 4},
@@ -2228,7 +2239,6 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                                         y=lvr_sample.iloc[:, 0],
                                                         markers=True,
                                                         labels={'x': 'index-sample', 'y': 'leverage-sample'},
-                                                        tickangle=90
                                                     ),
                                                     config={'autosizable': False},
                                                     style={'width': 1700, 'height': 400}
@@ -2311,64 +2321,64 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                         )
             )
 
-            if 'split_half' in validations:
-                split_validation = SplitValidation(rank=r,
-                                                   non_negativity=True if 'non_negative' in nn else False,
-                                                   tf_normalization=True if 'tf_normalization' in tf else False)
-                split_validation.fit(eem_dataset_establishment)
-                subset_specific_models = split_validation.subset_specific_models
-                similarities_ex, similarities_em = split_validation.compare()
-                split_half_tabs.children[0].children.append(
-                    dcc.Tab(label=f'{r}-component',
-                            children=[
-                                html.Div([
-                                    dbc.Row(
-                                        [
-                                            dbc.Col(
-                                                [
-                                                    dcc.Graph(
-                                                        figure=plot_loadings(subset_specific_models,
-                                                                             n_cols=3,
-                                                                             plot_tool='plotly',
-                                                                             display=False,
-                                                                             legend_pad=0.2),
-                                                        config={'autosizable': False},
-                                                    )
-                                                ]
-                                            )
-                                        ]
-                                    ),
+        if 'split_half' in validations:
+            split_validation = SplitValidation(rank=r,
+                                               non_negativity=True if 'non_negative' in nn else False,
+                                               tf_normalization=True if 'tf_normalization' in tf else False)
+            split_validation.fit(eem_dataset_establishment)
+            subset_specific_models = split_validation.subset_specific_models
+            similarities_ex, similarities_em = split_validation.compare()
+            split_half_tabs.children[0].children.append(
+                dcc.Tab(label=f'{r}-component',
+                        children=[
+                            html.Div([
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            [
+                                                dcc.Graph(
+                                                    figure=plot_loadings(subset_specific_models,
+                                                                         n_cols=3,
+                                                                         plot_tool='plotly',
+                                                                         display=False,
+                                                                         legend_pad=0.2),
+                                                    config={'autosizable': False},
+                                                )
+                                            ]
+                                        )
+                                    ]
+                                ),
 
-                                    dbc.Row(
-                                        [
-                                            dbc.Col(
-                                                [
-                                                    dbc.Table.from_dataframe(similarities_ex,
-                                                                             bordered=True, hover=True, index=True,
-                                                                             )
-                                                ]
-                                            ),
-                                        ]
-                                    ),
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            [
+                                                dbc.Table.from_dataframe(similarities_ex,
+                                                                         bordered=True, hover=True, index=True,
+                                                                         )
+                                            ]
+                                        ),
+                                    ]
+                                ),
 
-                                    dbc.Row(
-                                        [
-                                            dbc.Col(
-                                                [
-                                                    dbc.Table.from_dataframe(similarities_em,
-                                                                             bordered=True, hover=True, index=True,
-                                                                             )
-                                                ]
-                                            ),
-                                        ]
-                                    ),
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            [
+                                                dbc.Table.from_dataframe(similarities_em,
+                                                                         bordered=True, hover=True, index=True,
+                                                                         )
+                                            ]
+                                        ),
+                                    ]
+                                ),
 
-                                ]),
-                            ],
-                            style={'padding': '0', 'line-width': '100%'},
-                            selected_style={'padding': '0', 'line-width': '100%'}
-                            )
-                )
+                            ]),
+                        ],
+                        style={'padding': '0', 'line-width': '100%'},
+                        selected_style={'padding': '0', 'line-width': '100%'}
+                        )
+            )
 
     if 'core_consistency' in validations:
         cc_table = pd.DataFrame({'Number of components': rank_list, 'Core consistency': cc})
@@ -2407,12 +2417,13 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
         )
 
     model_options = [{'label': 'component {r}'.format(r=r), 'value': r} for r in parafac_models.keys()]
-    ref_options = [{'label': var, 'value': var} for var in eem_dataset_establishment.ref.columns] if (
-        eem_dataset_establishment.ref is not None) else []
+    ref_options = [{'label': var, 'value': var} for var in valid_ref] if (
+            eem_dataset_establishment.ref is not None) else []
 
     return (None, loadings_tabs, components_tabs, scores_tabs, fmax_tabs, core_consistency_tabs, leverage_tabs,
-            split_half_tabs, 'Build model', model_options, None, ref_options, None, model_options, None,
-            parafac_models)
+            split_half_tabs, 'Build model', model_options, None, ref_options, None, model_options, None, ref_options,
+            None, parafac_models)
+
 
 # -----------Analyze correlations between score/Fmax and reference variables in model establishment
 
@@ -2448,18 +2459,18 @@ def on_parafac_establishment_correlations(r, indicator, ref_var, parafac_models)
             if x.shape[0] < 1:
                 return go.Figure(), None
             fig.add_trace(go.Scatter(x=x, y=y, mode='markers', name=col, text=[i for i in x.index],
-                                     marker=dict(color=colors[i%10]), hoverinfo='text+x+y'))
+                                     marker=dict(color=colors[i % 10]), hoverinfo='text+x+y'))
             fig.add_trace(go.Scatter(x=np.array([x.min(), x.max()]),
                                      y=stats[ref_var][i][1] * np.array([x.min(), x.max()]) + stats[ref_var][i][2],
                                      mode='lines', name=f'{col}-Linear Regression Line',
-                                     line=dict(dash='dash', color=colors[i%10])))
+                                     line=dict(dash='dash', color=colors[i % 10])))
         fig.update_xaxes(title_text=ref_var)
         fig.update_yaxes(title_text=indicator)
 
         tbl = pd.DataFrame(
-                stats[ref_var],
-                columns=['Variable', 'slope', 'intercept', 'R²', 'Pearson Correlation', 'Pearson p-value']
-            )
+            stats[ref_var],
+            columns=['Variable', 'slope', 'intercept', 'R²', 'Pearson Correlation', 'Pearson p-value']
+        )
         tbl = dbc.Table.from_dataframe(tbl, bordered=True, hover=True, index=False)
         return fig, tbl
     else:
@@ -2473,8 +2484,6 @@ def on_parafac_establishment_correlations(r, indicator, ref_var, parafac_models)
         Output('parafac-test-score', 'children'),
         Output('parafac-test-fmax', 'children'),
         Output('parafac-test-error', 'children'),
-        Output('parafac-test-pred-ref-selection', 'options'),
-        Output('parafac-test-pred-ref-selection', 'value'),
         Output('parafac-test-corr-ref-selection', 'options'),
         Output('parafac-test-corr-ref-selection', 'value'),
         Output('parafac-test-corr-indicator-selection', 'options'),
@@ -2493,14 +2502,14 @@ def on_parafac_establishment_correlations(r, indicator, ref_var, parafac_models)
 )
 def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, model_r, parafac_models):
     if n_clicks is None:
-        return (None, None, None, None, [], None, [], None,
+        return (None, None, None, None, [], None,
                 [{'label': 'Score', 'value': 'Score'}, {'label': 'Fmax', 'value': 'Fmax'}], None, 'predict', None)
     if path_predict is None:
-        return (None, None, None, None, [], None, [], None,
+        return (None, None, None, None, [], None,
                 [{'label': 'Score', 'value': 'Score'}, {'label': 'Fmax', 'value': 'Fmax'}], None, 'predict', None)
     if not os.path.exists(path_predict):
         message = ('Error: No such file: ' + path_predict)
-        return (message, None, None, None, [], None, [], None,
+        return (message, None, None, None, [], None,
                 [{'label': 'Score', 'value': 'Score'}, {'label': 'Fmax', 'value': 'Fmax'}], None, 'predict', None)
     else:
         _, file_extension = os.path.splitext(path_predict)
@@ -2527,6 +2536,11 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
     kw_optional = str_string_to_list(kw_optional) if kw_optional else []
     eem_dataset_predict.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, copy=False)
 
+    if eem_dataset_predict.ref is not None:
+        valid_ref = eem_dataset_predict.ref.columns[~eem_dataset_predict.ref.isna().all()].tolist()
+    else:
+        valid_ref = None
+
     score_sample, fmax_sample, eem_stack_pred = eems_fit_components(eem_dataset_predict.eem_stack,
                                                                     np.array(
                                                                         [
@@ -2549,70 +2563,73 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
 
     pred = {}
     if eem_dataset_predict.ref is not None:
-        for ref_var in eem_dataset_predict.ref.columns:
-            params = parafac_models[str(model_r)]['fitting_params'][ref_var]
-            pred_var = fmax_sample.copy()
-            for i, f_col in enumerate(fmax_sample):
-                pred_r = fmax_sample[f_col]-params[i][2]
-                pred_r = pred_r / params[i][1]
-                pred_var[f_col] = pred_r
-            pred[ref_var] = [pred_var.columns.tolist()] + pred_var.values.tolist()
+        for ref_var in valid_ref:
+            if ref_var in parafac_models[str(model_r)]['fitting_params'].keys():
+                params = parafac_models[str(model_r)]['fitting_params'][ref_var]
+                pred_var = fmax_sample.copy()
+                for i, f_col in enumerate(fmax_sample):
+                    pred_r = fmax_sample[f_col] - params[i][2]
+                    pred_r = pred_r / params[i][1]
+                    pred_var[f_col] = pred_r
+                pred[ref_var] = [pred_var.columns.tolist()] + pred_var.values.tolist()
+            else:
+                pred[ref_var] = None
 
     score_tab = html.Div([
-                dbc.Row(
+        dbc.Row(
+            [
+                dbc.Col(
                     [
-                        dbc.Col(
-                            [
-                                dcc.Graph(figure=plot_score(score_sample,
-                                                            display=False
-                                                            ),
-                                          config={'autosizable': False},
-                                          style={'width': 1700, 'height': 800}
-                                          )
-                            ]
-                        )
+                        dcc.Graph(figure=plot_score(score_sample,
+                                                    display=False
+                                                    ),
+                                  config={'autosizable': False},
+                                  style={'width': 1700, 'height': 800}
+                                  )
+                    ]
+                )
+            ]
+        ),
+        dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        dbc.Table.from_dataframe(score_sample,
+                                                 bordered=True, hover=True, index=True
+                                                 )
                     ]
                 ),
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            [
-                                dbc.Table.from_dataframe(score_sample,
-                                                         bordered=True, hover=True, index=True
-                                                         )
-                            ]
-                        ),
-                    ]
-                ),
-            ])
+            ]
+        ),
+    ])
 
     fmax_tab = html.Div([
-                dbc.Row(
+        dbc.Row(
+            [
+                dbc.Col(
                     [
-                        dbc.Col(
-                            [
-                                dcc.Graph(figure=plot_score(fmax_sample,
-                                                            display=False
-                                                            ),
-                                          config={'autosizable': False},
-                                          style={'width': 1700, 'height': 800}
-                                          )
-                            ]
-                        )
+                        dcc.Graph(figure=plot_score(fmax_sample,
+                                                    display=False
+                                                    ),
+                                  config={'autosizable': False},
+                                  style={'width': 1700, 'height': 800}
+                                  )
+                    ]
+                )
+            ]
+        ),
+        dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        dbc.Table.from_dataframe(fmax_sample,
+                                                 bordered=True, hover=True, index=True
+                                                 )
                     ]
                 ),
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            [
-                                dbc.Table.from_dataframe(fmax_sample,
-                                                         bordered=True, hover=True, index=True
-                                                         )
-                            ]
-                        ),
-                    ]
-                ),
-            ])
+            ]
+        ),
+    ])
 
     error_tab = html.Div(children=[])
 
@@ -2634,7 +2651,7 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
         'index': eem_dataset_predict.index
     }
 
-    return (None, score_tab, fmax_tab, error_tab, ref_options, None, ref_options, None,
+    return (None, score_tab, fmax_tab, error_tab, ref_options, None,
             indicator_options, None, 'predict', test_results)
 
 
@@ -2646,24 +2663,50 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
         Output('parafac-test-pred-table', 'children'),
     ],
     [
+        Input('predict-parafac-model', 'n_clicks'),
         Input('parafac-test-pred-ref-selection', 'value'),
         Input('parafac-test-pred-model-selection', 'value'),
         State('parafac-test-results', 'data'),
     ]
 )
-
-def on_predict_reference_test(ref_var, pred_model, parafac_test_results):
+def on_parafac_test_predict_reference(n_clicks, ref_var, pred_model, parafac_test_results):
     if all([ref_var, pred_model, parafac_test_results]):
         pred = parafac_test_results['Prediction of reference'][ref_var]
         pred = pd.DataFrame(pred[1:], columns=pred[0], index=parafac_test_results['index'])
         fig = plot_score(pred, display=False, yaxis_title=ref_var)
-        ref = pd.DataFrame(parafac_test_results['ref'][1:], columns=parafac_test_results['ref'][0],
-                           index=parafac_test_results['index'])
-        tbl = dbc.Table.from_dataframe(pd.concat([pred, ref[ref_var]], axis=1),
-                                       bordered=True, hover=True, index=True)
+        if parafac_test_results['ref'] is not None:
+            ref = pd.DataFrame(parafac_test_results['ref'][1:], columns=parafac_test_results['ref'][0],
+                               index=parafac_test_results['index'])
+            true_value = ref[ref_var]
+            nan_rows = true_value[true_value.isna()].index
+            true_value = true_value.drop(nan_rows)
+            pred_overlap = pred.drop(nan_rows)
+            fig.add_trace(go.Scatter(x=true_value.index, y=true_value.values, mode='markers',
+                                     marker=dict(color='black', size=5),
+                                     name='True value'))
+            rmse_results = []
+            for f_col in pred.columns:
+                rmse = sqrt(sum((true_value.values - pred_overlap[f_col]) ** 2) / len(true_value.values))
+                rmse_results.append(rmse)
+            tbl = html.Div(
+                [
+                    dbc.Row(
+                        dbc.Table.from_dataframe(pd.DataFrame([rmse_results], columns=pred.columns,
+                                                              index=pd.Index(['RMSE'], name='Error metric')),
+                                                 bordered=True, hover=True, index=True)
+                    ),
+                    dbc.Row(
+                        dbc.Table.from_dataframe(pd.concat([pred, ref[ref_var]], axis=1),
+                                                 bordered=True, hover=True, index=True)
+                    )
+                ]
+            )
+        else:
+            tbl = dbc.Table.from_dataframe(pred, bordered=True, hover=True, index=True)
         return fig, tbl
     else:
         return go.Figure(), None
+
 
 # -----------Analyze correlations between score/Fmax and reference variables in model testing
 @app.callback(
@@ -2677,7 +2720,7 @@ def on_predict_reference_test(ref_var, pred_model, parafac_test_results):
         State('parafac-test-results', 'data'),
     ]
 )
-def on_parafac_establishment_correlations(indicator, ref_var, parafac_test_results):
+def on_parafac_test_correlations(indicator, ref_var, parafac_test_results):
     if all([indicator, ref_var, parafac_test_results]):
         ref_df = pd.DataFrame(parafac_test_results['ref'][1:], columns=parafac_test_results['ref'][0],
                               index=parafac_test_results['index'])
@@ -2686,9 +2729,12 @@ def on_parafac_establishment_correlations(indicator, ref_var, parafac_test_resul
             parafac_var = pd.DataFrame(parafac_test_results[indicator][1:], columns=parafac_test_results[indicator][0],
                                        index=parafac_test_results['index'])
         else:
-            parafac_var = pd.DataFrame(parafac_test_results[indicator][ref_var][1:],
-                                       columns=parafac_test_results[indicator][ref_var][0],
-                                       index=parafac_test_results['index'])
+            if parafac_test_results[indicator][ref_var] is not None:
+                parafac_var = pd.DataFrame(parafac_test_results[indicator][ref_var][1:],
+                                           columns=parafac_test_results[indicator][ref_var][0],
+                                           index=parafac_test_results['index'])
+            else:
+                return go.Figure(), None
         fig = go.Figure()
         stats = []
         for i, col in enumerate(parafac_var.columns):
@@ -2703,9 +2749,9 @@ def on_parafac_establishment_correlations(indicator, ref_var, parafac_test_resul
             lm = LinearRegression().fit(x_reshaped, y)
             predictions = lm.predict(x_reshaped)
             fig.add_trace(go.Scatter(x=x, y=y, mode='markers', name=col, text=[i for i in x.index],
-                                     hoverinfo='text+x+y', marker=dict(color=colors[i%10])))
+                                     hoverinfo='text+x+y', marker=dict(color=colors[i % 10])))
             fig.add_trace(go.Scatter(x=x, y=predictions, mode='lines', name=f'{col} fit',
-                                     line=dict(dash='dash', color=colors[i%10])))
+                                     line=dict(dash='dash', color=colors[i % 10])))
             r_squared = lm.score(x_reshaped, y)
             intercept = lm.intercept_
             slope = lm.coef_[0]
@@ -2713,12 +2759,12 @@ def on_parafac_establishment_correlations(indicator, ref_var, parafac_test_resul
             stats.append([col, slope, intercept, r_squared, pearson_corr, pearson_p])
 
         fig.update_xaxes(title_text=ref_var)
-        fig.update_yaxes(title_text="Prediction of " + ref_var if indicator=='Prediction of reference' else indicator)
+        fig.update_yaxes(title_text="Prediction of " + ref_var if indicator == 'Prediction of reference' else indicator)
 
         tbl = pd.DataFrame(
-                stats,
-                columns=['Variable', 'slope', 'intercept', 'R²', 'Pearson Correlation', 'Pearson p-value']
-            )
+            stats,
+            columns=['Variable', 'slope', 'intercept', 'R²', 'Pearson Correlation', 'Pearson p-value']
+        )
         tbl = dbc.Table.from_dataframe(tbl, bordered=True, hover=True, index=False)
         return fig, tbl
     else:
@@ -2907,7 +2953,7 @@ page4 = html.Div([
                                                     dbc.Row(
                                                         [
                                                             dbc.Col(
-                                                                dbc.Label("Select PARAFAC model"),
+                                                                dbc.Label("Select nmf model"),
                                                                 width={'size': 1, 'offset': 0}
                                                             ),
                                                             dbc.Col(
@@ -3041,11 +3087,6 @@ page4 = html.Div([
                                         dbc.Card(
                                             [
                                                 dbc.Tabs(children=[
-                                                    dcc.Tab(
-                                                        label='Score',
-                                                        children=[],
-                                                        id='nmf-test-score'
-                                                    ),
                                                     dcc.Tab(
                                                         label='Fmax',
                                                         children=[],
@@ -3206,6 +3247,8 @@ page4 = html.Div([
 
 #   -------------Callbacks of page #4
 
+#   -------------Establish NMF model
+
 @app.callback(
     [
         Output('nmf-eem-dataset-establishment-message', 'children'),
@@ -3218,6 +3261,8 @@ page4 = html.Div([
         Output('nmf-establishment-corr-model-selection', 'value'),
         Output('nmf-establishment-corr-ref-selection', 'options'),
         Output('nmf-establishment-corr-ref-selection', 'value'),
+        Output('nmf-test-pred-ref-selection', 'options'),
+        Output('nmf-test-pred-ref-selection', 'value'),
         Output('nmf-test-model-selection', 'options'),
         Output('nmf-test-model-selection', 'value'),
         Output('nmf-models', 'data'),
@@ -3241,26 +3286,27 @@ page4 = html.Div([
 def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, rank, solver,
                        normalization, alpha_w, alpha_h, l1_ratio, validations, eem_dataset_dict):
     if n_clicks is None:
-        return None, None, None, None, None, 'Build model', [], None, [], None, [], None, None
+        return None, None, None, None, None, 'Build model', [], None, [], None, [], None, [], None, None
     if not path_establishment:
         if eem_dataset_dict is None:
             message = (
                 'Error: No built EEM dataset detected. Please build an EEM dataset first in "EEM pre-processing" '
                 'section, or import an EEM dataset from file.')
-            return message, None, None, None, None, 'Build model', [], None, [], None, [], None, None
+            return message, None, None, None, None, 'Build model', [], None, [], None, [], None, [], None, None
         eem_dataset_establishment = EEMDataset(
             eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
                                 in eem_dataset_dict['eem_stack']]),
             ex_range=np.array(eem_dataset_dict['ex_range']),
             em_range=np.array(eem_dataset_dict['em_range']),
             index=eem_dataset_dict['index'],
-            ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0])
+            ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0],
+                             index=eem_dataset_dict['index'])
             if eem_dataset_dict['ref'] is not None else None,
         )
     else:
         if not os.path.exists(path_establishment):
             message = ('Error: No such file or directory: ' + path_establishment)
-            return message, None, None, None, None, 'Build model', [], None, [], None, [], None, None
+            return message, None, None, None, None, 'Build model', [], None, [], None, [], None, [], None, None
         else:
             _, file_extension = os.path.splitext(path_establishment)
 
@@ -3294,6 +3340,11 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
     residual_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     split_half_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
 
+    if eem_dataset_establishment.ref is not None:
+        valid_ref = eem_dataset_establishment.ref.columns[~eem_dataset_establishment.ref.isna().all()].tolist()
+    else:
+        valid_ref = None
+
     for r in rank_list:
         nmf_r = EEMNMF(
             n_components=r, solver=solver, normalization=normalization[0], alpha_H=alpha_h, alpha_W=alpha_w,
@@ -3302,18 +3353,17 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
         nmf_r.fit(eem_dataset_establishment)
         nmf_fit_params_r = {}
         if eem_dataset_establishment.ref is not None:
-            for ref_var in eem_dataset_establishment.ref.columns:
-                var = eem_dataset_establishment.ref[ref_var]
-                parafac_var = nmf_r.nnls_score
+            for ref_var in valid_ref:
+                x = eem_dataset_establishment.ref[ref_var]
                 stats = []
-                for f_col in parafac_var.columns:
-                    x = var
-                    y = parafac_var[f_col]
-                    nan_rows = x[x.isna()].index
-                    x = x.drop(nan_rows)
+                nmf_var = nmf_r.nnls_score
+                nan_rows = x[x.isna()].index
+                x = x.drop(nan_rows)
+                if x.shape[0] < 1:
+                    continue
+                for f_col in nmf_var.columns:
+                    y = nmf_var[f_col]
                     y = y.drop(nan_rows)
-                    if x.shape[0] < 1:
-                        return go.Figure(), None
                     x_reshaped = np.array(x).reshape(-1, 1)
                     lm = LinearRegression().fit(x_reshaped, y)
                     r_squared = lm.score(x_reshaped, y)
@@ -3324,7 +3374,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                 nmf_fit_params_r[ref_var] = stats
         nmf_models[r] = {
             'components': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
-                                sublist in nmf_r.components.tolist()],
+                           sublist in nmf_r.components.tolist()],
             'Fmax': [nmf_r.nnls_score.columns.tolist()] + nmf_r.nnls_score.values.tolist(),
             'index': eem_dataset_establishment.index,
             'ref': [eem_dataset_establishment.ref.columns.tolist()] + eem_dataset_establishment.ref.values.tolist()
@@ -3417,8 +3467,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                                             fix_aspect_ratio=True if 'aspect_one' in eem_graph_options
                                                             else False,
                                                             rotate=True if 'rotate' in eem_graph_options else False,
-                                                            ) if 3 * i + 3 <= r else go.Figure(
-                                                layout={'width': 400, 'height': 300}),
+                                                            ) if 3 * i + 3 <= r else go.Figure(),
                                             style={'width': '500', 'height': '500'}
                                         ),
                                         width={'size': 4},
@@ -3497,11 +3546,324 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
         )
 
     model_options = [{'label': 'component {r}'.format(r=r), 'value': r} for r in nmf_models.keys()]
-    ref_options = [{'label': var, 'value': var} for var in eem_dataset_establishment.ref.columns] if (
-        eem_dataset_establishment.ref is not None) else []
+    ref_options = [{'label': var, 'value': var} for var in valid_ref] if (
+            eem_dataset_establishment.ref is not None) else []
 
     return (None, components_tabs, fmax_tabs, residual_tabs, split_half_tabs, 'Build model', model_options, None,
-            ref_options, None, model_options, None, nmf_models)
+            ref_options, None, ref_options, None, model_options, None, nmf_models)
+
+
+# -----------Analyze correlations between score/Fmax and reference variables in model establishment
+
+@app.callback(
+    [
+        Output('nmf-establishment-corr-graph', 'figure'),  # size, intervals?
+        Output('nmf-establishment-corr-table', 'children'),
+    ],
+    [
+        Input('nmf-establishment-corr-model-selection', 'value'),
+        Input('nmf-establishment-corr-indicator-selection', 'value'),
+        Input('nmf-establishment-corr-ref-selection', 'value'),
+        State('nmf-models', 'data')
+    ]
+)
+def on_nmf_establishment_correlations(r, indicator, ref_var, nmf_models):
+    if all([r, indicator, ref_var, nmf_models]):
+        ref_df = pd.DataFrame(nmf_models[str(r)]['ref'][1:], columns=nmf_models[str(r)]['ref'][0],
+                              index=nmf_models[str(r)]['index'])
+        var = ref_df[ref_var]
+        nmf_var = pd.DataFrame(nmf_models[str(r)][indicator][1:], columns=nmf_models[str(r)][indicator][0],
+                               index=nmf_models[str(r)]['index'])
+        fig = go.Figure()
+
+        stats = nmf_models[str(r)]['fitting_params']
+
+        for i, col in enumerate(nmf_var.columns):
+            x = var
+            y = nmf_var[col]
+            nan_rows = x[x.isna()].index
+            x = x.drop(nan_rows)
+            y = y.drop(nan_rows)
+            if x.shape[0] < 1:
+                return go.Figure(), None
+            fig.add_trace(go.Scatter(x=x, y=y, mode='markers', name=col, text=[i for i in x.index],
+                                     marker=dict(color=colors[i % 10]), hoverinfo='text+x+y'))
+            fig.add_trace(go.Scatter(x=np.array([x.min(), x.max()]),
+                                     y=stats[ref_var][i][1] * np.array([x.min(), x.max()]) + stats[ref_var][i][2],
+                                     mode='lines', name=f'{col}-Linear Regression Line',
+                                     line=dict(dash='dash', color=colors[i % 10])))
+        fig.update_xaxes(title_text=ref_var)
+        fig.update_yaxes(title_text=indicator)
+
+        tbl = pd.DataFrame(
+            stats[ref_var],
+            columns=['Variable', 'slope', 'intercept', 'R²', 'Pearson Correlation', 'Pearson p-value']
+        )
+        tbl = dbc.Table.from_dataframe(tbl, bordered=True, hover=True, index=False)
+        return fig, tbl
+    else:
+        return go.Figure(), None
+
+
+# -----------Fit a test EEM dataset using the established nmf model components
+@app.callback(
+    [
+        Output('nmf-eem-dataset-predict-message', 'children'),  # size, intervals?
+        Output('nmf-test-fmax', 'children'),
+        Output('nmf-test-error', 'children'),
+        Output('nmf-test-corr-ref-selection', 'options'),
+        Output('nmf-test-corr-ref-selection', 'value'),
+        Output('nmf-test-corr-indicator-selection', 'options'),
+        Output('nmf-test-corr-indicator-selection', 'value'),
+        Output('nmf-predict-spinner', 'children'),
+        Output('nmf-test-results', 'data'),
+    ],
+    [
+        Input('predict-nmf-model', 'n_clicks'),
+        State('nmf-eem-dataset-predict-path-input', 'value'),
+        State('nmf-test-index-kw-mandatory', 'value'),
+        State('nmf-test-index-kw-optional', 'value'),
+        State('nmf-test-model-selection', 'value'),
+        State('nmf-models', 'data')
+    ]
+)
+def on_nmf_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, model_r, nmf_models):
+    if n_clicks is None:
+        return (None, None, None, [], None,
+                [{'label': 'Fmax', 'value': 'Fmax'}], None, 'predict', None)
+    if path_predict is None:
+        return (None, None, None, [], None,
+                [{'label': 'Fmax', 'value': 'Fmax'}], None, 'predict', None)
+    if not os.path.exists(path_predict):
+        message = ('Error: No such file: ' + path_predict)
+        return (message, None, None, [], None,
+                [{'label': 'Fmax', 'value': 'Fmax'}], None, 'predict', None)
+    else:
+        _, file_extension = os.path.splitext(path_predict)
+
+        if file_extension == '.json':
+            with open(path_predict, 'r') as file:
+                eem_dataset_dict = json.load(file)
+        elif file_extension == '.pkl':
+            with open(path_predict, 'rb') as file:
+                eem_dataset_dict = pickle.load(file)
+        else:
+            raise ValueError("Unsupported file extension: {}".format(file_extension))
+        eem_dataset_predict = EEMDataset(
+            eem_stack=np.array(
+                [[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+                 in eem_dataset_dict['eem_stack']]),
+            ex_range=np.array(eem_dataset_dict['ex_range']),
+            em_range=np.array(eem_dataset_dict['em_range']),
+            index=eem_dataset_dict['index'],
+            ref=pd.DataFrame(eem_dataset_dict['ref'][1:], index=eem_dataset_dict['index'],
+                             columns=eem_dataset_dict['ref'][0]) if eem_dataset_dict['ref'] is not None else None,
+        )
+    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
+    kw_optional = str_string_to_list(kw_optional) if kw_optional else []
+    eem_dataset_predict.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, copy=False)
+
+    if eem_dataset_predict.ref is not None:
+        valid_ref = eem_dataset_predict.ref.columns[~eem_dataset_predict.ref.isna().all()].tolist()
+    else:
+        valid_ref = None
+
+    _, fmax_sample, eem_stack_pred = eems_fit_components(eem_dataset_predict.eem_stack,
+                                                         np.array(
+                                                             [
+                                                                 [
+                                                                     [np.nan if x is None else x for x in
+                                                                      subsublist] for subsublist in sublist
+                                                                 ]
+                                                                 for sublist in
+                                                                 nmf_models[str(model_r)][
+                                                                     'components']
+                                                             ]
+                                                         ),
+                                                         fit_intercept=False)
+    fmax_sample = pd.DataFrame(
+        fmax_sample, index=eem_dataset_predict.index, columns=['component {i}'.format(i=i + 1) for i in range(model_r)]
+    )
+
+    pred = {}
+    if eem_dataset_predict.ref is not None:
+        for ref_var in valid_ref:
+            if ref_var in nmf_models[str(model_r)]['fitting_params'].keys():
+                params = nmf_models[str(model_r)]['fitting_params'][ref_var]
+                pred_var = fmax_sample.copy()
+                for i, f_col in enumerate(fmax_sample):
+                    pred_r = fmax_sample[f_col] - params[i][2]
+                    pred_r = pred_r / params[i][1]
+                    pred_var[f_col] = pred_r
+                pred[ref_var] = [pred_var.columns.tolist()] + pred_var.values.tolist()
+            else:
+                pred[ref_var] = None
+
+    fmax_tab = html.Div([
+        dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        dcc.Graph(figure=plot_score(fmax_sample,
+                                                    display=False
+                                                    ),
+                                  config={'autosizable': False},
+                                  style={'width': 1700, 'height': 800}
+                                  )
+                    ]
+                )
+            ]
+        ),
+        dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        dbc.Table.from_dataframe(fmax_sample,
+                                                 bordered=True, hover=True, index=True
+                                                 )
+                    ]
+                ),
+            ]
+        ),
+    ])
+
+    error_tab = html.Div(children=[])
+
+    if eem_dataset_predict.ref is not None:
+        indicator_options = [{'label': 'Fmax', 'value': 'Fmax'},
+                             {'label': 'Prediction of reference', 'value': 'Prediction of reference'}]
+    else:
+        indicator_options = [{'label': 'Fmax', 'value': 'Fmax'}]
+
+    ref_options = [{'label': var, 'value': var} for var in eem_dataset_predict.ref.columns]
+
+    test_results = {
+        'Fmax': [fmax_sample.columns.tolist()] + fmax_sample.values.tolist(),
+        'Prediction of reference': pred,
+        'ref': [eem_dataset_predict.ref.columns.tolist()] + eem_dataset_predict.ref.values.tolist()
+        if eem_dataset_predict.ref is not None else None,
+        'index': eem_dataset_predict.index
+    }
+
+    return (None, fmax_tab, error_tab, ref_options, None,
+            indicator_options, None, 'predict', test_results)
+
+
+# -----------Predict the corresponding reference variables for the test EEM datasets using the model fitted in the model
+#            establishment step
+@app.callback(
+    [
+        Output('nmf-test-pred-graph', 'figure'),  # size, intervals?
+        Output('nmf-test-pred-table', 'children'),
+    ],
+    [
+        Input('predict-parafac-model', 'n_clicks'),
+        Input('nmf-test-pred-ref-selection', 'value'),
+        Input('nmf-test-pred-model-selection', 'value'),
+        State('nmf-test-results', 'data'),
+    ]
+)
+def on_nmf_predict_reference_test(n_clicks, ref_var, pred_model, nmf_test_results):
+    if all([ref_var, pred_model, nmf_test_results]):
+        pred = nmf_test_results['Prediction of reference'][ref_var]
+        pred = pd.DataFrame(pred[1:], columns=pred[0], index=nmf_test_results['index'])
+        fig = plot_score(pred, display=False, yaxis_title=ref_var)
+        if nmf_test_results['ref'] is not None:
+            ref = pd.DataFrame(nmf_test_results['ref'][1:], columns=nmf_test_results['ref'][0],
+                               index=nmf_test_results['index'])
+            true_value = ref[ref_var]
+            nan_rows = true_value[true_value.isna()].index
+            true_value = true_value.drop(nan_rows)
+            pred_overlap = pred.drop(nan_rows)
+            fig.add_trace(go.Scatter(x=true_value.index, y=true_value.values, mode='markers',
+                                     marker=dict(color='black', size=5), name='True value'))
+            rmse_results = []
+            for f_col in pred.columns:
+                rmse = sqrt(sum((true_value.values - pred_overlap[f_col]) ** 2) / len(true_value.values))
+                rmse_results.append(rmse)
+            tbl = html.Div(
+                [
+                    dbc.Row(
+                        dbc.Table.from_dataframe(pd.DataFrame([rmse_results], columns=pred.columns,
+                                                              index=pd.Index(['RMSE'], name='Error metric')),
+                                                 bordered=True, hover=True, index=True)
+                    ),
+                    dbc.Row(
+                        dbc.Table.from_dataframe(pd.concat([pred, ref[ref_var]], axis=1),
+                                                 bordered=True, hover=True, index=True)
+                    )
+                ]
+            )
+        else:
+            tbl = dbc.Table.from_dataframe(pred, bordered=True, hover=True, index=True)
+        return fig, tbl
+    else:
+        return go.Figure(), None
+
+
+# -----------Analyze correlations between score/Fmax and reference variables in model testing
+@app.callback(
+    [
+        Output('nmf-test-corr-graph', 'figure'),  # size, intervals?
+        Output('nmf-test-corr-table', 'children'),
+    ],
+    [
+        Input('nmf-test-corr-indicator-selection', 'value'),
+        Input('nmf-test-corr-ref-selection', 'value'),
+        State('nmf-test-results', 'data'),
+    ]
+)
+def on_nmf_establishment_correlations(indicator, ref_var, nmf_test_results):
+    if all([indicator, ref_var, nmf_test_results]):
+        ref_df = pd.DataFrame(nmf_test_results['ref'][1:], columns=nmf_test_results['ref'][0],
+                              index=nmf_test_results['index'])
+        var = ref_df[ref_var]
+
+        if indicator != 'Prediction of reference':
+            nmf_var = pd.DataFrame(nmf_test_results[indicator][1:], columns=nmf_test_results[indicator][0],
+                                       index=nmf_test_results['index'])
+        else:
+            if nmf_test_results[indicator][ref_var] is not None:
+                nmf_var = pd.DataFrame(nmf_test_results[indicator][ref_var][1:],
+                                           columns=nmf_test_results[indicator][ref_var][0],
+                                           index=nmf_test_results['index'])
+            else:
+                return go.Figure(), None
+
+        fig = go.Figure()
+        stats = []
+        for i, col in enumerate(nmf_var.columns):
+            x = var
+            y = nmf_var[col]
+            nan_rows = x[x.isna()].index
+            x = x.drop(nan_rows)
+            y = y.drop(nan_rows)
+            if x.shape[0] < 1:
+                return go.Figure(), None
+            x_reshaped = np.array(x).reshape(-1, 1)
+            lm = LinearRegression().fit(x_reshaped, y)
+            predictions = lm.predict(x_reshaped)
+            fig.add_trace(go.Scatter(x=x, y=y, mode='markers', name=col, text=[i for i in x.index],
+                                     hoverinfo='text+x+y', marker=dict(color=colors[i % 10])))
+            fig.add_trace(go.Scatter(x=x, y=predictions, mode='lines', name=f'{col} fit',
+                                     line=dict(dash='dash', color=colors[i % 10])))
+            r_squared = lm.score(x_reshaped, y)
+            intercept = lm.intercept_
+            slope = lm.coef_[0]
+            pearson_corr, pearson_p = pearsonr(x, y)
+            stats.append([col, slope, intercept, r_squared, pearson_corr, pearson_p])
+
+        fig.update_xaxes(title_text=ref_var)
+        fig.update_yaxes(title_text="Prediction of " + ref_var if indicator == 'Prediction of reference' else indicator)
+
+        tbl = pd.DataFrame(
+            stats,
+            columns=['Variable', 'slope', 'intercept', 'R²', 'Pearson Correlation', 'Pearson p-value']
+        )
+        tbl = dbc.Table.from_dataframe(tbl, bordered=True, hover=True, index=False)
+        return fig, tbl
+    else:
+        return go.Figure(), None
 
 
 # -----------Setup the sidebar-----------------
@@ -3538,6 +3900,7 @@ def serve_layout():
         dcc.Store(id='parafac-test-results'),
         dcc.Store(id='k-parafacs-models'),
         dcc.Store(id='nmf-models'),
+        dcc.Store(id='nmf-test-results'),
         content])
 
 
