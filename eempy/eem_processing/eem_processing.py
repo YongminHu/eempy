@@ -20,7 +20,7 @@ from sklearn.metrics import mean_squared_error, explained_variance_score, r2_sco
 # from sklearn import svm
 from sklearn.decomposition import PCA, NMF
 from sklearn.linear_model import LinearRegression
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import gaussian_filter, median_filter
 from scipy.interpolate import RegularGridInterpolator, interp1d, griddata
 from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.spatial.distance import squareform
@@ -174,7 +174,7 @@ def eem_region_masking(intensity, ex_range, em_range, ex_min=230, ex_max=500, em
 
 def eem_gaussian_filter(intensity, sigma=1, truncate=3):
     """
-    Apply Gaussian filtering to an EEM.
+    Apply Gaussian filtering to an EEM. Reference: scipy.ndimage.gaussian_filter
 
     Parameters
     ----------
@@ -191,6 +191,29 @@ def eem_gaussian_filter(intensity, sigma=1, truncate=3):
         The filtered EEM.
     """
     intensity_filtered = gaussian_filter(intensity, sigma=sigma, truncate=truncate)
+    return intensity_filtered
+
+
+def eem_median_filter(intensity, footprint=(3,3), mode='reflect'):
+    """
+    Apply Median filtering to an EEM. Reference: scipy.ndimage.median_filter
+
+    Parameters
+    ----------
+    intensity: np.ndarray (2d)
+        The EEM.
+    footprint: tuple of two integers
+        Gives the shape that is taken from the input array, at every element position, to define the input to the filter
+        function.
+    mode: str, {‘reflect’, ‘constant’, ‘nearest’, ‘mirror’, ‘wrap’}
+        The mode parameter determines how the input array is extended beyond its boundaries.
+
+    Returns
+    -------
+    eem_stack_filtered: np.ndarray
+        The filtered EEM.
+    """
+    intensity_filtered = median_filter(intensity, footprint=np.ones(footprint), mode=mode)
     return intensity_filtered
 
 
@@ -743,15 +766,17 @@ def eems_tf_normalization(intensity):
 #     return label
 
 
-def eems_fit_components(eem_stack, component_stack, fit_intercept=False, positive=False):
-    assert eem_stack.shape[1:] == component_stack.shape[1:], "EEM and component have different shapes"
+def eems_fit_components(eem_stack, components, fit_intercept=False, positive=False):
+    assert eem_stack.shape[1:] == components.shape[1:], "EEM and component have different shapes"
+    eem_stack[np.isnan(eem_stack)] = 0
+    components[np.isnan(components)] = 0
     score_sample = []
     fmax_sample = []
-    max_values = np.amax(component_stack, axis=(1, 2))
+    max_values = np.amax(components, axis=(1, 2))
     eem_stack_pred = np.zeros(eem_stack.shape)
     for i in range(eem_stack.shape[0]):
         y_true = eem_stack[i].reshape([-1])
-        x = component_stack.reshape([component_stack.shape[0], -1]).T
+        x = components.reshape([components.shape[0], -1]).T
         reg = LinearRegression(fit_intercept=fit_intercept, positive=positive)
         reg.fit(x, y_true)
         y_pred = reg.predict(x)
@@ -791,8 +816,8 @@ class EEMDataset:
         The excitation wavelengths.
     em_range: np.ndarray (1d)
         The emission wavelengths.
-    ref: np.ndarray (1d) or None
-        Optional. The reference data, e.g., the COD of each sample. It should have a length equal to the number of
+    ref: pd.DataFrame or None
+        Optional. The reference data, e.g., the DOC of each sample. It should have a length equal to the number of
         samples in the eem_stack.
     index: list or None
         Optional. The index used to label each sample. The number of elements in the list should equal the number
@@ -800,7 +825,7 @@ class EEMDataset:
     """
 
     def __init__(self, eem_stack: np.ndarray, ex_range: np.ndarray, em_range: np.ndarray,
-                 index: Optional[list] = None, ref: Optional[np.ndarray] = None):
+                 index: Optional[list] = None, ref: Optional[pd.DataFrame] = None):
 
         # ------------------parameters--------------------
         # The Em/Ex ranges should be sorted in ascending order
@@ -811,11 +836,11 @@ class EEMDataset:
         self.index = index
         self.extent = (self.em_range.min(), self.em_range.max(), self.ex_range.min(), self.ex_range.max())
 
-    def to_json_serializable(self):
-        self.eem_stack = self.eem_stack.tolist()
-        self.ex_range = self.ex_range.tolist()
-        self.em_range = self.em_range.tolist()
-        self.ref = self.ref.tolist() if self.ref else None
+    # def to_json_serializable(self):
+    #     self.eem_stack = self.eem_stack.tolist()
+    #     self.ex_range = self.ex_range.tolist()
+    #     self.em_range = self.em_range.tolist()
+    #     self.ref = self.ref.tolist() if self.ref else None
 
     # --------------------EEM dataset features--------------------
     def zscore(self):
@@ -928,12 +953,14 @@ class EEMDataset:
         em_actual = self.em_range[em_idx]
         return fi, ex_actual, em_actual
 
-    def correlation(self, fit_intercept=True):
+    def correlation(self, variables, fit_intercept=True):
         """
         Analyze the correlation between reference and fluorescence intensity at each pair of ex/em.
 
         Params
         -------
+        variables: list
+            List of variables (i.e., the headers of the reference table) to be fitted
         fit_intercept: bool, optional
             Whether to fit the intercept for linear regression.
 
@@ -943,46 +970,47 @@ class EEMDataset:
             A dictionary containing multiple correlation evaluation metrics.
         """
         m = self.eem_stack
-        x = self.ref
-        x = x.reshape(m.shape[0], 1)
-        w = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
-        b = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
-        r2 = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
-        pc = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
-        pc_p = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
-        sc = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
-        sc_p = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
-        e = np.full(m.shape, fill_value=np.nan)
-        for i in range(m.shape[1]):
-            for j in range(m.shape[2]):
-                try:
-                    y = (m[:, i, j])
-                    reg = LinearRegression(fit_intercept=fit_intercept)
-                    reg.fit(x, y)
-                    w[i, j] = reg.coef_
-                    b[i, j] = reg.intercept_
-                    r2[i, j] = reg.score(x, y)
-                    e[:, i, j] = reg.predict(x) - y
-                    pc[i, j] = stats.pearsonr(x.reshape(-1), y).statistic
-                    pc_p[i, j] = stats.pearsonr(x.reshape(-1), y).pvalue
-                    sc[i, j] = stats.spearmanr(x.reshape(-1), y).statistic
-                    sc_p[i, j] = stats.spearmanr(x.reshape(-1), y).pvalue
-                except ValueError:
-                    pass
-        corr_dict = {'slope': w, 'intercept': b, 'r_square': r2, 'linear regression residual': e,
-                     'Pearson corr. coef.': pc, 'Pearson corr. coef. p-value': pc_p, 'Spearman corr. coef.': sc,
-                     'Spearman corr. coef. p-value': sc_p}
+        corr_dict = {var: None for var in variables}
+        for var in variables:
+            x = np.array(self.ref.loc[:, [var]])
+            w = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
+            b = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
+            r2 = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
+            pc = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
+            pc_p = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
+            sc = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
+            sc_p = np.full((m.shape[1], m.shape[2]), fill_value=np.nan)
+            e = np.full(m.shape, fill_value=np.nan)
+            for i in range(m.shape[1]):
+                for j in range(m.shape[2]):
+                    try:
+                        y = (m[:, i, j])
+                        reg = LinearRegression(fit_intercept=fit_intercept)
+                        reg.fit(x, y)
+                        w[i, j] = reg.coef_
+                        b[i, j] = reg.intercept_
+                        r2[i, j] = reg.score(x, y)
+                        e[:, i, j] = reg.predict(x) - y
+                        pc[i, j] = stats.pearsonr(x.reshape(-1), y).statistic
+                        pc_p[i, j] = stats.pearsonr(x.reshape(-1), y).pvalue
+                        sc[i, j] = stats.spearmanr(x.reshape(-1), y).statistic
+                        sc_p[i, j] = stats.spearmanr(x.reshape(-1), y).pvalue
+                    except ValueError:
+                        pass
+            corr_dict.var = {'slope': w, 'intercept': b, 'r_square': r2, 'linear regression residual': e,
+                         'Pearson corr. coef.': pc, 'Pearson corr. coef. p-value': pc_p, 'Spearman corr. coef.': sc,
+                         'Spearman corr. coef. p-value': sc_p}
         return corr_dict
 
     # -----------------EEM dataset processing methods-----------------
 
-    def threshold_masking(self, threshold, mask_type='greater', copy=True):
+    def threshold_masking(self, threshold, fill, mask_type='greater', copy=True):
         """
         Mask the fluorescence intensities above or below a certain threshold in an EEM.
 
         Parameters
         ----------
-        threshold, mask_type:
+        threshold, fill, mask_type:
             See eempy.eem_processing.eem_threshold_masking
         copy: bool
             if False, overwrite the EEMDataset object with the processed EEMs.
@@ -995,7 +1023,7 @@ class EEMDataset:
             The mask matrix. +1: unmasked area; np.nan: masked area.
         """
         eem_stack_masked, masks = process_eem_stack(self.eem_stack, eem_threshold_masking, threshold=threshold,
-                                                    mask_type=mask_type)
+                                                    fill=fill, mask_type=mask_type)
         if not copy:
             self.eem_stack = eem_stack_masked
         return eem_stack_masked, masks
@@ -1017,6 +1045,30 @@ class EEMDataset:
             The filtered EEM.
         """
         eem_stack_filtered = process_eem_stack(self.eem_stack, eem_gaussian_filter, sigma=sigma, truncate=truncate)
+        if not copy:
+            self.eem_stack = eem_stack_filtered
+        return eem_stack_filtered
+
+    def median_filter(self, footprint=(3,3), mode='reflect', copy=True):
+        """
+        Apply median filtering to an EEM.
+
+        Parameters
+        ----------
+        footprint: tuple of two integers
+            Gives the shape that is taken from the input array, at every element position, to define the input to the filter
+            function.
+        mode: str, {‘reflect’, ‘constant’, ‘nearest’, ‘mirror’, ‘wrap’}
+            The mode parameter determines how the input array is extended beyond its boundaries.
+        copy: bool
+            if False, overwrite the EEMDataset object with the processed EEMs.
+
+        Returns
+        -------
+        eem_stack_filtered: np.ndarray
+            The filtered EEM.
+        """
+        eem_stack_filtered = process_eem_stack(self.eem_stack, eem_median_filter, footprint=(3,3), mode='reflect')
         if not copy:
             self.eem_stack = eem_stack_filtered
         return eem_stack_filtered
@@ -1311,8 +1363,8 @@ class EEMDataset:
         else:
             raise ValueError("'rule' should be either 'random' or 'sequential'")
         for split in idx_splits:
-            if self.ref:
-                ref = np.array([self.ref[i] for i in split])
+            if self.ref is not None:
+                ref = np.array([self.ref.iloc[i] for i in split])
             else:
                 ref = None
             if self.index:
@@ -1333,12 +1385,12 @@ class EEMDataset:
         portion: float
             The portion.
         copy: bool
-            if False, overwrite the EEMDataset object with the processed EEMs.
+            if False, overwrite the EEMDataset object.
 
         Returns
         -------
         eem_stack_new: np.ndarray
-            New EEM dataset.
+            New EEM stack.
         index_new: list.
             New index.
         ref_new: np.ndarray
@@ -1354,7 +1406,7 @@ class EEMDataset:
         else:
             index_new = None
         if self.ref:
-            ref_new = self.ref[selected_indices]
+            ref_new = self.ref.iloc[selected_indices]
         else:
             ref_new = None
         if not copy:
@@ -1375,35 +1427,80 @@ class EEMDataset:
         sorted_indices = np.argsort(self.index)
         self.eem_stack = self.eem_stack[sorted_indices]
         if self.ref:
-            self.ref = self.ref[sorted_indices]
+            self.ref = self.ref.iloc[sorted_indices]
         self.index = sorted(self.index)
         return sorted_indices
 
-    def sort_by_ref(self):
-        """
-        Sort the sample order of eem_stack, reference and index (if exists) by the reference.
+    # def sort_by_ref(self):
+    #     """
+    #     Sort the sample order of eem_stack, reference and index (if exists) by the reference.
+    #
+    #     Returns
+    #     -------
+    #     sorted_indices: np.ndarray
+    #         The sorted sample order
+    #     """
+    #     sorted_indices = np.argsort(self.ref)
+    #     self.eem_stack = self.eem_stack[sorted_indices]
+    #     if self.index:
+    #         self.index = self.index[sorted_indices]
+    #     self.ref = np.array(sorted(self.ref))
+    #     return sorted_indices
 
-        Returns
-        -------
-        sorted_indices: np.ndarray
-            The sorted sample order
-        """
-        sorted_indices = np.argsort(self.ref)
-        self.eem_stack = self.eem_stack[sorted_indices]
-        if self.index:
-            self.index = self.index[sorted_indices]
-        self.ref = np.array(sorted(self.ref))
-        return sorted_indices
-
-    def filter_by_index(self, keyword):
+    def filter_by_index(self, mandatory_keywords, optional_keywords, copy=True):
         """
         Select the samples whose indexes contain the given keyword.
 
+        Parameters
+        -------
+        mandatory_keywords: str or list of str
+            Keywords for selecting samples whose indexes contain all the mandatory keywords.
+        optional_keywords: str or list of str
+            Keywords for selecting samples whose indexes contain any of the optional keywords.
+        copy: bool
+            if False, overwrite the EEMDataset object.
+
         Returns
         -------
-
+        eem_stack_filtered: np.ndarray
+            Filtered EEM stack.
+        index_filtered: list
+            Filtered sample indexes.
+        ref_filtered: np.ndarray
+            Filtered sample references.
+        sample_number_all_filtered: list
+            Indexes (orders in the list) of samples that have been preserved after filtering.
         """
-        return
+        if self.index is None:
+            return None
+        if isinstance(mandatory_keywords, str):
+            mandatory_keywords = [mandatory_keywords]
+        if isinstance(optional_keywords, str):
+            optional_keywords = [optional_keywords]
+        sample_number_mandatory_filtered = []
+        sample_number_all_filtered = []
+
+        if mandatory_keywords:
+            for i, f in enumerate(self.index):
+                if all(kw in f for kw in mandatory_keywords):
+                    sample_number_mandatory_filtered.append(i)
+        else:
+            sample_number_mandatory_filtered = list(range(len(self.index)))
+
+        if optional_keywords:
+            for j in sample_number_mandatory_filtered:
+                if any(kw in self.index[j] for kw in optional_keywords):
+                    sample_number_all_filtered.append(j)
+        else:
+            sample_number_all_filtered = sample_number_mandatory_filtered
+        eem_stack_filtered = self.eem_stack[sample_number_all_filtered, :, :]
+        index_filtered = [self.index[i] for i in sample_number_all_filtered]
+        ref_filtered = self.ref.iloc[sample_number_all_filtered] if self.ref is not None else None
+        if not copy:
+            self.eem_stack = eem_stack_filtered
+            self.index = index_filtered
+            self.ref = ref_filtered
+        return eem_stack_filtered, index_filtered, ref_filtered, sample_number_all_filtered
 
 
 def combine_eem_datasets(list_eem_datasets):
@@ -1427,7 +1524,7 @@ def combine_eem_datasets(list_eem_datasets):
     em_range_0 = list_eem_datasets[0].em_range
     for d in list_eem_datasets:
         eem_stack_combined.append(d.eem_stack)
-        ref_combined.append(d.ref if d.ref else np.array(d.eem_stack.shape[0] * [np.nan]))
+        ref_combined.append(d.ref if d.ref is not None else np.array(d.eem_stack.shape[0] * [np.nan]))
         if d.index:
             index_combined = index_combined + d.index
         else:
@@ -1475,7 +1572,7 @@ class PARAFAC:
         Emission loadings table.
     fmax: pandas.DataFrame
         Fmax table.
-    component_stack: np.ndarray
+    components: np.ndarray
         PARAFAC components.
     cptensors: tensorly CPTensor
         The output of PARAFAC in the form of tensorly CPTensor.
@@ -1505,7 +1602,7 @@ class PARAFAC:
         self.ex_loadings = None
         self.em_loadings = None
         self.fmax = None
-        self.component_stack = None
+        self.components = None
         self.cptensors = None
         self.eem_stack_train = None
         self.eem_stack_reconstructed = None
@@ -1547,7 +1644,7 @@ class PARAFAC:
                 "PARAFAC failed possibly due to the presence of patches of nan values. Please consider cut or "
                 "interpolate the nan values.")
         a, b, c = cptensors[1]
-        component_stack = np.zeros([self.rank, b.shape[0], c.shape[0]])
+        components = np.zeros([self.rank, b.shape[0], c.shape[0]])
         for r in range(self.rank):
 
             # when non_negativity is not applied, ensure the scores are generally positive
@@ -1575,19 +1672,19 @@ class PARAFAC:
                 c[:, r] = c[:, r] / maxc
                 a[:, r] = a[:, r] * maxb * maxc
             component = np.array([b[:, r]]).T.dot(np.array([c[:, r]]))
-            component_stack[r, :, :] = component
+            components[r, :, :] = component
 
         if self.tf_normalization:
             a = np.multiply(a, tf_weights[:, np.newaxis])
         score = pd.DataFrame(a)
-        fmax = a * component_stack.max(axis=(1, 2))
+        fmax = a * components.max(axis=(1, 2))
         ex_loadings = pd.DataFrame(np.flipud(b), index=eem_dataset.ex_range)
         em_loadings = pd.DataFrame(c, index=eem_dataset.em_range)
         if self.sort_em:
             em_peaks = [c for c in em_loadings.idxmax()]
             peak_rank = list(enumerate(stats.rankdata(em_peaks)))
             order = [i[0] for i in sorted(peak_rank, key=lambda x: x[1])]
-            component_stack = component_stack[order]
+            components = components[order]
             ex_loadings = pd.DataFrame({'component {r} ex loadings'.format(r=i + 1): ex_loadings.iloc[:, order[i]]
                                         for i in range(self.rank)})
             em_loadings = pd.DataFrame({'component {r} em loadings'.format(r=i + 1): em_loadings.iloc[:, order[i]]
@@ -1600,8 +1697,8 @@ class PARAFAC:
             column_labels = ['component {r}'.format(r=i + 1) for i in range(self.rank)]
             ex_loadings.columns = column_labels
             em_loadings.columns = column_labels
-            score.columns = column_labels
-            fmax = pd.DataFrame(fmax, columns=['component {r}'.format(r=i + 1) for i in range(self.rank)])
+            score.columns = ['component {r} PARAFAC-score'.format(r=i + 1) for i in range(self.rank)]
+            fmax = pd.DataFrame(fmax, columns=['component {r} PARAFAC-Fmax'.format(r=i + 1) for i in range(self.rank)])
 
         ex_loadings.index = eem_dataset.ex_range.tolist()
         em_loadings.index = eem_dataset.em_range.tolist()
@@ -1617,7 +1714,7 @@ class PARAFAC:
         self.ex_loadings = ex_loadings
         self.em_loadings = em_loadings
         self.fmax = fmax
-        self.component_stack = component_stack
+        self.components = components
         self.cptensors = cptensors
         self.eem_stack_train = eem_dataset.eem_stack
         self.ex_range = eem_dataset.ex_range
@@ -1633,7 +1730,7 @@ class PARAFAC:
         Parameters
         ----------
         eem_dataset: EEMDataset
-            The EEM.
+            The EEM dataset to be predicted.
         fit_intercept: bool
             Whether to calculate the intercept.
 
@@ -1646,7 +1743,7 @@ class PARAFAC:
         eem_stack_pred: np.ndarray (3d)
             The EEM dataset reconstructed.
         """
-        score_sample, fmax_sample, eem_stack_pred = eems_fit_components(eem_dataset.eem_stack, self.component_stack,
+        score_sample, fmax_sample, eem_stack_pred = eems_fit_components(eem_dataset.eem_stack, self.components,
                                                                         fit_intercept=fit_intercept)
         score_sample = pd.DataFrame(score_sample, index=eem_dataset.index, columns=self.score.columns)
         fmax_sample = pd.DataFrame(fmax_sample, index=eem_dataset.index, columns=self.fmax.columns)
@@ -1663,7 +1760,7 @@ class PARAFAC:
         """
         max_exem = []
         for r in range(self.rank):
-            max_index = np.unravel_index(np.argmax(self.component_stack[r, :, :]), self.component_stack[r, :, :].shape)
+            max_index = np.unravel_index(np.argmax(self.components[r, :, :]), self.components[r, :, :].shape)
             max_exem.append((self.ex_range[-(max_index[0] + 1)], self.em_range[max_index[1]]))
         return max_exem
 
@@ -1941,7 +2038,7 @@ def align_parafac_components(models_dict: dict, ex_ref: pd.DataFrame, em_ref: pd
         model.ex_loadings = model.ex_loadings.iloc[:, permutation]
         model.em_loadings = model.em_loadings.iloc[:, permutation]
         model.fmax = model.fmax.iloc[:, permutation]
-        model.component_stack = model.component_stack[permutation, :, :]
+        model.components = model.components[permutation, :, :]
         model.cptensor = permute_cp_tensor(model.cptensors, permutation)
         models_dict_new[model_label] = model
     return models_dict_new
@@ -2368,7 +2465,7 @@ class KPARAFACs:
         Parameters
         ----------
         eem_dataset: EEMDataset
-            EEM dataset.
+            The EEM dataset to be predicted.
 
         Returns
         -------
@@ -2485,8 +2582,10 @@ class EEMNMF:
         decomposer = NMF(n_components=self.n_components, solver=self.solver, beta_loss=self.beta_loss,
                          alpha_W=self.alpha_W, alpha_H=self.alpha_H,
                          l1_ratio=self.l1_ratio)
+        eem_dataset.threshold_masking(0, 0, 'smaller', copy=False)
         n_samples = eem_dataset.eem_stack.shape[0]
         X = eem_dataset.eem_stack.reshape([n_samples, -1])
+        X[np.isnan(X)] = 0
         #         if self.normalization == 'intensity_max':
         #             factor = np.max(X, axis=1)[:, np.newaxis]
         #             X = X / factor
@@ -2501,7 +2600,7 @@ class EEMNMF:
             factor_std = None
             factor_max = None
         nmf_score = pd.DataFrame(nmf_score, index=eem_dataset.index,
-                                 columns=["component {i}".format(i=i + 1) for i in range(self.n_components)])
+                                 columns=["component {i} NMF-score".format(i=i + 1) for i in range(self.n_components)])
         if self.normalization == 'pixel_std':
             components = decomposer.components_ * factor_std
         else:
@@ -2514,7 +2613,7 @@ class EEMNMF:
         _, nnls_score, _ = eems_fit_components(eem_dataset.eem_stack, components,
                                                fit_intercept=False, positive=True)
         nnls_score = pd.DataFrame(nnls_score, index=eem_dataset.index,
-                                  columns=["component {i}".format(i=i + 1) for i in range(self.n_components)])
+                                  columns=["component {i} NNLS-score".format(i=i + 1) for i in range(self.n_components)])
         if sort_em:
             em_peaks = []
             for i in range(self.n_components):
@@ -2524,9 +2623,9 @@ class EEMNMF:
             peak_rank = list(enumerate(stats.rankdata(em_peaks)))
             order = [i[0] for i in sorted(peak_rank, key=lambda x: x[1])]
             components = components[order]
-            nmf_score = pd.DataFrame({'component {r} score'.format(r=i + 1): nmf_score.iloc[:, order[i]]
+            nmf_score = pd.DataFrame({'component {r} NMF-score'.format(r=i + 1): nmf_score.iloc[:, order[i]]
                                       for i in range(self.n_components)})
-            nnls_score = pd.DataFrame({'component {r} score'.format(r=i + 1): nnls_score.iloc[:, order[i]]
+            nnls_score = pd.DataFrame({'component {r} NNLS-score'.format(r=i + 1): nnls_score.iloc[:, order[i]]
                                        for i in range(self.n_components)})
         self.nmf_score = nmf_score
         self.nnls_score = nnls_score

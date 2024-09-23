@@ -468,9 +468,8 @@ def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()
 #     return fig
 
 
-def plot_score(parafac_model: PARAFAC, component_labels=None, display=True):
+def plot_score(score_table, component_labels=None, display=True, yaxis_title='Score'):
     # Create a scatter plot
-    score_table = parafac_model.score
     fig = go.Figure()
     for i in range(score_table.shape[1]):
         fig.add_trace(go.Scatter(
@@ -484,7 +483,7 @@ def plot_score(parafac_model: PARAFAC, component_labels=None, display=True):
     # Customize the layout (optional)
     fig.update_layout(
         xaxis_title='Index',
-        yaxis_title='Score',
+        yaxis_title=yaxis_title,
     )
 
     if display:
@@ -492,29 +491,29 @@ def plot_score(parafac_model: PARAFAC, component_labels=None, display=True):
 
     return fig
 
-def plot_fmax(parafac_model: PARAFAC, component_labels=None, display=True):
-    # Create a scatter plot
-    fmax_table = parafac_model.fmax
-    fig = go.Figure()
-    for i in range(fmax_table.shape[1]):
-        fig.add_trace(go.Scatter(
-            x=fmax_table.index,
-            y=fmax_table[fmax_table.columns[i]],
-            name=fmax_table.columns[i] if component_labels is None else component_labels[i]
-        ))
-
-    fig.update_xaxes(tickangle=90)
-
-    # Customize the layout (optional)
-    fig.update_layout(
-        xaxis_title='Index',
-        yaxis_title='Fmax',
-    )
-
-    if display:
-        fig.show()
-
-    return fig
+# def plot_fmax(parafac_model: PARAFAC, component_labels=None, display=True):
+#     # Create a scatter plot
+#     fmax_table = parafac_model.fmax
+#     fig = go.Figure()
+#     for i in range(fmax_table.shape[1]):
+#         fig.add_trace(go.Scatter(
+#             x=fmax_table.index,
+#             y=fmax_table[fmax_table.columns[i]],
+#             name=fmax_table.columns[i] if component_labels is None else component_labels[i]
+#         ))
+#
+#     fig.update_xaxes(tickangle=90)
+#
+#     # Customize the layout (optional)
+#     fig.update_layout(
+#         xaxis_title='Index',
+#         yaxis_title='Fmax',
+#     )
+#
+#     if display:
+#         fig.show()
+#
+#     return fig
 
 
 def plot_greedy_selection(fmax_sequence, xlabel=None, ylabel=None, col=[0, 1], series_names=[], filter_kw=None):

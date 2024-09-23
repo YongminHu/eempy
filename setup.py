@@ -21,5 +21,6 @@ setup(
         "plotly",
         "dash",
         "dash-bootstrap-components",
+        "openpyxl"
     ]
 )
