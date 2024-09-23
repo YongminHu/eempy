@@ -22,11 +22,31 @@ from eempy.utils import str_string_to_list, num_string_to_list
 app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
 colors = ['red', 'blue', 'orange', 'purple', 'cyan', 'green', 'pink', 'brown', 'black']
 
-# -----------Global variables--------------
 
-# eem_dataset_working = None  # The EEM dataset that the user would build and analyse
 
 # -----------Page #0: Homepage
+
+homepage = html.Div([
+    dbc.Row(
+        [
+            html.Div(
+                [
+                    "Author: Yongmin Hu"
+                ]
+            )
+        ]
+    ),
+    dbc.Row(
+        [
+            html.Div(
+                [
+                    "Github page: https://github.com/YongminHu/eempy"
+                ]
+            )
+        ]
+    )
+])
+
 
 
 # -----------Page #1: EEM pre-processing--------------
@@ -3878,10 +3898,10 @@ content = html.Div(
         dbc.Tabs(
             id='tabs-content',
             children=[
-                dcc.Tab(label='Homepage', id='homepage', children=html.P('Homepage')),
+                dcc.Tab(label='Homepage', id='homepage', children=html.P(homepage)),
                 dcc.Tab(label='EEM pre-processing', id='eem-pre-processing', children=html.P(page1)),
                 dcc.Tab(label='PARAFAC', id='parafac', children=html.P(page2)),
-                dcc.Tab(label='K-PARAFACs', id='k-parafacs', children=html.P('K-PARAFAC')),
+                dcc.Tab(label='K-PARAFACs', id='k-parafacs', children=html.P('Development in progress')),
                 dcc.Tab(label='NMF', id='nmf', children=html.P(page4)),
             ],
             # value="homepage",
