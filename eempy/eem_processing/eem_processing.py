@@ -13,6 +13,7 @@ import numpy as np
 import itertools
 import string
 import warnings
+import copy
 import json
 from math import sqrt
 from sklearn.metrics import mean_squared_error, explained_variance_score, r2_score
@@ -1968,16 +1969,28 @@ def loadings_similarity(loadings1: pd.DataFrame, loadings2: pd.DataFrame, wavele
     for n2 in range(loadings2.shape[1]):
         for n1 in range(loadings1.shape[1]):
             if dtw:
-                ex1_aligned, ex2_aligned = dynamic_time_warping(loadings1[:, n1], loadings2[:, n2])
+                l1, l2 = dynamic_time_warping(loadings1[:, n1], loadings2[:, n2])
             else:
-                ex1_aligned, ex2_aligned = [loadings1[:, n1], loadings2[:, n2]]
-            m_sim[n1, n2] = stats.pearsonr(ex1_aligned, ex2_aligned)[0]
+                l1, l2 = [loadings1[:, n1], loadings2[:, n2]]
+            m_sim[n1, n2] = stats.pearsonr(l1, l2)[0]
     m_sim = pd.DataFrame(m_sim, index=['model1 C{i}'.format(i=i + 1) for i in range(loadings1.shape[1])],
                          columns=['model2 C{i}'.format(i=i + 1) for i in range(loadings2.shape[1])])
     return m_sim
 
 
-def align_parafac_components(models_dict: dict, ex_ref: pd.DataFrame, em_ref: pd.DataFrame, wavelength_alignment=False):
+def component_similarity(components1: np.ndarray, components2: np.ndarray):
+    m_sim = np.zeros([components1.shape[0], components2.shape[0]])
+    for n2 in range(components2.shape[0]):
+        for n1 in range(components1.shape[0]):
+            c1_unfolded, c2_unfolded = [components1[n1].reshape(-1), components2[n2].reshape(-1)]
+            m_sim[n1, n2] = stats.pearsonr(c1_unfolded, c2_unfolded)[0]
+    m_sim = pd.DataFrame(m_sim, index=['model1 C{i}'.format(i=i + 1) for i in range(components1.shape[0])],
+                         columns=['model2 C{i}'.format(i=i + 1) for i in range(components2.shape[0])])
+    return m_sim
+
+
+def align_components_by_loadings(models_dict: dict, ex_ref: pd.DataFrame, em_ref: pd.DataFrame,
+                                 wavelength_alignment=False):
     """
     Align the components of PARAFAC models according to given reference ex/em loadings so that similar components
     are labelled by the same name.
@@ -2026,6 +2039,66 @@ def align_parafac_components(models_dict: dict, ex_ref: pd.DataFrame, em_ref: pd
                     max_index = np.argmax(m_sim_copy.iloc[:, n_ref])
                 matched_index.append(max_index)
             non_ordered_index = list(set([i for i in range(ex_var.shape[1])]) - set(matched_index))
+            permutation = matched_index + non_ordered_index
+            component_labels_ref_extended = component_labels_ref + ['O{i}'.format(i=i + 1) for i in
+                                                                    range(len(non_ordered_index))]
+            component_labels_var = [0] * len(permutation)
+            for i, nc in enumerate(permutation):
+                component_labels_var[nc] = component_labels_ref_extended[i]
+        model.score.columns, model.ex_loadings.columns, model.em_loadings.columns, model.fmax.columns = (
+                [component_labels_var] * 4)
+        model.score = model.score.iloc[:, permutation]
+        model.ex_loadings = model.ex_loadings.iloc[:, permutation]
+        model.em_loadings = model.em_loadings.iloc[:, permutation]
+        model.fmax = model.fmax.iloc[:, permutation]
+        model.components = model.components[permutation, :, :]
+        model.cptensor = permute_cp_tensor(model.cptensors, permutation)
+        models_dict_new[model_label] = model
+    return models_dict_new
+
+
+def align_components_by_components(models_dict: dict, components_ref: dict):
+    """
+    Align the components of PARAFAC models according to given reference ex/em loadings so that similar components
+    are labelled by the same name.
+
+    Parameters
+    ----------
+    models_dict: dict
+        Dictionary of PARAFAC objects, the models to be aligned.
+    components_ref: dict
+        Dictionary where each item is a reference component. The keys are the component labels, the values are the
+        components (np.ndarray).
+
+    Returns
+    -------
+    models_dict_new: dict
+        Dictionary of the aligned PARAFAC object.
+    """
+    component_labels_ref = components_ref.keys()
+    components_stack_ref = np.array([c for c in components_ref.values()])
+    models_dict_new = {}
+    for model_label, model in models_dict.items():
+        m_sim = component_similarity(model.components, components_stack_ref)
+        matched_index = []
+        m_sim_copy = m_sim.copy()
+        if model.components.shape[0] <= components_stack_ref.shape[0]:
+            for n_var in range(model.components.shape[0]):
+                max_index = np.argmax(m_sim.iloc[n_var, :])
+                while max_index in matched_index:
+                    m_sim_copy.iloc[n_var, max_index] = 0
+                    max_index = np.argmax(m_sim_copy.iloc[n_var, :])
+                matched_index.append(max_index)
+            component_labels_var = [component_labels_ref[i] for i in matched_index]
+            permutation = get_indices_smallest_to_largest(matched_index)
+        else:
+            for n_ref in range(components_stack_ref.shape[0]):
+                max_index = np.argmax(m_sim.iloc[:, n_ref])
+                while max_index in matched_index:
+                    m_sim_copy.iloc[max_index, n_ref] = 0
+                    max_index = np.argmax(m_sim_copy.iloc[:, n_ref])
+                matched_index.append(max_index)
+            non_ordered_index = list(set([i for i in range(model.components.shape[0])]) - set(matched_index))
             permutation = matched_index + non_ordered_index
             component_labels_ref_extended = component_labels_ref + ['O{i}'.format(i=i + 1) for i in
                                                                     range(len(non_ordered_index))]
@@ -2110,7 +2183,7 @@ class SplitValidation:
 
             models[label] = model_subdataset
             subsets[label] = subdataset
-        models = align_parafac_components(models, model_complete.ex_loadings, model_complete.em_loadings)
+        models = align_components_by_loadings(models, model_complete.ex_loadings, model_complete.em_loadings)
         self.eem_subsets = subsets
         self.subset_specific_models = models
         return self
@@ -2150,7 +2223,7 @@ class SplitValidation:
         return similarities_ex, similarities_em
 
 
-class KPARAFACs:
+class KMethod:
     """
     Conduct K-PARAFACs, an EEM clustering algorithm aiming to minimize the general PARAFAC reconstruction error. The
     key hypothesis behind K-PARAFACs is that fitting EEMs with varied underlying chemical compositions using the same
@@ -2207,10 +2280,11 @@ class KPARAFACs:
         Sorted consensus matrix.
     """
 
-    def __init__(self, rank, n_clusters, max_iter=20, tol=0.001, non_negativity=True,
+    def __init__(self, base_model, rank, n_clusters, max_iter=20, tol=0.001, non_negativity=True,
                  init='svd', tf_normalization=True, loadings_normalization: Optional[str] = 'sd', sort_em=True):
 
         # -----------Parameters-------------
+        self.base_model = base_model
         self.rank = rank
         self.n_clusters = n_clusters
         self.max_iter = max_iter
@@ -2255,9 +2329,11 @@ class KPARAFACs:
 
         # -------Generate a unified model as reference for ordering components--------
 
-        unified_model = PARAFAC(rank=self.rank, non_negativity=self.non_negativity, init=self.init,
-                                tf_normalization=self.tf_normalization,
-                                loadings_normalization=self.loadings_normalization, sort_em=self.sort_em)
+        # unified_model = PARAFAC(rank=self.rank, non_negativity=self.non_negativity, init=self.init,
+        #                         tf_normalization=self.tf_normalization,
+        #                         loadings_normalization=self.loadings_normalization, sort_em=self.sort_em)
+
+        unified_model = copy.deepcopy(self.base_model)
         unified_model.fit(eem_dataset)
 
         # -------Define functions for estimation and maximization steps-------
@@ -2265,9 +2341,10 @@ class KPARAFACs:
         def estimation(sub_datasets: dict):
             models = {}
             for label, d in sub_datasets.items():
-                model = PARAFAC(rank=self.rank, non_negativity=self.non_negativity, init=self.init,
-                                tf_normalization=self.tf_normalization,
-                                loadings_normalization=self.loadings_normalization, sort_em=self.sort_em)
+                # model = PARAFAC(rank=self.rank, non_negativity=self.non_negativity, init=self.init,
+                #                 tf_normalization=self.tf_normalization,
+                #                 loadings_normalization=self.loadings_normalization, sort_em=self.sort_em)
+                model = copy.deepcopy(self.base_model)
                 model.fit(d)
                 models[label] = model
             return models
@@ -2303,9 +2380,7 @@ class KPARAFACs:
         def model_similarity(models_1: dict, models_2: dict):
             similarity = 0
             for label, m in models_1.items():
-                similarity_ex = loadings_similarity(m.ex_loadings, models_2[label].ex_loadings).to_numpy().diagonal()
-                similarity_em = loadings_similarity(m.em_loadings, models_2[label].ex_loadings).to_numpy().diagonal()
-                similarity += (similarity_ex.mean() + similarity_em.mean()) / 2
+                similarity = component_similarity(m.components, models_2[label].components).to_numpy().diagonal()
             similarity = similarity / len(models_1)
             return similarity
 
@@ -2326,9 +2401,10 @@ class KPARAFACs:
 
             # -------The estimation step-------
             cluster_specific_models_new = estimation(sub_datasets_n)
-            cluster_specific_models_new = align_parafac_components(cluster_specific_models_new,
-                                                                   unified_model.ex_loadings,
-                                                                   unified_model.em_loadings)
+            cluster_specific_models_new = align_components_by_components(
+                cluster_specific_models_new,
+                {f'component {i+1}': unified_model.components[i] for i in range(unified_model.components.shape[0])}
+            )
 
             # -------The maximization step--------
             sub_datasets_n, cluster_labels, fitting_errors = maximization(cluster_specific_models_new)

@@ -5,7 +5,7 @@ import pandas as pd
 
 from eempy.read_data import read_eem_dataset, read_abs_dataset, read_eem
 from eempy.eem_processing import (EEMDataset, PARAFAC, EEMNMF, eem_raman_normalization, eem_cutting, eem_interpolation,
-                                  SplitValidation, loadings_similarity, align_parafac_components)
+                                  SplitValidation, loadings_similarity, align_components_by_loadings)
 from eempy.plot import plot_eem, plot_loadings, plot_score
 import re
 
