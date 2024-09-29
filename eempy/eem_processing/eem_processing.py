@@ -2516,9 +2516,10 @@ class KMethod:
                 index_j = None
             clusters[j] = EEMDataset(eem_stack=eem_stack_j, ex_range=eem_dataset.ex_range,
                                      em_range=eem_dataset.em_range, ref=ref_j, index=index_j)
-            model = PARAFAC(rank=self.rank, non_negativity=self.non_negativity, init=self.init,
-                            tf_normalization=self.tf_normalization,
-                            loadings_normalization=self.loadings_normalization, sort_em=self.sort_em)
+            model = copy.deepcopy(self.base_model)
+            # model = PARAFAC(rank=self.rank, non_negativity=self.non_negativity, init=self.init,
+            #                 tf_normalization=self.tf_normalization,
+            #                 loadings_normalization=self.loadings_normalization, sort_em=self.sort_em)
             model.fit(clusters[j])
             cluster_specific_models[j] = model
 
