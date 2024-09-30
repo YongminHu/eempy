@@ -2795,9 +2795,108 @@ def on_parafac_test_correlations(indicator, ref_var, parafac_test_results):
 
 #   -------------Setting up the dbc cards
 
-#   -------------Layout of page #2
+card_kmethod_param = dbc.Card(
+    dbc.CardBody(
+        [
+            html.H5("Parameters selection", className="card-title"),
+            html.Div(
+                [
+                    dbc.Stack(
+                        [
+                            dbc.Row(
+                                dcc.Input(id='kmethod-eem-dataset-establishment-path-input', type='text', value=None,
+                                          placeholder='Please enter the eem dataset path (.json and .pkl are supported).'
+                                                      ' If empty, the model built in "eem pre-processing" '
+                                                      'would be used',
+                                          style={'width': '97%', 'height': '30px'}, debounce=True),
+                                justify="center"
+                            ),
+                            dbc.Row([
+                                dbc.Col(
+                                    html.Div([],
+                                             id='kmethod-eem-dataset-establishment-message', style={'width': '80vw'}),
+                                    width={"size": 12, "offset": 0}
+                                )
+                            ]),
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Index mandatory keywords"), width={'size': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='kmethod-sample-kw-mandatory', type='text', placeholder='',
+                                                  style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
+                                        width={"offset": 0, "size": 2}
+                                    ),
+                                    dbc.Col(
+                                        dbc.Label("Index optional keywords"), width={'size': 1, 'offset': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='nmf-sample-kw-optional', type='text', placeholder='',
+                                                  style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
+                                        width={"offset": 0, "size": 2}
+                                    )
+                                ]
+                            ),
 
-#   -------------Callbacks of page #2
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Base model"), width={'size': 1, 'offset': 0}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Dropdown(options=[
+                                            {'label': 'PARAFAC', 'value': 'parafac'},
+                                            {'label': 'NMF', 'value': 'nmf'}
+                                        ],
+                                            value=None, style={'width': '300px'}, id='kmethod-base-model'
+                                        ),
+                                        width={'size': 2}
+                                    ),
+                                    dbc.Col(
+                                        html.Div([],
+                                                 id='kmethod-base-model-message',
+                                                 style={'width': '80vw'}),
+                                        width={"size": 12, "offset": 0}
+                                    )
+                                ]
+                            ),
+
+                            # dbc.Row([
+                            #     dbc.Col(
+                            #         dbc.Label("Validations"), width={'size': 1}
+                            #     ),
+                            #     dbc.Col(
+                            #         dcc.Dropdown(
+                            #             options=None,
+                            #             multi=True, id='nmf-validations', value=[]),
+                            #         width={'size': 4}
+                            #     ),
+                            # ]),
+
+                            dbc.Row(
+                                dbc.Col(
+                                    dbc.Button([dbc.Spinner(size="sm", id='nmf-spinner')],
+                                               id='build-nmf-model', className='col-2')
+                                )
+                            )
+                        ],
+                        gap=2
+                    )
+
+                ]
+            ),
+        ]
+    ),
+    className='w-100'
+)
+
+
+#   -------------Layout of page #3
+
+
+
+#   -------------Callbacks of page #3
 
 
 # -----------Page #4: NMF--------------
@@ -2949,7 +3048,7 @@ card_nmf_param = dbc.Card(
 
 #   -------------Layout of page #4
 
-page4 = html.Div([
+page3 = html.Div([
     dbc.Stack(
         [
             dbc.Row(
@@ -3901,8 +4000,8 @@ content = html.Div(
                 dcc.Tab(label='Homepage', id='homepage', children=html.P(homepage)),
                 dcc.Tab(label='EEM pre-processing', id='eem-pre-processing', children=html.P(page1)),
                 dcc.Tab(label='PARAFAC', id='parafac', children=html.P(page2)),
-                dcc.Tab(label='K-PARAFACs', id='k-parafacs', children=html.P('Development in progress')),
-                dcc.Tab(label='NMF', id='nmf', children=html.P(page4)),
+                dcc.Tab(label='NMF', id='nmf', children=html.P(page3)),
+                dcc.Tab(label='K-method', id='kmethod', children=html.P('Development in progress')),
             ],
             # value="homepage",
             # persistence=True,
