@@ -2791,16 +2791,7 @@ def on_parafac_test_correlations(indicator, ref_var, parafac_test_results):
         return go.Figure(), None
 
 
-# -----------Page #3: K-PARAFACs--------------
-
-#   -------------Setting up the dbc cards
-
-#   -------------Layout of page #2
-
-#   -------------Callbacks of page #2
-
-
-# -----------Page #4: NMF--------------
+# -----------Page #3: NMF--------------
 
 #   -------------Setting up the dbc cards
 card_nmf_param = dbc.Card(
@@ -2947,9 +2938,9 @@ card_nmf_param = dbc.Card(
     className='w-100'
 )
 
-#   -------------Layout of page #4
+#   -------------Layout of page #3
 
-page4 = html.Div([
+page3 = html.Div([
     dbc.Stack(
         [
             dbc.Row(
@@ -3265,7 +3256,7 @@ page4 = html.Div([
 ])
 
 
-#   -------------Callbacks of page #4
+#   -------------Callbacks of page #3
 
 #   -------------Establish NMF model
 
@@ -3886,6 +3877,166 @@ def on_nmf_establishment_correlations(indicator, ref_var, nmf_test_results):
         return go.Figure(), None
 
 
+# -----------Page #4: K-Method--------------
+
+#   -------------Setting up the dbc cards
+
+card_kmethod_param = dbc.Card(
+    dbc.CardBody(
+        [
+            html.H5("Parameters selection", className="card-title"),
+            html.Div(
+                [
+                    dbc.Stack(
+                        [
+                            dbc.Row(
+                                dcc.Input(id='kmethod-eem-dataset-establishment-path-input', type='text', value=None,
+                                          placeholder='Please enter the eem dataset path (.json and .pkl are supported).'
+                                                      ' If empty, the model built in "eem pre-processing" '
+                                                      'would be used',
+                                          style={'width': '97%', 'height': '30px'}, debounce=True),
+                                justify="center"
+                            ),
+                            dbc.Row([
+                                dbc.Col(
+                                    html.Div([],
+                                             id='kmethod-eem-dataset-establishment-message', style={'width': '80vw'}),
+                                    width={"size": 12, "offset": 0}
+                                )
+                            ]),
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Index mandatory keywords"), width={'size': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='kmethod-sample-kw-mandatory', type='text', placeholder='',
+                                                  style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
+                                        width={"offset": 0, "size": 2}
+                                    ),
+                                    dbc.Col(
+                                        dbc.Label("Index optional keywords"), width={'size': 1, 'offset': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='kmethod-sample-kw-optional', type='text', placeholder='',
+                                                  style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
+                                        width={"offset": 0, "size": 2}
+                                    )
+                                ]
+                            ),
+
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Base decomposition method"), width={'size': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Dropdown(options=[
+                                            {'label': 'PARAFAC', 'value': 'parafac'},
+                                            {'label': 'NMF', 'value': 'nmf'}
+                                        ],
+                                            value=None, style={'width': '300px'}, id='kmethod-base-method'
+                                        ),
+                                        width={'size': 2}
+                                    ),
+
+                                    # dbc.Col(
+                                    #     dbc.Label("Solver"), width={'size': 1, 'offset': 0}
+                                    # ),
+                                    # dbc.Col(
+                                    #     dcc.Dropdown(options=[
+                                    #         {'label': 'Coordinate Descent solver', 'value': 'cd'},
+                                    #         {'label': 'Multiplicative Update solver', 'value': 'mu'}
+                                    #     ],
+                                    #         value='cd', style={'width': '300px'}, id='nmf-solver'
+                                    #     ),
+                                    #     width={'size': 2}
+                                    # ),
+
+                                    # dbc.Col(
+                                    #     dbc.Checklist(options=[{'label': html.Span("Normalize pixels by STD",
+                                    #                                                style={"font-size": 15,
+                                    #                                                       "padding-left": 10}),
+                                    #                             'value': 'pixel_std'}],
+                                    #                   id='nmf-normalization-checkbox', switch=True, value=['pixel_std']
+                                    #                   ),
+                                    #     width={"size": 2, 'offset': 1}
+                                    # ),
+                                ]
+                            ),
+                            dbc.Row([
+                                dbc.Col(
+                                    dbc.Label("alpha_W"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='nmf-alpha-w', type='number',
+                                              # placeholder='Multiple values possible, e.g., 3, 4',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0),
+                                    width={'size': 2},
+                                ),
+
+                                dbc.Col(
+                                    dbc.Label("alpha_H"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='nmf-alpha-h', type='number',
+                                              # placeholder='Multiple values possible, e.g., 3, 4',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0),
+                                    width={'size': 3},
+                                ),
+
+                                dbc.Col(
+                                    dbc.Label("l1 ratio"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='nmf-l1-ratio', type='number',
+                                              # placeholder='Multiple values possible, e.g., 3, 4',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0),
+                                    width={'size': 2},
+                                ),
+                            ]),
+
+                            dbc.Row([
+                                dbc.Col(
+                                    dbc.Label("Validations"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Dropdown(
+                                        options=[
+                                            {'label': 'Residual', 'value': 'leverage'},
+                                            {'label': 'Split-half validation', 'value': 'split_half'},
+                                        ],
+                                        multi=True, id='nmf-validations', value=[]),
+                                    width={'size': 4}
+                                ),
+                            ]),
+
+                            dbc.Row(
+                                dbc.Col(
+                                    dbc.Button([dbc.Spinner(size="sm", id='nmf-spinner')],
+                                               id='build-nmf-model', className='col-2')
+                                )
+                            )
+                        ],
+                        gap=2
+                    )
+
+                ]
+            ),
+        ]
+    ),
+    className='w-100'
+)
+
+#   -------------Layout of page #2
+
+
+
+#   -------------Callbacks of page #2
+
+
+
+
 # -----------Setup the sidebar-----------------
 
 content = html.Div(
@@ -3901,8 +4052,8 @@ content = html.Div(
                 dcc.Tab(label='Homepage', id='homepage', children=html.P(homepage)),
                 dcc.Tab(label='EEM pre-processing', id='eem-pre-processing', children=html.P(page1)),
                 dcc.Tab(label='PARAFAC', id='parafac', children=html.P(page2)),
+                dcc.Tab(label='NMF', id='nmf', children=html.P(page3)),
                 dcc.Tab(label='K-PARAFACs', id='k-parafacs', children=html.P('Development in progress')),
-                dcc.Tab(label='NMF', id='nmf', children=html.P(page4)),
             ],
             # value="homepage",
             # persistence=True,
