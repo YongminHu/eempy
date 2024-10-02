@@ -2882,7 +2882,6 @@ class KMethod:
         self.cluster_specific_models = cluster_specific_models
 
 
-
     def predict(self, eem_dataset: EEMDataset):
         """
         Fit the cluster-specific models to a given EEM dataset. Each EEM in the EEM dataset is fitted to the model that
