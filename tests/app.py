@@ -1363,7 +1363,8 @@ def on_build_eem_dataset(n_clicks,
         'ex_range': eem_dataset.ex_range.tolist(),
         'em_range': eem_dataset.em_range.tolist(),
         'index': eem_dataset.index,
-        'ref': [refs.columns.tolist()] + refs.values.tolist() if eem_dataset.ref is not None else None
+        'ref': [refs.columns.tolist()] + refs.values.tolist() if eem_dataset.ref is not None else None,
+        'cluster': None,
     }
 
     return eem_dataset_json_dict, dbc.Label(steps_track, style={'whiteSpace': 'pre'}), "Build"
@@ -3960,6 +3961,15 @@ card_kmethod_param1 = dbc.Card(
 
                             dbc.Row([
                                 dbc.Col(
+                                    dbc.Label("Rank"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='kmethod-rank', type='number',
+                                              placeholder='Please enter only one number',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0),
+                                    width={'size': 2},
+                                ),
+                                dbc.Col(
                                     dbc.Label("Number of initial splits"), width={'size': 1}
                                 ),
                                 dbc.Col(
@@ -3975,25 +3985,25 @@ card_kmethod_param1 = dbc.Card(
                                               style={'width': '100px', 'height': '30px'}, debounce=True, value=0),
                                     width={'size': 2},
                                 ),
+                                ]
+                            ),
+
+                            dbc.Row([
                                 dbc.Col(
                                     dbc.Label("Number of maximum iterations for one time base clustering"),
                                     width={'size': 2}
                                 ),
                                 dbc.Col(
                                     dcc.Input(id='kmethod-num-iterations', type='number',
-                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0),
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=10),
                                     width={'size': 2},
                                 ),
-                                ]
-                            ),
-
-                            dbc.Row([
                                 dbc.Col(
                                     dbc.Label("Convergence tolerance"), width={'size': 1}
                                 ),
                                 dbc.Col(
                                     dcc.Input(id='kmethod-convergence-tolerance', type='number',
-                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0),
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0.01),
                                     width={'size': 2},
                                 ),
                                 dbc.Col(
@@ -4004,12 +4014,21 @@ card_kmethod_param1 = dbc.Card(
                                               style={'width': '100px', 'height': '30px'}, debounce=True, value='default'),
                                     width={'size': 2},
                                 ),
+                                dbc.Col(
+                                    dbc.Label("Subsampling portion"),
+                                    width={'size': 2}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='kmethod-subsampling-portion', type='number',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0.8),
+                                    width={'size': 2},
+                                ),
                             ]
                             ),
 
                             dbc.Row(
                                 dbc.Col(
-                                    dbc.Button([dbc.Spinner(size="sm", id='nmf-spinner')],
+                                    dbc.Button([dbc.Spinner(size="sm", id='kmethod-step1-spinner')],
                                                id='build-kmethod-consensus', className='col-2')
                                 )
                             )
@@ -4062,7 +4081,7 @@ card_kmethod_param2 = dbc.Card(
 
                             dbc.Row(
                                 dbc.Col(
-                                    dbc.Button([dbc.Spinner(size="sm", id='nmf-spinner')],
+                                    dbc.Button([dbc.Spinner(size="sm", id='kmethod-step2-spinner')],
                                                id='build-kmethod-clustering', className='col-2')
                                 )
                             )
@@ -4445,24 +4464,27 @@ page4 = html.Div([
 
 @app.callback(
     [
-        Output('parafac-eem-dataset-establishment-message', 'children'),
-        Output('parafac-loadings', 'children'),
-        Output('parafac-components', 'children'),
-        Output('parafac-scores', 'children'),
-        Output('parafac-fmax', 'children'),
-        Output('parafac-core-consistency', 'children'),
-        Output('parafac-leverage', 'children'),
-        Output('parafac-split-half', 'children'),
-        Output('build-parafac-spinner', 'children'),
-        Output('parafac-establishment-corr-model-selection', 'options'),
-        Output('parafac-establishment-corr-model-selection', 'value'),
-        Output('parafac-establishment-corr-ref-selection', 'options'),
-        Output('parafac-establishment-corr-ref-selection', 'value'),
-        Output('parafac-test-model-selection', 'options'),
-        Output('parafac-test-model-selection', 'value'),
-        Output('parafac-test-pred-ref-selection', 'options'),
-        Output('parafac-test-pred-ref-selection', 'value'),
-        Output('parafac-models', 'data'),
+        Output('kmethod-base-clustering-message', 'children')
+    ],
+    [
+        Input('kmethod-base-clustering', 'value')
+    ]
+)
+def on_kmethod_base_clustering_message(base_clustering):
+    if base_clustering == 'PARAFAC':
+        return ('Parameters "initialization", "non negativity" and "total fluorescence normalization" '
+                'are set in tab "PARAFAC".')
+    if base_clustering == 'NMF':
+        return 'Parameters "solver", "normalization" and "alpha_w", "alpha_h", "l1_ratio" are set in tab "NMF".'
+
+
+@app.callback(
+    [
+        Output('kmethod-eem-dataset-establishment-message', 'children'),
+        Output('kmethod-consensus-matrix', 'children'),
+        Output('kmethod-error-history', 'children'),
+        Output('kmethod-step1-spinner', 'children'),
+        Output('kmethod-consensus-matrix-data', 'data'),
     ],
     [
         Input('build-kmethod-consensus', 'n_clicks'),
@@ -4476,12 +4498,209 @@ page4 = html.Div([
         State('kmethod-num-init-splits', 'value'),
         State('kmethod-num-base-clusterings', 'value'),
         State('kmethod-num-iterations', 'value'),
+        State('kmethod-convergence-tolerance', 'value'),
         State('kmethod-elimination', 'value'),
+        State('kmethod-subsampling-portion', 'value'),
+        State('parafac-init-method', 'value'),
+        State('parafac-nn-checkbox', 'value'),
+        State('parafac-tf-checkbox', 'value'),
+        State('nmf-solver', 'value'),
+        State('nmf-normalization-checkbox', 'value'),
+        State('nmf-alpha-w', 'value'),
+        State('nmf-alpha-h', 'value'),
+        State('nmf-l1-ratio', 'value'),
         State('eem-dataset', 'data')
     ]
 )
-def on_build_consensus():
-    return
+def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, cluster_from_file,
+                       rank, base_clustering, n_init_splits, n_base_clusterings, n_iterations, tol, elimination,
+                       subsampling_portion,
+                       parafac_init, parafac_nn, parafac_tf,
+                       nmf_solver, nmf_normalization, nmf_alpha_w, nmf_alpha_h, nmf_l1_ratio,
+                       eem_dataset_dict):
+    if n_clicks is None:
+        return None, None, None, 'Calculate consensus', None
+    if not path_establishment:
+        if eem_dataset_dict is None:
+            message = (
+                'Error: No built EEM dataset detected. Please build an EEM dataset first in "EEM pre-processing" '
+                'section, or import an EEM dataset from file.')
+            return message, None, None, 'Calculate consensus', None
+        eem_dataset_establishment = EEMDataset(
+            eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+                                in eem_dataset_dict['eem_stack']]),
+            ex_range=np.array(eem_dataset_dict['ex_range']),
+            em_range=np.array(eem_dataset_dict['em_range']),
+            index=eem_dataset_dict['index'],
+            ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0],
+                             index=eem_dataset_dict['index']) if eem_dataset_dict['ref'] is not None else None,
+            cluster=eem_dataset_dict['cluster']
+        )
+    else:
+        if not os.path.exists(path_establishment):
+            message = ('Error: No such file or directory: ' + path_establishment)
+            return message, None, None, 'Calculate consensus', None
+        else:
+            _, file_extension = os.path.splitext(path_establishment)
+
+            if file_extension == '.json':
+                with open(path_establishment, 'r') as file:
+                    eem_dataset_dict = json.load(file)
+            elif file_extension == '.pkl':
+                with open(path_establishment, 'rb') as file:
+                    eem_dataset_dict = pickle.load(file)
+            else:
+                raise ValueError("Unsupported file extension: {}".format(file_extension))
+            eem_dataset_establishment = EEMDataset(
+                eem_stack=np.array(
+                    [[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+                     in eem_dataset_dict['eem_stack']]),
+                ex_range=np.array(eem_dataset_dict['ex_range']),
+                em_range=np.array(eem_dataset_dict['em_range']),
+                index=eem_dataset_dict['index'],
+                ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0],
+                                 index=eem_dataset_dict['index']) if eem_dataset_dict['ref'] is not None else None,
+                cluster=eem_dataset_dict['cluster']
+            )
+    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
+    kw_optional = str_string_to_list(kw_optional) if kw_optional else []
+    eem_dataset_establishment.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional,
+                                              copy=False)
+
+    if base_clustering == 'PARAFAC':
+        base_model = PARAFAC(rank=rank, init=parafac_init,
+                             non_negativity=True if 'non_negative' in parafac_nn else False,
+                             tf_normalization=True if 'tf_normalization' in parafac_tf else False,
+                             sort_em=True)
+    elif base_clustering == 'NMF':
+        base_model = EEMNMF(
+            n_components=rank, solver=nmf_solver, normalization=nmf_normalization[0], alpha_H=nmf_alpha_h,
+            alpha_W=nmf_alpha_w, l1_ratio=nmf_l1_ratio
+        )
+
+    kmethod = KMethod(base_model=base_model, n_initial_splits=n_init_splits, max_iter=n_iterations, tol=tol,
+                      elimination=elimination)
+    consensus_matrix, _, error_history = kmethod.calculate_consensus(eem_dataset_establishment, n_base_clusterings,
+                                                                     subsampling_portion)
+    consensus_matrix_tabs = dbc.Card()
+    error_history_tabs = dbc.Card()
+
+    consensus_matrix_tabs.children.append(
+        html.Div([
+            dbc.Row(
+                [
+                    dbc.Col(
+                        [
+                            dcc.Graph(
+                                figure=go.Heatmap(
+                                    z=consensus_matrix,
+                                    x=eem_dataset_establishment.index if eem_dataset_establishment.index
+                                    else [i for i in range(consensus_matrix.shape[1])],
+                                    y=eem_dataset_establishment.index if eem_dataset_establishment.index
+                                    else [i for i in range(consensus_matrix.shape[0])],
+                                    hoverongaps=False,
+                                    hovertemplate='sample1: %{y}<br>sample2: %{x}<br>consensus coefficient: %{z}<extra></extra>'
+                                ),
+                                config={'autosizable': False},
+                            )
+                        ]
+                    )
+                ]
+            ),
+        ]),
+    )
+
+    df_error = pd.DataFrame(error_history)
+    # Melt the DataFrame to long format
+    df_melted = df.melt(var_name='Column', value_name='Value')
+
+    # Create the boxplot
+    fig = px.box(df_melted, x='Column', y='Value', points='all')
+
+    # Update layout
+    fig.update_layout(
+        title='Boxplot of Column Statistics',
+        xaxis_title='Column Number',
+        yaxis_title='Value'
+    )
+
+    error_history_tabs.children.append(
+        html.Div([
+            dbc.Row(
+                [
+                    dbc.Col(
+                        [
+
+                        ]
+                    )
+                ]
+            )
+        ])
+    )
+
+
+    return None, consensus_matrix_tabs, error_history_tabs, 'Calculate consensus', consensus_matrix.tolist()
+
+@app.callback(
+    [
+        Output('kmethod-establishment-corr-model-selection', 'options'),
+        Output('kmethod-establishment-corr-model-selection', 'value'),
+        Output('kmethod-establishment-corr-ref-selection', 'options'),
+        Output('kmethod-establishment-corr-ref-selection', 'value'),
+        # Output('parafac-test-model-selection', 'options'),
+        # Output('parafac-test-model-selection', 'value'),
+        Output('kmethod-test-pred-ref-selection', 'options'),
+        Output('kmethod-test-pred-ref-selection', 'value'),
+    ],
+    [
+        Input('')
+    ]
+)
+def on_hierarchical_clustering():
+
+
+    # if eem_dataset_establishment.ref is not None:
+    #     valid_ref = eem_dataset_establishment.ref.columns[~eem_dataset_establishment.ref.isna().all()].tolist()
+    # else:
+    #     valid_ref = None
+    #
+    # for r in rank_list:
+    #     nmf_r = EEMNMF(
+    #         n_components=r, solver=solver, normalization=normalization[0], alpha_H=alpha_h, alpha_W=alpha_w,
+    #         l1_ratio=l1_ratio
+    #     )
+    #     nmf_r.fit(eem_dataset_establishment)
+    #     nmf_fit_params_r = {}
+    #     if eem_dataset_establishment.ref is not None:
+    #         for ref_var in valid_ref:
+    #             x = eem_dataset_establishment.ref[ref_var]
+    #             stats = []
+    #             nmf_var = nmf_r.nnls_score
+    #             nan_rows = x[x.isna()].index
+    #             x = x.drop(nan_rows)
+    #             if x.shape[0] < 1:
+    #                 continue
+    #             for f_col in nmf_var.columns:
+    #                 y = nmf_var[f_col]
+    #                 y = y.drop(nan_rows)
+    #                 x_reshaped = np.array(x).reshape(-1, 1)
+    #                 lm = LinearRegression().fit(x_reshaped, y)
+    #                 r_squared = lm.score(x_reshaped, y)
+    #                 intercept = lm.intercept_
+    #                 slope = lm.coef_[0]
+    #                 pearson_corr, pearson_p = pearsonr(x, y)
+    #                 stats.append([f_col, slope, intercept, r_squared, pearson_corr, pearson_p])
+    #             nmf_fit_params_r[ref_var] = stats
+    #     nmf_models[r] = {
+    #         'components': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
+    #                        sublist in nmf_r.components.tolist()],
+    #         'Fmax': [nmf_r.nnls_score.columns.tolist()] + nmf_r.nnls_score.values.tolist(),
+    #         'index': eem_dataset_establishment.index,
+    #         'ref': [eem_dataset_establishment.ref.columns.tolist()] + eem_dataset_establishment.ref.values.tolist()
+    #         if eem_dataset_establishment.ref is not None else None,
+    #         'fitting_params': nmf_fit_params_r
+    #     }
+
 
 # -----------Setup the sidebar-----------------
 
@@ -4515,7 +4734,7 @@ def serve_layout():
         dcc.Store(id='eem-dataset'),
         dcc.Store(id='parafac-models'),
         dcc.Store(id='parafac-test-results'),
-        dcc.Store(id='kmethod-consensus-matrix'),
+        dcc.Store(id='kmethod-consensus-matrix-data'),
         dcc.Store(id='kmethod-clusters'),
         dcc.Store(id='kmethod-test-results'),
         dcc.Store(id='nmf-models'),

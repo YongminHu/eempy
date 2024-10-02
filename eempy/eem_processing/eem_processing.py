@@ -2570,8 +2570,6 @@ class KMethod:
 
     Parameters
     -----------
-    rank: int
-        Number of components.
     n_initial_splits: int
         Number of splits in clustering initialization (the first time that the EEM dataset is divided).
     n_clusters: int
@@ -2608,13 +2606,11 @@ class KMethod:
         Sorted consensus matrix.
     """
 
-    def __init__(self, base_model, rank, n_initial_splits, n_clusters, max_iter=20, tol=0.001, elimination='default'):
+    def __init__(self, base_model, n_initial_splits, max_iter=20, tol=0.001, elimination='default'):
 
         # -----------Parameters-------------
         self.base_model = base_model
-        self.rank = rank
         self.n_initial_splits = n_initial_splits
-        self.n_clusters = n_clusters
         self.max_iter = max_iter
         self.tol = tol
         self.elimination = elimination
@@ -2722,10 +2718,10 @@ class KMethod:
 
             # -------Eliminate sub_datasets having EEMs less than the number of ranks--------
             for cluster_label, sub_dataset_i in sub_datasets_n.items():
-                if self.elimination == 'default' and sub_dataset_i.eem_stack.shape[0] <= self.rank:
+                if self.elimination == 'default' and sub_dataset_i.eem_stack.shape[0] <= self.base_model.rank:
                     sub_datasets_n.pop(cluster_label)
                 elif isinstance(self.elimination, int):
-                    if self.elimination < self.rank and sub_dataset_i.eem_stack.shape[0] <= self.rank:
+                    if self.elimination < self.rank and sub_dataset_i.eem_stack.shape[0] <= self.base_model.rank:
                         sub_datasets_n.pop(cluster_label)
                     elif self.elimination >= self.rank and sub_dataset_i.eem_stack.shape[0] <= self.elimination:
                         sub_datasets_n.pop(cluster_label)
@@ -2765,8 +2761,7 @@ class KMethod:
 
         return cluster_labels, label_history, error_history
 
-    def repetitive_clustering(self, eem_dataset: EEMDataset, n_runs: int, subsampling_portion: float,
-                              consensus_conversion_power: float = 1.0):
+    def calculate_consensus(self, eem_dataset: EEMDataset, n_runs: int, subsampling_portion: float):
         """
         Run the clustering for many times and combine the output of each run to obtain an optimal clustering.
 
@@ -2778,10 +2773,7 @@ class KMethod:
             Number of clustering
         subsampling_portion: float
             The portion of EEMs remained after subsampling.
-        consensus_conversion_power: float
-            The factor adjusting the conversion from consensus matrix (M) to distance matrix (D) used for hierarchical
-            clustering. D_{i,j} = (1 - M_{i,j})^factor. This number influences the gradient of distance with respect
-            to consensus. A smaller number will lead to shaper increase of distance at consensus close to 1.
+
 
         Returns
         -------
@@ -2826,23 +2818,41 @@ class KMethod:
 
         # ---------Obtain consensus matrix, distance matrix and linkage matrix----------
         consensus_matrix = co_label_matrix / co_occurrence_matrix
-        distance_matrix = (1 - co_label_matrix) ** consensus_conversion_power
-        linkage_matrix = linkage(squareform(distance_matrix), method='complete')
+
 
         self.n_runs = n_runs
         self.subsampling_portion = subsampling_portion
-        self.consensus_conversion_power = consensus_conversion_power
         self.label_history = label_history
         self.error_history = error_history
         self.consensus_matrix = consensus_matrix
-        self.distance_matrix = distance_matrix
-        self.linkage_matrix = linkage_matrix
 
-    def hierarchical_clustering(self, eem_dataset):
+        return consensus_matrix, label_history, error_history
 
-        labels = fcluster(self.linkage_matrix, self.n_clusters, criterion='maxclust')
+    def hierarchical_clustering(self, eem_dataset, n_clusters, consensus_conversion_power):
+        """
+
+        Parameters
+        ----------
+        eem_dataset
+        n_clusters
+        consensus_conversion_power: float
+            The factor adjusting the conversion from consensus matrix (M) to distance matrix (D) used for hierarchical
+            clustering. D_{i,j} = (1 - M_{i,j})^factor. This number influences the gradient of distance with respect
+            to consensus. A smaller number will lead to shaper increase of distance at consensus close to 1.
+
+        Returns
+        -------
+
+        """
+        distance_matrix = (1 - self.consensus_matrix) ** consensus_conversion_power
+        linkage_matrix = linkage(squareform(distance_matrix), method='complete')
+        labels = fcluster(self.linkage_matrix, n_clusters, criterion='maxclust')
         sorted_indices = np.argsort(labels)
         consensus_matrix_sorted = self.consensus_matrix[sorted_indices][:, sorted_indices]
+
+        self.distance_matrix = distance_matrix
+        self.linkage_matrix = linkage_matrix
+        self.consensus_matrix_sorted = consensus_matrix_sorted
 
         # ---------Get final clusters and cluster-specific models-------
         clusters = {}
@@ -2871,7 +2881,7 @@ class KMethod:
         self.eem_clusters = clusters
         self.cluster_specific_models = cluster_specific_models
 
-        self.consensus_matrix_sorted = consensus_matrix_sorted
+
 
     def predict(self, eem_dataset: EEMDataset):
         """
