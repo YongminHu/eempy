@@ -2791,115 +2791,7 @@ def on_parafac_test_correlations(indicator, ref_var, parafac_test_results):
         return go.Figure(), None
 
 
-# -----------Page #3: K-PARAFACs--------------
-
-#   -------------Setting up the dbc cards
-
-card_kmethod_param = dbc.Card(
-    dbc.CardBody(
-        [
-            html.H5("Parameters selection", className="card-title"),
-            html.Div(
-                [
-                    dbc.Stack(
-                        [
-                            dbc.Row(
-                                dcc.Input(id='kmethod-eem-dataset-establishment-path-input', type='text', value=None,
-                                          placeholder='Please enter the eem dataset path (.json and .pkl are supported).'
-                                                      ' If empty, the model built in "eem pre-processing" '
-                                                      'would be used',
-                                          style={'width': '97%', 'height': '30px'}, debounce=True),
-                                justify="center"
-                            ),
-                            dbc.Row([
-                                dbc.Col(
-                                    html.Div([],
-                                             id='kmethod-eem-dataset-establishment-message', style={'width': '80vw'}),
-                                    width={"size": 12, "offset": 0}
-                                )
-                            ]),
-                            dbc.Row(
-                                [
-                                    dbc.Col(
-                                        dbc.Label("Index mandatory keywords"), width={'size': 1}
-                                    ),
-                                    dbc.Col(
-                                        dcc.Input(id='kmethod-sample-kw-mandatory', type='text', placeholder='',
-                                                  style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
-                                        width={"offset": 0, "size": 2}
-                                    ),
-                                    dbc.Col(
-                                        dbc.Label("Index optional keywords"), width={'size': 1, 'offset': 1}
-                                    ),
-                                    dbc.Col(
-                                        dcc.Input(id='nmf-sample-kw-optional', type='text', placeholder='',
-                                                  style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
-                                        width={"offset": 0, "size": 2}
-                                    )
-                                ]
-                            ),
-
-                            dbc.Row(
-                                [
-                                    dbc.Col(
-                                        dbc.Label("Base model"), width={'size': 1, 'offset': 0}
-                                    ),
-                                    dbc.Col(
-                                        dcc.Dropdown(options=[
-                                            {'label': 'PARAFAC', 'value': 'parafac'},
-                                            {'label': 'NMF', 'value': 'nmf'}
-                                        ],
-                                            value=None, style={'width': '300px'}, id='kmethod-base-model'
-                                        ),
-                                        width={'size': 2}
-                                    ),
-                                    dbc.Col(
-                                        html.Div([],
-                                                 id='kmethod-base-model-message',
-                                                 style={'width': '80vw'}),
-                                        width={"size": 12, "offset": 0}
-                                    )
-                                ]
-                            ),
-
-                            # dbc.Row([
-                            #     dbc.Col(
-                            #         dbc.Label("Validations"), width={'size': 1}
-                            #     ),
-                            #     dbc.Col(
-                            #         dcc.Dropdown(
-                            #             options=None,
-                            #             multi=True, id='nmf-validations', value=[]),
-                            #         width={'size': 4}
-                            #     ),
-                            # ]),
-
-                            dbc.Row(
-                                dbc.Col(
-                                    dbc.Button([dbc.Spinner(size="sm", id='nmf-spinner')],
-                                               id='build-nmf-model', className='col-2')
-                                )
-                            )
-                        ],
-                        gap=2
-                    )
-
-                ]
-            ),
-        ]
-    ),
-    className='w-100'
-)
-
-
-#   -------------Layout of page #3
-
-
-
-#   -------------Callbacks of page #3
-
-
-# -----------Page #4: NMF--------------
+# -----------Page #3: NMF--------------
 
 #   -------------Setting up the dbc cards
 card_nmf_param = dbc.Card(
@@ -3046,7 +2938,7 @@ card_nmf_param = dbc.Card(
     className='w-100'
 )
 
-#   -------------Layout of page #4
+#   -------------Layout of page #3
 
 page3 = html.Div([
     dbc.Stack(
@@ -3364,7 +3256,7 @@ page3 = html.Div([
 ])
 
 
-#   -------------Callbacks of page #4
+#   -------------Callbacks of page #3
 
 #   -------------Establish NMF model
 
@@ -3985,6 +3877,612 @@ def on_nmf_establishment_correlations(indicator, ref_var, nmf_test_results):
         return go.Figure(), None
 
 
+# -----------Page #4: K-method--------------
+
+#   -------------Setting up the dbc cards
+
+card_kmethod_param1 = dbc.Card(
+    dbc.CardBody(
+        [
+            html.H5("Step 1: calculate consensus", className="card-title"),
+            html.H6("Parameters selection", className="card-title"),
+            html.Div(
+                [
+                    dbc.Stack(
+                        [
+                            dbc.Row(
+                                dcc.Input(id='kmethod-eem-dataset-establishment-path-input', type='text', value=None,
+                                          placeholder='Please enter the eem dataset path (.json and .pkl are supported).'
+                                                      ' If empty, the model built in "eem pre-processing" '
+                                                      'would be used',
+                                          style={'width': '97%', 'height': '30px'}, debounce=True),
+                                justify="center"
+                            ),
+                            dbc.Row(
+                                dbc.Checklist(options=[{'label': html.Span("Read clustering output from the file",
+                                                                           style={"font-size": 15,
+                                                                                  "padding-left": 10}),
+                                                        'value': True}],
+                                              id='kmethod-cluster-from-file-checkbox', switch=True, value=[True]
+                                              ),
+                                width={"size": 2, 'offset': 1}
+                            ),
+                            dbc.Row([
+                                dbc.Col(
+                                    html.Div([],
+                                             id='kmethod-eem-dataset-establishment-message', style={'width': '80vw'}),
+                                    width={"size": 12, "offset": 0}
+                                )
+                            ]),
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Index mandatory keywords"), width={'size': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='kmethod-sample-kw-mandatory', type='text', placeholder='',
+                                                  style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
+                                        width={"offset": 0, "size": 2}
+                                    ),
+                                    dbc.Col(
+                                        dbc.Label("Index optional keywords"), width={'size': 1, 'offset': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='nmf-sample-kw-optional', type='text', placeholder='',
+                                                  style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
+                                        width={"offset": 0, "size": 2}
+                                    )
+                                ]
+                            ),
+
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Base model"), width={'size': 1, 'offset': 0}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Dropdown(options=[
+                                            {'label': 'PARAFAC', 'value': 'parafac'},
+                                            {'label': 'NMF', 'value': 'nmf'}
+                                        ],
+                                            value=None, style={'width': '300px'}, id='kmethod-base-model'
+                                        ),
+                                        width={'size': 2}
+                                    ),
+                                    dbc.Col(
+                                        html.Div([],
+                                                 id='kmethod-base-model-message',
+                                                 style={'width': '80vw'}),
+                                        width={"size": 12, "offset": 0}
+                                    )
+                                ]
+                            ),
+
+                            dbc.Row([
+                                dbc.Col(
+                                    dbc.Label("Number of initial splits"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='kmethod-num-init-splits', type='number',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0),
+                                    width={'size': 2},
+                                ),
+                                dbc.Col(
+                                    dbc.Label("Number of base clustering runs"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='kmethod-num-base-clusterings', type='number',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0),
+                                    width={'size': 2},
+                                ),
+                                dbc.Col(
+                                    dbc.Label("Number of maximum iterations for one time base clustering"),
+                                    width={'size': 2}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='kmethod-num-iterations', type='number',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0),
+                                    width={'size': 2},
+                                ),
+                                ]
+                            ),
+
+                            dbc.Row([
+                                dbc.Col(
+                                    dbc.Label("Convergence tolerance"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='kmethod-convergence-tolerance', type='number',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0),
+                                    width={'size': 2},
+                                ),
+                                dbc.Col(
+                                    dbc.Label("Elimination"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='kmethod-elimination', type='text',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value='default'),
+                                    width={'size': 2},
+                                ),
+                            ]
+                            ),
+
+                            dbc.Row(
+                                dbc.Col(
+                                    dbc.Button([dbc.Spinner(size="sm", id='nmf-spinner')],
+                                               id='build-kmethod-consensus', className='col-2')
+                                )
+                            )
+                        ],
+                        gap=2
+                    )
+
+                ]
+            ),
+        ]
+    ),
+    className='w-100'
+)
+
+card_kmethod_param2 = dbc.Card(
+    dbc.CardBody(
+        [
+            html.H5("Step 2: clustering", className="card-title"),
+            html.H6("Parameters selection", className="card-title"),
+            html.Div(
+                [
+                    dbc.Stack(
+                        [
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Number of final clusters"), width={'size': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='parafac-rank', type='text',
+                                                  placeholder='Multiple values possible, e.g., 3, 4',
+                                                  style={'width': '250px', 'height': '30px'}, debounce=True),
+                                        width={'size': 1}
+                                    ),
+                                ]
+                            ),
+
+                            dbc.Row([
+                                dbc.Col(
+                                    dbc.Label("Validations"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Dropdown(
+                                        options=[{'label': 'silhouette score', 'value': 'silhouette_score'},
+                                                 {'label': 'reconstruction error reduction', 'value': 'RER'}],
+                                        multi=True, id='kmethod-num-clusters-validations', value=['silhouette_score']),
+                                    width={'size': 4}
+                                ),
+                            ]),
+
+                            dbc.Row(
+                                dbc.Col(
+                                    dbc.Button([dbc.Spinner(size="sm", id='nmf-spinner')],
+                                               id='build-kmethod-clustering', className='col-2')
+                                )
+                            )
+                        ],
+                        gap=2
+                    )
+                ]
+            ),
+        ]
+    ),
+    className='w-100'
+)
+
+
+#   -------------Layout of page #3
+
+page4 = html.Div([
+    dbc.Stack(
+        [
+            dbc.Row(
+                card_kmethod_param1
+            ),
+            dbc.Row(
+                dcc.Tabs(
+                    id='kmethod-results1',
+                    children=[
+                        dcc.Tab(label='Consensus matrix', id='kmethod-consensus-matrix'),
+                        dcc.Tab(label='Label history', id='kmethod-label-history'),
+                        dcc.Tab(label='Error history', id='kmethod-error-history'),
+                    ]
+                )
+            ),
+            dbc.Row(
+                card_kmethod_param2
+            ),
+            dbc.Row(
+                dcc.Tabs(
+                    id='kmethod-results2',
+                    children=[
+                        dcc.Tab(label='Dendrogram', id='kmethod-dendrogram'),
+                        dcc.Tab(label='Clusters', id='kmethod-clusters'),
+                        dcc.Tab(label='Components', id='kmethod-components'),
+                        dcc.Tab(label='Fmax', id='kmethod-fmax'),
+                        dcc.Tab(
+                            children=[
+                                html.Div(
+                                    [
+                                        dbc.Card(
+                                            dbc.Stack(
+                                                [
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dbc.Label("Select cluster"),
+                                                                width={'size': 1, 'offset': 0}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[],
+                                                                    id='kmethod-establishment-corr-cluster-selection'
+                                                                ),
+                                                                width={'size': 2}
+                                                            ),
+                                                            dbc.Col(
+                                                                dbc.Label("Select indicator"),
+                                                                width={'size': 1, 'offset': 1}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[
+                                                                        {'label': 'Fmax', 'value': 'Fmax'}
+                                                                    ],
+                                                                    id='kmethod-establishment-corr-indicator-selection'
+                                                                ),
+                                                                width={'size': 2}
+                                                            ),
+                                                            dbc.Col(
+                                                                dbc.Label("Select reference variable"),
+                                                                width={'size': 1, 'offset': 1}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[],
+                                                                    id='kmethod-establishment-corr-ref-selection'
+                                                                ),
+                                                                width={'size': 2}
+                                                            ),
+                                                        ]
+                                                    ),
+
+                                                    dbc.Row([
+                                                        dcc.Graph(id='kmethod-establishment-corr-graph',
+                                                                  # config={'responsive': 'auto'},
+                                                                  style={'width': '45vw', 'height': '60vh'}
+                                                                  ),
+                                                    ]),
+
+                                                    dbc.Row(
+                                                        html.Div([],
+                                                                 id='kmethod-establishment-corr-table')
+                                                    ),
+
+                                                ],
+                                                gap=2, style={"margin": "20px"}
+                                            )
+                                        )
+                                    ],
+                                    style={'width': '90vw'},
+                                )
+                            ],
+                            label='Correlations', id='kmethod-establishment-corr'
+                        ),
+                        dcc.Tab(
+                            children=[
+                                html.Div(
+                                    [
+                                        dbc.Card(
+                                            dbc.Stack(
+                                                [
+                                                    html.H5("Import EEM dataset to be predicted"),
+                                                    dbc.Row(
+                                                        dcc.Input(id='kmethod-eem-dataset-predict-path-input',
+                                                                  type='text',
+                                                                  placeholder='Please enter the eem dataset path (.json'
+                                                                              ' and .pkl are supported).',
+                                                                  style={'width': '97%', 'height': '30px'},
+                                                                  debounce=True),
+                                                        justify="center"
+                                                    ),
+                                                    dbc.Row([
+                                                        dbc.Col(
+                                                            html.Div([],
+                                                                     id='kmethod-eem-dataset-predict-message',
+                                                                     style={'width': '1000px'}),
+                                                            width={"size": 12, "offset": 0}
+                                                        )
+                                                    ]),
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dbc.Label("Index mandatory keywords"), width={'size': 2}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Input(id='kmethod-test-index-kw-mandatory',
+                                                                          type='text',
+                                                                          placeholder='',
+                                                                          style={'width': '100%', 'height': '30px'},
+                                                                          debounce=True, value=''),
+                                                                width={"offset": 0, "size": 2}
+                                                            ),
+                                                            dbc.Col(
+                                                                dbc.Label("Index optional keywords"),
+                                                                width={'size': 2, 'offset': 1}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Input(id='kmethod-test-index-kw-optional',
+                                                                          type='text',
+                                                                          placeholder='',
+                                                                          style={'width': '100%', 'height': '30px'},
+                                                                          debounce=True, value=''),
+                                                                width={"offset": 0, "size": 2}
+                                                            )
+                                                        ]
+                                                    ),
+                                                    # html.H5("Select established model"),
+                                                    # dbc.Row(
+                                                    #     [
+                                                    #         dbc.Col(
+                                                    #             dcc.Dropdown(
+                                                    #                 options=[], id='kmethod-test-model-selection'
+                                                    #             )
+                                                    #         ),
+                                                    #         dbc.Col(
+                                                    #             dbc.Button(
+                                                    #                 [dbc.Spinner(size="sm",
+                                                    #                              id='kmethod-predict-spinner')],
+                                                    #                 id='predict-nmf-model', className='col-2')
+                                                    #         )
+                                                    #     ]
+                                                    # )
+                                                ],
+                                                gap=2, style={"margin": "20px"}
+                                            ),
+                                        ),
+                                        dbc.Card(
+                                            [
+                                                dbc.Tabs(children=[
+                                                    dcc.Tab(
+                                                        label='Fmax',
+                                                        children=[],
+                                                        id='kmethod-test-fmax'
+                                                    ),
+                                                    dcc.Tab(
+                                                        label='Reconstruction error',
+                                                        children=[],
+                                                        id='kmethod-test-error'
+                                                    ),
+                                                    dcc.Tab(
+                                                        label='Prediction of reference',
+                                                        children=[
+                                                            dbc.Stack(
+                                                                [
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Col(
+                                                                                dbc.Label("Select reference variable"),
+                                                                                width={'size': 2, 'offset': 0}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[],
+                                                                                    id='kmethod-test-pred-ref-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dbc.Label(
+                                                                                    "Select model to fit reference "
+                                                                                    "variable with fmax"),
+                                                                                width={'size': 2, 'offset': 2}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[
+                                                                                        {
+                                                                                            'label': 'Linear least squares',
+                                                                                            'value': 'linear_least_squares'},
+                                                                                    ],
+                                                                                    id='kmethod-test-pred-model'
+                                                                                       '-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+                                                                        ]
+                                                                    ),
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Row([
+                                                                                dcc.Graph(
+                                                                                    id='kmethod-test-pred-graph',
+                                                                                    # config={'responsive': 'auto'},
+                                                                                    config={'autosizable': False},
+                                                                                    style={'width': 1700, 'height': 800}
+                                                                                ),
+                                                                            ]),
+
+                                                                            dbc.Row(
+                                                                                html.Div(
+                                                                                    children=[],
+                                                                                    id='kmethod-test-pred-table'
+                                                                                )
+                                                                            ),
+                                                                        ]
+                                                                    )
+                                                                ],
+                                                                gap=3, style={"margin": "20px"}
+                                                            ),
+                                                        ],
+                                                    ),
+                                                    dcc.Tab(
+                                                        label='Correlations',
+                                                        children=[
+                                                            dbc.Stack(
+                                                                [
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Col(
+                                                                                dbc.Label("Select indicator"),
+                                                                                width={'size': 2, 'offset': 0}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[
+                                                                                        {'label': 'Score',
+                                                                                         'value': 'Score'},
+                                                                                        {'label': 'Fmax',
+                                                                                         'value': 'Fmax'},
+                                                                                    ],
+                                                                                    id='kmethod-test-corr-indicator-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dbc.Label("Select reference variable"),
+                                                                                width={'size': 2, 'offset': 2}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[],
+                                                                                    id='kmethod-test-corr-ref-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+                                                                        ]
+                                                                    ),
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Row([
+                                                                                dcc.Graph(
+                                                                                    id='kmethod-test-corr-graph',
+                                                                                    # config={'responsive': 'auto'},
+                                                                                    style={'width': '700',
+                                                                                           'height': '900'}
+                                                                                ),
+                                                                            ]),
+
+                                                                            dbc.Row(
+                                                                                html.Div(
+                                                                                    children=[],
+                                                                                    id='kmethod-test-corr-table'
+                                                                                )
+                                                                            ),
+                                                                        ]
+                                                                    )
+                                                                ],
+                                                                gap=3, style={"margin": "20px"}
+                                                            ),
+                                                        ],
+                                                    ),
+                                                ],
+                                                    persistence=True,
+                                                    persistence_type='session'),
+
+                                            ],
+                                        )
+                                    ],
+                                    style={'width': '90vw'},
+                                )
+                            ],
+                            label='Predict', id='kmethod-predict'
+                        ),
+                        dcc.Tab(
+                            children=[
+                                html.Div(
+                                    [
+                                        dbc.Card(
+                                            dbc.Stack(
+                                                [
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dbc.Label("Select nmf model"),
+                                                                width={'size': 1, 'offset': 0}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[],
+                                                                    id='kmethod-cluster-export-model-selection'
+                                                                ),
+                                                                width={'size': 2}
+                                                            ),
+                                                        ]
+                                                    ),
+                                                ],
+                                                gap=2, style={"margin": "20px"}
+                                            )
+                                        )
+                                    ],
+                                    style={'width': '90vw'},
+                                )
+                            ],
+                            label='Export', id='kmethod-cluster-export'
+                        ),
+                    ],
+                    # style={
+                    #     'width': '100%'
+                    # },
+                    vertical=True
+                )
+            ),
+        ],
+        gap=3
+    )
+
+])
+
+#   -------------Callbacks of page #4
+
+#       ---------------Calculate consensus
+
+@app.callback(
+    [
+        Output('parafac-eem-dataset-establishment-message', 'children'),
+        Output('parafac-loadings', 'children'),
+        Output('parafac-components', 'children'),
+        Output('parafac-scores', 'children'),
+        Output('parafac-fmax', 'children'),
+        Output('parafac-core-consistency', 'children'),
+        Output('parafac-leverage', 'children'),
+        Output('parafac-split-half', 'children'),
+        Output('build-parafac-spinner', 'children'),
+        Output('parafac-establishment-corr-model-selection', 'options'),
+        Output('parafac-establishment-corr-model-selection', 'value'),
+        Output('parafac-establishment-corr-ref-selection', 'options'),
+        Output('parafac-establishment-corr-ref-selection', 'value'),
+        Output('parafac-test-model-selection', 'options'),
+        Output('parafac-test-model-selection', 'value'),
+        Output('parafac-test-pred-ref-selection', 'options'),
+        Output('parafac-test-pred-ref-selection', 'value'),
+        Output('parafac-models', 'data'),
+    ],
+    [
+        Input('build-kmethod-consensus', 'n_clicks'),
+        State('eem-graph-options', 'value'),
+        State('kmethod-eem-dataset-establishment-path-input', 'value'),
+        State('kmethod-establishment-index-kw-mandatory', 'value'),
+        State('kmethod-establishment-index-kw-optional', 'value'),
+        State('kmethod-cluster-from-file-checkbox', 'value'),
+        State('kmethod-rank', 'value'),
+        State('kmethod-base-clustering', 'value'),
+        State('kmethod-num-init-splits', 'value'),
+        State('kmethod-num-base-clusterings', 'value'),
+        State('kmethod-num-iterations', 'value'),
+        State('kmethod-elimination', 'value'),
+        State('eem-dataset', 'data')
+    ]
+)
+def on_build_consensus():
+    return
+
 # -----------Setup the sidebar-----------------
 
 content = html.Div(
@@ -4001,7 +4499,7 @@ content = html.Div(
                 dcc.Tab(label='EEM pre-processing', id='eem-pre-processing', children=html.P(page1)),
                 dcc.Tab(label='PARAFAC', id='parafac', children=html.P(page2)),
                 dcc.Tab(label='NMF', id='nmf', children=html.P(page3)),
-                dcc.Tab(label='K-method', id='kmethod', children=html.P('Development in progress')),
+                dcc.Tab(label='K-method', id='kmethod', children=html.P(page4)),
             ],
             # value="homepage",
             # persistence=True,
@@ -4017,7 +4515,9 @@ def serve_layout():
         dcc.Store(id='eem-dataset'),
         dcc.Store(id='parafac-models'),
         dcc.Store(id='parafac-test-results'),
-        dcc.Store(id='k-parafacs-models'),
+        dcc.Store(id='kmethod-consensus-matrix'),
+        dcc.Store(id='kmethod-clusters'),
+        dcc.Store(id='kmethod-test-results'),
         dcc.Store(id='nmf-models'),
         dcc.Store(id='nmf-test-results'),
         content])
@@ -4026,4 +4526,4 @@ def serve_layout():
 app.layout = serve_layout
 
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    app.run_server()

@@ -823,10 +823,12 @@ class EEMDataset:
     index: list or None
         Optional. The index used to label each sample. The number of elements in the list should equal the number
         of samples in the eem_stack.
+    cluster: list or None
+        Optional. The classification of samples, e.g., the output of EEM clustering algorithms.
     """
 
     def __init__(self, eem_stack: np.ndarray, ex_range: np.ndarray, em_range: np.ndarray,
-                 index: Optional[list] = None, ref: Optional[pd.DataFrame] = None):
+                 index: Optional[list] = None, ref: Optional[pd.DataFrame] = None, cluster: Optional[list] = None):
 
         # ------------------parameters--------------------
         # The Em/Ex ranges should be sorted in ascending order
@@ -835,6 +837,7 @@ class EEMDataset:
         self.em_range = em_range
         self.ref = ref
         self.index = index
+        self.cluster = cluster
         self.extent = (self.em_range.min(), self.em_range.max(), self.ex_range.min(), self.ex_range.max())
 
     # def to_json_serializable(self):
@@ -1372,8 +1375,12 @@ class EEMDataset:
                 index = [self.index[i] for i in split]
             else:
                 index = None
+            if self.cluster:
+                cluster = [self.cluster[i] for i in split]
+            else:
+                cluster = None
             m = EEMDataset(eem_stack=np.array([self.eem_stack[i] for i in split]), ex_range=self.ex_range,
-                           em_range=self.em_range, ref=ref, index=index)
+                           em_range=self.em_range, ref=ref, index=index, cluster=cluster)
             model_list.append(m)
         return model_list
 
@@ -1410,10 +1417,15 @@ class EEMDataset:
             ref_new = self.ref.iloc[selected_indices]
         else:
             ref_new = None
+        if self.cluster:
+            cluster_new = [self.cluster[i] for i in selected_indices]
+        else:
+            cluster_new = None
         if not copy:
             self.eem_stack = eem_stack_new
             self.index = index_new
             self.ref = ref_new
+            self.cluster = cluster_new
         return eem_stack_new, index_new, ref_new, selected_indices
 
     def sort_by_index(self):
@@ -1429,6 +1441,8 @@ class EEMDataset:
         self.eem_stack = self.eem_stack[sorted_indices]
         if self.ref:
             self.ref = self.ref.iloc[sorted_indices]
+        if self.cluster:
+            self.cluster = self.cluster[sorted_indices]
         self.index = sorted(self.index)
         return sorted_indices
 
@@ -1473,7 +1487,7 @@ class EEMDataset:
             Indexes (orders in the list) of samples that have been preserved after filtering.
         """
         if self.index is None:
-            return None
+            raise ValueError('index is not defined')
         if isinstance(mandatory_keywords, str):
             mandatory_keywords = [mandatory_keywords]
         if isinstance(optional_keywords, str):
@@ -1496,12 +1510,14 @@ class EEMDataset:
             sample_number_all_filtered = sample_number_mandatory_filtered
         eem_stack_filtered = self.eem_stack[sample_number_all_filtered, :, :]
         index_filtered = [self.index[i] for i in sample_number_all_filtered]
+        cluster_filtered = [self.cluster[i] for i in sample_number_all_filtered]
         ref_filtered = self.ref.iloc[sample_number_all_filtered] if self.ref is not None else None
         if not copy:
             self.eem_stack = eem_stack_filtered
             self.index = index_filtered
             self.ref = ref_filtered
-        return eem_stack_filtered, index_filtered, ref_filtered, sample_number_all_filtered
+            self.cluster = cluster_filtered
+        return eem_stack_filtered, index_filtered, ref_filtered, cluster_filtered, sample_number_all_filtered
 
 
 def combine_eem_datasets(list_eem_datasets):
@@ -1521,6 +1537,7 @@ def combine_eem_datasets(list_eem_datasets):
     eem_stack_combined = []
     ref_combined = []
     index_combined = []
+    cluster_combined = []
     ex_range_0 = list_eem_datasets[0].ex_range
     em_range_0 = list_eem_datasets[0].em_range
     for d in list_eem_datasets:
@@ -1530,6 +1547,10 @@ def combine_eem_datasets(list_eem_datasets):
             index_combined = index_combined + d.index
         else:
             index_combined = index_combined + ['N/A' for i in range(d.eem_stack.shape[0])]
+        if d.cluster:
+            cluster_combined = cluster_combined + d.cluster
+        else:
+            cluster_combined = cluster_combined + ['N/A' for i in range(d.eem_stack.shape[0])]
         if not np.array_equal(d.ex_range, ex_range_0) or not np.array_equal(d.em_range, em_range_0):
             warnings.warn(
                 'ex_range and em_range of the datasets must be identical. If you want to combine EEM datasets '
@@ -1538,7 +1559,7 @@ def combine_eem_datasets(list_eem_datasets):
     eem_stack_combined = np.concatenate(eem_stack_combined, axis=0)
     ref_combined = np.concatenate(ref_combined, axis=0)
     eem_dataset_combined = EEMDataset(eem_stack=eem_stack_combined, ex_range=ex_range_0, em_range=em_range_0,
-                                      ref=ref_combined, index=index_combined)
+                                      ref=ref_combined, index=index_combined, cluster=cluster_combined)
     return eem_dataset_combined
 
 
@@ -2223,367 +2244,6 @@ class SplitValidation:
         return similarities_ex, similarities_em
 
 
-class KMethod:
-    """
-    Conduct K-PARAFACs, an EEM clustering algorithm aiming to minimize the general PARAFAC reconstruction error. The
-    key hypothesis behind K-PARAFACs is that fitting EEMs with varied underlying chemical compositions using the same
-    PARAFAC model could lead to a large reconstruction error. In contrast, samples with similar chemical composition
-    can be incorporated into the same PARAFAC model with small reconstruction error (i.e., the root mean-squared
-    error (RMSE) between the original EEM and its reconstruction derived from loadings and scores). if samples can be
-    appropriately clustered by their chemical compositions, then the PARAFAC models established on individual
-    clusters, i.e., the cluster-specific PARAFAC models, should exhibit reduced reconstruction error compared to the
-    unified PARAFAC model. Based on this hypothesis, K-PARAFACs is proposed to search for an optimal clustering
-    strategy so that the overall reconstruction error of cluster-specific PARAFAC models is minimized.
-
-    Parameters
-    -----------
-    rank: int
-        Number of components.
-    n_clusters: int
-        Number of clusters.
-    max_iter: int
-        Maximum number of iterations of K-PARAFACs for a single run.
-    tol: float
-        Tolerence in regard to the average Tucker's congruence between the cluster-specific PARAFAC models
-        of two consecutive iterations to declare convergence. If the Tucker's congruence > 1-tol, then convergence is
-        confirmed.
-    non_negativity: bool
-        Whether to apply the non-negativity constraint
-    init: str or tensorly.CPTensor, {‘svd’, ‘random’, CPTensor}
-        Type of factor matrix initialization
-    tf_normalization: bool
-        Whether to normalize the EEMs by the total fluorescence in PARAFAC model establishment
-    loadings_normalization: str or None, {'sd', 'maximum', None}
-        Type of normalization applied to loadings. if 'sd' is passed, the standard deviation will be normalized
-        to 1. If 'maximum' is passed, the maximum will be normalized to 1. The scores will be adjusted accordingly.
-    sort_em: bool
-        Whether to sort components by emission peak position from lowest to highest. If False is passed, the
-        components will be sorted by the contribution to the total variance.
-
-    Attributes
-    ------------
-    unified_model: PARAFAC
-        Unified PARAFAC model.
-    label_history: list
-        A list of cluster labels after each run of clustering.
-    error_history: list
-        A list of average RMSE over all pixels after each run of clustering.
-    labels: np.ndarray
-        Finally cluter labels.
-    clusters: dict
-        EEM clusters.
-    cluster_specific_models: dict
-        Cluster-specific PARAFAC models.
-    consensus_matrix: np.ndarray
-        Consensus matrix.
-    consensus_matrix_sorted: np.ndarray
-        Sorted consensus matrix.
-    """
-
-    def __init__(self, base_model, rank, n_clusters, max_iter=20, tol=0.001, non_negativity=True,
-                 init='svd', tf_normalization=True, loadings_normalization: Optional[str] = 'sd', sort_em=True):
-
-        # -----------Parameters-------------
-        self.base_model = base_model
-        self.rank = rank
-        self.n_clusters = n_clusters
-        self.max_iter = max_iter
-        self.tol = tol
-        self.non_negativity = non_negativity
-        self.init = init
-        self.tf_normalization = tf_normalization
-        self.loadings_normalization = loadings_normalization
-        self.sort_em = sort_em
-        self.subsampling_portion = None
-        self.n_runs = None
-        self.consensus_conversion_power = None
-
-        # ----------Attributes-------------
-        self.unified_model = None
-        self.label_history = None
-        self.error_history = None
-        self.labels = None
-        self.clusters = None
-        self.cluster_specific_models = None
-        self.consensus_matrix = None
-        self.consensus_matrix_sorted = None
-
-    def base_clustering(self, eem_dataset: EEMDataset):
-        """
-        Run clustering for a single time.
-
-        Parameters
-        ----------
-        eem_dataset: EEMDataset
-            The EEM dataset to be clustered.
-
-        Returns
-        -------
-        cluster_labels: np.ndarray
-            Cluster labels.
-        label_history: list
-            Cluster labels in each iteration.
-        error_history: list
-            Average reconstruction error (RMSE) in each iteration.
-        """
-
-        # -------Generate a unified model as reference for ordering components--------
-
-        # unified_model = PARAFAC(rank=self.rank, non_negativity=self.non_negativity, init=self.init,
-        #                         tf_normalization=self.tf_normalization,
-        #                         loadings_normalization=self.loadings_normalization, sort_em=self.sort_em)
-
-        unified_model = copy.deepcopy(self.base_model)
-        unified_model.fit(eem_dataset)
-
-        # -------Define functions for estimation and maximization steps-------
-
-        def estimation(sub_datasets: dict):
-            models = {}
-            for label, d in sub_datasets.items():
-                # model = PARAFAC(rank=self.rank, non_negativity=self.non_negativity, init=self.init,
-                #                 tf_normalization=self.tf_normalization,
-                #                 loadings_normalization=self.loadings_normalization, sort_em=self.sort_em)
-                model = copy.deepcopy(self.base_model)
-                model.fit(d)
-                models[label] = model
-            return models
-
-        def maximization(models: dict):
-            sample_error = []
-            sub_datasets = {}
-            for label, m in models.items():
-                score_m, fmax_m, eem_stack_re_m = m.predict(eem_dataset)
-                res = m.eem_stack_train - eem_stack_re_m
-                n_pixels = m.eem_stack_train.shape[1] * m.eem_stack_train.shape[2]
-                rmse = sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels)
-                sample_error.append(rmse)
-            best_model_idx = np.argmin(sample_error, axis=0)
-            least_model_errors = np.min(sample_error, axis=0)
-            for j, label in enumerate(models.keys()):
-                eem_stack_j = eem_dataset.eem_stack[np.where(best_model_idx == j)]
-                if eem_dataset.ref:
-                    ref_j = eem_dataset.ref[np.where(best_model_idx == j)]
-                else:
-                    ref_j = None
-                if eem_dataset.index:
-                    index_j = [eem_dataset.index[k] for k, idx in enumerate(best_model_idx) if idx == j]
-                else:
-                    index_j = None
-                sub_datasets[label] = EEMDataset(eem_stack=eem_stack_j, ex_range=eem_dataset.ex_range,
-                                                 em_range=eem_dataset.em_range, ref=ref_j, index=index_j)
-            best_model_label = np.array([list(models.keys())[idx] for idx in best_model_idx])
-            return sub_datasets, best_model_label, least_model_errors
-
-        # -------Define function for convergence detection-------
-
-        def model_similarity(models_1: dict, models_2: dict):
-            similarity = 0
-            for label, m in models_1.items():
-                similarity = component_similarity(m.components, models_2[label].components).to_numpy().diagonal()
-            similarity = similarity / len(models_1)
-            return similarity
-
-        # -------Initialization--------
-        label_history = []
-        error_history = []
-        sub_datasets_n = {}
-        initial_sub_eem_datasets = eem_dataset.splitting(n_split=self.n_clusters)
-        for i, random_m in enumerate(initial_sub_eem_datasets):
-            sub_datasets_n[i + 1] = random_m
-
-        for n in range(self.max_iter):
-
-            # -------Eliminate sub_datasets having EEMs less than the number of ranks--------
-            for cluster_label, sub_dataset_i in sub_datasets_n.items():
-                if sub_dataset_i.eem_stack.shape[0] <= self.rank:
-                    sub_datasets_n.pop(cluster_label)
-
-            # -------The estimation step-------
-            cluster_specific_models_new = estimation(sub_datasets_n)
-            cluster_specific_models_new = align_components_by_components(
-                cluster_specific_models_new,
-                {f'component {i+1}': unified_model.components[i] for i in range(unified_model.components.shape[0])}
-            )
-
-            # -------The maximization step--------
-            sub_datasets_n, cluster_labels, fitting_errors = maximization(cluster_specific_models_new)
-            label_history.append(cluster_labels)
-            error_history.append(fitting_errors)
-
-            # -------Detect convergence---------
-            if 0 < n < self.max_iter - 1:
-                if label_history[-1] == label_history[-2]:
-                    break
-                if len(cluster_specific_models_old) == len(cluster_specific_models_new):
-                    if model_similarity(cluster_specific_models_new, cluster_specific_models_old) > 1 - self.tol:
-                        break
-
-            cluster_specific_models_old = cluster_specific_models_new
-
-        label_history = pd.DataFrame(np.array(label_history).T, index=eem_dataset.index,
-                                     columns=['iter_{i}'.format(i=i + 1) for i in range(n + 1)])
-        error_history = pd.DataFrame(np.array(error_history).T, index=eem_dataset.index,
-                                     columns=['iter_{i}'.format(i=i + 1) for i in range(n + 1)])
-        self.label_history = [label_history]
-        self.error_history = [error_history]
-        self.unified_model = unified_model
-        self.labels = cluster_labels
-        self.clusters = sub_datasets_n
-        self.cluster_specific_models = cluster_specific_models_new
-
-        return cluster_labels, label_history, error_history
-
-    def robust_clustering(self, eem_dataset: EEMDataset, n_runs: int, subsampling_portion: float,
-                          consensus_conversion_power: float = 1.0):
-        """
-        Run the clustering for many times and combine the output of each run to obtain an optimal clustering.
-
-        Parameters
-        ----------
-        eem_dataset: EEMDataset
-            EEM dataset.
-        n_runs: int
-            Number of clustering
-        subsampling_portion: float
-            The portion of EEMs remained after subsampling.
-        consensus_conversion_power: float
-            The factor adjusting the conversion from consensus matrix (M) to distance matrix (D) used for hierarchical
-            clustering. D_{i,j} = (1 - M_{i,j})^factor. This number influences the gradient of distance with respect
-            to consensus. A smaller number will lead to shaper increase of distance at consensus close to 1.
-
-        Returns
-        -------
-        self: object
-            The established K-PARAFACs model
-        """
-
-        n_samples = eem_dataset.eem_stack.shape[0]
-        co_label_matrix = np.zeros((n_samples, n_samples))
-        co_occurrence_matrix = np.zeros((n_samples, n_samples))
-
-        # ---------Repeat base clustering and generate consensus matrix---------
-
-        n = 0
-        label_history = []
-        error_history = []
-        while n < n_runs:
-
-            # ------Subsampling-------
-            eem_dataset_new, index_new, ref_new, selected_indices = eem_dataset.subsampling(portion=subsampling_portion)
-            n_samples_new = eem_dataset_new.shape[0]
-            eem_dataset_n = EEMDataset(eem_stack=eem_dataset_new, ex_range=eem_dataset.ex_range,
-                                       em_range=eem_dataset.em_range, index=index_new, ref=ref_new)
-
-            # ------Base clustering-------
-            cluster_labels_n, label_history_n, error_history_n = self.base_clustering(eem_dataset_n)
-            for j in range(n_samples_new):
-                for k in range(n_samples_new):
-                    co_occurrence_matrix[selected_indices[j], selected_indices[k]] += 1
-                    if cluster_labels_n[j] == cluster_labels_n[k]:
-                        co_label_matrix[selected_indices[j], selected_indices[k]] += 1
-            label_history.append(label_history_n)
-            error_history.append(error_history_n)
-
-            # ----check if counting_matrix contains 0, meaning that not all sample pairs have been included in the
-            # clustering. If this is the case, run more base clustering until all sample pairs are covered----
-            if n == n_runs - 1 and np.any(co_occurrence_matrix == 0):
-                warnings.warn(
-                    'Not all sample pairs are covered. One extra clustering will be executed.')
-            else:
-                n += 1
-
-        # ---------Hierarchical clustering----------
-        consensus_matrix = co_label_matrix / co_occurrence_matrix
-        distance_matrix = (1 - co_label_matrix) ** consensus_conversion_power
-        linkage_matrix = linkage(squareform(distance_matrix), method='complete')
-        labels = fcluster(linkage_matrix, self.n_clusters, criterion='maxclust')
-        sorted_indices = np.argsort(labels)
-        consensus_matrix_sorted = consensus_matrix[sorted_indices][:, sorted_indices]
-
-        # ---------Get final clusters and cluster-specific models-------
-        clusters = {}
-        cluster_specific_models = {}
-        for j in set(list(labels)):
-            eem_stack_j = eem_dataset.eem_stack[np.where(labels == j)]
-            if eem_dataset.ref:
-                ref_j = eem_dataset.ref[np.where(labels == j)]
-            else:
-                ref_j = None
-            if eem_dataset.index:
-                index_j = [eem_dataset.index[k] for k, idx in enumerate(labels) if idx == j]
-            else:
-                index_j = None
-            clusters[j] = EEMDataset(eem_stack=eem_stack_j, ex_range=eem_dataset.ex_range,
-                                     em_range=eem_dataset.em_range, ref=ref_j, index=index_j)
-            model = copy.deepcopy(self.base_model)
-            # model = PARAFAC(rank=self.rank, non_negativity=self.non_negativity, init=self.init,
-            #                 tf_normalization=self.tf_normalization,
-            #                 loadings_normalization=self.loadings_normalization, sort_em=self.sort_em)
-            model.fit(clusters[j])
-            cluster_specific_models[j] = model
-
-        self.n_runs = n_runs
-        self.subsampling_portion = subsampling_portion
-        self.consensus_conversion_power = consensus_conversion_power
-        self.label_history = label_history
-        self.error_history = error_history
-        self.labels = labels
-        self.clusters = clusters
-        self.cluster_specific_models = cluster_specific_models
-        self.consensus_matrix = consensus_matrix
-        self.consensus_matrix_sorted = consensus_matrix_sorted
-
-    def predict(self, eem_dataset: EEMDataset):
-        """
-        Fit the cluster-specific models to a given EEM dataset. Each EEM in the EEM dataset is fitted to the model that
-        produce the least RMSE.
-
-        Parameters
-        ----------
-        eem_dataset: EEMDataset
-            The EEM dataset to be predicted.
-
-        Returns
-        -------
-        best_model_label: pd.DataFrame
-            The best-fit model for every EEM.
-        score_all: pd.DataFrame
-            The score fitted with each cluster-specific model.
-        fmax_all: pd.DataFrame
-            The fmax fitted with each cluster-specific model.
-        sample_error: pd.DataFrame
-            The RMSE fitted with each cluster-specific model.
-        """
-
-        sample_error = []
-        score_all = []
-        fmax_all = []
-
-        for label, m in self.cluster_specific_models.items():
-            score_m, fmax_m, eem_stack_re_m = m.predict(eem_dataset)
-            res = m.eem_stack_train - eem_stack_re_m
-            n_pixels = m.eem_stack_train.shape[1] * m.eem_stack_train.shape[2]
-            rmse = sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels)
-            sample_error.append(rmse)
-            score_all.append(score_m)
-            fmax_all.append(fmax_m)
-
-        score_all = pd.DataFrame(np.array(score_all), index=eem_dataset.index,
-                                 columns=list(self.cluster_specific_models.keys()))
-        fmax_all = pd.DataFrame(np.array(fmax_all), index=eem_dataset.index,
-                                columns=list(self.cluster_specific_models.keys()))
-        best_model_idx = np.argmin(sample_error, axis=0)
-        # least_model_errors = np.min(sample_error, axis=0)
-        # score_opt = np.array([score_all[i, j] for j, i in enumerate(best_model_idx)])
-        # fmax_opt = np.array([fmax_all[i, j] for j, i in enumerate(best_model_idx)])
-        best_model_label = np.array([list(self.cluster_specific_models.keys())[idx] for idx in best_model_idx])
-        best_model_label = pd.DataFrame(best_model_label, index=eem_dataset.index, columns=['best-fit model'])
-        sample_error = pd.DataFrame(np.array(sample_error), index=eem_dataset.index,
-                                    columns=list(self.cluster_specific_models.keys()))
-
-        return best_model_label, score_all, fmax_all, sample_error
-
 
 # class EEMPCA:
 #
@@ -2894,4 +2554,372 @@ class EEMPCA:
         self.residual = residual
         return residual
 
+
+
+class KMethod:
+    """
+    Conduct K-PARAFACs, an EEM clustering algorithm aiming to minimize the general PARAFAC reconstruction error. The
+    key hypothesis behind K-PARAFACs is that fitting EEMs with varied underlying chemical compositions using the same
+    PARAFAC model could lead to a large reconstruction error. In contrast, samples with similar chemical composition
+    can be incorporated into the same PARAFAC model with small reconstruction error (i.e., the root mean-squared
+    error (RMSE) between the original EEM and its reconstruction derived from loadings and scores). if samples can be
+    appropriately clustered by their chemical compositions, then the PARAFAC models established on individual
+    clusters, i.e., the cluster-specific PARAFAC models, should exhibit reduced reconstruction error compared to the
+    unified PARAFAC model. Based on this hypothesis, K-PARAFACs is proposed to search for an optimal clustering
+    strategy so that the overall reconstruction error of cluster-specific PARAFAC models is minimized.
+
+    Parameters
+    -----------
+    rank: int
+        Number of components.
+    n_initial_splits: int
+        Number of splits in clustering initialization (the first time that the EEM dataset is divided).
+    n_clusters: int
+        Number of clusters in the final output.
+    max_iter: int
+        Maximum number of iterations of base clustering for a single run.
+    tol: float
+        Tolerence in regard to the average Tucker's congruence between the cluster-specific PARAFAC models
+        of two consecutive iterations to declare convergence. If the Tucker's congruence > 1-tol, then convergence is
+        confirmed.
+    elimination: 'default' or int
+        The minimum number of EEMs in each cluster. During optimization, clusters with EEMs less than the specified
+        number would be eliminated. If 'default' is passed, then the number is set to be the same as the number of
+        components.
+
+
+    Attributes
+    ------------
+    unified_model: PARAFAC
+        Unified PARAFAC model.
+    label_history: list
+        A list of cluster labels after each run of clustering.
+    error_history: list
+        A list of average RMSE over all pixels after each run of clustering.
+    labels: np.ndarray
+        Finally cluter labels.
+    clusters: dict
+        EEM clusters.
+    cluster_specific_models: dict
+        Cluster-specific PARAFAC models.
+    consensus_matrix: np.ndarray
+        Consensus matrix.
+    consensus_matrix_sorted: np.ndarray
+        Sorted consensus matrix.
+    """
+
+    def __init__(self, base_model, rank, n_initial_splits, n_clusters, max_iter=20, tol=0.001, elimination='default'):
+
+        # -----------Parameters-------------
+        self.base_model = base_model
+        self.rank = rank
+        self.n_initial_splits = n_initial_splits
+        self.n_clusters = n_clusters
+        self.max_iter = max_iter
+        self.tol = tol
+        self.elimination = elimination
+        self.subsampling_portion = None
+        self.n_runs = None
+        self.consensus_conversion_power = None
+
+        # ----------Attributes-------------
+        self.unified_model = None
+        self.label_history = None
+        self.error_history = None
+        self.labels = None
+        self.eem_clusters = None
+        self.cluster_specific_models = None
+        self.consensus_matrix = None
+        self.distance_matrix = None
+        self.linkage_matrix = None
+        self.consensus_matrix_sorted = None
+
+    def base_clustering(self, eem_dataset: EEMDataset):
+        """
+        Run clustering for a single time.
+
+        Parameters
+        ----------
+        eem_dataset: EEMDataset
+            The EEM dataset to be clustered.
+
+        Returns
+        -------
+        cluster_labels: np.ndarray
+            Cluster labels.
+        label_history: list
+            Cluster labels in each iteration.
+        error_history: list
+            Average reconstruction error (RMSE) in each iteration.
+        """
+
+        # -------Generate a unified model as reference for ordering components--------
+
+        # unified_model = PARAFAC(rank=self.rank, non_negativity=self.non_negativity, init=self.init,
+        #                         tf_normalization=self.tf_normalization,
+        #                         loadings_normalization=self.loadings_normalization, sort_em=self.sort_em)
+
+        unified_model = copy.deepcopy(self.base_model)
+        unified_model.fit(eem_dataset)
+
+        # -------Define functions for estimation and maximization steps-------
+
+        def estimation(sub_datasets: dict):
+            models = {}
+            for label, d in sub_datasets.items():
+                # model = PARAFAC(rank=self.rank, non_negativity=self.non_negativity, init=self.init,
+                #                 tf_normalization=self.tf_normalization,
+                #                 loadings_normalization=self.loadings_normalization, sort_em=self.sort_em)
+                model = copy.deepcopy(self.base_model)
+                model.fit(d)
+                models[label] = model
+            return models
+
+        def maximization(models: dict):
+            sample_error = []
+            sub_datasets = {}
+            for label, m in models.items():
+                score_m, fmax_m, eem_stack_re_m = m.predict(eem_dataset)
+                res = m.eem_stack_train - eem_stack_re_m
+                n_pixels = m.eem_stack_train.shape[1] * m.eem_stack_train.shape[2]
+                rmse = sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels)
+                sample_error.append(rmse)
+            best_model_idx = np.argmin(sample_error, axis=0)
+            least_model_errors = np.min(sample_error, axis=0)
+            for j, label in enumerate(models.keys()):
+                eem_stack_j = eem_dataset.eem_stack[np.where(best_model_idx == j)]
+                if eem_dataset.ref:
+                    ref_j = eem_dataset.ref[np.where(best_model_idx == j)]
+                else:
+                    ref_j = None
+                if eem_dataset.index:
+                    index_j = [eem_dataset.index[k] for k, idx in enumerate(best_model_idx) if idx == j]
+                else:
+                    index_j = None
+                sub_datasets[label] = EEMDataset(eem_stack=eem_stack_j, ex_range=eem_dataset.ex_range,
+                                                 em_range=eem_dataset.em_range, ref=ref_j, index=index_j)
+            best_model_label = np.array([list(models.keys())[idx] for idx in best_model_idx])
+            return sub_datasets, best_model_label, least_model_errors
+
+        # -------Define function for convergence detection-------
+
+        def model_similarity(models_1: dict, models_2: dict):
+            similarity = 0
+            for label, m in models_1.items():
+                similarity = component_similarity(m.components, models_2[label].components).to_numpy().diagonal()
+            similarity = similarity / len(models_1)
+            return similarity
+
+        # -------Initialization--------
+        label_history = []
+        error_history = []
+        sub_datasets_n = {}
+        initial_sub_eem_datasets = eem_dataset.splitting(n_split=self.n_initial_splits)
+        for i, random_m in enumerate(initial_sub_eem_datasets):
+            sub_datasets_n[i + 1] = random_m
+
+        for n in range(self.max_iter):
+
+            # -------Eliminate sub_datasets having EEMs less than the number of ranks--------
+            for cluster_label, sub_dataset_i in sub_datasets_n.items():
+                if self.elimination == 'default' and sub_dataset_i.eem_stack.shape[0] <= self.rank:
+                    sub_datasets_n.pop(cluster_label)
+                elif isinstance(self.elimination, int):
+                    if self.elimination < self.rank and sub_dataset_i.eem_stack.shape[0] <= self.rank:
+                        sub_datasets_n.pop(cluster_label)
+                    elif self.elimination >= self.rank and sub_dataset_i.eem_stack.shape[0] <= self.elimination:
+                        sub_datasets_n.pop(cluster_label)
+
+            # -------The estimation step-------
+            cluster_specific_models_new = estimation(sub_datasets_n)
+            cluster_specific_models_new = align_components_by_components(
+                cluster_specific_models_new,
+                {f'component {i+1}': unified_model.components[i] for i in range(unified_model.components.shape[0])}
+            )
+
+            # -------The maximization step--------
+            sub_datasets_n, cluster_labels, fitting_errors = maximization(cluster_specific_models_new)
+            label_history.append(cluster_labels)
+            error_history.append(fitting_errors)
+
+            # -------Detect convergence---------
+            if 0 < n < self.max_iter - 1:
+                if label_history[-1] == label_history[-2]:
+                    break
+                if len(cluster_specific_models_old) == len(cluster_specific_models_new):
+                    if model_similarity(cluster_specific_models_new, cluster_specific_models_old) > 1 - self.tol:
+                        break
+
+            cluster_specific_models_old = cluster_specific_models_new
+
+        label_history = pd.DataFrame(np.array(label_history).T, index=eem_dataset.index,
+                                     columns=['iter_{i}'.format(i=i + 1) for i in range(n + 1)])
+        error_history = pd.DataFrame(np.array(error_history).T, index=eem_dataset.index,
+                                     columns=['iter_{i}'.format(i=i + 1) for i in range(n + 1)])
+        self.label_history = [label_history]
+        self.error_history = [error_history]
+        self.unified_model = unified_model
+        self.labels = cluster_labels
+        self.eem_clusters = sub_datasets_n
+        self.cluster_specific_models = cluster_specific_models_new
+
+        return cluster_labels, label_history, error_history
+
+    def repetitive_clustering(self, eem_dataset: EEMDataset, n_runs: int, subsampling_portion: float,
+                              consensus_conversion_power: float = 1.0):
+        """
+        Run the clustering for many times and combine the output of each run to obtain an optimal clustering.
+
+        Parameters
+        ----------
+        eem_dataset: EEMDataset
+            EEM dataset.
+        n_runs: int
+            Number of clustering
+        subsampling_portion: float
+            The portion of EEMs remained after subsampling.
+        consensus_conversion_power: float
+            The factor adjusting the conversion from consensus matrix (M) to distance matrix (D) used for hierarchical
+            clustering. D_{i,j} = (1 - M_{i,j})^factor. This number influences the gradient of distance with respect
+            to consensus. A smaller number will lead to shaper increase of distance at consensus close to 1.
+
+        Returns
+        -------
+        self: object
+            The established K-PARAFACs model
+        """
+
+        n_samples = eem_dataset.eem_stack.shape[0]
+        co_label_matrix = np.zeros((n_samples, n_samples))
+        co_occurrence_matrix = np.zeros((n_samples, n_samples))
+
+        # ---------Repeat base clustering and generate consensus matrix---------
+
+        n = 0
+        label_history = []
+        error_history = []
+        while n < n_runs:
+
+            # ------Subsampling-------
+            eem_dataset_new, index_new, ref_new, selected_indices = eem_dataset.subsampling(portion=subsampling_portion)
+            n_samples_new = eem_dataset_new.shape[0]
+            eem_dataset_n = EEMDataset(eem_stack=eem_dataset_new, ex_range=eem_dataset.ex_range,
+                                       em_range=eem_dataset.em_range, index=index_new, ref=ref_new)
+
+            # ------Base clustering-------
+            cluster_labels_n, label_history_n, error_history_n = self.base_clustering(eem_dataset_n)
+            for j in range(n_samples_new):
+                for k in range(n_samples_new):
+                    co_occurrence_matrix[selected_indices[j], selected_indices[k]] += 1
+                    if cluster_labels_n[j] == cluster_labels_n[k]:
+                        co_label_matrix[selected_indices[j], selected_indices[k]] += 1
+            label_history.append(label_history_n)
+            error_history.append(error_history_n)
+
+            # ----check if counting_matrix contains 0, meaning that not all sample pairs have been included in the
+            # clustering. If this is the case, run more base clustering until all sample pairs are covered----
+            if n == n_runs - 1 and np.any(co_occurrence_matrix == 0):
+                warnings.warn(
+                    'Not all sample pairs are covered. One extra clustering will be executed.')
+            else:
+                n += 1
+
+        # ---------Obtain consensus matrix, distance matrix and linkage matrix----------
+        consensus_matrix = co_label_matrix / co_occurrence_matrix
+        distance_matrix = (1 - co_label_matrix) ** consensus_conversion_power
+        linkage_matrix = linkage(squareform(distance_matrix), method='complete')
+
+        self.n_runs = n_runs
+        self.subsampling_portion = subsampling_portion
+        self.consensus_conversion_power = consensus_conversion_power
+        self.label_history = label_history
+        self.error_history = error_history
+        self.consensus_matrix = consensus_matrix
+        self.distance_matrix = distance_matrix
+        self.linkage_matrix = linkage_matrix
+
+    def hierarchical_clustering(self, eem_dataset):
+
+        labels = fcluster(self.linkage_matrix, self.n_clusters, criterion='maxclust')
+        sorted_indices = np.argsort(labels)
+        consensus_matrix_sorted = self.consensus_matrix[sorted_indices][:, sorted_indices]
+
+        # ---------Get final clusters and cluster-specific models-------
+        clusters = {}
+        cluster_specific_models = {}
+        for j in set(list(labels)):
+            eem_stack_j = eem_dataset.eem_stack[np.where(labels == j)]
+            if eem_dataset.ref:
+                ref_j = eem_dataset.ref[np.where(labels == j)]
+            else:
+                ref_j = None
+            if eem_dataset.index:
+                index_j = [eem_dataset.index[k] for k, idx in enumerate(labels) if idx == j]
+            else:
+                index_j = None
+            cluster_j = [j]*eem_stack_j.shape[0]
+            clusters[j] = EEMDataset(eem_stack=eem_stack_j, ex_range=eem_dataset.ex_range,
+                                     em_range=eem_dataset.em_range, ref=ref_j, index=index_j, cluster=cluster_j)
+            model = copy.deepcopy(self.base_model)
+            # model = PARAFAC(rank=self.rank, non_negativity=self.non_negativity, init=self.init,
+            #                 tf_normalization=self.tf_normalization,
+            #                 loadings_normalization=self.loadings_normalization, sort_em=self.sort_em)
+            model.fit(clusters[j])
+            cluster_specific_models[j] = model
+
+        self.labels = labels
+        self.eem_clusters = clusters
+        self.cluster_specific_models = cluster_specific_models
+
+        self.consensus_matrix_sorted = consensus_matrix_sorted
+
+    def predict(self, eem_dataset: EEMDataset):
+        """
+        Fit the cluster-specific models to a given EEM dataset. Each EEM in the EEM dataset is fitted to the model that
+        produce the least RMSE.
+
+        Parameters
+        ----------
+        eem_dataset: EEMDataset
+            The EEM dataset to be predicted.
+
+        Returns
+        -------
+        best_model_label: pd.DataFrame
+            The best-fit model for every EEM.
+        score_all: pd.DataFrame
+            The score fitted with each cluster-specific model.
+        fmax_all: pd.DataFrame
+            The fmax fitted with each cluster-specific model.
+        sample_error: pd.DataFrame
+            The RMSE fitted with each cluster-specific model.
+        """
+
+        sample_error = []
+        score_all = []
+        fmax_all = []
+
+        for label, m in self.cluster_specific_models.items():
+            score_m, fmax_m, eem_stack_re_m = m.predict(eem_dataset)
+            res = m.eem_stack_train - eem_stack_re_m
+            n_pixels = m.eem_stack_train.shape[1] * m.eem_stack_train.shape[2]
+            rmse = sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels)
+            sample_error.append(rmse)
+            score_all.append(score_m)
+            fmax_all.append(fmax_m)
+
+        score_all = pd.DataFrame(np.array(score_all), index=eem_dataset.index,
+                                 columns=list(self.cluster_specific_models.keys()))
+        fmax_all = pd.DataFrame(np.array(fmax_all), index=eem_dataset.index,
+                                columns=list(self.cluster_specific_models.keys()))
+        best_model_idx = np.argmin(sample_error, axis=0)
+        # least_model_errors = np.min(sample_error, axis=0)
+        # score_opt = np.array([score_all[i, j] for j, i in enumerate(best_model_idx)])
+        # fmax_opt = np.array([fmax_all[i, j] for j, i in enumerate(best_model_idx)])
+        best_model_label = np.array([list(self.cluster_specific_models.keys())[idx] for idx in best_model_idx])
+        best_model_label = pd.DataFrame(best_model_label, index=eem_dataset.index, columns=['best-fit model'])
+        sample_error = pd.DataFrame(np.array(sample_error), index=eem_dataset.index,
+                                    columns=list(self.cluster_specific_models.keys()))
+
+        return best_model_label, score_all, fmax_all, sample_error
 
