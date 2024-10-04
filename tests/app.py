@@ -4597,7 +4597,7 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
             alpha_W=nmf_alpha_w, l1_ratio=nmf_l1_ratio
         )
 
-    consensus_parameters = base_model.__dict__
+    base_clustering_parameters = base_model.__dict__
 
     kmethod = KMethod(base_model=base_model, n_initial_splits=n_init_splits, max_iter=n_iterations, tol=tol,
                       elimination=elimination)
@@ -4670,7 +4670,7 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
     )
 
     return (None, consensus_matrix_tabs, error_history_tabs, 'Calculate consensus', consensus_matrix.tolist(),
-            eem_dataset_establishment_json_dict, consensus_parameters)
+            eem_dataset_establishment_json_dict, base_clustering_parameters)
 
 
 #   -----------------Step 2: Hierarchical clustering
@@ -4702,9 +4702,34 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
     ]
 )
 def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conversion, validations, eem_graph_options,
-                               consensus_matrix, eem_dataset_establish, base_clustering_parameters):
+                               consensus_matrix, eem_dataset_establish_dict, base_clustering_parameters):
+    if n_clicks is None:
+        return None, None, None, 'Calculate consensus', None, None, None
+    else:
+        if eem_dataset_establish_dict is None:
+            return None, None, None, 'Calculate consensus', None, None, None
+        else:
+            eem_dataset_establish = EEMDataset(
+                eem_stack=np.array(
+                    [[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+                     in eem_dataset_establish_dict['eem_stack']]),
+                ex_range=np.array(eem_dataset_establish_dict['ex_range']),
+                em_range=np.array(eem_dataset_establish_dict['em_range']),
+                index=eem_dataset_establish_dict['index'],
+                ref=pd.DataFrame(eem_dataset_establish_dict['ref'][1:],
+                                 columns=eem_dataset_establish_dict['ref'][0],
+                                 index=eem_dataset_establish_dict['index'])
+                if eem_dataset_establish_dict['ref'] is not None else None,
+                cluster=eem_dataset_establish_dict['cluster']
+            )
     if base_clustering == 'PARAFAC':
         base_model = PARAFAC(**base_clustering_parameters)
+    elif base_clustering == 'NMF':
+        base_model = NMF(**base_clustering_parameters)
+    kmethod = KMethod(base_model=base_model, n_initial_splits=None)
+    kmethod.consensus_matrix = consensus_matrix
+    kmethod.hierarchical_clustering(eem_dataset_establish, n_final_clusters, conversion)
+
     return
 
     # if eem_dataset_establishment.ref is not None:
