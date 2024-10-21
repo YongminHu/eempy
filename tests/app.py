@@ -2820,7 +2820,7 @@ card_nmf_param = dbc.Card(
                                         dbc.Label("Index mandatory keywords"), width={'size': 1}
                                     ),
                                     dbc.Col(
-                                        dcc.Input(id='nmf-sample-kw-mandatory', type='text', placeholder='',
+                                        dcc.Input(id='nmf-establishment-index-kw-mandatory', type='text', placeholder='',
                                                   style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
                                         width={"offset": 0, "size": 2}
                                     ),
@@ -2828,7 +2828,7 @@ card_nmf_param = dbc.Card(
                                         dbc.Label("Index optional keywords"), width={'size': 1, 'offset': 1}
                                     ),
                                     dbc.Col(
-                                        dcc.Input(id='nmf-sample-kw-optional', type='text', placeholder='',
+                                        dcc.Input(id='nmf-establishment-index-kw-optional', type='text', placeholder='',
                                                   style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
                                         width={"offset": 0, "size": 2}
                                     )
@@ -3279,8 +3279,8 @@ page3 = html.Div([
         Input('build-nmf-model', 'n_clicks'),
         State('eem-graph-options', 'value'),
         State('nmf-eem-dataset-establishment-path-input', 'value'),
-        State('nmf-sample-kw-mandatory', 'value'),
-        State('nmf-sample-kw-optional', 'value'),
+        State('nmf-establishment-index-kw-mandatory', 'value'),
+        State('nmf-establishment-index-kw-optional', 'value'),
         State('nmf-rank', 'value'),
         State('nmf-solver', 'value'),
         State('nmf-normalization-checkbox', 'value'),
@@ -3355,8 +3355,8 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
 
     for r in rank_list:
         nmf_r = EEMNMF(
-            n_components=r, solver=solver, normalization=normalization[0], alpha_H=alpha_h, alpha_W=alpha_w,
-            l1_ratio=l1_ratio
+            n_components=r, solver=solver, normalization=normalization[0] if normalization else None,
+            alpha_H=alpha_h, alpha_W=alpha_w, l1_ratio=l1_ratio
         )
         nmf_r.fit(eem_dataset_establishment)
         nmf_fit_params_r = {}
@@ -3902,7 +3902,6 @@ card_kmethod_param1 = dbc.Card(
                                                         'value': True}],
                                               id='kmethod-cluster-from-file-checkbox', switch=True, value=[True]
                                               ),
-                                width={"size": 2, 'offset': 1}
                             ),
                             dbc.Row([
                                 dbc.Col(
@@ -3917,7 +3916,7 @@ card_kmethod_param1 = dbc.Card(
                                         dbc.Label("Index mandatory keywords"), width={'size': 1}
                                     ),
                                     dbc.Col(
-                                        dcc.Input(id='kmethod-sample-kw-mandatory', type='text', placeholder='',
+                                        dcc.Input(id='kmethod-establishment-index-kw-mandatory', type='text', placeholder='',
                                                   style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
                                         width={"offset": 0, "size": 2}
                                     ),
@@ -3925,7 +3924,7 @@ card_kmethod_param1 = dbc.Card(
                                         dbc.Label("Index optional keywords"), width={'size': 1, 'offset': 1}
                                     ),
                                     dbc.Col(
-                                        dcc.Input(id='nmf-sample-kw-optional', type='text', placeholder='',
+                                        dcc.Input(id='kmethod-establishment-index-kw-optional', type='text', placeholder='',
                                                   style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
                                         width={"offset": 0, "size": 2}
                                     )
@@ -3963,7 +3962,7 @@ card_kmethod_param1 = dbc.Card(
                                     dcc.Input(id='kmethod-rank', type='number',
                                               placeholder='Please enter only one number',
                                               style={'width': '100px', 'height': '30px'}, debounce=True, value=0),
-                                    width={'size': 2},
+                                    width={'size': 1},
                                 ),
                                 dbc.Col(
                                     dbc.Label("Number of initial splits"), width={'size': 1}
@@ -3971,7 +3970,15 @@ card_kmethod_param1 = dbc.Card(
                                 dbc.Col(
                                     dcc.Input(id='kmethod-num-init-splits', type='number',
                                               style={'width': '100px', 'height': '30px'}, debounce=True, value=0),
-                                    width={'size': 2},
+                                    width={'size': 1},
+                                ),
+                                dbc.Col(
+                                    dbc.Label("Number of base clustering runs"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='kmethod-num-base-clusterings', type='number',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0),
+                                    width={'size': 1},
                                 ),
                                 dbc.Col(
                                     dbc.Label("Maximum iterations for one time base clustering"),
@@ -3980,15 +3987,7 @@ card_kmethod_param1 = dbc.Card(
                                 dbc.Col(
                                     dcc.Input(id='kmethod-num-iterations', type='number',
                                               style={'width': '100px', 'height': '30px'}, debounce=True, value=10),
-                                    width={'size': 2},
-                                ),
-                                dbc.Col(
-                                    dbc.Label("Number of base clustering runs"), width={'size': 1}
-                                ),
-                                dbc.Col(
-                                    dcc.Input(id='kmethod-num-base-clusterings', type='number',
-                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0),
-                                    width={'size': 2},
+                                    width={'size': 1},
                                 ),
                             ]
                             ),
@@ -4001,7 +4000,7 @@ card_kmethod_param1 = dbc.Card(
                                 dbc.Col(
                                     dcc.Input(id='kmethod-convergence-tolerance', type='number',
                                               style={'width': '100px', 'height': '30px'}, debounce=True, value=0.01),
-                                    width={'size': 2},
+                                    width={'size': 1},
                                 ),
                                 dbc.Col(
                                     dbc.Label("Elimination"), width={'size': 1}
@@ -4010,16 +4009,16 @@ card_kmethod_param1 = dbc.Card(
                                     dcc.Input(id='kmethod-elimination', type='text',
                                               style={'width': '100px', 'height': '30px'}, debounce=True,
                                               value='default'),
-                                    width={'size': 2},
+                                    width={'size': 1},
                                 ),
                                 dbc.Col(
                                     dbc.Label("Subsampling portion"),
-                                    width={'size': 2}
+                                    width={'size': 1}
                                 ),
                                 dbc.Col(
                                     dcc.Input(id='kmethod-subsampling-portion', type='number',
                                               style={'width': '100px', 'height': '30px'}, debounce=True, value=0.8),
-                                    width={'size': 2},
+                                    width={'size': 1},
                                 ),
                             ]
                             ),
@@ -4059,15 +4058,15 @@ card_kmethod_param2 = dbc.Card(
                                         dcc.Input(id='kmethod-num-final-clusters', type='text',
                                                   placeholder='Multiple values possible, e.g., 3, 4',
                                                   style={'width': '250px', 'height': '30px'}, debounce=True),
-                                        width={'size': 1}
+                                        width={"offset": 0, "size": 3}
                                     ),
                                     dbc.Col(
-                                        dbc.Label("Consensus conversion factor"), width={'size': 1}
+                                        dbc.Label("Consensus conversion factor"), width={'size': 2}
                                     ),
                                     dbc.Col(
                                         dcc.Input(id='kmethod-consensus-conversion', type='number',
                                                   style={'width': '250px', 'height': '30px'}, debounce=True),
-                                        width={'size': 1}
+                                        width={"offset": 0, "size": 1}
                                     ),
                                 ]
                             ),
@@ -4116,7 +4115,8 @@ page4 = html.Div([
                         dcc.Tab(label='Consensus matrix', id='kmethod-consensus-matrix'),
                         dcc.Tab(label='Label history', id='kmethod-label-history'),
                         dcc.Tab(label='Error history', id='kmethod-error-history'),
-                    ]
+                    ],
+                    vertical=True
                 )
             ),
             dbc.Row(
@@ -4473,7 +4473,7 @@ page4 = html.Div([
         Output('kmethod-base-clustering-message', 'children')
     ],
     [
-        Input('kmethod-base-clustering', 'value')
+        Input('kmethod-base-model', 'value')
     ]
 )
 def on_kmethod_base_clustering_message(base_clustering):
@@ -4502,7 +4502,7 @@ def on_kmethod_base_clustering_message(base_clustering):
         State('kmethod-establishment-index-kw-optional', 'value'),
         State('kmethod-cluster-from-file-checkbox', 'value'),
         State('kmethod-rank', 'value'),
-        State('kmethod-base-clustering', 'value'),
+        State('kmethod-base-model', 'value'),
         State('kmethod-num-init-splits', 'value'),
         State('kmethod-num-base-clusterings', 'value'),
         State('kmethod-num-iterations', 'value'),
@@ -4672,65 +4672,65 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
     return (None, consensus_matrix_tabs, error_history_tabs, 'Calculate consensus', consensus_matrix.tolist(),
             eem_dataset_establishment_json_dict, base_clustering_parameters)
 
-
-#   -----------------Step 2: Hierarchical clustering
-@app.callback(
-    [
-        Output('kmethod-dendrogram', 'children'),
-        Output('kmethod-clusters', 'children'),
-        Output('kmethod-components', 'children'),
-        Output('kmethod-fmax', 'children'),
-        Output('kmethod-establishment-corr-model-selection', 'options'),
-        Output('kmethod-establishment-corr-model-selection', 'value'),
-        Output('kmethod-establishment-corr-ref-selection', 'options'),
-        Output('kmethod-establishment-corr-ref-selection', 'value'),
-        # Output('parafac-test-model-selection', 'options'),
-        # Output('parafac-test-model-selection', 'value'),
-        Output('kmethod-test-pred-ref-selection', 'options'),
-        Output('kmethod-test-pred-ref-selection', 'value'),
-    ],
-    [
-        Input('build-kmethod-clustering', 'n_clicks'),
-        State('kmethod-base-clustering', 'value'),
-        State('kmethod-num-final-clusters', 'value'),
-        State('kmethod-consensus-conversion', 'value'),
-        State('kmethod-validations', 'value'),
-        State('eem-graph-options', 'value'),
-        State('kmethod-consensus-matrix-data', 'data'),
-        State('kmethod-eem-dataset-establish', 'data'),
-        State('kmethod-base-clustering-parameters', 'data')
-    ]
-)
-def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conversion, validations, eem_graph_options,
-                               consensus_matrix, eem_dataset_establish_dict, base_clustering_parameters):
-    if n_clicks is None:
-        return None, None, None, 'Calculate consensus', None, None, None
-    else:
-        if eem_dataset_establish_dict is None:
-            return None, None, None, 'Calculate consensus', None, None, None
-        else:
-            eem_dataset_establish = EEMDataset(
-                eem_stack=np.array(
-                    [[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
-                     in eem_dataset_establish_dict['eem_stack']]),
-                ex_range=np.array(eem_dataset_establish_dict['ex_range']),
-                em_range=np.array(eem_dataset_establish_dict['em_range']),
-                index=eem_dataset_establish_dict['index'],
-                ref=pd.DataFrame(eem_dataset_establish_dict['ref'][1:],
-                                 columns=eem_dataset_establish_dict['ref'][0],
-                                 index=eem_dataset_establish_dict['index'])
-                if eem_dataset_establish_dict['ref'] is not None else None,
-                cluster=eem_dataset_establish_dict['cluster']
-            )
-    if base_clustering == 'PARAFAC':
-        base_model = PARAFAC(**base_clustering_parameters)
-    elif base_clustering == 'NMF':
-        base_model = NMF(**base_clustering_parameters)
-    kmethod = KMethod(base_model=base_model, n_initial_splits=None)
-    kmethod.consensus_matrix = consensus_matrix
-    kmethod.hierarchical_clustering(eem_dataset_establish, n_final_clusters, conversion)
-
-    return
+#
+# #   -----------------Step 2: Hierarchical clustering
+# @app.callback(
+#     [
+#         Output('kmethod-dendrogram', 'children'),
+#         Output('kmethod-clusters', 'children'),
+#         Output('kmethod-components', 'children'),
+#         Output('kmethod-fmax', 'children'),
+#         Output('kmethod-establishment-corr-cluster-selection', 'options'),
+#         Output('kmethod-establishment-corr-cluster-selection', 'value'),
+#         Output('kmethod-establishment-corr-ref-selection', 'options'),
+#         Output('kmethod-establishment-corr-ref-selection', 'value'),
+#         # Output('parafac-test-model-selection', 'options'),
+#         # Output('parafac-test-model-selection', 'value'),
+#         Output('kmethod-test-pred-ref-selection', 'options'),
+#         Output('kmethod-test-pred-ref-selection', 'value'),
+#     ],
+#     [
+#         Input('build-kmethod-clustering', 'n_clicks'),
+#         State('kmethod-base-model', 'value'),
+#         State('kmethod-num-final-clusters', 'value'),
+#         State('kmethod-consensus-conversion', 'value'),
+#         State('kmethod-validations', 'value'),
+#         State('eem-graph-options', 'value'),
+#         State('kmethod-consensus-matrix-data', 'data'),
+#         State('kmethod-eem-dataset-establish', 'data'),
+#         State('kmethod-base-clustering-parameters', 'data')
+#     ]
+# )
+# def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conversion, validations, eem_graph_options,
+#                                consensus_matrix, eem_dataset_establish_dict, base_clustering_parameters):
+#     if n_clicks is None:
+#         return None, None, None, None, None, None, None, None, None, None
+#     else:
+#         if eem_dataset_establish_dict is None:
+#             return None, None, None, None, None, None, None, None, None, None
+#         else:
+#             eem_dataset_establish = EEMDataset(
+#                 eem_stack=np.array(
+#                     [[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+#                      in eem_dataset_establish_dict['eem_stack']]),
+#                 ex_range=np.array(eem_dataset_establish_dict['ex_range']),
+#                 em_range=np.array(eem_dataset_establish_dict['em_range']),
+#                 index=eem_dataset_establish_dict['index'],
+#                 ref=pd.DataFrame(eem_dataset_establish_dict['ref'][1:],
+#                                  columns=eem_dataset_establish_dict['ref'][0],
+#                                  index=eem_dataset_establish_dict['index'])
+#                 if eem_dataset_establish_dict['ref'] is not None else None,
+#                 cluster=eem_dataset_establish_dict['cluster']
+#             )
+#     if base_clustering == 'PARAFAC':
+#         base_model = PARAFAC(**base_clustering_parameters)
+#     elif base_clustering == 'NMF':
+#         base_model = NMF(**base_clustering_parameters)
+#     kmethod = KMethod(base_model=base_model, n_initial_splits=None)
+#     kmethod.consensus_matrix = consensus_matrix
+#     kmethod.hierarchical_clustering(eem_dataset_establish, n_final_clusters, conversion)
+#
+#     return
 
     # if eem_dataset_establishment.ref is not None:
     #     valid_ref = eem_dataset_establishment.ref.columns[~eem_dataset_establishment.ref.isna().all()].tolist()
@@ -4820,4 +4820,4 @@ def serve_layout():
 app.layout = serve_layout
 
 if __name__ == '__main__':
-    app.run_server()
+    app.run_server(debug=True)

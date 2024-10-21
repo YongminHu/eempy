@@ -1510,7 +1510,7 @@ class EEMDataset:
             sample_number_all_filtered = sample_number_mandatory_filtered
         eem_stack_filtered = self.eem_stack[sample_number_all_filtered, :, :]
         index_filtered = [self.index[i] for i in sample_number_all_filtered]
-        cluster_filtered = [self.cluster[i] for i in sample_number_all_filtered]
+        cluster_filtered = [self.cluster[i] for i in sample_number_all_filtered] if self.cluster is not None else None
         ref_filtered = self.ref.iloc[sample_number_all_filtered] if self.ref is not None else None
         if not copy:
             self.eem_stack = eem_stack_filtered
