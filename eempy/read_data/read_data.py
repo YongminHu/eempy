@@ -11,9 +11,10 @@ import os
 import re
 import numpy as np
 import pandas as pd
+import json
 from datetime import datetime
 from typing import Union, Tuple, List
-from eempy.eem_processing import eem_interpolation, process_eem_stack
+from eempy.eem_processing import eem_interpolation, process_eem_stack, EEMDataset
 from scipy.interpolate import interp1d
 
 
@@ -204,6 +205,23 @@ def read_eem_dataset(folder_path: str, mandatory_keywords=None, optional_keyword
         em_range_old = np.copy(em_range)
         ex_range_old = np.copy(ex_range)
     return eem_stack, ex_range, em_range, indexes
+
+
+def read_eem_dataset_from_json(path):
+    with open(path, 'r') as file:
+        eem_dataset_dict = json.load(file)
+    eem_dataset = EEMDataset(
+        eem_stack=np.array(
+            [[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+             in eem_dataset_dict['eem_stack']]),
+        ex_range=np.array(eem_dataset_dict['ex_range']),
+        em_range=np.array(eem_dataset_dict['em_range']),
+        index=eem_dataset_dict['index'],
+        ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0],
+                         index=eem_dataset_dict['index'])
+        if eem_dataset_dict['ref'] is not None else None,
+    )
+    return eem_dataset
 
 
 def read_abs(file_path, index_pos: Union[Tuple, List, None] = None, data_format='aqualog'):

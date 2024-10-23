@@ -767,7 +767,7 @@ def eems_tf_normalization(intensity):
 #     return label
 
 
-def eems_fit_components(eem_stack, components, fit_intercept=False, positive=False):
+def eems_fit_components(eem_stack, components, fit_intercept=False, positive=True):
     assert eem_stack.shape[1:] == components.shape[1:], "EEM and component have different shapes"
     eem_stack[np.isnan(eem_stack)] = 0
     components[np.isnan(components)] = 0
@@ -1647,20 +1647,22 @@ class PARAFAC:
             The established PARAFAC model
         """
         if self.tf_normalization:
-            _, tf_weights = eem_dataset.tf_normalization(copy=False)
+            eem_stack_tf, tf_weights = eem_dataset.tf_normalization(copy=True)
+        else:
+            eem_stack_tf = eem_dataset.eem_stack
         try:
             if not self.non_negativity:
-                if np.isnan(eem_dataset.eem_stack).any():
-                    mask = np.where(np.isnan(eem_dataset.eem_stack), 0, 1)
-                    cptensors = parafac(eem_dataset.eem_stack, rank=self.rank, mask=mask, init=self.init)
+                if np.isnan(eem_stack_tf).any():
+                    mask = np.where(np.isnan(eem_stack_tf), 0, 1)
+                    cptensors = parafac(eem_stack_tf, rank=self.rank, mask=mask, init=self.init)
                 else:
-                    cptensors = parafac(eem_dataset.eem_stack, rank=self.rank, init=self.init)
+                    cptensors = parafac(eem_stack_tf, rank=self.rank, init=self.init)
             else:
-                if np.isnan(eem_dataset.eem_stack).any():
-                    mask = np.where(np.isnan(eem_dataset.eem_stack), 0, 1)
-                    cptensors = non_negative_parafac(eem_dataset.eem_stack, rank=self.rank, mask=mask, init=self.init)
+                if np.isnan(eem_stack_tf).any():
+                    mask = np.where(np.isnan(eem_stack_tf), 0, 1)
+                    cptensors = non_negative_parafac(eem_stack_tf, rank=self.rank, mask=mask, init=self.init)
                 else:
-                    cptensors = non_negative_parafac(eem_dataset.eem_stack, rank=self.rank, init=self.init)
+                    cptensors = non_negative_parafac(eem_stack_tf, rank=self.rank, init=self.init)
         except ArpackError:
             print(
                 "PARAFAC failed possibly due to the presence of patches of nan values. Please consider cut or "
@@ -1689,15 +1691,16 @@ class PARAFAC:
                 a[:, r] = a[:, r] * stdb * stdc
             elif self.loadings_normalization == 'maximum':
                 maxb = b[:, r].max()
-                maxc = c[:, r].min()
+                maxc = c[:, r].max()
                 b[:, r] = b[:, r] / maxb
                 c[:, r] = c[:, r] / maxc
                 a[:, r] = a[:, r] * maxb * maxc
             component = np.array([b[:, r]]).T.dot(np.array([c[:, r]]))
             components[r, :, :] = component
 
-        if self.tf_normalization:
-            a = np.multiply(a, tf_weights[:, np.newaxis])
+        # if self.tf_normalization:
+        #     a = np.multiply(a, tf_weights[:, np.newaxis])
+        a, _, _ = eems_fit_components(eem_dataset.eem_stack, components, fit_intercept=False, positive=True)
         score = pd.DataFrame(a)
         fmax = a * components.max(axis=(1, 2))
         ex_loadings = pd.DataFrame(np.flipud(b), index=eem_dataset.ex_range)
@@ -2047,7 +2050,7 @@ def align_components_by_loadings(models_dict: dict, ex_ref: pd.DataFrame, em_ref
             for n_var in range(ex_var.shape[1]):
                 max_index = np.argmax(m_sim.iloc[n_var, :])
                 while max_index in matched_index:
-                    m_sim_copy.iloc[n_var, max_index] = 0
+                    m_sim_copy.iloc[n_var, max_index] = -2
                     max_index = np.argmax(m_sim_copy.iloc[n_var, :])
                 matched_index.append(max_index)
             component_labels_var = [component_labels_ref[i] for i in matched_index]
@@ -2056,7 +2059,7 @@ def align_components_by_loadings(models_dict: dict, ex_ref: pd.DataFrame, em_ref
             for n_ref in range(ex_ref.shape[1]):
                 max_index = np.argmax(m_sim.iloc[:, n_ref])
                 while max_index in matched_index:
-                    m_sim_copy.iloc[max_index, n_ref] = 0
+                    m_sim_copy.iloc[max_index, n_ref] = -2
                     max_index = np.argmax(m_sim_copy.iloc[:, n_ref])
                 matched_index.append(max_index)
             non_ordered_index = list(set([i for i in range(ex_var.shape[1])]) - set(matched_index))
@@ -2107,7 +2110,7 @@ def align_components_by_components(models_dict: dict, components_ref: dict):
             for n_var in range(model.components.shape[0]):
                 max_index = np.argmax(m_sim.iloc[n_var, :])
                 while max_index in matched_index:
-                    m_sim_copy.iloc[n_var, max_index] = 0
+                    m_sim_copy.iloc[n_var, max_index] = -2
                     max_index = np.argmax(m_sim_copy.iloc[n_var, :])
                 matched_index.append(max_index)
             component_labels_var = [component_labels_ref[i] for i in matched_index]
@@ -2116,7 +2119,7 @@ def align_components_by_components(models_dict: dict, components_ref: dict):
             for n_ref in range(components_stack_ref.shape[0]):
                 max_index = np.argmax(m_sim.iloc[:, n_ref])
                 while max_index in matched_index:
-                    m_sim_copy.iloc[max_index, n_ref] = 0
+                    m_sim_copy.iloc[max_index, n_ref] = -2
                     max_index = np.argmax(m_sim_copy.iloc[:, n_ref])
                 matched_index.append(max_index)
             non_ordered_index = list(set([i for i in range(model.components.shape[0])]) - set(matched_index))

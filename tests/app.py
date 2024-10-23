@@ -803,7 +803,8 @@ card_built_eem_dataset = dbc.Card(
                 dbc.Row(
                     dcc.Input(id='path-reference', type='text',
                               placeholder='Please enter the reference file path (optional)',
-                              style={'width': '97%', 'height': '30px'}, debounce=True),
+                              value=None,
+                              style={'width': '97%', 'height': '30px'}, debounce=False),
                     justify="center"
                 ),
                 dbc.Row([
@@ -842,13 +843,13 @@ card_eem_dataset_downloading = dbc.Card(
                 dbc.Row(
                     dcc.Input(id='folder-path-export-eem-dataset', type='text',
                               placeholder='Please enter the output folder path...',
-                              style={'width': '97%', 'height': '30px'}, debounce=True),
+                              style={'width': '97%', 'height': '30px'}, debounce=False),
                     justify="center"
                 ),
                 dbc.Row(
                     dcc.Input(id='filename-export-eem-dataset', type='text',
                               placeholder='Please enter the output filename (without extension)...',
-                              style={'width': '97%', 'height': '30px'}, debounce=True),
+                              style={'width': '97%', 'height': '30px'}, debounce=False),
                     justify="center"
                 ),
                 dbc.Row([
@@ -1278,7 +1279,7 @@ def on_build_eem_dataset(n_clicks,
                         'occurs also when index starting/ending positions are not specified.'), "build"
                 refs = refs_from_file
         else:
-            return None, ('Error: No such file or directory: ' + reference_path), "build"
+            return None, ('Error: No such file or directory: ' + reference_path), "Build"
     else:
         refs = None
 
@@ -1979,7 +1980,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
     for r in rank_list:
         parafac_r = PARAFAC(rank=r, init=init, non_negativity=True if 'non_negative' in nn else False,
                             tf_normalization=True if 'tf_normalization' in tf else False,
-                            sort_em=True)
+                            sort_em=True, loadings_normalization='maximum')
         parafac_r.fit(eem_dataset_establishment)
         parafac_fit_params_r = {}
         if eem_dataset_establishment.ref is not None:
@@ -4810,7 +4811,7 @@ def serve_layout():
         dcc.Store(id='kmethod-consensus-matrix-data'),
         dcc.Store(id='kmethod-eem-dataset-establish'),
         dcc.Store(id='kmethod-base-clustering-parameters'),
-        dcc.Store(id='kmethod-clusters'),
+        dcc.Store(id='kmethod-clusters-data'),
         dcc.Store(id='kmethod-test-results'),
         dcc.Store(id='nmf-models'),
         dcc.Store(id='nmf-test-results'),
