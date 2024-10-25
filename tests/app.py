@@ -1555,7 +1555,7 @@ page2 = html.Div([
                     children=[
                         dcc.Tab(label='ex/em loadings', id='parafac-loadings'),
                         dcc.Tab(label='Components', id='parafac-components'),
-                        dcc.Tab(label='Scores', id='parafac-scores'),
+                        # dcc.Tab(label='Scores', id='parafac-scores'),
                         dcc.Tab(label='Fmax', id='parafac-fmax'),
                         dcc.Tab(label='Core consistency', id='parafac-core-consistency'),
                         dcc.Tab(label='Leverage', id='parafac-leverage'),
@@ -1587,7 +1587,7 @@ page2 = html.Div([
                                                             dbc.Col(
                                                                 dcc.Dropdown(
                                                                     options=[
-                                                                        {'label': 'Score', 'value': 'Score'},
+                                                                        # {'label': 'Score', 'value': 'Score'},
                                                                         {'label': 'Fmax', 'value': 'Fmax'}
                                                                     ],
                                                                     id='parafac-establishment-corr-indicator-selection'
@@ -1705,11 +1705,11 @@ page2 = html.Div([
                                         dbc.Card(
                                             [
                                                 dbc.Tabs(children=[
-                                                    dcc.Tab(
-                                                        label='Score',
-                                                        children=[],
-                                                        id='parafac-test-score'
-                                                    ),
+                                                    # dcc.Tab(
+                                                    #     label='Score',
+                                                    #     children=[],
+                                                    #     id='parafac-test-score'
+                                                    # ),
                                                     dcc.Tab(
                                                         label='Fmax',
                                                         children=[],
@@ -1796,8 +1796,8 @@ page2 = html.Div([
                                                                             dbc.Col(
                                                                                 dcc.Dropdown(
                                                                                     options=[
-                                                                                        {'label': 'Score',
-                                                                                         'value': 'Score'},
+                                                                                        # {'label': 'Score',
+                                                                                        #  'value': 'Score'},
                                                                                         {'label': 'Fmax',
                                                                                          'value': 'Fmax'},
                                                                                     ],
@@ -1877,7 +1877,7 @@ page2 = html.Div([
         Output('parafac-eem-dataset-establishment-message', 'children'),
         Output('parafac-loadings', 'children'),
         Output('parafac-components', 'children'),
-        Output('parafac-scores', 'children'),
+        # Output('parafac-scores', 'children'),
         Output('parafac-fmax', 'children'),
         Output('parafac-core-consistency', 'children'),
         Output('parafac-leverage', 'children'),
@@ -1885,8 +1885,8 @@ page2 = html.Div([
         Output('build-parafac-spinner', 'children'),
         Output('parafac-establishment-corr-model-selection', 'options'),
         Output('parafac-establishment-corr-model-selection', 'value'),
-        Output('parafac-establishment-corr-ref-selection', 'options'),
-        Output('parafac-establishment-corr-ref-selection', 'value'),
+        # Output('parafac-establishment-corr-ref-selection', 'options'),
+        # Output('parafac-establishment-corr-ref-selection', 'value'),
         Output('parafac-test-model-selection', 'options'),
         Output('parafac-test-model-selection', 'value'),
         Output('parafac-test-pred-ref-selection', 'options'),
@@ -1910,15 +1910,14 @@ page2 = html.Div([
 def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, rank, init, nn,
                            tf, validations, eem_dataset_dict):
     if n_clicks is None:
-        return (None, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, [], None,
+        return (None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None,
                 None)
     if not path_establishment:
         if eem_dataset_dict is None:
             message = (
                 'Error: No built EEM dataset detected. Please build an EEM dataset first in "EEM pre-processing" '
                 'section, or import an EEM dataset from file.')
-            return (message, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, [],
-                    None, None)
+            return (message, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, None)
         eem_dataset_establishment = EEMDataset(
             eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
                                 in eem_dataset_dict['eem_stack']]),
@@ -1932,8 +1931,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
     else:
         if not os.path.exists(path_establishment):
             message = ('Error: No such file or directory: ' + path_establishment)
-            return (message, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, [],
-                    None, None)
+            return (message, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, None)
         else:
             _, file_extension = os.path.splitext(path_establishment)
 
@@ -2003,10 +2001,29 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                     pearson_corr, pearson_p = pearsonr(x, y)
                     stats.append([f_col, slope, intercept, r_squared, pearson_corr, pearson_p])
                 parafac_fit_params_r[ref_var] = stats
+        for c_var in parafac_r.fmax.columns:
+            x = parafac_r.fmax[c_var]
+            parafac_var = parafac_r.fmax
+            stats = []
+            nan_rows = x[x.isna()].index
+            x = x.drop(nan_rows)
+            if x.shape[0] < 1:
+                continue
+            for f_col in parafac_var.columns:
+                y = parafac_var[f_col]
+                y = y.drop(nan_rows)
+                x_reshaped = np.array(x).reshape(-1, 1)
+                lm = LinearRegression().fit(x_reshaped, y)
+                r_squared = lm.score(x_reshaped, y)
+                intercept = lm.intercept_
+                slope = lm.coef_[0]
+                pearson_corr, pearson_p = pearsonr(x, y)
+                stats.append([f_col, slope, intercept, r_squared, pearson_corr, pearson_p])
+            parafac_fit_params_r[c_var] = stats
         parafac_models[r] = {
             'components': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
                            sublist in parafac_r.components.tolist()],
-            'Score': [parafac_r.score.columns.tolist()] + parafac_r.score.values.tolist(),
+            'score': [parafac_r.score.columns.tolist()] + parafac_r.score.values.tolist(),
             'Fmax': [parafac_r.fmax.columns.tolist()] + parafac_r.fmax.values.tolist(),
             'index': eem_dataset_establishment.index,
             'ref': [eem_dataset_establishment.ref.columns.tolist()] + eem_dataset_establishment.ref.values.tolist()
@@ -2434,13 +2451,31 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
             ]),
         )
 
-    model_options = [{'label': 'component {r}'.format(r=r), 'value': r} for r in parafac_models.keys()]
-    ref_options = [{'label': var, 'value': var} for var in valid_ref] if (
-            eem_dataset_establishment.ref is not None) else []
+    model_options = [{'label': '{r}-component'.format(r=r), 'value': r} for r in parafac_models.keys()]
+    ref_options = [{'label': var, 'value': var} for var in valid_ref] if \
+        (eem_dataset_establishment.ref is not None) else None
 
-    return (None, loadings_tabs, components_tabs, scores_tabs, fmax_tabs, core_consistency_tabs, leverage_tabs,
-            split_half_tabs, 'Build model', model_options, None, ref_options, None, model_options, None, ref_options,
-            None, parafac_models)
+    return (None, loadings_tabs, components_tabs, fmax_tabs, core_consistency_tabs, leverage_tabs,
+            split_half_tabs, 'Build model', model_options, None, model_options, None, ref_options, None, parafac_models)
+
+# -----------Update reference selection dropdown
+
+@app.callback(
+    [
+        Output('parafac-establishment-corr-ref-selection', 'options'),
+        Output('parafac-establishment-corr-ref-selection', 'value'),
+    ],
+    [
+        Input('parafac-establishment-corr-model-selection', 'value'),
+        State('parafac-models', 'data')
+    ]
+)
+def update_reference_dropdown_by_selected_model(r, parafac_model):
+    if all([r, parafac_model]):
+        options = list(parafac_model[str(r)]['fitting_params'].keys())
+        return options, None
+    else:
+        return [], None
 
 
 # -----------Analyze correlations between score/Fmax and reference variables in model establishment
@@ -2461,6 +2496,9 @@ def on_parafac_establishment_correlations(r, indicator, ref_var, parafac_models)
     if all([r, indicator, ref_var, parafac_models]):
         ref_df = pd.DataFrame(parafac_models[str(r)]['ref'][1:], columns=parafac_models[str(r)]['ref'][0],
                               index=parafac_models[str(r)]['index'])
+        fmax_df = pd.DataFrame(parafac_models[str(r)]['Fmax'][1:], columns=parafac_models[str(r)]['Fmax'][0],
+                               index=parafac_models[str(r)]['index'])
+        ref_df = pd.concat([ref_df, fmax_df], axis=1)
         var = ref_df[ref_var]
         parafac_var = pd.DataFrame(parafac_models[str(r)][indicator][1:], columns=parafac_models[str(r)][indicator][0],
                                    index=parafac_models[str(r)]['index'])
@@ -2499,7 +2537,7 @@ def on_parafac_establishment_correlations(r, indicator, ref_var, parafac_models)
 @app.callback(
     [
         Output('parafac-eem-dataset-predict-message', 'children'),  # size, intervals?
-        Output('parafac-test-score', 'children'),
+        # Output('parafac-test-score', 'children'),
         Output('parafac-test-fmax', 'children'),
         Output('parafac-test-error', 'children'),
         Output('parafac-test-corr-ref-selection', 'options'),
@@ -2520,15 +2558,15 @@ def on_parafac_establishment_correlations(r, indicator, ref_var, parafac_models)
 )
 def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, model_r, parafac_models):
     if n_clicks is None:
-        return (None, None, None, None, [], None,
-                [{'label': 'Score', 'value': 'Score'}, {'label': 'Fmax', 'value': 'Fmax'}], None, 'predict', None)
+        return (None, None, None, [], None,
+                [{'label': 'Fmax', 'value': 'Fmax'}], None, 'predict', None)
     if path_predict is None:
-        return (None, None, None, None, [], None,
-                [{'label': 'Score', 'value': 'Score'}, {'label': 'Fmax', 'value': 'Fmax'}], None, 'predict', None)
+        return (None, None, None, [], None,
+                [{'label': 'Fmax', 'value': 'Fmax'}], None, 'predict', None)
     if not os.path.exists(path_predict):
         message = ('Error: No such file: ' + path_predict)
-        return (message, None, None, None, [], None,
-                [{'label': 'Score', 'value': 'Score'}, {'label': 'Fmax', 'value': 'Fmax'}], None, 'predict', None)
+        return (message, None, None, [], None,
+                [{'label': 'Fmax', 'value': 'Fmax'}], None, 'predict', None)
     else:
         _, file_extension = os.path.splitext(path_predict)
 
@@ -2652,11 +2690,16 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
     error_tab = html.Div(children=[])
 
     if eem_dataset_predict.ref is not None:
-        indicator_options = [{'label': 'Score', 'value': 'Score'},
-                             {'label': 'Fmax', 'value': 'Fmax'},
-                             {'label': 'Prediction of reference', 'value': 'Prediction of reference'}]
+        indicator_options = [
+            # {'label': 'Score', 'value': 'Score'},
+            {'label': 'Fmax', 'value': 'Fmax'},
+            {'label': 'Prediction of reference', 'value': 'Prediction of reference'}
+        ]
     else:
-        indicator_options = [{'label': 'Score', 'value': 'Score'}, {'label': 'Fmax', 'value': 'Fmax'}]
+        indicator_options = [
+            # {'label': 'Score', 'value': 'Score'},
+            {'label': 'Fmax', 'value': 'Fmax'}
+        ]
 
     ref_options = [{'label': var, 'value': var} for var in eem_dataset_predict.ref.columns]
 
@@ -2669,7 +2712,7 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
         'index': eem_dataset_predict.index
     }
 
-    return (None, score_tab, fmax_tab, error_tab, ref_options, None,
+    return (None, fmax_tab, error_tab, ref_options, None,
             indicator_options, None, 'predict', test_results)
 
 
@@ -2726,7 +2769,7 @@ def on_parafac_test_predict_reference(n_clicks, ref_var, pred_model, parafac_tes
         return go.Figure(), None
 
 
-# -----------Analyze correlations between score/Fmax and reference variables in model testing
+# -----------Analyze correlations between Fmax and reference variables in model testing
 @app.callback(
     [
         Output('parafac-test-corr-graph', 'figure'),  # size, intervals?
@@ -2979,7 +3022,8 @@ page3 = html.Div([
                                                             dbc.Col(
                                                                 dcc.Dropdown(
                                                                     options=[
-                                                                        {'label': 'Fmax', 'value': 'Fmax'}
+                                                                        {'label': 'NMF-Fmax', 'value': 'NMF-Fmax'},
+                                                                        {'label': 'NNLS-Fmax', 'value': 'NNLS-Fmax'}
                                                                     ],
                                                                     id='nmf-establishment-corr-indicator-selection'
                                                                 ),
@@ -3182,10 +3226,10 @@ page3 = html.Div([
                                                                             dbc.Col(
                                                                                 dcc.Dropdown(
                                                                                     options=[
-                                                                                        {'label': 'Score',
-                                                                                         'value': 'Score'},
-                                                                                        {'label': 'Fmax',
-                                                                                         'value': 'Fmax'},
+                                                                                        {'label': 'NMF-Fmax',
+                                                                                         'value': 'NMF-Fmax'},
+                                                                                        {'label': 'NNLS-Fmax',
+                                                                                         'value': 'NNLS-Fmax'},
                                                                                     ],
                                                                                     id='nmf-test-corr-indicator-selection'
                                                                                 ),
@@ -3268,8 +3312,8 @@ page3 = html.Div([
         Output('nmf-spinner', 'children'),
         Output('nmf-establishment-corr-model-selection', 'options'),
         Output('nmf-establishment-corr-model-selection', 'value'),
-        Output('nmf-establishment-corr-ref-selection', 'options'),
-        Output('nmf-establishment-corr-ref-selection', 'value'),
+        # Output('nmf-establishment-corr-ref-selection', 'options'),
+        # Output('nmf-establishment-corr-ref-selection', 'value'),
         Output('nmf-test-pred-ref-selection', 'options'),
         Output('nmf-test-pred-ref-selection', 'value'),
         Output('nmf-test-model-selection', 'options'),
@@ -3295,13 +3339,13 @@ page3 = html.Div([
 def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, rank, solver,
                        normalization, alpha_w, alpha_h, l1_ratio, validations, eem_dataset_dict):
     if n_clicks is None:
-        return None, None, None, None, None, 'Build model', [], None, [], None, [], None, [], None, None
+        return None, None, None, None, None, 'Build model', [], None, [], None, [], None, None
     if not path_establishment:
         if eem_dataset_dict is None:
             message = (
                 'Error: No built EEM dataset detected. Please build an EEM dataset first in "EEM pre-processing" '
                 'section, or import an EEM dataset from file.')
-            return message, None, None, None, None, 'Build model', [], None, [], None, [], None, [], None, None
+            return message, None, None, None, None, 'Build model', [], None, [], None, [], None, None
         eem_dataset_establishment = EEMDataset(
             eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
                                 in eem_dataset_dict['eem_stack']]),
@@ -3315,7 +3359,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
     else:
         if not os.path.exists(path_establishment):
             message = ('Error: No such file or directory: ' + path_establishment)
-            return message, None, None, None, None, 'Build model', [], None, [], None, [], None, [], None, None
+            return message, None, None, None, None, 'Build model', [], None, [], None, [], None, None
         else:
             _, file_extension = os.path.splitext(path_establishment)
 
@@ -3365,7 +3409,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
             for ref_var in valid_ref:
                 x = eem_dataset_establishment.ref[ref_var]
                 stats = []
-                nmf_var = nmf_r.nnls_score
+                nmf_var = nmf_r.nnls_fmax
                 nan_rows = x[x.isna()].index
                 x = x.drop(nan_rows)
                 if x.shape[0] < 1:
@@ -3381,10 +3425,30 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                     pearson_corr, pearson_p = pearsonr(x, y)
                     stats.append([f_col, slope, intercept, r_squared, pearson_corr, pearson_p])
                 nmf_fit_params_r[ref_var] = stats
+        for c_var in nmf_r.nnls_fmax.columns:
+            x = nmf_r.nnls_fmax[c_var]
+            parafac_var = nmf_r.nnls_fmax
+            stats = []
+            nan_rows = x[x.isna()].index
+            x = x.drop(nan_rows)
+            if x.shape[0] < 1:
+                continue
+            for f_col in parafac_var.columns:
+                y = parafac_var[f_col]
+                y = y.drop(nan_rows)
+                x_reshaped = np.array(x).reshape(-1, 1)
+                lm = LinearRegression().fit(x_reshaped, y)
+                r_squared = lm.score(x_reshaped, y)
+                intercept = lm.intercept_
+                slope = lm.coef_[0]
+                pearson_corr, pearson_p = pearsonr(x, y)
+                stats.append([f_col, slope, intercept, r_squared, pearson_corr, pearson_p])
+            nmf_fit_params_r[c_var] = stats
         nmf_models[r] = {
             'components': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
                            sublist in nmf_r.components.tolist()],
-            'Fmax': [nmf_r.nnls_score.columns.tolist()] + nmf_r.nnls_score.values.tolist(),
+            'NNLS-Fmax': [nmf_r.nnls_fmax.columns.tolist()] + nmf_r.nnls_fmax.values.tolist(),
+            'NMF-Fmax': [nmf_r.nmf_fmax.columns.tolist()] + nmf_r.nmf_fmax.values.tolist(),
             'index': eem_dataset_establishment.index,
             'ref': [eem_dataset_establishment.ref.columns.tolist()] + eem_dataset_establishment.ref.values.tolist()
             if eem_dataset_establishment.ref is not None else None,
@@ -3500,7 +3564,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                 [
                                     dbc.Col(
                                         [
-                                            dcc.Graph(figure=plot_score(nmf_r.nnls_score,
+                                            dcc.Graph(figure=plot_score(nmf_r.nnls_fmax,
                                                                         display=False
                                                                         ),
                                                       config={'autosizable': False},
@@ -3515,7 +3579,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                 [
                                     dbc.Col(
                                         [
-                                            dbc.Table.from_dataframe(nmf_r.nnls_score,
+                                            dbc.Table.from_dataframe(nmf_r.nnls_fmax,
                                                                      bordered=True, hover=True, index=True)
                                         ]
                                     )
@@ -3526,7 +3590,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                 [
                                     dbc.Col(
                                         [
-                                            dcc.Graph(figure=plot_score(nmf_r.nmf_score,
+                                            dcc.Graph(figure=plot_score(nmf_r.nmf_fmax,
                                                                         display=False
                                                                         ),
                                                       config={'autosizable': False},
@@ -3541,7 +3605,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                 [
                                     dbc.Col(
                                         [
-                                            dbc.Table.from_dataframe(nmf_r.nmf_score,
+                                            dbc.Table.from_dataframe(nmf_r.nmf_fmax,
                                                                      bordered=True, hover=True, index=True)
                                         ]
                                     )
@@ -3554,12 +3618,32 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                     )
         )
 
-    model_options = [{'label': 'component {r}'.format(r=r), 'value': r} for r in nmf_models.keys()]
+    model_options = [{'label': '{r}-component'.format(r=r), 'value': r} for r in nmf_models.keys()]
     ref_options = [{'label': var, 'value': var} for var in valid_ref] if (
             eem_dataset_establishment.ref is not None) else []
 
     return (None, components_tabs, fmax_tabs, residual_tabs, split_half_tabs, 'Build model', model_options, None,
-            ref_options, None, ref_options, None, model_options, None, nmf_models)
+            ref_options, None, model_options, None, nmf_models)
+
+
+# -----------Update reference selection dropdown
+
+@app.callback(
+    [
+        Output('nmf-establishment-corr-ref-selection', 'options'),
+        Output('nmf-establishment-corr-ref-selection', 'value'),
+    ],
+    [
+        Input('nmf-establishment-corr-model-selection', 'value'),
+        State('nmf-models', 'data')
+    ]
+)
+def update_reference_dropdown_by_selected_model(r, nmf_model):
+    if all([r, nmf_model]):
+        options = list(nmf_model[str(r)]['fitting_params'].keys())
+        return options, None
+    else:
+        return [], None
 
 
 # -----------Analyze correlations between score/Fmax and reference variables in model establishment
@@ -3580,6 +3664,11 @@ def on_nmf_establishment_correlations(r, indicator, ref_var, nmf_models):
     if all([r, indicator, ref_var, nmf_models]):
         ref_df = pd.DataFrame(nmf_models[str(r)]['ref'][1:], columns=nmf_models[str(r)]['ref'][0],
                               index=nmf_models[str(r)]['index'])
+        nnls_fmax_df = pd.DataFrame(nmf_models[str(r)]['NNLS-Fmax'][1:], columns=nmf_models[str(r)]['NNLS-Fmax'][0],
+                                    index=nmf_models[str(r)]['index'])
+        nmf_fmax_df = pd.DataFrame(nmf_models[str(r)]['NMF-Fmax'][1:], columns=nmf_models[str(r)]['NMF-Fmax'][0],
+                                    index=nmf_models[str(r)]['index'])
+        ref_df = pd.concat([ref_df, nnls_fmax_df, nmf_fmax_df], axis=1)
         var = ref_df[ref_var]
         nmf_var = pd.DataFrame(nmf_models[str(r)][indicator][1:], columns=nmf_models[str(r)][indicator][0],
                                index=nmf_models[str(r)]['index'])
@@ -3822,12 +3911,11 @@ def on_nmf_predict_reference_test(n_clicks, ref_var, pred_model, nmf_test_result
         State('nmf-test-results', 'data'),
     ]
 )
-def on_nmf_establishment_correlations(indicator, ref_var, nmf_test_results):
+def on_nmf_test_correlations(indicator, ref_var, nmf_test_results):
     if all([indicator, ref_var, nmf_test_results]):
         ref_df = pd.DataFrame(nmf_test_results['ref'][1:], columns=nmf_test_results['ref'][0],
                               index=nmf_test_results['index'])
         var = ref_df[ref_var]
-
         if indicator != 'Prediction of reference':
             nmf_var = pd.DataFrame(nmf_test_results[indicator][1:], columns=nmf_test_results[indicator][0],
                                    index=nmf_test_results['index'])
@@ -4361,8 +4449,8 @@ page4 = html.Div([
                                                                             dbc.Col(
                                                                                 dcc.Dropdown(
                                                                                     options=[
-                                                                                        {'label': 'Score',
-                                                                                         'value': 'Score'},
+                                                                                        # {'label': 'Score',
+                                                                                        #  'value': 'Score'},
                                                                                         {'label': 'Fmax',
                                                                                          'value': 'Fmax'},
                                                                                     ],

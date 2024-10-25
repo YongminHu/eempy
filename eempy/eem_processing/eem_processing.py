@@ -2247,55 +2247,6 @@ class SplitValidation:
         return similarities_ex, similarities_em
 
 
-
-# class EEMPCA:
-#
-#     def __init__(self, n_components):
-#         self.n_components = n_components
-#         self.score = None
-#         self.components = None
-#
-#     def fit(self, eem_dataset: EEMDataset):
-#         decomposer = PCA(n_components=self.n_components)
-#         n_samples = eem_dataset.eem_stack.shape[0]
-#         X = eem_dataset.eem_stack.reshape([n_samples, -1])
-#         score = decomposer.fit_transform(X)
-#         score = pd.DataFrame(score, index=eem_dataset.index,
-#                              columns=["component {i}".format(i=i + 1) for i in range(self.n_components)])
-#         components = decomposer.components_.reshape([self.n_components, eem_dataset.eem_stack.shape[1],
-#                                                      eem_dataset.eem_stack.shape[2]])
-#         self.score = score
-#         self.components = components
-#
-#         return self
-#
-#
-# class EEMNMF:
-#
-#     def __init__(self, n_components, alpha_W, alpha_H, l1_ratio):
-#         self.n_components = n_components
-#         self.alpha_W = alpha_W
-#         self.alpha_H = alpha_H
-#         self.l1_ratio = l1_ratio
-#         self.score = None
-#         self.components = None
-#
-#     def fit(self, eem_dataset: EEMDataset):
-#         decomposer = NMF(n_components=self.n_components, alpha_W=self.alpha_W, alpha_H=self.alpha_H,
-#                          l1_ratio=self.l1_ratio)
-#         n_samples = eem_dataset.eem_stack.shape[0]
-#         X = eem_dataset.eem_stack.reshape([n_samples, -1])
-#         score = decomposer.fit_transform(X)
-#         score = pd.DataFrame(score, index=eem_dataset.index,
-#                              columns=["component {i}".format(i=i + 1) for i in range(self.n_components)])
-#         components = decomposer.components_.reshape([self.n_components, eem_dataset.eem_stack.shape[1],
-#                                                      eem_dataset.eem_stack.shape[2]])
-#         self.score = score
-#         self.components = components
-#
-#         return self
-
-
 class EEMNMF:
 
     def __init__(self, n_components, solver='cd', beta_loss='frobenius', alpha_W=0, alpha_H=0, l1_ratio=1,
@@ -2308,8 +2259,8 @@ class EEMNMF:
         self.l1_ratio = l1_ratio
         self.normalization = normalization
         self.eem_stack_unfolded = None
-        self.nmf_score = None
-        self.nnls_score = None
+        self.nmf_fmax = None
+        self.nnls_fmax = None
         self.components = None
         self.decomposer = None
         self.residual = None
@@ -2340,7 +2291,7 @@ class EEMNMF:
             factor_std = None
             factor_max = None
         nmf_score = pd.DataFrame(nmf_score, index=eem_dataset.index,
-                                 columns=["component {i} NMF-score".format(i=i + 1) for i in range(self.n_components)])
+                                 columns=["component {i} NMF-Fmax".format(i=i + 1) for i in range(self.n_components)])
         if self.normalization == 'pixel_std':
             components = decomposer.components_ * factor_std
         else:
@@ -2353,7 +2304,7 @@ class EEMNMF:
         _, nnls_score, _ = eems_fit_components(eem_dataset.eem_stack, components,
                                                fit_intercept=False, positive=True)
         nnls_score = pd.DataFrame(nnls_score, index=eem_dataset.index,
-                                  columns=["component {i} NNLS-score".format(i=i + 1) for i in range(self.n_components)])
+                                  columns=["component {i} NNLS-Fmax".format(i=i + 1) for i in range(self.n_components)])
         if sort_em:
             em_peaks = []
             for i in range(self.n_components):
@@ -2363,12 +2314,12 @@ class EEMNMF:
             peak_rank = list(enumerate(stats.rankdata(em_peaks)))
             order = [i[0] for i in sorted(peak_rank, key=lambda x: x[1])]
             components = components[order]
-            nmf_score = pd.DataFrame({'component {r} NMF-score'.format(r=i + 1): nmf_score.iloc[:, order[i]]
+            nmf_score = pd.DataFrame({'component {r} NMF-Fmax'.format(r=i + 1): nmf_score.iloc[:, order[i]]
                                       for i in range(self.n_components)})
-            nnls_score = pd.DataFrame({'component {r} NNLS-score'.format(r=i + 1): nnls_score.iloc[:, order[i]]
+            nnls_score = pd.DataFrame({'component {r} NNLS-Fmax'.format(r=i + 1): nnls_score.iloc[:, order[i]]
                                        for i in range(self.n_components)})
-        self.nmf_score = nmf_score
-        self.nnls_score = nnls_score
+        self.nmf_fmax = nmf_score
+        self.nnls_fmax = nnls_score
         self.components = components
         self.decomposer = decomposer
         self.eem_stack_unfolded = X
