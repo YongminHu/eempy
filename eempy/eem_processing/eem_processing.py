@@ -1565,7 +1565,7 @@ def combine_eem_datasets(list_eem_datasets):
 
 class PARAFAC:
     """
-    PARAFAC model
+    Parallel factor analysis (PARAFAC) model for EEM dataset.
 
     Parameters
     ----------
@@ -2248,7 +2248,49 @@ class SplitValidation:
 
 
 class EEMNMF:
+    """
+    Non-negative matrix factorization (NMF) model for EEM dataset
 
+    Parameters
+    ----------
+    rank: int
+        The number of components
+    non_negativity: bool
+        Whether to apply the non-negativity constraint
+    init: str or tensorly.CPTensor, {‘svd’, ‘random’, CPTensor}
+        Type of factor matrix initialization
+    tf_normalization: bool
+        Whether to normalize the EEMs by the total fluorescence in PARAFAC model establishment
+    loadings_normalization: str or None, {'sd', 'maximum', None}
+        Type of normalization applied to loadings. if 'sd' is passed, the standard deviation will be normalized
+        to 1. If 'maximum' is passed, the maximum will be normalized to 1. The scores will be adjusted accordingly.
+    sort_em: bool
+        Whether to sort components by emission peak position from lowest to highest. If False is passed, the
+        components will be sorted by the contribution to the total variance.
+
+    Attributes
+    ----------
+    score: pandas.DataFrame
+        Score table.
+    ex_loadings: pandas.DataFrame
+        Excitation loadings table.
+    em_loadings: pandas.DataFrame
+        Emission loadings table.
+    fmax: pandas.DataFrame
+        Fmax table.
+    components: np.ndarray
+        PARAFAC components.
+    cptensors: tensorly CPTensor
+        The output of PARAFAC in the form of tensorly CPTensor.
+    eem_stack_train: np.ndarray
+        EEMs used for PARAFAC model establishment.
+    eem_stack_reconstructed: np.ndarray
+        EEMs reconstructed by the established PARAFAC model.
+    ex_range: np.ndarray
+        Excitation wavelengths.
+    em_range: np.ndarray
+        Emission wavelengths.
+    """
     def __init__(self, n_components, solver='cd', beta_loss='frobenius', alpha_W=0, alpha_H=0, l1_ratio=1,
                  normalization='pixel_std'):
         self.n_components = n_components
