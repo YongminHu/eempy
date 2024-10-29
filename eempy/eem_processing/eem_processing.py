@@ -2253,30 +2253,28 @@ class EEMNMF:
 
     Parameters
     ----------
-    rank: int
+    n_components: int
         The number of components
-    non_negativity: bool
+    solver: bool
         Whether to apply the non-negativity constraint
-    init: str or tensorly.CPTensor, {‘svd’, ‘random’, CPTensor}
+    beta_loss: str or tensorly.CPTensor, {‘svd’, ‘random’, CPTensor}
         Type of factor matrix initialization
-    tf_normalization: bool
+    alpha_W: bool
         Whether to normalize the EEMs by the total fluorescence in PARAFAC model establishment
-    loadings_normalization: str or None, {'sd', 'maximum', None}
+    alpha_H: str or None, {'sd', 'maximum', None}
         Type of normalization applied to loadings. if 'sd' is passed, the standard deviation will be normalized
         to 1. If 'maximum' is passed, the maximum will be normalized to 1. The scores will be adjusted accordingly.
-    sort_em: bool
+    l1_ratio: bool
         Whether to sort components by emission peak position from lowest to highest. If False is passed, the
         components will be sorted by the contribution to the total variance.
+    normalization: str, {'pixel_std'}
+
 
     Attributes
     ----------
-    score: pandas.DataFrame
-        Score table.
-    ex_loadings: pandas.DataFrame
-        Excitation loadings table.
-    em_loadings: pandas.DataFrame
-        Emission loadings table.
-    fmax: pandas.DataFrame
+    nmf_fmax: pandas.DataFrame
+        Fmax table.
+    nnls_fmax: pandas.DataFrame
         Fmax table.
     components: np.ndarray
         PARAFAC components.
