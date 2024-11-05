@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from scipy.stats import pearsonr
 
-from eempy.plot import plot_eem, plot_abs, plot_loadings, plot_score
+from eempy.plot import plot_eem, plot_abs, plot_loadings, plot_fmax, plot_dendrogram
 from eempy.read_data import *
 from eempy.eem_processing import *
 from eempy.utils import str_string_to_list, num_string_to_list
@@ -1976,7 +1976,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
         valid_ref = None
 
     for r in rank_list:
-        parafac_r = PARAFAC(rank=r, init=init, non_negativity=True if 'non_negative' in nn else False,
+        parafac_r = PARAFAC(n_components=r, init=init, non_negativity=True if 'non_negative' in nn else False,
                             tf_normalization=True if 'tf_normalization' in tf else False,
                             sort_em=True, loadings_normalization='maximum')
         parafac_r.fit(eem_dataset_establishment)
@@ -2185,9 +2185,9 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                 [
                                     dbc.Col(
                                         [
-                                            dcc.Graph(figure=plot_score(parafac_r.score,
-                                                                        display=False
-                                                                        ),
+                                            dcc.Graph(figure=plot_fmax(parafac_r.score,
+                                                                       display=False
+                                                                       ),
                                                       config={'autosizable': False},
                                                       style={'width': 1700, 'height': 800}
                                                       )
@@ -2222,10 +2222,10 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                 [
                                     dbc.Col(
                                         [
-                                            dcc.Graph(figure=plot_score(parafac_r.fmax,
-                                                                        display=False,
-                                                                        yaxis_title='Fmax'
-                                                                        ),
+                                            dcc.Graph(figure=plot_fmax(parafac_r.fmax,
+                                                                       display=False,
+                                                                       yaxis_title='Fmax'
+                                                                       ),
                                                       config={'autosizable': False},
                                                       style={'width': 1700, 'height': 800}
                                                       )
@@ -2458,6 +2458,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
     return (None, loadings_tabs, components_tabs, fmax_tabs, core_consistency_tabs, leverage_tabs,
             split_half_tabs, 'Build model', model_options, None, model_options, None, ref_options, None, parafac_models)
 
+
 # -----------Update reference selection dropdown
 
 @app.callback(
@@ -2636,9 +2637,9 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
             [
                 dbc.Col(
                     [
-                        dcc.Graph(figure=plot_score(score_sample,
-                                                    display=False
-                                                    ),
+                        dcc.Graph(figure=plot_fmax(score_sample,
+                                                   display=False
+                                                   ),
                                   config={'autosizable': False},
                                   style={'width': 1700, 'height': 800}
                                   )
@@ -2664,9 +2665,9 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
             [
                 dbc.Col(
                     [
-                        dcc.Graph(figure=plot_score(fmax_sample,
-                                                    display=False
-                                                    ),
+                        dcc.Graph(figure=plot_fmax(fmax_sample,
+                                                   display=False
+                                                   ),
                                   config={'autosizable': False},
                                   style={'width': 1700, 'height': 800}
                                   )
@@ -2734,7 +2735,7 @@ def on_parafac_test_predict_reference(n_clicks, ref_var, pred_model, parafac_tes
     if all([ref_var, pred_model, parafac_test_results]):
         pred = parafac_test_results['Prediction of reference'][ref_var]
         pred = pd.DataFrame(pred[1:], columns=pred[0], index=parafac_test_results['index'])
-        fig = plot_score(pred, display=False, yaxis_title=ref_var)
+        fig = plot_fmax(pred, display=False, yaxis_title=ref_var)
         if parafac_test_results['ref'] is not None:
             ref = pd.DataFrame(parafac_test_results['ref'][1:], columns=parafac_test_results['ref'][0],
                                index=parafac_test_results['index'])
@@ -2864,7 +2865,8 @@ card_nmf_param = dbc.Card(
                                         dbc.Label("Index mandatory keywords"), width={'size': 1}
                                     ),
                                     dbc.Col(
-                                        dcc.Input(id='nmf-establishment-index-kw-mandatory', type='text', placeholder='',
+                                        dcc.Input(id='nmf-establishment-index-kw-mandatory', type='text',
+                                                  placeholder='',
                                                   style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
                                         width={"offset": 0, "size": 2}
                                     ),
@@ -3564,9 +3566,9 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                 [
                                     dbc.Col(
                                         [
-                                            dcc.Graph(figure=plot_score(nmf_r.nnls_fmax,
-                                                                        display=False
-                                                                        ),
+                                            dcc.Graph(figure=plot_fmax(nmf_r.nnls_fmax,
+                                                                       display=False
+                                                                       ),
                                                       config={'autosizable': False},
                                                       style={'width': 1700, 'height': 800}
                                                       )
@@ -3590,9 +3592,9 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                 [
                                     dbc.Col(
                                         [
-                                            dcc.Graph(figure=plot_score(nmf_r.nmf_fmax,
-                                                                        display=False
-                                                                        ),
+                                            dcc.Graph(figure=plot_fmax(nmf_r.nmf_fmax,
+                                                                       display=False
+                                                                       ),
                                                       config={'autosizable': False},
                                                       style={'width': 1700, 'height': 800}
                                                       )
@@ -3667,7 +3669,7 @@ def on_nmf_establishment_correlations(r, indicator, ref_var, nmf_models):
         nnls_fmax_df = pd.DataFrame(nmf_models[str(r)]['NNLS-Fmax'][1:], columns=nmf_models[str(r)]['NNLS-Fmax'][0],
                                     index=nmf_models[str(r)]['index'])
         nmf_fmax_df = pd.DataFrame(nmf_models[str(r)]['NMF-Fmax'][1:], columns=nmf_models[str(r)]['NMF-Fmax'][0],
-                                    index=nmf_models[str(r)]['index'])
+                                   index=nmf_models[str(r)]['index'])
         ref_df = pd.concat([ref_df, nnls_fmax_df, nmf_fmax_df], axis=1)
         var = ref_df[ref_var]
         nmf_var = pd.DataFrame(nmf_models[str(r)][indicator][1:], columns=nmf_models[str(r)][indicator][0],
@@ -3802,9 +3804,9 @@ def on_nmf_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, model_r
             [
                 dbc.Col(
                     [
-                        dcc.Graph(figure=plot_score(fmax_sample,
-                                                    display=False
-                                                    ),
+                        dcc.Graph(figure=plot_fmax(fmax_sample,
+                                                   display=False
+                                                   ),
                                   config={'autosizable': False},
                                   style={'width': 1700, 'height': 800}
                                   )
@@ -3865,7 +3867,7 @@ def on_nmf_predict_reference_test(n_clicks, ref_var, pred_model, nmf_test_result
     if all([ref_var, pred_model, nmf_test_results]):
         pred = nmf_test_results['Prediction of reference'][ref_var]
         pred = pd.DataFrame(pred[1:], columns=pred[0], index=nmf_test_results['index'])
-        fig = plot_score(pred, display=False, yaxis_title=ref_var)
+        fig = plot_fmax(pred, display=False, yaxis_title=ref_var)
         if nmf_test_results['ref'] is not None:
             ref = pd.DataFrame(nmf_test_results['ref'][1:], columns=nmf_test_results['ref'][0],
                                index=nmf_test_results['index'])
@@ -4005,7 +4007,8 @@ card_kmethod_param1 = dbc.Card(
                                         dbc.Label("Index mandatory keywords"), width={'size': 1}
                                     ),
                                     dbc.Col(
-                                        dcc.Input(id='kmethod-establishment-index-kw-mandatory', type='text', placeholder='',
+                                        dcc.Input(id='kmethod-establishment-index-kw-mandatory', type='text',
+                                                  placeholder='',
                                                   style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
                                         width={"offset": 0, "size": 2}
                                     ),
@@ -4013,7 +4016,8 @@ card_kmethod_param1 = dbc.Card(
                                         dbc.Label("Index optional keywords"), width={'size': 1, 'offset': 1}
                                     ),
                                     dbc.Col(
-                                        dcc.Input(id='kmethod-establishment-index-kw-optional', type='text', placeholder='',
+                                        dcc.Input(id='kmethod-establishment-index-kw-optional', type='text',
+                                                  placeholder='',
                                                   style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
                                         width={"offset": 0, "size": 2}
                                     )
@@ -4038,14 +4042,14 @@ card_kmethod_param1 = dbc.Card(
                                         html.Div([],
                                                  id='kmethod-base-model-message',
                                                  style={'width': '80vw'}),
-                                        width={"size": 12, "offset": 0}
+                                        width={"size": 8, "offset": 1}
                                     )
                                 ]
                             ),
 
                             dbc.Row([
                                 dbc.Col(
-                                    dbc.Label("Rank"), width={'size': 1}
+                                    dbc.Label("Num. components"), width={'size': 1}
                                 ),
                                 dbc.Col(
                                     dcc.Input(id='kmethod-rank', type='number',
@@ -4150,10 +4154,10 @@ card_kmethod_param2 = dbc.Card(
                                         width={"offset": 0, "size": 3}
                                     ),
                                     dbc.Col(
-                                        dbc.Label("Consensus conversion factor"), width={'size': 2}
+                                        dbc.Label("Consensus conversion factor"), width={'size': 1}
                                     ),
                                     dbc.Col(
-                                        dcc.Input(id='kmethod-consensus-conversion', type='number',
+                                        dcc.Input(id='kmethod-consensus-conversion', type='number', value=1,
                                                   style={'width': '250px', 'height': '30px'}, debounce=True),
                                         width={"offset": 0, "size": 1}
                                     ),
@@ -4216,7 +4220,8 @@ page4 = html.Div([
                     id='kmethod-results2',
                     children=[
                         dcc.Tab(label='Dendrogram', id='kmethod-dendrogram'),
-                        dcc.Tab(label='Clusters', id='kmethod-clusters'),
+                        dcc.Tab(label='Sorted consensus matrix', id='kmethod-sorted-consensus-matrix'),
+                        dcc.Tab(label='Silhouette score', id='kmethod-silhouette-score'),
                         dcc.Tab(label='Components', id='kmethod-components'),
                         dcc.Tab(label='Fmax', id='kmethod-fmax'),
                         dcc.Tab(
@@ -4559,18 +4564,21 @@ page4 = html.Div([
 
 @app.callback(
     [
-        Output('kmethod-base-clustering-message', 'children')
+        Output('kmethod-base-model-message', 'children')
     ],
     [
         Input('kmethod-base-model', 'value')
     ]
 )
 def on_kmethod_base_clustering_message(base_clustering):
-    if base_clustering == 'PARAFAC':
-        return ('Parameters "initialization", "non negativity" and "total fluorescence normalization" '
-                'are set in tab "PARAFAC".')
-    if base_clustering == 'NMF':
-        return 'Parameters "solver", "normalization" and "alpha_w", "alpha_h", "l1_ratio" are set in tab "NMF".'
+    if base_clustering == 'parafac':
+        message = ['Parameters "initialization", "non negativity" and "total fluorescence normalization" '
+                   'are set in tab "PARAFAC".']
+    elif base_clustering == 'nmf':
+        message = ['Parameters "solver", "normalization" and "alpha_w", "alpha_h", "l1_ratio" are set in tab "NMF".']
+    else:
+        message = [None]
+    return message
 
 
 @app.callback(
@@ -4675,25 +4683,42 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
         'cluster': None,
     }
 
-    if base_clustering == 'PARAFAC':
-        base_model = PARAFAC(rank=rank, init=parafac_init,
-                             non_negativity=True if 'non_negative' in parafac_nn else False,
-                             tf_normalization=True if 'tf_normalization' in parafac_tf else False,
-                             sort_em=True)
-    elif base_clustering == 'NMF':
-        base_model = EEMNMF(
-            n_components=rank, solver=nmf_solver, normalization=nmf_normalization[0], alpha_H=nmf_alpha_h,
-            alpha_W=nmf_alpha_w, l1_ratio=nmf_l1_ratio
-        )
-
-    base_clustering_parameters = base_model.__dict__
+    if base_clustering == 'parafac':
+        base_clustering_parameters = {
+            'n_components': rank, 'init': parafac_init,
+            'non_negativity': True if 'non_negative' in parafac_nn else False,
+            'tf_normalization': True if 'tf_normalization' in parafac_tf else False,
+            'sort_em': True
+        }
+        base_model = PARAFAC(**base_clustering_parameters)
+    elif base_clustering == 'nmf':
+        base_clustering_parameters = {
+            'n_components': rank, 'solver': nmf_solver,
+            'normalization': nmf_normalization[0],
+            'alpha_H': nmf_alpha_h, 'alpha_W': nmf_alpha_w, 'l1_ratio': nmf_l1_ratio
+        }
+        base_model = PARAFAC(**base_clustering_parameters)
 
     kmethod = KMethod(base_model=base_model, n_initial_splits=n_init_splits, max_iter=n_iterations, tol=tol,
                       elimination=elimination)
     consensus_matrix, _, error_history = kmethod.calculate_consensus(eem_dataset_establishment, n_base_clusterings,
                                                                      subsampling_portion)
-    consensus_matrix_tabs = dbc.Card()
-    error_history_tabs = dbc.Card()
+    consensus_matrix_tabs = dbc.Card(children=[])
+    error_history_tabs = dbc.Card(children=[])
+
+    fig_consensus_matrix = go.Figure(
+        data=go.Heatmap(
+            z=consensus_matrix,
+            x=eem_dataset_establishment.index if eem_dataset_establishment.index
+            else [i for i in range(consensus_matrix.shape[1])],
+            y=eem_dataset_establishment.index if eem_dataset_establishment.index
+            else [i for i in range(consensus_matrix.shape[0])],
+            colorscale='reds',
+            hoverongaps=False,
+            hovertemplate='sample1: %{y}<br>sample2: %{x}<br>consensus coefficient: %{z}<extra></extra>'
+        )
+    )
+    fig_consensus_matrix.update_layout(yaxis=dict(scaleanchor="x", scaleratio=1))
 
     consensus_matrix_tabs.children.append(
         html.Div([
@@ -4702,16 +4727,10 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
                     dbc.Col(
                         [
                             dcc.Graph(
-                                figure=go.Heatmap(
-                                    z=consensus_matrix,
-                                    x=eem_dataset_establishment.index if eem_dataset_establishment.index
-                                    else [i for i in range(consensus_matrix.shape[1])],
-                                    y=eem_dataset_establishment.index if eem_dataset_establishment.index
-                                    else [i for i in range(consensus_matrix.shape[0])],
-                                    hoverongaps=False,
-                                    hovertemplate='sample1: %{y}<br>sample2: %{x}<br>consensus coefficient: %{z}<extra></extra>'
-                                ),
+                                figure=fig_consensus_matrix,
                                 config={'autosizable': False},
+                                style={'width': '40vw',
+                                       'height': '70vh'}
                             )
                         ]
                     )
@@ -4722,8 +4741,8 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
 
     error_means = [df.mean(axis=0) for df in error_history]
     error_means = pd.concat(error_means, axis=1).T
-    error_means.columns = [f'iteration {i + 1}' for i in range(n_iterations)]
-    error_means.index = [f'base clustering {i + 1}' for i in range(n_base_clusterings)]
+    error_means.columns = [f'iteration {i + 1}' for i in range(error_means.shape[1])]
+    error_means.index = [f'base clustering {i + 1}' for i in range(len(error_history))]
     error_means_melted = error_means.melt(var_name='Column', value_name='Value')
 
     fig_error = px.box(error_means_melted, x='Column', y='Value', points='all')
@@ -4738,7 +4757,9 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
                 [
                     dbc.Col(
                         [
-                            fig_error
+                            dcc.Graph(
+                                figure=fig_error
+                            )
                         ]
                     )
                 ]
@@ -4761,107 +4782,191 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
     return (None, consensus_matrix_tabs, error_history_tabs, 'Calculate consensus', consensus_matrix.tolist(),
             eem_dataset_establishment_json_dict, base_clustering_parameters)
 
-#
-# #   -----------------Step 2: Hierarchical clustering
-# @app.callback(
-#     [
-#         Output('kmethod-dendrogram', 'children'),
-#         Output('kmethod-clusters', 'children'),
-#         Output('kmethod-components', 'children'),
-#         Output('kmethod-fmax', 'children'),
-#         Output('kmethod-establishment-corr-cluster-selection', 'options'),
-#         Output('kmethod-establishment-corr-cluster-selection', 'value'),
-#         Output('kmethod-establishment-corr-ref-selection', 'options'),
-#         Output('kmethod-establishment-corr-ref-selection', 'value'),
-#         # Output('parafac-test-model-selection', 'options'),
-#         # Output('parafac-test-model-selection', 'value'),
-#         Output('kmethod-test-pred-ref-selection', 'options'),
-#         Output('kmethod-test-pred-ref-selection', 'value'),
-#     ],
-#     [
-#         Input('build-kmethod-clustering', 'n_clicks'),
-#         State('kmethod-base-model', 'value'),
-#         State('kmethod-num-final-clusters', 'value'),
-#         State('kmethod-consensus-conversion', 'value'),
-#         State('kmethod-validations', 'value'),
-#         State('eem-graph-options', 'value'),
-#         State('kmethod-consensus-matrix-data', 'data'),
-#         State('kmethod-eem-dataset-establish', 'data'),
-#         State('kmethod-base-clustering-parameters', 'data')
-#     ]
-# )
-# def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conversion, validations, eem_graph_options,
-#                                consensus_matrix, eem_dataset_establish_dict, base_clustering_parameters):
-#     if n_clicks is None:
-#         return None, None, None, None, None, None, None, None, None, None
-#     else:
-#         if eem_dataset_establish_dict is None:
-#             return None, None, None, None, None, None, None, None, None, None
-#         else:
-#             eem_dataset_establish = EEMDataset(
-#                 eem_stack=np.array(
-#                     [[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
-#                      in eem_dataset_establish_dict['eem_stack']]),
-#                 ex_range=np.array(eem_dataset_establish_dict['ex_range']),
-#                 em_range=np.array(eem_dataset_establish_dict['em_range']),
-#                 index=eem_dataset_establish_dict['index'],
-#                 ref=pd.DataFrame(eem_dataset_establish_dict['ref'][1:],
-#                                  columns=eem_dataset_establish_dict['ref'][0],
-#                                  index=eem_dataset_establish_dict['index'])
-#                 if eem_dataset_establish_dict['ref'] is not None else None,
-#                 cluster=eem_dataset_establish_dict['cluster']
-#             )
-#     if base_clustering == 'PARAFAC':
-#         base_model = PARAFAC(**base_clustering_parameters)
-#     elif base_clustering == 'NMF':
-#         base_model = NMF(**base_clustering_parameters)
-#     kmethod = KMethod(base_model=base_model, n_initial_splits=None)
-#     kmethod.consensus_matrix = consensus_matrix
-#     kmethod.hierarchical_clustering(eem_dataset_establish, n_final_clusters, conversion)
-#
-#     return
 
-    # if eem_dataset_establishment.ref is not None:
-    #     valid_ref = eem_dataset_establishment.ref.columns[~eem_dataset_establishment.ref.isna().all()].tolist()
-    # else:
-    #     valid_ref = None
-    #
-    # for r in rank_list:
-    #     nmf_r = EEMNMF(
-    #         n_components=r, solver=solver, normalization=normalization[0], alpha_H=alpha_h, alpha_W=alpha_w,
-    #         l1_ratio=l1_ratio
-    #     )
-    #     nmf_r.fit(eem_dataset_establishment)
-    #     nmf_fit_params_r = {}
-    #     if eem_dataset_establishment.ref is not None:
-    #         for ref_var in valid_ref:
-    #             x = eem_dataset_establishment.ref[ref_var]
-    #             stats = []
-    #             nmf_var = nmf_r.nnls_score
-    #             nan_rows = x[x.isna()].index
-    #             x = x.drop(nan_rows)
-    #             if x.shape[0] < 1:
-    #                 continue
-    #             for f_col in nmf_var.columns:
-    #                 y = nmf_var[f_col]
-    #                 y = y.drop(nan_rows)
-    #                 x_reshaped = np.array(x).reshape(-1, 1)
-    #                 lm = LinearRegression().fit(x_reshaped, y)
-    #                 r_squared = lm.score(x_reshaped, y)
-    #                 intercept = lm.intercept_
-    #                 slope = lm.coef_[0]
-    #                 pearson_corr, pearson_p = pearsonr(x, y)
-    #                 stats.append([f_col, slope, intercept, r_squared, pearson_corr, pearson_p])
-    #             nmf_fit_params_r[ref_var] = stats
-    #     nmf_models[r] = {
-    #         'components': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
-    #                        sublist in nmf_r.components.tolist()],
-    #         'Fmax': [nmf_r.nnls_score.columns.tolist()] + nmf_r.nnls_score.values.tolist(),
-    #         'index': eem_dataset_establishment.index,
-    #         'ref': [eem_dataset_establishment.ref.columns.tolist()] + eem_dataset_establishment.ref.values.tolist()
-    #         if eem_dataset_establishment.ref is not None else None,
-    #         'fitting_params': nmf_fit_params_r
-    #     }
+#   -----------------Step 2: Hierarchical clustering
+
+@app.callback(
+    [
+        Output('kmethod-dendrogram', 'children'),
+        Output('kmethod-sorted-consensus-matrix', 'children'),
+        Output('kmethod-silhouette-score', 'children'),
+        Output('kmethod-components', 'children'),
+        Output('kmethod-fmax', 'children'),
+        Output('kmethod-step2-spinner', 'children'),
+        Output('kmethod-establishment-corr-cluster-selection', 'options'),
+        Output('kmethod-establishment-corr-cluster-selection', 'value'),
+        Output('kmethod-establishment-corr-ref-selection', 'options'),
+        Output('kmethod-establishment-corr-ref-selection', 'value'),
+        # Output('parafac-test-model-selection', 'options'),
+        # Output('parafac-test-model-selection', 'value'),
+        Output('kmethod-test-pred-ref-selection', 'options'),
+        Output('kmethod-test-pred-ref-selection', 'value'),
+    ],
+    [
+        Input('build-kmethod-clustering', 'n_clicks'),
+        State('kmethod-base-model', 'value'),
+        State('kmethod-num-final-clusters', 'value'),
+        State('kmethod-consensus-conversion', 'value'),
+        State('kmethod-validations', 'value'),
+        State('eem-graph-options', 'value'),
+        State('kmethod-consensus-matrix-data', 'data'),
+        State('kmethod-eem-dataset-establish', 'data'),
+        State('kmethod-base-clustering-parameters', 'data')
+    ]
+)
+def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conversion, validations, eem_graph_options,
+                               consensus_matrix, eem_dataset_establish_dict, base_clustering_parameters):
+    if n_clicks is None:
+        return None, None, None, None, None, 'Clustering', None, None, None, None, None, None
+    else:
+        if eem_dataset_establish_dict is None:
+            return None, None, None, None, None, 'Clustering', None, None, None, None, None, None
+        else:
+            eem_dataset_establish = EEMDataset(
+                eem_stack=np.array(
+                    [[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+                     in eem_dataset_establish_dict['eem_stack']]),
+                ex_range=np.array(eem_dataset_establish_dict['ex_range']),
+                em_range=np.array(eem_dataset_establish_dict['em_range']),
+                index=eem_dataset_establish_dict['index'],
+                ref=pd.DataFrame(eem_dataset_establish_dict['ref'][1:],
+                                 columns=eem_dataset_establish_dict['ref'][0],
+                                 index=eem_dataset_establish_dict['index'])
+                if eem_dataset_establish_dict['ref'] is not None else None,
+                cluster=eem_dataset_establish_dict['cluster']
+            )
+    if base_clustering == 'parafac':
+        base_model = PARAFAC(**base_clustering_parameters)
+    elif base_clustering == 'nmf':
+        base_model = NMF(**base_clustering_parameters)
+
+    n_clusters_list = num_string_to_list(n_final_clusters)
+
+    dendrogram_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    sorted_consensus_matrix_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    silhouette_score_tabs = dbc.Card([])
+    components_establishment_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    fmax_establishment_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    slt = []
+
+    for n in n_clusters_list:
+        kmethod = KMethod(base_model=base_model, n_initial_splits=None)
+        kmethod.consensus_matrix = np.array(consensus_matrix)
+        kmethod.hierarchical_clustering(eem_dataset_establish, n, conversion)
+        fig_dendrogram = plot_dendrogram(kmethod.linkage_matrix, kmethod.threshold_r,
+                                         eem_dataset_establish_dict['index'])
+
+        dendrogram_tabs.children[0].children.append(
+            dcc.Tab(label=f'{n}-cluster',
+                    children=[
+                        html.Div([
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dcc.Graph(
+                                                figure=fig_dendrogram,
+                                                config={'autosizable': False},
+                                                style={'width': '50vw',
+                                                       'height': '70vh'}
+                                            )
+                                        ]
+                                    )
+                                ]
+                            ),
+                        ]),
+                    ],
+                    style={'padding': '0', 'line-width': '100%'},
+                    selected_style={'padding': '0', 'line-width': '100%'}
+                    )
+        )
+
+        fig_sorted_consensus_matrix = go.Figure(
+            data=go.Heatmap(
+                z=kmethod.consensus_matrix_sorted,
+                x=eem_dataset_establish.index if eem_dataset_establish.index
+                else [i for i in range(consensus_matrix.shape[1])],
+                y=eem_dataset_establish.index if eem_dataset_establish.index
+                else [i for i in range(consensus_matrix.shape[0])],
+                colorscale='reds',
+                hoverongaps=False,
+                hovertemplate='sample1: %{y}<br>sample2: %{x}<br>consensus coefficient: %{z}<extra></extra>'
+            )
+        )
+        for j in range(max(kmethod.labels)):
+            idx = np.where(np.sort(kmethod.labels) == j + 1)[0]
+            fig_sorted_consensus_matrix.add_shape(type="rect", x0=min(idx), y0=min(idx),
+                                                  x1=min(idx) + len(idx), y1=min(idx) + len(idx),
+                                                  line=dict(color="black", width=3),
+                                                  )
+        fig_sorted_consensus_matrix.update_layout(yaxis=dict(scaleanchor="x", scaleratio=1))
+
+        sorted_consensus_matrix_tabs.children[0].children.append(
+            dcc.Tab(
+                label=f'{n}-cluster',
+                children=[
+                    html.Div([
+                        dbc.Row(
+                            [
+                                dbc.Col(
+                                    [
+                                        dcc.Graph(
+                                            figure=fig_sorted_consensus_matrix,
+                                            config={'autosizable': False},
+                                            style={'width': '50vw',
+                                                   'height': '70vh'}
+                                        )
+                                    ]
+                                )
+                            ]
+                        ),
+                    ]),
+                ],
+                style={'padding': '0', 'line-width': '100%'},
+                selected_style={'padding': '0', 'line-width': '100%'}
+            )
+        )
+        if 'silhouette_score' in validations:
+            slt.append(kmethod.silhouette_score)
+
+    if 'silhouette_score' in validations:
+        slt_table = pd.DataFrame({'Number of clusters': n_clusters_list, 'Silhouette score': slt})
+        silhouette_score_tabs.children.append(
+            html.Div([
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                dcc.Graph(
+                                    figure=px.line(
+                                        x=slt_table['Number of clusters'],
+                                        y=slt_table['Silhouette score'],
+                                        markers=True,
+                                        labels={'x': 'Number of cluster', 'y': 'Silhouette score'},
+                                    ),
+                                    config={'autosizable': False},
+                                )
+                            ]
+                        )
+                    ]
+                ),
+
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                dbc.Table.from_dataframe(slt_table,
+                                                         bordered=True, hover=True,
+                                                         )
+                            ]
+                        ),
+                    ]
+                ),
+            ]),
+        )
+
+    return (dendrogram_tabs, sorted_consensus_matrix_tabs, silhouette_score_tabs,
+            components_establishment_tabs, fmax_establishment_tabs, 'Clustering', None, None, None, None, None, None)
 
 
 # -----------Setup the sidebar-----------------

@@ -16,9 +16,7 @@ import warnings
 import copy
 import json
 from math import sqrt
-from sklearn.metrics import mean_squared_error, explained_variance_score, r2_score
-# from sklearn.ensemble import IsolationForest
-# from sklearn import svm
+from sklearn.metrics import mean_squared_error, explained_variance_score, r2_score, silhouette_score
 from sklearn.decomposition import PCA, NMF
 from sklearn.linear_model import LinearRegression
 from scipy.ndimage import gaussian_filter, median_filter
@@ -1409,15 +1407,15 @@ class EEMDataset:
         n_samples = self.eem_stack.shape[0]
         selected_indices = np.random.choice(n_samples, size=int(n_samples * portion), replace=False)
         eem_stack_new = self.eem_stack[selected_indices, :, :]
-        if self.index:
+        if self.index is not None:
             index_new = [self.index[i] for i in selected_indices]
         else:
             index_new = None
-        if self.ref:
+        if self.ref is not None:
             ref_new = self.ref.iloc[selected_indices]
         else:
             ref_new = None
-        if self.cluster:
+        if self.cluster is not None:
             cluster_new = [self.cluster[i] for i in selected_indices]
         else:
             cluster_new = None
@@ -1569,7 +1567,7 @@ class PARAFAC:
 
     Parameters
     ----------
-    rank: int
+    n_components: int
         The number of components
     non_negativity: bool
         Whether to apply the non-negativity constraint
@@ -1608,11 +1606,11 @@ class PARAFAC:
         Emission wavelengths.
     """
 
-    def __init__(self, rank, non_negativity=True, init='svd', tf_normalization=True,
+    def __init__(self, n_components, non_negativity=True, init='svd', tf_normalization=True,
                  loadings_normalization: Optional[str] = 'sd', sort_em=True):
 
         # ----------parameters--------------
-        self.rank = rank
+        self.n_components = n_components
         self.non_negativity = non_negativity
         self.init = init
         self.tf_normalization = tf_normalization
@@ -1654,22 +1652,22 @@ class PARAFAC:
             if not self.non_negativity:
                 if np.isnan(eem_stack_tf).any():
                     mask = np.where(np.isnan(eem_stack_tf), 0, 1)
-                    cptensors = parafac(eem_stack_tf, rank=self.rank, mask=mask, init=self.init)
+                    cptensors = parafac(eem_stack_tf, rank=self.n_components, mask=mask, init=self.init)
                 else:
-                    cptensors = parafac(eem_stack_tf, rank=self.rank, init=self.init)
+                    cptensors = parafac(eem_stack_tf, rank=self.n_components, init=self.init)
             else:
                 if np.isnan(eem_stack_tf).any():
                     mask = np.where(np.isnan(eem_stack_tf), 0, 1)
-                    cptensors = non_negative_parafac(eem_stack_tf, rank=self.rank, mask=mask, init=self.init)
+                    cptensors = non_negative_parafac(eem_stack_tf, rank=self.n_components, mask=mask, init=self.init)
                 else:
-                    cptensors = non_negative_parafac(eem_stack_tf, rank=self.rank, init=self.init)
+                    cptensors = non_negative_parafac(eem_stack_tf, rank=self.n_components, init=self.init)
         except ArpackError:
             print(
                 "PARAFAC failed possibly due to the presence of patches of nan values. Please consider cut or "
                 "interpolate the nan values.")
         a, b, c = cptensors[1]
-        components = np.zeros([self.rank, b.shape[0], c.shape[0]])
-        for r in range(self.rank):
+        components = np.zeros([self.n_components, b.shape[0], c.shape[0]])
+        for r in range(self.n_components):
 
             # when non_negativity is not applied, ensure the scores are generally positive
             if not self.non_negativity:
@@ -1711,19 +1709,19 @@ class PARAFAC:
             order = [i[0] for i in sorted(peak_rank, key=lambda x: x[1])]
             components = components[order]
             ex_loadings = pd.DataFrame({'component {r} ex loadings'.format(r=i + 1): ex_loadings.iloc[:, order[i]]
-                                        for i in range(self.rank)})
+                                        for i in range(self.n_components)})
             em_loadings = pd.DataFrame({'component {r} em loadings'.format(r=i + 1): em_loadings.iloc[:, order[i]]
-                                        for i in range(self.rank)})
+                                        for i in range(self.n_components)})
             score = pd.DataFrame({'component {r} score'.format(r=i + 1): score.iloc[:, order[i]]
-                                  for i in range(self.rank)})
+                                  for i in range(self.n_components)})
             fmax = pd.DataFrame({'component {r} fmax'.format(r=i + 1): fmax[:, order[i]]
-                                 for i in range(self.rank)})
+                                 for i in range(self.n_components)})
         else:
-            column_labels = ['component {r}'.format(r=i + 1) for i in range(self.rank)]
+            column_labels = ['component {r}'.format(r=i + 1) for i in range(self.n_components)]
             ex_loadings.columns = column_labels
             em_loadings.columns = column_labels
-            score.columns = ['component {r} PARAFAC-score'.format(r=i + 1) for i in range(self.rank)]
-            fmax = pd.DataFrame(fmax, columns=['component {r} PARAFAC-Fmax'.format(r=i + 1) for i in range(self.rank)])
+            score.columns = ['component {r} PARAFAC-score'.format(r=i + 1) for i in range(self.n_components)]
+            fmax = pd.DataFrame(fmax, columns=['component {r} PARAFAC-Fmax'.format(r=i + 1) for i in range(self.n_components)])
 
         ex_loadings.index = eem_dataset.ex_range.tolist()
         em_loadings.index = eem_dataset.em_range.tolist()
@@ -1784,7 +1782,7 @@ class PARAFAC:
             A List of (ex, em) of component peaks.
         """
         max_exem = []
-        for r in range(self.rank):
+        for r in range(self.n_components):
             max_index = np.unravel_index(np.argmax(self.components[r, :, :]), self.components[r, :, :].shape)
             max_exem.append((self.ex_range[-(max_index[0] + 1)], self.em_range[max_index[1]]))
         return max_exem
@@ -2081,9 +2079,9 @@ def align_components_by_loadings(models_dict: dict, ex_ref: pd.DataFrame, em_ref
     return models_dict_new
 
 
-def align_components_by_components(models_dict: dict, components_ref: dict):
+def align_components_by_components(models_dict: dict, components_ref: dict, model_type='parafac'):
     """
-    Align the components of PARAFAC models according to given reference ex/em loadings so that similar components
+    Align the components of PARAFAC or NMF models according to given reference ex/em loadings so that similar components
     are labelled by the same name.
 
     Parameters
@@ -2093,13 +2091,15 @@ def align_components_by_components(models_dict: dict, components_ref: dict):
     components_ref: dict
         Dictionary where each item is a reference component. The keys are the component labels, the values are the
         components (np.ndarray).
+    model_type: str, {'parafac', 'nmf'}
+        The type of model.
 
     Returns
     -------
     models_dict_new: dict
         Dictionary of the aligned PARAFAC object.
     """
-    component_labels_ref = components_ref.keys()
+    component_labels_ref = list(components_ref.keys())
     components_stack_ref = np.array([c for c in components_ref.values()])
     models_dict_new = {}
     for model_label, model in models_dict.items():
@@ -2129,14 +2129,19 @@ def align_components_by_components(models_dict: dict, components_ref: dict):
             component_labels_var = [0] * len(permutation)
             for i, nc in enumerate(permutation):
                 component_labels_var[nc] = component_labels_ref_extended[i]
-        model.score.columns, model.ex_loadings.columns, model.em_loadings.columns, model.fmax.columns = (
-                [component_labels_var] * 4)
-        model.score = model.score.iloc[:, permutation]
-        model.ex_loadings = model.ex_loadings.iloc[:, permutation]
-        model.em_loadings = model.em_loadings.iloc[:, permutation]
-        model.fmax = model.fmax.iloc[:, permutation]
-        model.components = model.components[permutation, :, :]
-        model.cptensor = permute_cp_tensor(model.cptensors, permutation)
+        if model_type=='parafac':
+            model.score.columns, model.ex_loadings.columns, model.em_loadings.columns, model.fmax.columns = (
+                    [component_labels_var] * 4)
+            model.score = model.score.iloc[:, permutation]
+            model.ex_loadings = model.ex_loadings.iloc[:, permutation]
+            model.em_loadings = model.em_loadings.iloc[:, permutation]
+            model.fmax = model.fmax.iloc[:, permutation]
+            model.components = model.components[permutation, :, :]
+            model.cptensor = permute_cp_tensor(model.cptensors, permutation)
+        elif model_type=='nmf':
+            model.nmf_fmax.columns, model.nnls_fmax.columns = ([component_labels_var] * 2)
+            model.nmf_fmax = model.nmf_fmax.iloc[:, permutation]
+            model.nnls_fmax = model.nnls_fmax.iloc[:, permutation]
         models_dict_new[model_label] = model
     return models_dict_new
 
@@ -2193,7 +2198,7 @@ class SplitValidation:
             cs = int(self.combination_size)
         elements = list(itertools.combinations([i for i in range(self.n_split)], int(cs)))
         codes = list(itertools.combinations(list(string.ascii_uppercase)[0:self.n_split], int(cs)))
-        model_complete = PARAFAC(rank=self.rank, non_negativity=self.non_negativity,
+        model_complete = PARAFAC(n_components=self.rank, non_negativity=self.non_negativity,
                                  tf_normalization=self.tf_normalization)
         model_complete.fit(eem_dataset=eem_dataset)
         sims_ex, sims_em, models, subsets = ({}, {}, {}, {})
@@ -2201,7 +2206,7 @@ class SplitValidation:
         for e, c in zip(elements, codes):
             label = ''.join(c)
             subdataset = combine_eem_datasets([split_set[i] for i in e])
-            model_subdataset = PARAFAC(rank=self.rank, non_negativity=self.non_negativity,
+            model_subdataset = PARAFAC(n_components=self.rank, non_negativity=self.non_negativity,
                                        tf_normalization=self.tf_normalization)
             model_subdataset.fit(subdataset)
 
@@ -2249,48 +2254,49 @@ class SplitValidation:
 
 class EEMNMF:
     """
-    Non-negative matrix factorization (NMF) model for EEM dataset
+    Non-negative matrix factorization (NMF) model for EEM dataset. The model establishment is adapted from sklearn. See
+    https://scikit-learn.org/dev/modules/generated/sklearn.decomposition.NMF.html for more details.
 
     Parameters
     ----------
     n_components: int
         The number of components
-    solver: bool
-        Whether to apply the non-negativity constraint
-    beta_loss: str or tensorly.CPTensor, {‘svd’, ‘random’, CPTensor}
-        Type of factor matrix initialization
-    alpha_W: bool
-        Whether to normalize the EEMs by the total fluorescence in PARAFAC model establishment
-    alpha_H: str or None, {'sd', 'maximum', None}
-        Type of normalization applied to loadings. if 'sd' is passed, the standard deviation will be normalized
-        to 1. If 'maximum' is passed, the maximum will be normalized to 1. The scores will be adjusted accordingly.
-    l1_ratio: bool
-        Whether to sort components by emission peak position from lowest to highest. If False is passed, the
-        components will be sorted by the contribution to the total variance.
-    normalization: str, {'pixel_std'}
-
+    solver: str, {'cd', 'mu'}
+        The numerical solver of NMF. 'cd' is a Coordinate Descent solver. 'mu' is a Multiplicative Update solver.
+    beta_loss: float or {‘frobenius’, ‘kullback-leibler’, ‘itakura-saito’}
+        Beta divergence to be minimized, measuring the distance between X and the dot product WH. Note that values
+        different from ‘frobenius’ (or 2) and ‘kullback-leibler’ (or 1) lead to significantly slower fits. Note that
+        for beta_loss <= 0 (or ‘itakura-saito’), the input matrix X cannot contain zeros. Used only in 'mu' solver.
+    alpha_W: float
+        Constant that multiplies the regularization terms of W. Set it to zero (default) to have no regularization on W.
+    alpha_H: float
+        Constant that multiplies the regularization terms of H. Set it to zero to have no regularization on H. If “same”
+        (default), it takes the same value as alpha_W.
+    l1_ratio: float
+        The regularization mixing parameter, with 0 <= l1_ratio <= 1. For l1_ratio = 0 the penalty is an elementwise L2
+        penalty (aka Frobenius Norm). For l1_ratio = 1 it is an elementwise L1 penalty. For 0 < l1_ratio < 1, the
+        penalty is a combination of L1 and L2.
+    normalization: str, {'pixel_std'}:
+        The normalization of EEMs before conducting NMF. 'pixel_std' normalizes the intensities of each pixel across
+        all samples by standard deviation.
 
     Attributes
     ----------
     nmf_fmax: pandas.DataFrame
-        Fmax table.
+        Fmax table calculated using the score matrix of NMF.
     nnls_fmax: pandas.DataFrame
-        Fmax table.
+        Fmax table calculated by fitting EEMs with NMF components using non-negative least square (NNLS).
     components: np.ndarray
-        PARAFAC components.
-    cptensors: tensorly CPTensor
-        The output of PARAFAC in the form of tensorly CPTensor.
+        NMF components.
     eem_stack_train: np.ndarray
         EEMs used for PARAFAC model establishment.
     eem_stack_reconstructed: np.ndarray
         EEMs reconstructed by the established PARAFAC model.
-    ex_range: np.ndarray
-        Excitation wavelengths.
-    em_range: np.ndarray
-        Emission wavelengths.
     """
     def __init__(self, n_components, solver='cd', beta_loss='frobenius', alpha_W=0, alpha_H=0, l1_ratio=1,
                  normalization='pixel_std'):
+
+        # -----------Parameters-------------
         self.n_components = n_components
         self.solver = solver
         self.beta_loss = beta_loss
@@ -2298,6 +2304,8 @@ class EEMNMF:
         self.alpha_H = alpha_H
         self.l1_ratio = l1_ratio
         self.normalization = normalization
+
+        # -----------Attributes-------------
         self.eem_stack_unfolded = None
         self.nmf_fmax = None
         self.nnls_fmax = None
@@ -2307,7 +2315,8 @@ class EEMNMF:
         self.normalization_factor_std = None
         self.normalization_factor_max = None
         self.reconstruction_error = None
-        self.eem_dataset_train = None
+        self.eem_stack_train = None
+        self.eem_stack_reconstructed = None
 
     def fit(self, eem_dataset, sort_em=True):
         decomposer = NMF(n_components=self.n_components, solver=self.solver, beta_loss=self.beta_loss,
@@ -2366,17 +2375,17 @@ class EEMNMF:
         self.normalization_factor_std = factor_std
         self.normalization_factor_max = factor_max
         self.reconstruction_error = decomposer.reconstruction_err_
-        self.eem_dataset_train = eem_dataset
+        self.eem_stack_train = eem_dataset.eem_stack
         return self
 
     def calculate_residual(self, score_type='nmf'):
         if score_type == 'nmf':
             X_new = self.decomposer.fit_transform(self.eem_stack_unfolded)
             X_reversed = self.decomposer.inverse_transform(X_new) * self.normalization_factor
-            n_samples = self.eem_dataset_train.eem_stack.shape[0]
+            n_samples = self.eem_stack_train.eem_stack.shape[0]
             residual = X_reversed - self.eem_stack_unfolded
-            residual = residual.reshape([n_samples, self.eem_dataset_train.eem_stack.shape[1],
-                                         self.eem_dataset_train.eem_stack.shape[2]])
+            residual = residual.reshape([n_samples, self.eem_stack_train.eem_stack.shape[1],
+                                         self.eem_stack_train.eem_stack.shape[2]])
             self.residual = residual
         #         elif score_type=='nnls':
         #             X_new = self.decomposer.fit_transform(self.eem_stack_unfolded)
@@ -2386,6 +2395,34 @@ class EEMNMF:
         #             residual = residual.reshape([n_samples, eem_dataset.eem_stack.shape[1], eem_dataset.eem_stack.shape[2]])
         #             self.residual = residual
         return residual
+
+    def predict(self, eem_dataset: EEMDataset, fit_intercept=False):
+        """
+        Predict the score and Fmax of a given EEM dataset using the component fitted. This method can be applied to a
+        new EEM dataset independent of the one used in NMF model establishment.
+
+        Parameters
+        ----------
+        eem_dataset: EEMDataset
+            The EEM dataset to be predicted.
+        fit_intercept: bool
+            Whether to calculate the intercept.
+
+        Returns
+        -------
+        score_sample: pd.DataFrame
+            The fitted score.
+        fmax_sample: pd.DataFrame
+            The fitted Fmax.
+        eem_stack_pred: np.ndarray (3d)
+            The EEM dataset reconstructed.
+        """
+        score_sample, fmax_sample, eem_stack_pred = eems_fit_components(eem_dataset.eem_stack, self.components,
+                                                                        fit_intercept=fit_intercept)
+        score_sample = pd.DataFrame(score_sample, index=eem_dataset.index, columns=self.nmf_fmax.columns)
+        fmax_sample = pd.DataFrame(fmax_sample, index=eem_dataset.index, columns=self.nmf_fmax.columns)
+        return score_sample, fmax_sample, eem_stack_pred
+
 
     def greedy_selection(self, eem_dataset_train, eem_dataset_test, direction='backwards',
                          criteria: str = 'reconstruction_error', true_values=None, axis=0, n_steps='max',
@@ -2566,19 +2603,16 @@ class KMethod:
     -----------
     n_initial_splits: int
         Number of splits in clustering initialization (the first time that the EEM dataset is divided).
-    n_clusters: int
-        Number of clusters in the final output.
     max_iter: int
         Maximum number of iterations of base clustering for a single run.
     tol: float
-        Tolerence in regard to the average Tucker's congruence between the cluster-specific PARAFAC models
+        Tolerance in regard to the average Tucker's congruence between the cluster-specific PARAFAC models
         of two consecutive iterations to declare convergence. If the Tucker's congruence > 1-tol, then convergence is
         confirmed.
     elimination: 'default' or int
         The minimum number of EEMs in each cluster. During optimization, clusters with EEMs less than the specified
         number would be eliminated. If 'default' is passed, then the number is set to be the same as the number of
         components.
-
 
     Attributes
     ------------
@@ -2589,8 +2623,8 @@ class KMethod:
     error_history: list
         A list of average RMSE over all pixels after each run of clustering.
     labels: np.ndarray
-        Finally cluter labels.
-    clusters: dict
+        Final cluster labels.
+    eem_clusters: dict
         EEM clusters.
     cluster_specific_models: dict
         Cluster-specific PARAFAC models.
@@ -2616,7 +2650,11 @@ class KMethod:
         self.unified_model = None
         self.label_history = None
         self.error_history = None
+        self.silhouette_score = None
         self.labels = None
+        self.index_sorted = None
+        self.ref_sorted = None
+        self.threshold_r = None
         self.eem_clusters = None
         self.cluster_specific_models = None
         self.consensus_matrix = None
@@ -2670,19 +2708,19 @@ class KMethod:
             sub_datasets = {}
             for label, m in models.items():
                 score_m, fmax_m, eem_stack_re_m = m.predict(eem_dataset)
-                res = m.eem_stack_train - eem_stack_re_m
+                res = eem_dataset.eem_stack - eem_stack_re_m
                 n_pixels = m.eem_stack_train.shape[1] * m.eem_stack_train.shape[2]
-                rmse = sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels)
+                rmse = np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels)
                 sample_error.append(rmse)
             best_model_idx = np.argmin(sample_error, axis=0)
             least_model_errors = np.min(sample_error, axis=0)
             for j, label in enumerate(models.keys()):
                 eem_stack_j = eem_dataset.eem_stack[np.where(best_model_idx == j)]
-                if eem_dataset.ref:
-                    ref_j = eem_dataset.ref[np.where(best_model_idx == j)]
+                if eem_dataset.ref is not None:
+                    ref_j = eem_dataset.ref.iloc[np.where(best_model_idx == j)]
                 else:
                     ref_j = None
-                if eem_dataset.index:
+                if eem_dataset.index is not None:
                     index_j = [eem_dataset.index[k] for k, idx in enumerate(best_model_idx) if idx == j]
                 else:
                     index_j = None
@@ -2697,7 +2735,7 @@ class KMethod:
             similarity = 0
             for label, m in models_1.items():
                 similarity = component_similarity(m.components, models_2[label].components).to_numpy().diagonal()
-            similarity = similarity / len(models_1)
+            similarity = np.sum(similarity) / len(models_1)
             return similarity
 
         # -------Initialization--------
@@ -2711,20 +2749,22 @@ class KMethod:
         for n in range(self.max_iter):
 
             # -------Eliminate sub_datasets having EEMs less than the number of ranks--------
+            cluster_label_to_remove = []
             for cluster_label, sub_dataset_i in sub_datasets_n.items():
-                if self.elimination == 'default' and sub_dataset_i.eem_stack.shape[0] <= self.base_model.rank:
-                    sub_datasets_n.pop(cluster_label)
+                if self.elimination == 'default' and sub_dataset_i.eem_stack.shape[0] <= self.base_model.n_components:
+                    cluster_label_to_remove.append(cluster_label)
                 elif isinstance(self.elimination, int):
-                    if self.elimination < self.rank and sub_dataset_i.eem_stack.shape[0] <= self.base_model.rank:
-                        sub_datasets_n.pop(cluster_label)
-                    elif self.elimination >= self.rank and sub_dataset_i.eem_stack.shape[0] <= self.elimination:
-                        sub_datasets_n.pop(cluster_label)
+                    if self.elimination <= max(self.base_model.n_components, self.elimination):
+                        cluster_label_to_remove.append(cluster_label)
+            for l in cluster_label_to_remove:
+                sub_datasets_n.pop(l)
 
             # -------The estimation step-------
             cluster_specific_models_new = estimation(sub_datasets_n)
             cluster_specific_models_new = align_components_by_components(
                 cluster_specific_models_new,
-                {f'component {i+1}': unified_model.components[i] for i in range(unified_model.components.shape[0])}
+                {f'component {i+1}': unified_model.components[i] for i in range(unified_model.components.shape[0])},
+                model_type='parafac' if isinstance(self.base_model, PARAFAC) else 'nmf'
             )
 
             # -------The maximization step--------
@@ -2734,7 +2774,7 @@ class KMethod:
 
             # -------Detect convergence---------
             if 0 < n < self.max_iter - 1:
-                if label_history[-1] == label_history[-2]:
+                if np.array_equal(label_history[-1], label_history[-2]):
                     break
                 if len(cluster_specific_models_old) == len(cluster_specific_models_new):
                     if model_similarity(cluster_specific_models_new, cluster_specific_models_old) > 1 - self.tol:
@@ -2755,7 +2795,7 @@ class KMethod:
 
         return cluster_labels, label_history, error_history
 
-    def calculate_consensus(self, eem_dataset: EEMDataset, n_runs: int, subsampling_portion: float):
+    def calculate_consensus(self, eem_dataset: EEMDataset, n_base_clusterings: int, subsampling_portion: float):
         """
         Run the clustering for many times and combine the output of each run to obtain an optimal clustering.
 
@@ -2763,11 +2803,10 @@ class KMethod:
         ----------
         eem_dataset: EEMDataset
             EEM dataset.
-        n_runs: int
-            Number of clustering
+        n_base_clusterings: int
+            Number of base clustering.
         subsampling_portion: float
             The portion of EEMs remained after subsampling.
-
 
         Returns
         -------
@@ -2784,7 +2823,7 @@ class KMethod:
         n = 0
         label_history = []
         error_history = []
-        while n < n_runs:
+        while n < n_base_clusterings:
 
             # ------Subsampling-------
             eem_dataset_new, index_new, ref_new, selected_indices = eem_dataset.subsampling(portion=subsampling_portion)
@@ -2804,7 +2843,7 @@ class KMethod:
 
             # ----check if counting_matrix contains 0, meaning that not all sample pairs have been included in the
             # clustering. If this is the case, run more base clustering until all sample pairs are covered----
-            if n == n_runs - 1 and np.any(co_occurrence_matrix == 0):
+            if n == n_base_clusterings - 1 and np.any(co_occurrence_matrix == 0):
                 warnings.warn(
                     'Not all sample pairs are covered. One extra clustering will be executed.')
             else:
@@ -2814,7 +2853,7 @@ class KMethod:
         consensus_matrix = co_label_matrix / co_occurrence_matrix
 
 
-        self.n_runs = n_runs
+        self.n_runs = n_base_clusterings
         self.subsampling_portion = subsampling_portion
         self.label_history = label_history
         self.error_history = error_history
@@ -2827,8 +2866,10 @@ class KMethod:
 
         Parameters
         ----------
-        eem_dataset
-        n_clusters
+        eem_dataset: EEMDataset
+            EEM dataset to cluster.
+        n_clusters: int
+            Number of clusters.
         consensus_conversion_power: float
             The factor adjusting the conversion from consensus matrix (M) to distance matrix (D) used for hierarchical
             clustering. D_{i,j} = (1 - M_{i,j})^factor. This number influences the gradient of distance with respect
@@ -2840,10 +2881,28 @@ class KMethod:
         """
         distance_matrix = (1 - self.consensus_matrix) ** consensus_conversion_power
         linkage_matrix = linkage(squareform(distance_matrix), method='complete')
-        labels = fcluster(self.linkage_matrix, n_clusters, criterion='maxclust')
+        labels = fcluster(linkage_matrix, n_clusters, criterion='maxclust')
+
+        # Find the minimum threshold distance for forming k clusters
+        # max_d = 0
+        # for i in range(linkage_matrix.shape[0] - n_clusters + 1):
+        #     max_d = max(max_d, linkage_matrix[i, 2])
+
+        linkage_matrix_sorted = linkage_matrix[linkage_matrix[:, 2].argsort()[::-1]]
+        max_d = linkage_matrix_sorted[n_clusters-2, 2]
+
+        self.threshold_r = max_d
+
         sorted_indices = np.argsort(labels)
         consensus_matrix_sorted = self.consensus_matrix[sorted_indices][:, sorted_indices]
-
+        if eem_dataset.index is not None:
+            eem_index_sorted = [eem_dataset.index[i] for i in sorted_indices]
+            self.index_sorted = eem_index_sorted
+        if eem_dataset.ref is not None:
+            eem_ref_sorted = eem_dataset.ref.iloc[sorted_indices, :]
+            self.ref_sorted = eem_ref_sorted
+        sc = silhouette_score(X=distance_matrix, labels=labels, metric='precomputed')
+        self.silhouette_score = sc
         self.distance_matrix = distance_matrix
         self.linkage_matrix = linkage_matrix
         self.consensus_matrix_sorted = consensus_matrix_sorted
@@ -2853,11 +2912,11 @@ class KMethod:
         cluster_specific_models = {}
         for j in set(list(labels)):
             eem_stack_j = eem_dataset.eem_stack[np.where(labels == j)]
-            if eem_dataset.ref:
-                ref_j = eem_dataset.ref[np.where(labels == j)]
+            if eem_dataset.ref is not None:
+                ref_j = eem_dataset.ref.iloc[np.where(labels == j)]
             else:
                 ref_j = None
-            if eem_dataset.index:
+            if eem_dataset.index is not None:
                 index_j = [eem_dataset.index[k] for k, idx in enumerate(labels) if idx == j]
             else:
                 index_j = None
@@ -2874,7 +2933,6 @@ class KMethod:
         self.labels = labels
         self.eem_clusters = clusters
         self.cluster_specific_models = cluster_specific_models
-
 
     def predict(self, eem_dataset: EEMDataset):
         """
