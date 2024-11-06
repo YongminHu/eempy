@@ -4697,7 +4697,7 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
             'normalization': nmf_normalization[0],
             'alpha_H': nmf_alpha_h, 'alpha_W': nmf_alpha_w, 'l1_ratio': nmf_l1_ratio
         }
-        base_model = PARAFAC(**base_clustering_parameters)
+        base_model = EEMNMF(**base_clustering_parameters)
 
     kmethod = KMethod(base_model=base_model, n_initial_splits=n_init_splits, max_iter=n_iterations, tol=tol,
                       elimination=elimination)
@@ -4838,7 +4838,7 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
     if base_clustering == 'parafac':
         base_model = PARAFAC(**base_clustering_parameters)
     elif base_clustering == 'nmf':
-        base_model = NMF(**base_clustering_parameters)
+        base_model = EEMNMF(**base_clustering_parameters)
 
     n_clusters_list = num_string_to_list(n_final_clusters)
 
