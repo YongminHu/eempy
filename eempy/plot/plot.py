@@ -431,14 +431,25 @@ def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()
         return fig
 
 
-def plot_fmax(score_table, component_labels=None, display=True, yaxis_title='Score'):
+def plot_fmax(table, component_labels=None, display=True, yaxis_title='Fmax', labels=None):
+    color_map_components = px.colors.qualitative.Plotly
+    if labels is not None:
+        color_map_clusters = px.colors.qualitative.Dark24
+        unique_labels = list(set(labels))
+        color_dict_clusters = {
+            label: color_map_clusters[i % len(color_map_clusters)] for i, label in enumerate(unique_labels)
+        }
     # Create a scatter plot
     fig = go.Figure()
-    for i in range(score_table.shape[1]):
+    for i in range(table.shape[1]):
         fig.add_trace(go.Scatter(
-            x=score_table.index,
-            y=score_table[score_table.columns[i]],
-            name=score_table.columns[i] if component_labels is None else component_labels[i]
+            x=table.index,
+            y=table[table.columns[i]],
+            name=table.columns[i] if component_labels is None else component_labels[i],
+            mode='lines+markers',
+            line=dict(color=color_map_components[i % len(color_map_components)]),
+            marker=dict(color=[color_dict_clusters[label] for label in labels])
+            if labels is not None else None
         ))
 
     fig.update_xaxes(tickangle=90)

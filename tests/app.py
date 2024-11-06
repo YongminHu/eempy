@@ -4222,6 +4222,7 @@ page4 = html.Div([
                         dcc.Tab(label='Dendrogram', id='kmethod-dendrogram'),
                         dcc.Tab(label='Sorted consensus matrix', id='kmethod-sorted-consensus-matrix'),
                         dcc.Tab(label='Silhouette score', id='kmethod-silhouette-score'),
+                        dcc.Tab(label='Reconstruction error reduction', id='kmethod-reconstruction-error-reduction'),
                         dcc.Tab(label='Components', id='kmethod-components'),
                         dcc.Tab(label='Fmax', id='kmethod-fmax'),
                         dcc.Tab(
@@ -4790,7 +4791,8 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
         Output('kmethod-dendrogram', 'children'),
         Output('kmethod-sorted-consensus-matrix', 'children'),
         Output('kmethod-silhouette-score', 'children'),
-        Output('kmethod-components', 'children'),
+        Output('kmethod-reconstruction-error-reduction', 'children'),
+        # Output('kmethod-components', 'children'),
         Output('kmethod-fmax', 'children'),
         Output('kmethod-step2-spinner', 'children'),
         Output('kmethod-establishment-corr-cluster-selection', 'options'),
@@ -4801,6 +4803,7 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
         # Output('parafac-test-model-selection', 'value'),
         Output('kmethod-test-pred-ref-selection', 'options'),
         Output('kmethod-test-pred-ref-selection', 'value'),
+        Output('kmethod-models', 'data')
     ],
     [
         Input('build-kmethod-clustering', 'n_clicks'),
@@ -4817,10 +4820,10 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
 def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conversion, validations, eem_graph_options,
                                consensus_matrix, eem_dataset_establish_dict, base_clustering_parameters):
     if n_clicks is None:
-        return None, None, None, None, None, 'Clustering', None, None, None, None, None, None
+        return None, None, None, None, None, 'Clustering', None, None, None, None, None, None, None
     else:
         if eem_dataset_establish_dict is None:
-            return None, None, None, None, None, 'Clustering', None, None, None, None, None, None
+            return None, None, None, None, None, 'Clustering', None, None, None, None, None, None, None
         else:
             eem_dataset_establish = EEMDataset(
                 eem_stack=np.array(
@@ -4845,7 +4848,7 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
     dendrogram_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     sorted_consensus_matrix_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     silhouette_score_tabs = dbc.Card([])
-    components_establishment_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    reconstruction_error_reduction_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     fmax_establishment_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     slt = []
 
@@ -4926,8 +4929,77 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
                 selected_style={'padding': '0', 'line-width': '100%'}
             )
         )
+
         if 'silhouette_score' in validations:
             slt.append(kmethod.silhouette_score)
+
+        # if 'RER' in validations:
+            # reconstruction_error_reduction_tabs.children[0].children.append(
+            #     dcc.Tab(label=f'{n}-cluster',
+            #             children=[
+            #                 html.Div([
+            #                     dbc.Row(
+            #                         [
+            #                             dbc.Col(
+            #                                 [
+            #                                     dcc.Graph(
+            #                                         figure=fig_dendrogram,
+            #                                         config={'autosizable': False},
+            #                                         style={'width': '50vw',
+            #                                                'height': '70vh'}
+            #                                     )
+            #                                 ]
+            #                             )
+            #                         ]
+            #                     ),
+            #                 ]),
+            #             ],
+            #             style={'padding': '0', 'line-width': '100%'},
+            #             selected_style={'padding': '0', 'line-width': '100%'}
+            #             )
+            # )
+
+        cluster_specific_models = kmethod.cluster_specific_models
+        fmax_combined = pd.concat([model.fmax for model in cluster_specific_models.values()], axis=0)
+        fmax_combined_sorted = fmax_combined.sort_index()
+        cluster_labels_combined = []
+        for model in cluster_specific_models.values():
+            cluster_labels_combined += model.cluster
+        cluster_labels_combined_sorted = [x for _, x in sorted(zip(fmax_combined.index, cluster_labels_combined))]
+        fig_fmax = plot_fmax(table=fmax_combined_sorted, display=False, labels=cluster_labels_combined_sorted)
+        fmax_combined_sorted['Cluster'] = cluster_labels_combined_sorted
+
+        fmax_establishment_tabs.children[0].children.append(
+            dcc.Tab(label=f'{n}-cluster',
+                    children=[
+                        html.Div([
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dcc.Graph(figure=fig_fmax)
+                                        ]
+                                    )
+                                ]
+                            ),
+
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dbc.Table.from_dataframe(fmax_combined_sorted,
+                                                                     bordered=True, hover=True, index=True)
+                                        ]
+                                    )
+                                ]
+                            )
+                        ]),
+                    ],
+                    style={'padding': '0', 'line-width': '100%'},
+                    selected_style={'padding': '0', 'line-width': '100%'}
+                    )
+        )
+
 
     if 'silhouette_score' in validations:
         slt_table = pd.DataFrame({'Number of clusters': n_clusters_list, 'Silhouette score': slt})
@@ -4965,8 +5037,8 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
             ]),
         )
 
-    return (dendrogram_tabs, sorted_consensus_matrix_tabs, silhouette_score_tabs,
-            components_establishment_tabs, fmax_establishment_tabs, 'Clustering', None, None, None, None, None, None)
+    return (dendrogram_tabs, sorted_consensus_matrix_tabs, silhouette_score_tabs, reconstruction_error_reductioin_tabs,
+            fmax_establishment_tabs, 'Clustering', None, None, None, None, None, None, kmethod_models)
 
 
 # -----------Setup the sidebar-----------------
@@ -5004,7 +5076,7 @@ def serve_layout():
         dcc.Store(id='kmethod-consensus-matrix-data'),
         dcc.Store(id='kmethod-eem-dataset-establish'),
         dcc.Store(id='kmethod-base-clustering-parameters'),
-        dcc.Store(id='kmethod-clusters-data'),
+        dcc.Store(id='kmethod-models'),
         dcc.Store(id='kmethod-test-results'),
         dcc.Store(id='nmf-models'),
         dcc.Store(id='nmf-test-results'),
@@ -5014,4 +5086,4 @@ def serve_layout():
 app.layout = serve_layout
 
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    app.run_server(debug=False)
