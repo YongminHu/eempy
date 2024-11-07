@@ -1866,7 +1866,7 @@ class PARAFAC:
         """
         res = self.residual()
         n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
-        rmse = pd.DataFrame(sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels), index=self.score.index)
+        rmse = pd.DataFrame(sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels), index=self.fmax.index, columns=['RMSE'])
         return rmse
 
     def sample_normalized_rmse(self):
@@ -1883,7 +1883,7 @@ class PARAFAC:
         n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
         normalized_sse = pd.DataFrame(sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels) /
                                       np.average(self.eem_stack_train, axis=(1, 2)),
-                                      index=self.score.index)
+                                      index=self.score.index, columns=['Normalized RMSE'])
         return normalized_sse
 
     def sample_summary(self):
@@ -2279,6 +2279,9 @@ class EEMNMF:
     normalization: str, {'pixel_std'}:
         The normalization of EEMs before conducting NMF. 'pixel_std' normalizes the intensities of each pixel across
         all samples by standard deviation.
+    sort_em: bool,
+        Whether to sort components by emission peak position from lowest to highest. If False is passed, the
+        components will be sorted by the contribution to the total variance.
 
     Attributes
     ----------
@@ -2294,7 +2297,7 @@ class EEMNMF:
         EEMs reconstructed by the established PARAFAC model.
     """
     def __init__(self, n_components, solver='cd', beta_loss='frobenius', alpha_W=0, alpha_H=0, l1_ratio=1,
-                 normalization='pixel_std'):
+                 normalization='pixel_std', sort_em=True):
 
         # -----------Parameters-------------
         self.n_components = n_components
@@ -2304,6 +2307,7 @@ class EEMNMF:
         self.alpha_H = alpha_H
         self.l1_ratio = l1_ratio
         self.normalization = normalization
+        self.sort_em = sort_em
 
         # -----------Attributes-------------
         self.eem_stack_unfolded = None
@@ -2317,8 +2321,10 @@ class EEMNMF:
         self.reconstruction_error = None
         self.eem_stack_train = None
         self.eem_stack_reconstructed = None
+        self.ex_range = None,
+        self.em_range = None
 
-    def fit(self, eem_dataset, sort_em=True):
+    def fit(self, eem_dataset):
         decomposer = NMF(n_components=self.n_components, solver=self.solver, beta_loss=self.beta_loss,
                          alpha_W=self.alpha_W, alpha_H=self.alpha_H,
                          l1_ratio=self.l1_ratio)
@@ -2350,11 +2356,11 @@ class EEMNMF:
         components = components.reshape([self.n_components, eem_dataset.eem_stack.shape[1],
                                          eem_dataset.eem_stack.shape[2]])
         nmf_score = nmf_score.mul(factor_max, axis=1)
-        _, nnls_score, _ = eems_fit_components(eem_dataset.eem_stack, components,
+        _, nnls_score, eem_stack_reconstructed = eems_fit_components(eem_dataset.eem_stack, components,
                                                fit_intercept=False, positive=True)
         nnls_score = pd.DataFrame(nnls_score, index=eem_dataset.index,
                                   columns=["component {i} NNLS-Fmax".format(i=i + 1) for i in range(self.n_components)])
-        if sort_em:
+        if self.sort_em:
             em_peaks = []
             for i in range(self.n_components):
                 flat_max_index = components[i].argmax()
@@ -2376,17 +2382,20 @@ class EEMNMF:
         self.normalization_factor_max = factor_max
         self.reconstruction_error = decomposer.reconstruction_err_
         self.eem_stack_train = eem_dataset.eem_stack
+        self.eem_stack_reconstructed = eem_stack_reconstructed
+        self.ex_range = eem_dataset.ex_range
+        self.em_range = eem_dataset.em_range
         return self
 
-    def calculate_residual(self, score_type='nmf'):
-        if score_type == 'nmf':
-            X_new = self.decomposer.fit_transform(self.eem_stack_unfolded)
-            X_reversed = self.decomposer.inverse_transform(X_new) * self.normalization_factor
-            n_samples = self.eem_stack_train.eem_stack.shape[0]
-            residual = X_reversed - self.eem_stack_unfolded
-            residual = residual.reshape([n_samples, self.eem_stack_train.eem_stack.shape[1],
-                                         self.eem_stack_train.eem_stack.shape[2]])
-            self.residual = residual
+    # def calculate_residual(self, score_type='nmf'):
+    #     if score_type == 'nmf':
+    #         X_new = self.decomposer.fit_transform(self.eem_stack_unfolded)
+    #         X_reversed = self.decomposer.inverse_transform(X_new) * self.normalization_factor
+    #         n_samples = self.eem_stack_train.eem_stack.shape[0]
+    #         residual = X_reversed - self.eem_stack_unfolded
+    #         residual = residual.reshape([n_samples, self.eem_stack_train.eem_stack.shape[1],
+    #                                      self.eem_stack_train.eem_stack.shape[2]])
+    #         self.residual = residual
         #         elif score_type=='nnls':
         #             X_new = self.decomposer.fit_transform(self.eem_stack_unfolded)
         #             X_reversed = self.decomposer.inverse_transform(X_new)*self.normalization_factor
@@ -2394,7 +2403,80 @@ class EEMNMF:
         #             residual = X_reversed - self.eem_stack_unfolded
         #             residual = residual.reshape([n_samples, eem_dataset.eem_stack.shape[1], eem_dataset.eem_stack.shape[2]])
         #             self.residual = residual
-        return residual
+        # return residual
+
+    def component_peak_locations(self):
+        """
+        Get the ex/em of component peaks
+
+        Returns
+        -------
+        max_exem: list
+            A List of (ex, em) of component peaks.
+        """
+        max_exem = []
+        for r in range(self.n_components):
+            max_index = np.unravel_index(np.argmax(self.components[r, :, :]), self.components[r, :, :].shape)
+            max_exem.append((self.ex_range[-(max_index[0] + 1)], self.em_range[max_index[1]]))
+        return max_exem
+
+    def residual(self):
+        """
+        Get the residual of the established PARAFAC model, i.e., the difference between the original EEM dataset and
+        the reconstructed EEM dataset.
+
+        Returns
+        -------
+        res: np.ndarray (3d)
+            the residual
+        """
+        res = self.eem_stack_train - self.eem_stack_reconstructed
+        return res
+
+    def explained_variance(self):
+        """
+        Calculate the explained variance of the established NMF model
+
+        Returns
+        -------
+        ev: float
+            the explained variance
+        """
+        y_train = self.eem_stack_train.reshape(-1)
+        y_pred = self.eem_stack_reconstructed.reshape(-1)
+        ev = 100 * (1 - np.var(y_pred - y_train) / np.var(y_train))
+        return ev
+
+    def sample_rmse(self):
+        """
+        Calculate the root mean squared error (RMSE) of EEM of each sample.
+
+        Returns
+        -------
+        sse: pandas.DataFrame
+            Table of RMSE
+        """
+        res = self.residual()
+        n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
+        rmse = pd.DataFrame(sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels), index=self.nnls_fmax.index, columns=['RMSE'])
+        return rmse
+
+    def sample_normalized_rmse(self):
+        """
+        Calculate the normalized root mean squared error (normalized RMSE) of EEM of each sample. It is defined as the
+        RMSE divided by the mean of original signal.
+
+        Returns
+        -------
+        normalized_sse: pandas.DataFrame
+            Table of normalized RMSE
+        """
+        res = self.residual()
+        n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
+        normalized_sse = pd.DataFrame(sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels) /
+                                      np.average(self.eem_stack_train, axis=(1, 2)),
+                                      index=self.nnls_fmax.index, columns=['sample_normalized_rmse'])
+        return normalized_sse
 
     def predict(self, eem_dataset: EEMDataset, fit_intercept=False):
         """
@@ -2509,8 +2591,7 @@ class EEMNMF:
                         eem_dataset_sub = EEMDataset(eem_stack=eem_stack_sub, ex_range=eem_dataset_train.ex_range,
                                                      em_range=eem_dataset_train.em_range, index=index_sub, ref=ref_sub)
                     self.fit(eem_dataset_sub)
-                    #                     plot_eem(self.components[0], eem_dataset_test.ex_range, eem_dataset_test.em_range, auto_intensity_range=False,
-                    #                              vmin=0, vmax=1)
+
                     score, fmax, eem_stack_pred = eems_fit_components(eem_dataset_test.eem_stack, self.components,
                                                                       fit_intercept=False, positive=True)
                     if criteria == 'reconstruction_error':
@@ -2547,43 +2628,43 @@ class EEMNMF:
         return eem_datasets_sequence, err_sequence, fmax_sequence
 
 
-class EEMPCA:
-
-    def __init__(self, n_components):
-        self.n_components = n_components
-        self.eem_stack_unfolded = None
-        self.score = None
-        self.components = None
-        self.decomposer = None
-        self.residual = None
-        self.normalization_factor = None
-        self.eem_stack_train = None
-
-    def fit(self, eem_dataset: EEMDataset, normalization=None):
-        decomposer = PCA(n_components=self.n_components)
-        n_samples = eem_dataset.eem_stack.shape[0]
-        X = eem_dataset.eem_stack.reshape([n_samples, -1])
-        score = decomposer.fit_transform(X)
-        score = pd.DataFrame(score, index=eem_dataset.index,
-                             columns=["component {i}".format(i=i + 1) for i in range(self.n_components)])
-        components = decomposer.components_.reshape([self.n_components, eem_dataset.eem_stack.shape[1],
-                                                     eem_dataset.eem_stack.shape[2]])
-        self.score = score
-        self.components = components
-        self.decomposer = decomposer
-        self.eem_stack_unfolded = X
-        self.eem_stack_train = eem_dataset
-        return self
-
-    def calculate_residual(self):
-        X_new = self.decomposer.fit_transform(self.eem_stack_unfolded)
-        X_reversed = self.decomposer.inverse_transform(X_new)
-        n_samples = self.eem_stack_train.eem_stack.shape[0]
-        residual = X_reversed - self.eem_stack_unfolded
-        residual = residual.reshape([n_samples, self.eem_stack_train.eem_stack.shape[1],
-                                     self.eem_stack_train.eem_stack.shape[2]])
-        self.residual = residual
-        return residual
+# class EEMPCA:
+#
+#     def __init__(self, n_components):
+#         self.n_components = n_components
+#         self.eem_stack_unfolded = None
+#         self.score = None
+#         self.components = None
+#         self.decomposer = None
+#         self.residual = None
+#         self.normalization_factor = None
+#         self.eem_stack_train = None
+#
+#     def fit(self, eem_dataset: EEMDataset, normalization=None):
+#         decomposer = PCA(n_components=self.n_components)
+#         n_samples = eem_dataset.eem_stack.shape[0]
+#         X = eem_dataset.eem_stack.reshape([n_samples, -1])
+#         score = decomposer.fit_transform(X)
+#         score = pd.DataFrame(score, index=eem_dataset.index,
+#                              columns=["component {i}".format(i=i + 1) for i in range(self.n_components)])
+#         components = decomposer.components_.reshape([self.n_components, eem_dataset.eem_stack.shape[1],
+#                                                      eem_dataset.eem_stack.shape[2]])
+#         self.score = score
+#         self.components = components
+#         self.decomposer = decomposer
+#         self.eem_stack_unfolded = X
+#         self.eem_stack_train = eem_dataset
+#         return self
+#
+#     def calculate_residual(self):
+#         X_new = self.decomposer.fit_transform(self.eem_stack_unfolded)
+#         X_reversed = self.decomposer.inverse_transform(X_new)
+#         n_samples = self.eem_stack_train.eem_stack.shape[0]
+#         residual = X_reversed - self.eem_stack_unfolded
+#         residual = residual.reshape([n_samples, self.eem_stack_train.eem_stack.shape[1],
+#                                      self.eem_stack_train.eem_stack.shape[2]])
+#         self.residual = residual
+#         return residual
 
 
 

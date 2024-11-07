@@ -465,6 +465,52 @@ def plot_fmax(table, component_labels=None, display=True, yaxis_title='Fmax', la
 
     return fig
 
+def plot_reconstruction_error(table, bar_col_name, display=True, yaxis_scatter_title='Reconstruction error',
+                              yaxis_bar_title='Reconstruction error reduction', labels=None):
+    color_map_col = px.colors.qualitative.Plotly
+    if labels is not None:
+        color_map_clusters = px.colors.qualitative.Dark24
+        unique_labels = list(set(labels))
+        color_dict_clusters = {
+            label: color_map_clusters[i % len(color_map_clusters)] for i, label in enumerate(unique_labels)
+        }
+    # Create a scatter plot
+    fig = go.Figure()
+
+    for i in range(table.shape[1]):
+        if table.columns[i] != bar_col_name:
+            fig.add_trace(go.Scatter(
+                x=table.index,
+                y=table[table.columns[i]],
+                name=table.columns[i],
+                mode='lines+markers',
+                line=dict(color=color_map_col[i % len(color_map_col)]),
+                marker=dict(color=[color_dict_clusters[label] for label in labels])
+                if labels is not None else None
+            ))
+
+    fig.add_trace(go.Bar(
+        x=table.index,
+        y=table[bar_col_name],
+        name='Reconstruction error reduction',
+        yaxis='y2',
+        marker_color=[color_dict_clusters[label] for label in labels] if labels is not None else None
+    ))
+
+    fig.update_xaxes(tickangle=90)
+
+    # Customize the layout (optional)
+    fig.update_layout(
+        xaxis_title='Index',
+        yaxis=dict(title=yaxis_scatter_title),
+        yaxis2=dict(title=yaxis_bar_title, overlaying='y', side='right'),
+    )
+
+    if display:
+        fig.show()
+
+    return fig
+
 
 def plot_dendrogram(linkage_matrix, threshold, index: list = None):
 
