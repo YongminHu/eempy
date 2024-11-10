@@ -2471,7 +2471,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
         State('parafac-models', 'data')
     ]
 )
-def update_reference_dropdown_by_selected_model(r, parafac_model):
+def update_parafac_reference_dropdown_by_selected_model(r, parafac_model):
     if all([r, parafac_model]):
         options = list(parafac_model[str(r)]['fitting_params'].keys())
         return options, None
@@ -3640,7 +3640,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
         State('nmf-models', 'data')
     ]
 )
-def update_reference_dropdown_by_selected_model(r, nmf_model):
+def update_nmf_reference_dropdown_by_selected_model(r, nmf_model):
     if all([r, nmf_model]):
         options = list(nmf_model[str(r)]['fitting_params'].keys())
         return options, None
@@ -4172,7 +4172,7 @@ card_kmethod_param2 = dbc.Card(
                                     dcc.Dropdown(
                                         options=[{'label': 'silhouette score', 'value': 'silhouette_score'},
                                                  {'label': 'reconstruction error reduction', 'value': 'RER'}],
-                                        multi=True, id='kmethod-validations', value=['silhouette_score']),
+                                        multi=True, id='kmethod-validations', value=['silhouette_score', 'RER']),
                                     width={'size': 4}
                                 ),
                             ]),
@@ -4223,7 +4223,60 @@ page4 = html.Div([
                         dcc.Tab(label='Sorted consensus matrix', id='kmethod-sorted-consensus-matrix'),
                         dcc.Tab(label='Silhouette score', id='kmethod-silhouette-score'),
                         dcc.Tab(label='Reconstruction error reduction', id='kmethod-reconstruction-error-reduction'),
-                        dcc.Tab(label='Components', id='kmethod-components'),
+                        dcc.Tab(
+                            children=[
+                                html.Div(
+                                    [
+                                        dbc.Card(
+                                            dbc.Stack(
+                                                [
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dbc.Label("Select K-method model"),
+                                                                width={'size': 1, 'offset': 0}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[],
+                                                                    id='kmethod-establishment-components-model-selection'
+                                                                ),
+                                                                width={'size': 2}
+                                                            ),
+                                                            dbc.Col(
+                                                                dbc.Label("Select cluster"),
+                                                                width={'size': 1, 'offset': 1}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[],
+                                                                    id='kmethod-establishment-components-cluster-selection'
+                                                                ),
+                                                                width={'size': 2}
+                                                            ),
+                                                        ]
+                                                    ),
+
+                                                    dbc.Row([
+                                                        # dcc.Graph(id='kmethod-establishment-components-graph',
+                                                        #           # config={'responsive': 'auto'},
+                                                        #           style={'width': '45vw', 'height': '60vh'}
+                                                        #           ),
+                                                        html.Div(
+                                                            children=[], id='kmethod-establishment-components-graph',
+                                                            style={'width': '45vw', 'height': '60vh'}
+                                                        )
+                                                    ]),
+                                                ],
+                                                gap=2, style={"margin": "20px"}
+                                            )
+                                        )
+                                    ],
+                                    style={'width': '90vw'},
+                                )
+                            ],
+                            label='Components', id='kmethod-components'
+                        ),
                         dcc.Tab(label='Fmax', id='kmethod-fmax'),
                         dcc.Tab(
                             children=[
@@ -4235,13 +4288,13 @@ page4 = html.Div([
                                                     dbc.Row(
                                                         [
                                                             dbc.Col(
-                                                                dbc.Label("Select cluster"),
+                                                                dbc.Label("Select K-method model"),
                                                                 width={'size': 1, 'offset': 0}
                                                             ),
                                                             dbc.Col(
                                                                 dcc.Dropdown(
                                                                     options=[],
-                                                                    id='kmethod-establishment-corr-cluster-selection'
+                                                                    id='kmethod-establishment-corr-model-selection'
                                                                 ),
                                                                 width={'size': 2}
                                                             ),
@@ -4346,22 +4399,22 @@ page4 = html.Div([
                                                             )
                                                         ]
                                                     ),
-                                                    # html.H5("Select established model"),
-                                                    # dbc.Row(
-                                                    #     [
-                                                    #         dbc.Col(
-                                                    #             dcc.Dropdown(
-                                                    #                 options=[], id='kmethod-test-model-selection'
-                                                    #             )
-                                                    #         ),
-                                                    #         dbc.Col(
-                                                    #             dbc.Button(
-                                                    #                 [dbc.Spinner(size="sm",
-                                                    #                              id='kmethod-predict-spinner')],
-                                                    #                 id='predict-nmf-model', className='col-2')
-                                                    #         )
-                                                    #     ]
-                                                    # )
+                                                    html.H5("Select established model"),
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[], id='kmethod-test-model-selection'
+                                                                )
+                                                            ),
+                                                            dbc.Col(
+                                                                dbc.Button(
+                                                                    [dbc.Spinner(size="sm",
+                                                                                 id='kmethod-predict-spinner')],
+                                                                    id='predict-kmethod-model', className='col-2')
+                                                            )
+                                                        ]
+                                                    )
                                                 ],
                                                 gap=2, style={"margin": "20px"}
                                             ),
@@ -4523,7 +4576,7 @@ page4 = html.Div([
                                                     dbc.Row(
                                                         [
                                                             dbc.Col(
-                                                                dbc.Label("Select nmf model"),
+                                                                dbc.Label("Select K-method model"),
                                                                 width={'size': 1, 'offset': 0}
                                                             ),
                                                             dbc.Col(
@@ -4792,15 +4845,18 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
         Output('kmethod-sorted-consensus-matrix', 'children'),
         Output('kmethod-silhouette-score', 'children'),
         Output('kmethod-reconstruction-error-reduction', 'children'),
-        # Output('kmethod-components', 'children'),
         Output('kmethod-fmax', 'children'),
         Output('kmethod-step2-spinner', 'children'),
-        Output('kmethod-establishment-corr-cluster-selection', 'options'),
-        Output('kmethod-establishment-corr-cluster-selection', 'value'),
-        Output('kmethod-establishment-corr-ref-selection', 'options'),
-        Output('kmethod-establishment-corr-ref-selection', 'value'),
-        # Output('parafac-test-model-selection', 'options'),
-        # Output('parafac-test-model-selection', 'value'),
+        Output('kmethod-establishment-components-model-selection', 'options'),
+        Output('kmethod-establishment-components-model-selection', 'value'),
+        # Output('kmethod-establishment-components-cluster-selection', 'options'),
+        # Output('kmethod-establishment-components-cluster-selection', 'value'),
+        Output('kmethod-establishment-corr-model-selection', 'options'),
+        Output('kmethod-establishment-corr-model-selection', 'value'),
+        # Output('kmethod-establishment-corr-ref-selection', 'options'),
+        # Output('kmethod-establishment-corr-ref-selection', 'value'),
+        Output('kmethod-test-model-selection', 'options'),
+        Output('kmethod-test-model-selection', 'value'),
         Output('kmethod-test-pred-ref-selection', 'options'),
         Output('kmethod-test-pred-ref-selection', 'value'),
         Output('kmethod-models', 'data')
@@ -4811,19 +4867,18 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
         State('kmethod-num-final-clusters', 'value'),
         State('kmethod-consensus-conversion', 'value'),
         State('kmethod-validations', 'value'),
-        State('eem-graph-options', 'value'),
         State('kmethod-consensus-matrix-data', 'data'),
         State('kmethod-eem-dataset-establish', 'data'),
         State('kmethod-base-clustering-parameters', 'data')
     ]
 )
-def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conversion, validations, eem_graph_options,
+def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conversion, validations,
                                consensus_matrix, eem_dataset_establish_dict, base_clustering_parameters):
     if n_clicks is None:
-        return None, None, None, None, None, 'Clustering', None, None, None, None, None, None, None
+        return None, None, None, None, None, 'Clustering', [], None, [], None, [], None, [], None, None
     else:
         if eem_dataset_establish_dict is None:
-            return None, None, None, None, None, 'Clustering', None, None, None, None, None, None, None
+            return None, None, None, None, None, 'Clustering', [], None, [], None, [], None, [], None, None
         else:
             eem_dataset_establish = EEMDataset(
                 eem_stack=np.array(
@@ -4867,37 +4922,47 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
     for n in n_clusters_list:
         kmethod = KMethod(base_model=base_model, n_initial_splits=None)
         kmethod.consensus_matrix = np.array(consensus_matrix)
-        kmethod.hierarchical_clustering(eem_dataset_establish, n, conversion)
+        try:
+            kmethod.hierarchical_clustering(eem_dataset_establish, n, conversion)
+        except ValueError:
+            continue
         cluster_specific_models = kmethod.cluster_specific_models
+        eem_clusters = kmethod.eem_clusters
         cluster_labels_combined = []
-        for model in cluster_specific_models.values():
-            cluster_labels_combined += model.cluster
+        for sub_dataset in eem_clusters.values():
+            cluster_labels_combined += sub_dataset.cluster
+
+        fmax_combined = pd.concat([model.fmax for model in cluster_specific_models.values()], axis=0)
+        fmax_combined_sorted = fmax_combined.sort_index()
         cluster_labels_combined_sorted = [x for _, x in sorted(zip(fmax_combined.index, cluster_labels_combined))]
+        fig_fmax = plot_fmax(table=fmax_combined_sorted, display=False, labels=cluster_labels_combined_sorted)
+        fmax_combined_sorted['Cluster'] = cluster_labels_combined_sorted
 
         kmethod_fit_params_n = {}
 
         if base_clustering == 'parafac':
-            component_names = unified_model.fmax.columns
+            component_names = unified_model.fmax.columns.tolist()
         elif base_clustering == 'nmf':
-            component_names = unified_model.nnls_fmax.columns
+            component_names = unified_model.nnls_fmax.columns.tolist()
         for ref_var in valid_ref + component_names:
             kmethod_fit_params_n[ref_var] = []
 
         if eem_dataset_establish.ref is not None:
             for i in range(n):
-                cluster_specific_model = kmethod.cluster_specific_models[str(i+1)]
-                valid_ref_cluster = cluster_specific_model.ref.columns[~eem_dataset_establish.ref.isna().all()].tolist()
+                cluster_specific_model = kmethod.cluster_specific_models[i+1]
+                eem_cluster = kmethod.eem_clusters[i+1]
+                valid_ref_cluster = eem_cluster.ref.columns[~eem_cluster.ref.isna().all()].tolist()
                 for ref_var in valid_ref_cluster:
                     stats = []
-                    x = cluster_specific_model.ref[ref_var]
+                    x = eem_cluster.ref[ref_var]
                     if base_clustering == 'parafac':
-                        model_var = cluster_specific_model.fmax
+                        model_var = copy.copy(cluster_specific_model.fmax)
                     elif base_clustering == 'nmf':
-                        model_var = cluster_specific_model.nnls_fmax
+                        model_var = copy.copy(cluster_specific_model.nnls_fmax)
                     model_var.columns = [f'Cluster {i+1}-' + col for col in model_var.columns]
                     nan_rows = x[x.isna()].index
                     x = x.drop(nan_rows)
-                    if x.shape[0] < 1:
+                    if x.shape[0] <= 1:
                         continue
                     for f_col in model_var.columns:
                         y = model_var[f_col]
@@ -4921,7 +4986,7 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
                     stats = []
                     nan_rows = x[x.isna()].index
                     x = x.drop(nan_rows)
-                    if x.shape[0] < 1:
+                    if x.shape[0] <= 1:
                         continue
                     for f_col in model_var.columns:
                         y = model_var[f_col]
@@ -5032,7 +5097,10 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
                                     [
                                         dbc.Col(
                                             [
-                                                dcc.Graph(figure=fig_rer)
+                                                dcc.Graph(figure=fig_rer,
+                                                          style={'width': '80vw',
+                                                                 'height': '70vh'}
+                                                          )
                                             ]
                                         )
                                     ]
@@ -5055,11 +5123,6 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
                         )
             )
 
-        fmax_combined = pd.concat([model.fmax for model in cluster_specific_models.values()], axis=0)
-        fmax_combined_sorted = fmax_combined.sort_index()
-        fig_fmax = plot_fmax(table=fmax_combined_sorted, display=False, labels=cluster_labels_combined_sorted)
-        fmax_combined_sorted['Cluster'] = cluster_labels_combined_sorted
-
         fmax_establishment_tabs.children[0].children.append(
             dcc.Tab(label=f'{n}-cluster',
                     children=[
@@ -5068,7 +5131,10 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
                                 [
                                     dbc.Col(
                                         [
-                                            dcc.Graph(figure=fig_fmax)
+                                            dcc.Graph(figure=fig_fmax,
+                                                      style={'width': '80vw',
+                                                             'height': '70vh'}
+                                                      )
                                         ]
                                     )
                                 ]
@@ -5093,20 +5159,34 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
 
         kmethod_models_n = {}
         for i in range(n):
-            cluster_specific_model = kmethod.cluster_specific_models[str(i+1)]
+            cluster_specific_model = kmethod.cluster_specific_models[i+1]
+            eem_cluster = kmethod.eem_clusters[i+1]
             if base_clustering == 'parafac':
                 kmethod_models_n[i] = {
                     'components': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
                                    sublist in cluster_specific_model.components.tolist()],
                     'Fmax': [cluster_specific_model.fmax.columns.tolist()] + cluster_specific_model.fmax.values.tolist(),
-                    'index': cluster_specific_model.index,
-                    'ref': [cluster_specific_model.ref.columns.tolist()] + cluster_specific_model.ref.values.tolist()
-                    if cluster_specific_model.ref is not None else None,
+                    'index': eem_cluster.index,
+                    'ref': [eem_cluster.ref.columns.tolist()] + eem_cluster.ref.values.tolist()
+                    if eem_cluster.ref is not None else None,
+                    'fitting_params': kmethod_fit_params_n
+                }
+            elif base_clustering == 'nmf':
+                kmethod_models_n[i] = {
+                    'components': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
+                                   sublist in cluster_specific_model.components.tolist()],
+                    'nnls_Fmax': [cluster_specific_model.nnls_fmax.columns.tolist()] + cluster_specific_model.nnls_fmax.values.tolist(),
+                    'nmf_Fmax': [cluster_specific_model.nmf_fmax.columns.tolist()] + cluster_specific_model.nmf_fmax.values.tolist(),
+                    'index': eem_cluster.index,
+                    'ref': [eem_cluster.ref.columns.tolist()] + eem_cluster.ref.values.tolist()
+                    if eem_cluster.ref is not None else None,
                     'fitting_params': kmethod_fit_params_n
                 }
 
+        kmethod_models[n] = kmethod_models_n
+
     if 'silhouette_score' in validations:
-        slt_table = pd.DataFrame({'Number of clusters': n_clusters_list, 'Silhouette score': slt})
+        slt_table = pd.DataFrame({'Number of clusters': list(kmethod_models.keys()), 'Silhouette score': slt})
         silhouette_score_tabs.children.append(
             html.Div([
                 dbc.Row(
@@ -5141,9 +5221,161 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
             ]),
         )
 
-    return (dendrogram_tabs, sorted_consensus_matrix_tabs, silhouette_score_tabs, reconstruction_error_reduction_tabs,
-            fmax_establishment_tabs, 'Clustering', None, None, None, None, None, None, kmethod_models)
+    model_options = [{'label': '{r}-cluster'.format(r=r), 'value': r} for r in kmethod_models.keys()]
+    ref_options = [{'label': var, 'value': var} for var in valid_ref] if \
+        (eem_dataset_establish.ref is not None) else None
 
+    return (dendrogram_tabs, sorted_consensus_matrix_tabs, silhouette_score_tabs, reconstruction_error_reduction_tabs,
+            fmax_establishment_tabs, 'Clustering', model_options, None, model_options, None, model_options,
+            None, ref_options, None, kmethod_models)
+
+
+# ---------Update cluster dropdown in components section-------------
+@app.callback(
+    [
+        Output('kmethod-establishment-components-cluster-selection', 'options'),
+        Output('kmethod-establishment-components-cluster-selection', 'value'),
+    ],
+    [
+        Input('kmethod-establishment-components-model-selection', 'value')
+    ]
+)
+def on_update_kmethod_component_cluster_list(model_n):
+    if model_n is not None:
+        options = [{'label': f'Cluster {n+1}', 'value': n+1} for n in range(int(model_n))]
+        return options, None
+    else:
+        return [], None
+
+# ---------Update reference dropdown in correlation section-----------
+@app.callback(
+    [
+        Output('kmethod-establishment-corr-ref-selection', 'options'),
+        Output('kmethod-establishment-corr-ref-selection', 'value'),
+    ],
+    [
+        Input('kmethod-establishment-corr-model-selection', 'value'),
+        State('kmethod-models', 'data')
+    ]
+)
+def update_reference_dropdown_by_selected_model(n, model):
+    if all([n, model]):
+        options = []
+        for c in list(model[str(n)].values()):
+            options += list(c['fitting_params'].keys())
+        options = list(set(options))
+        options = sorted(options)
+        return options, None
+    else:
+        return [], None
+
+# ---------Plot components-----------
+@app.callback(
+    [
+        Output('kmethod-establishment-components-graph', 'children')
+    ],
+    [
+        Input('kmethod-establishment-components-model-selection', 'value'),
+        Input('kmethod-establishment-components-cluster-selection', 'value'),
+        State('eem-graph-options', 'value'),
+        State('kmethod-models', 'data'),
+        State('kmethod-eem-dataset-establish', 'data'),
+    ],
+)
+def on_plot_kmethod_components(model_n, cluster_i, eem_graph_options, kmethod_models, eem_dataset_establish):
+    if all([model_n, cluster_i, kmethod_models, eem_dataset_establish]):
+        ex_range = np.array(eem_dataset_establish['ex_range'])
+        em_range = np.array(eem_dataset_establish['em_range'])
+        cluster_model = kmethod_models[str(model_n)][str(cluster_i)]
+        r = len(cluster_model['components'])
+        n_rows = (r - 1) // 3 + 1
+        graphs = [
+            dbc.Row(
+                [
+                    dbc.Col(
+                        dcc.Graph(
+                            figure=plot_eem(np.array(cluster_model['components'][3 * i]),
+                                            ex_range=ex_range,
+                                            em_range=em_range,
+                                            vmin=0 if np.min(
+                                                cluster_model['components'][3 * i]) > -1e-3 else None,
+                                            vmax=None,
+                                            auto_intensity_range=False,
+                                            plot_tool='plotly',
+                                            display=False,
+                                            figure_size=(5, 3.5),
+                                            label_font_size=14,
+                                            cbar_font_size=12,
+                                            title_font_size=16,
+                                            title=f'C{3 * i + 1}',
+                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options
+                                            else False,
+                                            rotate=True if 'rotate' in eem_graph_options else False,
+                                            ) if 3 * i + 1 <= r else go.Figure(
+                                layout={'width': 400, 'height': 300}),
+                            # style={'width': '30vw'}
+                        ),
+                        width={'size': 4},
+                    ),
+
+                    dbc.Col(
+                        dcc.Graph(
+                            figure=plot_eem(np.array(cluster_model['components'][3 * i + 1]),
+                                            ex_range=ex_range,
+                                            em_range=em_range,
+                                            vmin=0 if np.min(
+                                                cluster_model['components'][
+                                                    3 * i + 1]) > -1e-3 else None,
+                                            vmax=None,
+                                            auto_intensity_range=False,
+                                            plot_tool='plotly',
+                                            display=False,
+                                            figure_size=(5, 3.5),
+                                            label_font_size=14,
+                                            cbar_font_size=12,
+                                            title_font_size=16,
+                                            title=f'C{3 * i + 2}',
+                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options
+                                            else False,
+                                            rotate=True if 'rotate' in eem_graph_options else False,
+                                            ) if 3 * i + 2 <= r else go.Figure(
+                                layout={'width': 400, 'height': 300}),
+                            # style={'width': '30vw'}
+                        ),
+                        width={'size': 4},
+                    ),
+
+                    dbc.Col(
+                        dcc.Graph(
+                            figure=plot_eem(np.array(cluster_model['components'][3 * i + 2]),
+                                            ex_range=ex_range,
+                                            em_range=em_range,
+                                            vmin=0 if np.min(
+                                                cluster_model['components'][
+                                                    3 * i + 2]) > -1e-3 else None,
+                                            vmax=None,
+                                            auto_intensity_range=False,
+                                            plot_tool='plotly',
+                                            display=False,
+                                            figure_size=(5, 3.5),
+                                            label_font_size=14,
+                                            cbar_font_size=12,
+                                            title_font_size=16,
+                                            title=f'C{3 * i + 3}',
+                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options
+                                            else False,
+                                            rotate=True if 'rotate' in eem_graph_options else False,
+                                            ) if 3 * i + 3 <= r else go.Figure(),
+                            # style={'width': '30vw'}
+                        ),
+                        width={'size': 4},
+                    ),
+                ], style={'width': '90vw'}
+            ) for i in range(n_rows)
+        ]
+        return graphs
+    else:
+        return [None]
 
 # -----------Setup the sidebar-----------------
 
@@ -5190,4 +5422,4 @@ def serve_layout():
 app.layout = serve_layout
 
 if __name__ == '__main__':
-    app.run_server(debug=False)
+    app.run_server(debug=True)

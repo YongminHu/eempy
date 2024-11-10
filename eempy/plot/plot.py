@@ -436,9 +436,7 @@ def plot_fmax(table, component_labels=None, display=True, yaxis_title='Fmax', la
     if labels is not None:
         color_map_clusters = px.colors.qualitative.Dark24
         unique_labels = list(set(labels))
-        color_dict_clusters = {
-            label: color_map_clusters[i % len(color_map_clusters)] for i, label in enumerate(unique_labels)
-        }
+
     # Create a scatter plot
     fig = go.Figure()
     for i in range(table.shape[1]):
@@ -446,11 +444,22 @@ def plot_fmax(table, component_labels=None, display=True, yaxis_title='Fmax', la
             x=table.index,
             y=table[table.columns[i]],
             name=table.columns[i] if component_labels is None else component_labels[i],
-            mode='lines+markers',
+            mode='lines',
             line=dict(color=color_map_components[i % len(color_map_components)]),
-            marker=dict(color=[color_dict_clusters[label] for label in labels])
-            if labels is not None else None
         ))
+
+    for j, l in enumerate(unique_labels):
+        table_l = table.iloc[labels == l]
+        table_l['index'] = [table.index[i] for i, val in enumerate(labels) if val == l]
+        table_l = pd.melt(table_l, id_vars='index')
+        fig.add_trace(go.Scatter(
+            x=table_l['index'],
+            y=table_l['value'],
+            name=f'Cluster {l}',
+            mode='markers',
+            marker=dict(color=color_map_clusters[j % len(color_map_clusters)]) if labels is not None else None,
+        )
+                      )
 
     fig.update_xaxes(tickangle=90)
 
@@ -483,19 +492,29 @@ def plot_reconstruction_error(table, bar_col_name, display=True, yaxis_scatter_t
                 x=table.index,
                 y=table[table.columns[i]],
                 name=table.columns[i],
-                mode='lines+markers',
+                mode='lines',
                 line=dict(color=color_map_col[i % len(color_map_col)]),
-                marker=dict(color=[color_dict_clusters[label] for label in labels])
-                if labels is not None else None
             ))
 
-    fig.add_trace(go.Bar(
-        x=table.index,
-        y=table[bar_col_name],
-        name='Reconstruction error reduction',
-        yaxis='y2',
-        marker_color=[color_dict_clusters[label] for label in labels] if labels is not None else None
-    ))
+    for j, l in enumerate(unique_labels):
+        table_l = table.iloc[labels == l]
+        table_l.drop(columns=[bar_col_name], inplace=True)
+        table_l['index'] = [table.index[i] for i, val in enumerate(labels) if val == l]
+        table_l = pd.melt(table_l, id_vars='index')
+        fig.add_trace(go.Scatter(
+            x=table_l['index'],
+            y=table_l['value'],
+            name=f'Cluster {l}',
+            mode='markers',
+            marker=dict(color=color_map_clusters[j % len(color_map_clusters)]) if labels is not None else None,
+        ))
+        fig.add_trace(go.Bar(
+            x=table.iloc[labels == l].index,
+            y=table[bar_col_name].iloc[labels == l],
+            name=f'Cluster {l}-Reconstruction error reduction',
+            yaxis='y2',
+            marker=dict(color=color_map_clusters[j % len(color_map_clusters)]) if labels is not None else None,
+        ))
 
     fig.update_xaxes(tickangle=90)
 

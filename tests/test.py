@@ -25,25 +25,25 @@ import pandas as pd
 # print(label_history)
 
 
-import os
-
-def add_text_to_filenames(folder_path, text_to_add):
-    # Loop through all files in the folder
-    for filename in os.listdir(folder_path):
-        if '2024-07-' in filename:
-            # Construct full file path
-            full_file_path = os.path.join(folder_path, filename)
-            # Check if it is a file (not a directory)
-            if os.path.isfile(full_file_path):
-                # Create new filename by adding the text to the original filename
-                new_filename = filename[:28] + text_to_add + filename[28:]
-                # Construct full path for the new file
-                new_full_file_path = os.path.join(folder_path, new_filename)
-                # Rename the file
-                os.rename(full_file_path, new_full_file_path)
-                print(f'Renamed: {filename} to {new_filename}')
-
-# Example usage
-folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/2024_quenching_nmf'  # Replace with the path to your folder
-text_to_add = 'M3'  # Replace with the text you want to add
-add_text_to_filenames(folder_path, text_to_add)
+# import os
+#
+# def add_text_to_filenames(folder_path, text_to_add):
+#     # Loop through all files in the folder
+#     for filename in os.listdir(folder_path):
+#         if '2024-07-' in filename:
+#             # Construct full file path
+#             full_file_path = os.path.join(folder_path, filename)
+#             # Check if it is a file (not a directory)
+#             if os.path.isfile(full_file_path):
+#                 # Create new filename by adding the text to the original filename
+#                 new_filename = filename[:28] + filename[30:]
+#                 # Construct full path for the new file
+#                 new_full_file_path = os.path.join(folder_path, new_filename)
+#                 # Rename the file
+#                 os.rename(full_file_path, new_full_file_path)
+#                 print(f'Renamed: {filename} to {new_filename}')
+#
+# # Example usage
+# folder_path = 'C:/PhD/Fluo-detect/_data/_greywater/2024_quenching_nmf'  # Replace with the path to your folder
+# text_to_add = 'M3'  # Replace with the text you want to add
+# add_text_to_filenames(folder_path, text_to_add)
