@@ -20,7 +20,9 @@ from eempy.eem_processing import *
 from eempy.utils import str_string_to_list, num_string_to_list
 
 app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
-colors = ['red', 'blue', 'orange', 'purple', 'cyan', 'green', 'pink', 'brown', 'black']
+colors = px.colors.qualitative.Plotly
+marker_shapes = ['circle', 'square', 'diamond', 'cross', 'x', 'triangle-up', 'triangle-down', 'triangle-left',
+                 'triangle-right', 'triangle-ne', 'triangle-se', 'triangle-sw', 'triangle-nw']
 
 # -----------Page #0: Homepage
 
@@ -4853,6 +4855,8 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
         # Output('kmethod-establishment-components-cluster-selection', 'value'),
         Output('kmethod-establishment-corr-model-selection', 'options'),
         Output('kmethod-establishment-corr-model-selection', 'value'),
+        Output('kmethod-establishment-corr-indicator-selection', 'options'),
+        Output('kmethod-establishment-corr-indicator-selection', 'value'),
         # Output('kmethod-establishment-corr-ref-selection', 'options'),
         # Output('kmethod-establishment-corr-ref-selection', 'value'),
         Output('kmethod-test-model-selection', 'options'),
@@ -4875,10 +4879,10 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
 def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conversion, validations,
                                consensus_matrix, eem_dataset_establish_dict, base_clustering_parameters):
     if n_clicks is None:
-        return None, None, None, None, None, 'Clustering', [], None, [], None, [], None, [], None, None
+        return None, None, None, None, None, 'Clustering', [], None, [], None, [], None, [], None, [], None, None
     else:
         if eem_dataset_establish_dict is None:
-            return None, None, None, None, None, 'Clustering', [], None, [], None, [], None, [], None, None
+            return None, None, None, None, None, 'Clustering', [], None, [], None, [], None, [], None, [], None, None
         else:
             eem_dataset_establish = EEMDataset(
                 eem_stack=np.array(
@@ -4914,16 +4918,17 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
     dendrogram_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     sorted_consensus_matrix_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     silhouette_score_tabs = dbc.Card([])
-    reconstruction_error_reduction_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    reconstruction_error_reduction_tabs = dbc.Card(
+        [dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     fmax_establishment_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     slt = []
     kmethod_models = {}
 
-    for n in n_clusters_list:
+    for k in n_clusters_list:
         kmethod = KMethod(base_model=base_model, n_initial_splits=None)
         kmethod.consensus_matrix = np.array(consensus_matrix)
         try:
-            kmethod.hierarchical_clustering(eem_dataset_establish, n, conversion)
+            kmethod.hierarchical_clustering(eem_dataset_establish, k, conversion)
         except ValueError:
             continue
         cluster_specific_models = kmethod.cluster_specific_models
@@ -4938,19 +4943,19 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
         fig_fmax = plot_fmax(table=fmax_combined_sorted, display=False, labels=cluster_labels_combined_sorted)
         fmax_combined_sorted['Cluster'] = cluster_labels_combined_sorted
 
-        kmethod_fit_params_n = {}
+        kmethod_fit_params_k = {}
 
         if base_clustering == 'parafac':
             component_names = unified_model.fmax.columns.tolist()
         elif base_clustering == 'nmf':
             component_names = unified_model.nnls_fmax.columns.tolist()
         for ref_var in valid_ref + component_names:
-            kmethod_fit_params_n[ref_var] = []
+            kmethod_fit_params_k[ref_var] = []
 
         if eem_dataset_establish.ref is not None:
-            for i in range(n):
-                cluster_specific_model = kmethod.cluster_specific_models[i+1]
-                eem_cluster = kmethod.eem_clusters[i+1]
+            for i in range(k):
+                cluster_specific_model = kmethod.cluster_specific_models[i + 1]
+                eem_cluster = kmethod.eem_clusters[i + 1]
                 valid_ref_cluster = eem_cluster.ref.columns[~eem_cluster.ref.isna().all()].tolist()
                 for ref_var in valid_ref_cluster:
                     stats = []
@@ -4959,7 +4964,7 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
                         model_var = copy.copy(cluster_specific_model.fmax)
                     elif base_clustering == 'nmf':
                         model_var = copy.copy(cluster_specific_model.nnls_fmax)
-                    model_var.columns = [f'Cluster {i+1}-' + col for col in model_var.columns]
+                    model_var.columns = [f'Cluster {i + 1}-' + col for col in model_var.columns]
                     nan_rows = x[x.isna()].index
                     x = x.drop(nan_rows)
                     if x.shape[0] <= 1:
@@ -4974,7 +4979,7 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
                         slope = lm.coef_[0]
                         pearson_corr, pearson_p = pearsonr(x, y)
                         stats.append([f_col, slope, intercept, r_squared, pearson_corr, pearson_p])
-                    kmethod_fit_params_n[ref_var] = kmethod_fit_params_n[ref_var] + stats
+                    kmethod_fit_params_k[ref_var] = kmethod_fit_params_k[ref_var] + stats
 
                 for c_var in component_names:
                     if base_clustering == 'parafac':
@@ -4998,12 +5003,12 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
                         slope = lm.coef_[0]
                         pearson_corr, pearson_p = pearsonr(x, y)
                         stats.append([f_col, slope, intercept, r_squared, pearson_corr, pearson_p])
-                    kmethod_fit_params_n[c_var] = kmethod_fit_params_n[c_var] + stats
+                    kmethod_fit_params_k[c_var] = kmethod_fit_params_k[c_var] + stats
 
         fig_dendrogram = plot_dendrogram(kmethod.linkage_matrix, kmethod.threshold_r,
                                          eem_dataset_establish_dict['index'])
         dendrogram_tabs.children[0].children.append(
-            dcc.Tab(label=f'{n}-cluster',
+            dcc.Tab(label=f'{k}-cluster',
                     children=[
                         html.Div([
                             dbc.Row(
@@ -5049,7 +5054,7 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
 
         sorted_consensus_matrix_tabs.children[0].children.append(
             dcc.Tab(
-                label=f'{n}-cluster',
+                label=f'{k}-cluster',
                 children=[
                     html.Div([
                         dbc.Row(
@@ -5082,7 +5087,7 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
             rmse_combined_sorted = pd.concat([rmse_combined_sorted, unified_model.sample_rmse()], axis=1)
             rmse_combined_sorted.columns = ['RMSE with cluster-specific models', 'RMSE with unified model']
             rmse_combined_sorted['RMSE reduction (%)'] = (
-                    100*(1 - (rmse_combined_sorted.iloc[:, 0] / rmse_combined_sorted.iloc[:, 1])))
+                    100 * (1 - (rmse_combined_sorted.iloc[:, 0] / rmse_combined_sorted.iloc[:, 1])))
             fig_rer = plot_reconstruction_error(
                 rmse_combined_sorted, display=False, bar_col_name='RMSE reduction (%)',
                 labels=cluster_labels_combined_sorted
@@ -5090,7 +5095,7 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
             rmse_combined_sorted['Cluster'] = cluster_labels_combined_sorted
 
             reconstruction_error_reduction_tabs.children[0].children.append(
-                dcc.Tab(label=f'{n}-cluster',
+                dcc.Tab(label=f'{k}-cluster',
                         children=[
                             html.Div([
                                 dbc.Row(
@@ -5124,7 +5129,7 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
             )
 
         fmax_establishment_tabs.children[0].children.append(
-            dcc.Tab(label=f'{n}-cluster',
+            dcc.Tab(label=f'{k}-cluster',
                     children=[
                         html.Div([
                             dbc.Row(
@@ -5158,32 +5163,35 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
         )
 
         kmethod_models_n = {}
-        for i in range(n):
-            cluster_specific_model = kmethod.cluster_specific_models[i+1]
-            eem_cluster = kmethod.eem_clusters[i+1]
+        for i in range(k):
+            cluster_specific_model = kmethod.cluster_specific_models[i + 1]
+            eem_cluster = kmethod.eem_clusters[i + 1]
             if base_clustering == 'parafac':
-                kmethod_models_n[i] = {
+                kmethod_models_n[i+1] = {
                     'components': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
                                    sublist in cluster_specific_model.components.tolist()],
-                    'Fmax': [cluster_specific_model.fmax.columns.tolist()] + cluster_specific_model.fmax.values.tolist(),
+                    'Fmax': [
+                                cluster_specific_model.fmax.columns.tolist()] + cluster_specific_model.fmax.values.tolist(),
                     'index': eem_cluster.index,
                     'ref': [eem_cluster.ref.columns.tolist()] + eem_cluster.ref.values.tolist()
                     if eem_cluster.ref is not None else None,
-                    'fitting_params': kmethod_fit_params_n
+                    'fitting_params': kmethod_fit_params_k
                 }
             elif base_clustering == 'nmf':
-                kmethod_models_n[i] = {
+                kmethod_models_n[i+1] = {
                     'components': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
                                    sublist in cluster_specific_model.components.tolist()],
-                    'nnls_Fmax': [cluster_specific_model.nnls_fmax.columns.tolist()] + cluster_specific_model.nnls_fmax.values.tolist(),
-                    'nmf_Fmax': [cluster_specific_model.nmf_fmax.columns.tolist()] + cluster_specific_model.nmf_fmax.values.tolist(),
+                    'NNLS_Fmax': [
+                                     cluster_specific_model.nnls_fmax.columns.tolist()] + cluster_specific_model.nnls_fmax.values.tolist(),
+                    'nmf_Fmax': [
+                                    cluster_specific_model.nmf_fmax.columns.tolist()] + cluster_specific_model.nmf_fmax.values.tolist(),
                     'index': eem_cluster.index,
                     'ref': [eem_cluster.ref.columns.tolist()] + eem_cluster.ref.values.tolist()
                     if eem_cluster.ref is not None else None,
-                    'fitting_params': kmethod_fit_params_n
+                    'fitting_params': kmethod_fit_params_k
                 }
 
-        kmethod_models[n] = kmethod_models_n
+        kmethod_models[k] = kmethod_models_n
 
     if 'silhouette_score' in validations:
         slt_table = pd.DataFrame({'Number of clusters': list(kmethod_models.keys()), 'Silhouette score': slt})
@@ -5225,9 +5233,14 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
     ref_options = [{'label': var, 'value': var} for var in valid_ref] if \
         (eem_dataset_establish.ref is not None) else None
 
+    if base_clustering == 'parafac':
+        indicator_options = ['Fmax']
+    elif base_clustering == 'nmf':
+        indicator_options = ['NNLS-Fmax', 'NMF-Fmax']
+
     return (dendrogram_tabs, sorted_consensus_matrix_tabs, silhouette_score_tabs, reconstruction_error_reduction_tabs,
-            fmax_establishment_tabs, 'Clustering', model_options, None, model_options, None, model_options,
-            None, ref_options, None, kmethod_models)
+            fmax_establishment_tabs, 'Clustering', model_options, None, model_options, None, indicator_options, None,
+            model_options, None, ref_options, None, kmethod_models)
 
 
 # ---------Update cluster dropdown in components section-------------
@@ -5240,12 +5253,13 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
         Input('kmethod-establishment-components-model-selection', 'value')
     ]
 )
-def on_update_kmethod_component_cluster_list(model_n):
-    if model_n is not None:
-        options = [{'label': f'Cluster {n+1}', 'value': n+1} for n in range(int(model_n))]
+def on_update_kmethod_component_cluster_list(k):
+    if k is not None:
+        options = [{'label': f'Cluster {n + 1}', 'value': n + 1} for n in range(int(k))]
         return options, None
     else:
         return [], None
+
 
 # ---------Update reference dropdown in correlation section-----------
 @app.callback(
@@ -5258,16 +5272,17 @@ def on_update_kmethod_component_cluster_list(model_n):
         State('kmethod-models', 'data')
     ]
 )
-def update_reference_dropdown_by_selected_model(n, model):
-    if all([n, model]):
+def update_reference_dropdown_by_selected_model(k, model):
+    if all([k, model]):
         options = []
-        for c in list(model[str(n)].values()):
+        for c in list(model[str(k)].values()):
             options += list(c['fitting_params'].keys())
         options = list(set(options))
         options = sorted(options)
         return options, None
     else:
         return [], None
+
 
 # ---------Plot components-----------
 @app.callback(
@@ -5282,11 +5297,11 @@ def update_reference_dropdown_by_selected_model(n, model):
         State('kmethod-eem-dataset-establish', 'data'),
     ],
 )
-def on_plot_kmethod_components(model_n, cluster_i, eem_graph_options, kmethod_models, eem_dataset_establish):
-    if all([model_n, cluster_i, kmethod_models, eem_dataset_establish]):
+def on_plot_kmethod_components(k, cluster_i, eem_graph_options, kmethod_models, eem_dataset_establish):
+    if all([k, cluster_i, kmethod_models, eem_dataset_establish]):
         ex_range = np.array(eem_dataset_establish['ex_range'])
         em_range = np.array(eem_dataset_establish['em_range'])
-        cluster_model = kmethod_models[str(model_n)][str(cluster_i)]
+        cluster_model = kmethod_models[str(k)][str(cluster_i)]
         r = len(cluster_model['components'])
         n_rows = (r - 1) // 3 + 1
         graphs = [
@@ -5376,6 +5391,84 @@ def on_plot_kmethod_components(model_n, cluster_i, eem_graph_options, kmethod_mo
         return graphs
     else:
         return [None]
+
+
+# -----------Analyze correlations between Fmax and reference variables in model establishment
+
+@app.callback(
+    [
+        Output('kmethod-establishment-corr-graph', 'figure'),
+        Output('kmethod-establishment-corr-table', 'children'),
+    ],
+    [
+        Input('kmethod-establishment-corr-model-selection', 'value'),
+        Input('kmethod-establishment-corr-indicator-selection', 'value'),
+        Input('kmethod-establishment-corr-ref-selection', 'value'),
+        State('kmethod-models', 'data')
+    ]
+)
+def on_kmethod_establishment_correlations(k, indicator, ref_var, kmethod_models):
+    if all([k, indicator, ref_var, kmethod_models]):
+        stats_total = []
+        fig = go.Figure()
+        for n in range(1, k + 1):
+            cluster_specific_model = kmethod_models[str(k)][str(n)]
+            ref_df = pd.DataFrame(cluster_specific_model['ref'][1:], columns=cluster_specific_model['ref'][0],
+                                  index=cluster_specific_model['index'])
+            if 'NNLS_Fmax' in list(cluster_specific_model.keys()):
+                nnls_fmax_df = pd.DataFrame(cluster_specific_model['NNLS-Fmax'][1:],
+                                            columns=cluster_specific_model['NNLS-Fmax'][0],
+                                            index=cluster_specific_model['index'])
+                nmf_fmax_df = pd.DataFrame(cluster_specific_model['NMF-Fmax'][1:],
+                                           columns=cluster_specific_model['NMF-Fmax'][0],
+                                           index=cluster_specific_model['index'])
+                fmax_df = pd.concat([nnls_fmax_df, nmf_fmax_df], axis=1)
+            elif 'Fmax' in list(cluster_specific_model.keys()):
+                fmax_df = pd.DataFrame(cluster_specific_model['Fmax'][1:],
+                                       columns=cluster_specific_model['Fmax'][0],
+                                       index=cluster_specific_model['index'])
+
+            ref_df = pd.concat([ref_df, fmax_df], axis=1)
+            reference_variable = ref_df[ref_var]
+            fluorescence_indicators = pd.DataFrame(cluster_specific_model[indicator][1:],
+                                                   columns=cluster_specific_model[indicator][0],
+                                                   index=cluster_specific_model['index'])
+
+            stats_k = cluster_specific_model['fitting_params']
+            stats_total += stats_k[ref_var]
+
+            for i, col in enumerate(fluorescence_indicators.columns):
+                x = reference_variable
+                y = fluorescence_indicators[col]
+                nan_rows = x[x.isna()].index
+                x = x.drop(nan_rows)
+                y = y.drop(nan_rows)
+                if x.shape[0] < 1:
+                    return go.Figure(), None
+                fig.add_trace(go.Scatter(x=x, y=y, mode='markers',
+                                         name=f'Cluster {n}-{col}',
+                                         text=[i for i in x.index],
+                                         marker=dict(color=colors[i % len(colors)],
+                                                     symbol=marker_shapes[n % len(marker_shapes)]),
+                                         hoverinfo='text+x+y'))
+                fig.add_trace(go.Scatter(x=np.array([x.min(), x.max()]),
+                                         y=stats_k[ref_var][i][1] * np.array([x.min(), x.max()]) + stats_k[ref_var][i][2],
+                                         mode='lines', name=f'Cluster {n}-{col}-Linear Regression Line',
+                                         line=dict(dash='dash', color=colors[i % len(colors)])))
+            fig.update_xaxes(title_text=ref_var)
+            fig.update_yaxes(title_text=indicator)
+
+        fig.update_layout(legend=dict(y=-0.3, x=0.5, xanchor='center', yanchor='top'))
+
+        tbl = pd.DataFrame(
+            stats_total,
+            columns=['Variable', 'slope', 'intercept', 'R²', 'Pearson Correlation', 'Pearson p-value']
+        )
+        tbl = dbc.Table.from_dataframe(tbl, bordered=True, hover=True, index=False)
+        return fig, tbl
+    else:
+        return go.Figure(), None
+
 
 # -----------Setup the sidebar-----------------
 

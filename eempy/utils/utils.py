@@ -66,7 +66,7 @@ def dynamic_time_warping(x, y):
     for i in range(1, len(x)):
         for j in range(1, len(y)):
             cost_matrix[i, j] = euclidean([x[i]], [y[j]]) + min(cost_matrix[i - 1, j], cost_matrix[i, j - 1],
-                                                                      cost_matrix[i - 1, j - 1])
+                                                                cost_matrix[i - 1, j - 1])
     # Trace back the optimal path
     i, j = len(x) - 1, len(y) - 1
     path = [(i, j)]
