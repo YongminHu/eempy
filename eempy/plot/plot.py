@@ -448,18 +448,19 @@ def plot_fmax(table, component_labels=None, display=True, yaxis_title='Fmax', la
             line=dict(color=color_map_components[i % len(color_map_components)]),
         ))
 
-    for j, l in enumerate(unique_labels):
-        table_l = table.iloc[labels == l]
-        table_l['index'] = [table.index[i] for i, val in enumerate(labels) if val == l]
-        table_l = pd.melt(table_l, id_vars='index')
-        fig.add_trace(go.Scatter(
-            x=table_l['index'],
-            y=table_l['value'],
-            name=f'Cluster {l}',
-            mode='markers',
-            marker=dict(color=color_map_clusters[j % len(color_map_clusters)]) if labels is not None else None,
-        )
-                      )
+    if labels is not None:
+        for j, l in enumerate(unique_labels):
+            table_l = table.iloc[labels == l]
+            table_l['index'] = [table.index[i] for i, val in enumerate(labels) if val == l]
+            table_l = pd.melt(table_l, id_vars='index')
+            fig.add_trace(go.Scatter(
+                x=table_l['index'],
+                y=table_l['value'],
+                name=f'Cluster {l}',
+                mode='markers',
+                marker=dict(color=color_map_clusters[j % len(color_map_clusters)]) if labels is not None else None,
+            )
+                          )
 
     fig.update_xaxes(tickangle=90)
 
