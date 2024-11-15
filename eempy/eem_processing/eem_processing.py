@@ -1606,13 +1606,15 @@ class PARAFAC:
         Emission wavelengths.
     """
 
-    def __init__(self, n_components, non_negativity=True, init='svd', tf_normalization=True,
-                 loadings_normalization: Optional[str] = 'sd', sort_em=True):
+    def __init__(self, n_components, non_negativity=True, init='svd', n_iter_max=100, tol=1e-06,
+                 tf_normalization=True, loadings_normalization: Optional[str] = 'sd', sort_em=True):
 
         # ----------parameters--------------
         self.n_components = n_components
         self.non_negativity = non_negativity
         self.init = init
+        self.n_iter_max = n_iter_max
+        self.tol = tol
         self.tf_normalization = tf_normalization
         self.loadings_normalization = loadings_normalization
         self.sort_em = sort_em
@@ -1652,15 +1654,19 @@ class PARAFAC:
             if not self.non_negativity:
                 if np.isnan(eem_stack_tf).any():
                     mask = np.where(np.isnan(eem_stack_tf), 0, 1)
-                    cptensors = parafac(eem_stack_tf, rank=self.n_components, mask=mask, init=self.init)
+                    cptensors = parafac(eem_stack_tf, rank=self.n_components, mask=mask, init=self.init,
+                                        n_iter_max=self.n_iter_max, tol=self.tol)
                 else:
-                    cptensors = parafac(eem_stack_tf, rank=self.n_components, init=self.init)
+                    cptensors = parafac(eem_stack_tf, rank=self.n_components, init=self.init,
+                                        n_iter_max=self.n_iter_max, tol=self.tol)
             else:
                 if np.isnan(eem_stack_tf).any():
                     mask = np.where(np.isnan(eem_stack_tf), 0, 1)
-                    cptensors = non_negative_parafac(eem_stack_tf, rank=self.n_components, mask=mask, init=self.init)
+                    cptensors = non_negative_parafac(eem_stack_tf, rank=self.n_components, mask=mask, init=self.init,
+                                                     n_iter_max=self.n_iter_max, tol=self.tol)
                 else:
-                    cptensors = non_negative_parafac(eem_stack_tf, rank=self.n_components, init=self.init)
+                    cptensors = non_negative_parafac(eem_stack_tf, rank=self.n_components, init=self.init,
+                                                     n_iter_max=self.n_iter_max, tol=self.tol)
         except ArpackError:
             print(
                 "PARAFAC failed possibly due to the presence of patches of nan values. Please consider cut or "
@@ -2296,12 +2302,13 @@ class EEMNMF:
     eem_stack_reconstructed: np.ndarray
         EEMs reconstructed by the established PARAFAC model.
     """
-    def __init__(self, n_components, solver='cd', beta_loss='frobenius', alpha_W=0, alpha_H=0, l1_ratio=1,
+    def __init__(self, n_components, solver='cd', init='nndsvda', beta_loss='frobenius', alpha_W=0, alpha_H=0, l1_ratio=1,
                  normalization='pixel_std', sort_em=True):
 
         # -----------Parameters-------------
         self.n_components = n_components
         self.solver = solver
+        self.init = init
         self.beta_loss = beta_loss
         self.alpha_W = alpha_W
         self.alpha_H = alpha_H
@@ -2315,7 +2322,6 @@ class EEMNMF:
         self.nnls_fmax = None
         self.components = None
         self.decomposer = None
-        self.residual = None
         self.normalization_factor_std = None
         self.normalization_factor_max = None
         self.reconstruction_error = None
@@ -2325,7 +2331,7 @@ class EEMNMF:
         self.em_range = None
 
     def fit(self, eem_dataset):
-        decomposer = NMF(n_components=self.n_components, solver=self.solver, beta_loss=self.beta_loss,
+        decomposer = NMF(n_components=self.n_components, solver=self.solver, init=self.init, beta_loss=self.beta_loss,
                          alpha_W=self.alpha_W, alpha_H=self.alpha_H,
                          l1_ratio=self.l1_ratio)
         eem_dataset.threshold_masking(0, 0, 'smaller', copy=False)
@@ -2458,7 +2464,7 @@ class EEMNMF:
         """
         res = self.residual()
         n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
-        rmse = pd.DataFrame(sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels), index=self.nnls_fmax.index, columns=['RMSE'])
+        rmse = pd.DataFrame(np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels), index=self.nnls_fmax.index, columns=['RMSE'])
         return rmse
 
     def sample_normalized_rmse(self):

@@ -2909,14 +2909,30 @@ card_nmf_param = dbc.Card(
                                     ),
 
                                     dbc.Col(
+                                        dbc.Label("Initialization"), width={'size': 1, 'offset': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Dropdown(options=[
+                                            {'label': 'random', 'value': 'random'},
+                                            {'label': 'nndsvd', 'value': 'nndsvd'},
+                                            {'label': 'nndsvda', 'value': 'nndsvda'},
+                                            {'label': 'nndsvdar', 'value': 'nndsvdar'},
+                                        ],
+                                            value='nndsvda', style={'width': '100px'}, id='nmf-init'
+                                        ),
+                                        width={'size': 2}
+                                    ),
+
+                                    dbc.Col(
                                         dbc.Checklist(options=[{'label': html.Span("Normalize pixels by STD",
                                                                                    style={"font-size": 15,
                                                                                           "padding-left": 10}),
                                                                 'value': 'pixel_std'}],
                                                       id='nmf-normalization-checkbox', switch=True, value=['pixel_std']
                                                       ),
-                                        width={"size": 2, 'offset': 1}
+                                        width={"size": 2, 'offset': 0}
                                     ),
+
                                 ]
                             ),
                             dbc.Row([
@@ -3332,6 +3348,7 @@ page3 = html.Div([
         State('nmf-establishment-index-kw-optional', 'value'),
         State('nmf-rank', 'value'),
         State('nmf-solver', 'value'),
+        State('nmf-init', 'value'),
         State('nmf-normalization-checkbox', 'value'),
         State('nmf-alpha-w', 'value'),
         State('nmf-alpha-h', 'value'),
@@ -3340,7 +3357,7 @@ page3 = html.Div([
         State('eem-dataset', 'data')
     ]
 )
-def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, rank, solver,
+def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, rank, solver, init,
                        normalization, alpha_w, alpha_h, l1_ratio, validations, eem_dataset_dict):
     if n_clicks is None:
         return None, None, None, None, None, 'Build model', [], None, [], None, [], None, None
@@ -3404,7 +3421,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
 
     for r in rank_list:
         nmf_r = EEMNMF(
-            n_components=r, solver=solver, normalization=normalization[0] if normalization else None,
+            n_components=r, solver=solver, init=init, normalization=normalization[0] if normalization else None,
             alpha_H=alpha_h, alpha_W=alpha_w, l1_ratio=l1_ratio
         )
         nmf_r.fit(eem_dataset_establishment)
@@ -4631,7 +4648,7 @@ def on_kmethod_base_clustering_message(base_clustering):
         message = ['Parameters "initialization", "non negativity" and "total fluorescence normalization" '
                    'are set in tab "PARAFAC".']
     elif base_clustering == 'nmf':
-        message = ['Parameters "solver", "normalization" and "alpha_w", "alpha_h", "l1_ratio" are set in tab "NMF".']
+        message = ['Parameters "Initialization", "solver", "normalization" and "alpha_w", "alpha_h", "l1_ratio" are set in tab "NMF".']
     else:
         message = [None]
     return message
@@ -4666,6 +4683,7 @@ def on_kmethod_base_clustering_message(base_clustering):
         State('parafac-nn-checkbox', 'value'),
         State('parafac-tf-checkbox', 'value'),
         State('nmf-solver', 'value'),
+        State('nmf-init', 'value'),
         State('nmf-normalization-checkbox', 'value'),
         State('nmf-alpha-w', 'value'),
         State('nmf-alpha-h', 'value'),
@@ -4677,7 +4695,7 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
                        rank, base_clustering, n_init_splits, n_base_clusterings, n_iterations, tol, elimination,
                        subsampling_portion,
                        parafac_init, parafac_nn, parafac_tf,
-                       nmf_solver, nmf_normalization, nmf_alpha_w, nmf_alpha_h, nmf_l1_ratio,
+                       nmf_solver, nmf_init, nmf_normalization, nmf_alpha_w, nmf_alpha_h, nmf_l1_ratio,
                        eem_dataset_dict):
     if n_clicks is None:
         return None, None, None, 'Calculate consensus', None, None, None
@@ -4749,7 +4767,7 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
         base_model = PARAFAC(**base_clustering_parameters)
     elif base_clustering == 'nmf':
         base_clustering_parameters = {
-            'n_components': rank, 'solver': nmf_solver,
+            'n_components': rank, 'solver': nmf_solver, 'init': nmf_init,
             'normalization': nmf_normalization[0],
             'alpha_H': nmf_alpha_h, 'alpha_W': nmf_alpha_w, 'l1_ratio': nmf_l1_ratio
         }
