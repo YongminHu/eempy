@@ -24,7 +24,7 @@ from scipy.interpolate import RegularGridInterpolator, interp1d, griddata
 from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.spatial.distance import squareform
 from scipy.sparse.linalg import ArpackError
-from tensorly.decomposition import parafac, non_negative_parafac
+from tensorly.decomposition import parafac, non_negative_parafac, non_negative_parafac_hals
 from tensorly.cp_tensor import cp_to_tensor
 from tlviz.model_evaluation import core_consistency
 from tlviz.outliers import compute_leverage
@@ -1662,10 +1662,10 @@ class PARAFAC:
             else:
                 if np.isnan(eem_stack_tf).any():
                     mask = np.where(np.isnan(eem_stack_tf), 0, 1)
-                    cptensors = non_negative_parafac(eem_stack_tf, rank=self.n_components, mask=mask, init=self.init,
+                    cptensors = non_negative_parafac_hals(eem_stack_tf, rank=self.n_components, mask=mask, init=self.init,
                                                      n_iter_max=self.n_iter_max, tol=self.tol)
                 else:
-                    cptensors = non_negative_parafac(eem_stack_tf, rank=self.n_components, init=self.init,
+                    cptensors = non_negative_parafac_hals(eem_stack_tf, rank=self.n_components, init=self.init,
                                                      n_iter_max=self.n_iter_max, tol=self.tol)
         except ArpackError:
             print(

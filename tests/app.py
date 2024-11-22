@@ -5053,9 +5053,9 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
         fig_sorted_consensus_matrix = go.Figure(
             data=go.Heatmap(
                 z=kmethod.consensus_matrix_sorted,
-                x=eem_dataset_establish.index if eem_dataset_establish.index
+                x=kmethod.index_sorted if eem_dataset_establish.index
                 else [i for i in range(consensus_matrix.shape[1])],
-                y=eem_dataset_establish.index if eem_dataset_establish.index
+                y=kmethod.index_sorted if eem_dataset_establish.index
                 else [i for i in range(consensus_matrix.shape[0])],
                 colorscale='reds',
                 hoverongaps=False,
@@ -5406,7 +5406,7 @@ def on_plot_kmethod_components(k, cluster_i, eem_graph_options, kmethod_models, 
                 ], style={'width': '90vw'}
             ) for i in range(n_rows)
         ]
-        return graphs
+        return [graphs]
     else:
         return [None]
 
@@ -5427,7 +5427,6 @@ def on_plot_kmethod_components(k, cluster_i, eem_graph_options, kmethod_models, 
 )
 def on_kmethod_establishment_correlations(k, indicator, ref_var, kmethod_models):
     if all([k, indicator, ref_var, kmethod_models]):
-        stats_total = []
         fig = go.Figure()
         for n in range(1, k + 1):
             cluster_specific_model = kmethod_models[str(k)][str(n)]
@@ -5453,7 +5452,6 @@ def on_kmethod_establishment_correlations(k, indicator, ref_var, kmethod_models)
                                                    index=cluster_specific_model['index'])
 
             stats_k = cluster_specific_model['fitting_params']
-            stats_total += stats_k[ref_var]
 
             for i, col in enumerate(fluorescence_indicators.columns):
                 x = reference_variable
@@ -5479,7 +5477,7 @@ def on_kmethod_establishment_correlations(k, indicator, ref_var, kmethod_models)
         fig.update_layout(legend=dict(y=-0.3, x=0.5, xanchor='center', yanchor='top'))
 
         tbl = pd.DataFrame(
-            stats_total,
+            stats_k,
             columns=['Variable', 'slope', 'intercept', 'R²', 'Pearson Correlation', 'Pearson p-value']
         )
         tbl = dbc.Table.from_dataframe(tbl, bordered=True, hover=True, index=False)
