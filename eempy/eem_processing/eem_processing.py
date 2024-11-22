@@ -24,6 +24,7 @@ from scipy.interpolate import RegularGridInterpolator, interp1d, griddata
 from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.spatial.distance import squareform
 from scipy.sparse.linalg import ArpackError
+from tensorly.tenalg import svd_interface
 from tensorly.decomposition import parafac, non_negative_parafac, non_negative_parafac_hals
 from tensorly.cp_tensor import cp_to_tensor
 from tlviz.model_evaluation import core_consistency
@@ -705,66 +706,6 @@ def eems_tf_normalization(intensity):
     intensity_normalized = intensity / weights[:, np.newaxis, np.newaxis]
     return intensity_normalized, weights
 
-
-# def eems_outlier_detection_if(eem_stack, ex_range, em_range, tf_normalization=True, grid_size=(10, 10),
-#                               contamination=0.02):
-#     """
-#     tells whether it should be considered as an inlier according to the fitted model. +1: inlier; -1: outlier
-#
-#     Parameters
-#     ----------
-#     eem_stack: np.ndarray (3d)
-#         The EEM stack.
-#     ex_range: np.ndarray (1d)
-#         The excitation wavelengths.
-#     em_range: np.ndarray (1d)
-#         The emission wavelengths
-#     """
-#     if tf_normalization:
-#         eem_stack, _ = eems_tf_normalization(eem_stack)
-#     em_range_new = np.arange(em_range[0], em_range[-1], grid_size[1])
-#     ex_range_new = np.arange(ex_range[0], ex_range[-1], grid_size[0])
-#     eem_stack_interpolated = process_eem_stack(eem_stack, eem_interpolation, ex_range, em_range, ex_range_new,
-#                                                em_range_new)
-#     eem_stack_unfold = eem_stack_interpolated.reshape(eem_stack_interpolated.shape[0],
-#                                                       eem_stack_interpolated.shape[1] * eem_stack_interpolated.shape[2])
-#     eem_stack_unfold = np.nan_to_num(eem_stack_unfold)
-#     clf = IsolationForest(random_state=0, n_estimators=200, contamination=contamination)
-#     clf.fit(eem_stack_unfold)
-#     label = clf.predict(eem_stack_unfold)
-#     return label
-#
-#
-# def eems_outlier_detection_ocs(eem_stack, ex_range, em_range, tf_normalization=True, grid_size=(10, 10), nu=0.02,
-#                                kernel="rbf", gamma=10000):
-#     """
-#     tells whether it should be considered as an inlier according to the fitted model. +1: inlier; -1: outlier
-#
-#     Parameters
-#     ----------
-#     eem_stack: np.ndarray (3d)
-#         The EEM stack.
-#     ex_range: np.ndarray (1d)
-#         The excitation wavelengths.
-#     em_range: np.ndarray (1d)
-#         The emission wavelengths
-#
-#     """
-#     if tf_normalization:
-#         eem_stack, _ = eems_tf_normalization(eem_stack)
-#     em_range_new = np.arange(em_range[0], em_range[-1], grid_size[1])
-#     ex_range_new = np.arange(ex_range[0], ex_range[-1], grid_size[0])
-#     eem_stack_interpolated = process_eem_stack(eem_stack, eem_interpolation, ex_range, em_range, ex_range_new,
-#                                                em_range_new)
-#     eem_stack_unfold = eem_stack_interpolated.reshape(eem_stack_interpolated.shape[0],
-#                                                       eem_stack_interpolated.shape[1] * eem_stack_interpolated.shape[2])
-#     eem_stack_unfold = np.nan_to_num(eem_stack_unfold)
-#     clf = svm.OneClassSVM(nu=nu, kernel=kernel, gamma=gamma)
-#     clf.fit(eem_stack_unfold)
-#     label = clf.predict(eem_stack_unfold)
-#     return label
-
-
 def eems_fit_components(eem_stack, components, fit_intercept=False, positive=True):
     assert eem_stack.shape[1:] == components.shape[1:], "EEM and component have different shapes"
     eem_stack[np.isnan(eem_stack)] = 0
@@ -801,6 +742,16 @@ def eems_error(eem_stack_true, eem_stack_pred, metric: str = 'mse'):
             error.append(r2_score(y_true, y_pred))
     return np.array(error)
 
+
+def eems_svd_initialization(eem_stack, rank, method="truncated_svd"):
+    a, b, c = eem_stack.shape
+    eem_stack_unfolded_bc = eem_stack.reshape(a, b*c)
+    eem_stack_unfolded_ac = eem_stack.transpose(1, 0, 2).reshape(b, a*c)
+    eem_stack_unfolded_ab = eem_stack.transpose(2, 0, 1).reshape(c, a*b)
+    init_loadings_0 = svd_interface(eem_stack_unfolded_bc, n_eigenvecs=rank, method=method, non_negative=True)
+    init_loadings_1 = svd_interface(eem_stack_unfolded_ac, n_eigenvecs=rank, method=method, non_negative=True)
+    init_loadings_2 = svd_interface(eem_stack_unfolded_ab, n_eigenvecs=rank, method=method, non_negative=True)
+    return init_loadings_0[0], init_loadings_1[0], init_loadings_2[0]
 
 class EEMDataset:
     """
@@ -1481,6 +1432,8 @@ class EEMDataset:
             Filtered sample indexes.
         ref_filtered: np.ndarray
             Filtered sample references.
+        cluster_filtered: list
+            Filtered sample clusters.
         sample_number_all_filtered: list
             Indexes (orders in the list) of samples that have been preserved after filtering.
         """
@@ -1493,14 +1446,14 @@ class EEMDataset:
         sample_number_mandatory_filtered = []
         sample_number_all_filtered = []
 
-        if mandatory_keywords:
+        if mandatory_keywords is not None:
             for i, f in enumerate(self.index):
                 if all(kw in f for kw in mandatory_keywords):
                     sample_number_mandatory_filtered.append(i)
         else:
             sample_number_mandatory_filtered = list(range(len(self.index)))
 
-        if optional_keywords:
+        if optional_keywords is not None:
             for j in sample_number_mandatory_filtered:
                 if any(kw in self.index[j] for kw in optional_keywords):
                     sample_number_all_filtered.append(j)
@@ -1702,8 +1655,6 @@ class PARAFAC:
             component = np.array([b[:, r]]).T.dot(np.array([c[:, r]]))
             components[r, :, :] = component
 
-        # if self.tf_normalization:
-        #     a = np.multiply(a, tf_weights[:, np.newaxis])
         a, _, _ = eems_fit_components(eem_dataset.eem_stack, components, fit_intercept=False, positive=True)
         score = pd.DataFrame(a)
         fmax = a * components.max(axis=(1, 2))
@@ -3070,4 +3021,169 @@ class KMethod:
                                     columns=list(self.cluster_specific_models.keys()))
 
         return best_model_label, score_all, fmax_all, sample_error
+
+class CorrPARAFAC:
+
+    def __init__(self, n_components, init='svd', n_iter_max=100, tol=1e-06,
+                 tf_normalization=True, loadings_normalization: Optional[str] = 'sd', sort_em=True):
+
+        # ----------parameters--------------
+        self.n_components = n_components
+        self.init = init
+        self.n_iter_max = n_iter_max
+        self.tol = tol
+        self.tf_normalization = tf_normalization
+        self.loadings_normalization = loadings_normalization
+        self.sort_em = sort_em
+
+        # -----------attributes---------------
+        self.score = None
+        self.ex_loadings = None
+        self.em_loadings = None
+        self.fmax = None
+        self.components = None
+        self.cptensors = None
+        self.eem_stack_train = None
+        self.eem_stack_reconstructed = None
+        self.ex_range = None
+        self.em_range = None
+
+    # --------------methods------------------
+    def fit(self, eem_dataset: EEMDataset, index_div1=None, index_div2=None):
+
+        def hals(M, W, H):
+            """
+
+            Parameters
+            ----------
+            M: np.array of shape (a, b)
+            W: np.array of shape (a, r)
+            H: np.array of shape (r, b)
+
+            Returns
+            -------
+
+            """
+            r = W.shape[1]
+            A = M.dot(H.T)
+            B = H.dot(H.T)
+            for i in range(r):
+                C = np.zeros([W.shape[0]])
+                index_fixed = np.arange(r).tolist()
+                index_fixed.pop(i)
+                for j in index_fixed:
+                    C_j = W[:, j].dot(B[j, i])
+                    C += C_j
+                W_i = (A[:, i] - C)/B[i, i]
+                W_i[W_i < 0] = 0
+                W[:, i] = W_i
+            return W
+
+        eem_stack_combined = eem_dataset.eem_stack
+        eem_stack_div1, _, _, _, _ = eem_dataset.filter_by_index(index_div1, optional_keywords=None, copy=True)
+        eem_stack_div2, _, _, _, _ = eem_dataset.filter_by_index(index_div2, optional_keywords=None, copy=True)
+
+        if self.tf_normalization:
+            eem_stack_tf, tf_weights = eem_dataset.tf_normalization(copy=True)
+        else:
+            eem_stack_tf = eem_dataset.eem_stack
+
+        if self.init == 'svd':
+            La, Lb, Lc = eems_svd_initialization(eem_stack_tf, rank=self.n_components)
+        a, b, c = eem_stack_tf.shape
+        M_a = eem_stack_tf.reshape([a, b*c])
+        M_b = eem_stack_tf.transpose(1, 0, 2).reshape([b, a*c])
+        M_c = eem_stack_tf.transpose(2, 0, 1).reshape([c, a*b])
+        rel_error = 0
+        for i in range(self.n_iter_max):
+            # update scores (L1)
+            Lbc = np.zeros([self.n_components, b*c])
+            for j in range(self.n_components):
+                Lbc[j, :] = Lb[:, [j]].dot(Lc[:, [j]].T).reshape(-1)
+            La = hals(M_a, La, Lbc)
+
+            # update ex loadings (L2)
+            Lac = np.zeros([self.n_components, a*c])
+            for j in range(self.n_components):
+                Lac[j, :] = La[:, [j]].dot(Lc[:, [j]].T).reshape(-1)
+            Lb = hals(M_b, Lb, Lac)
+
+            # update em loadings (L3)
+            Lab = np.zeros([self.n_components, a*b])
+            for j in range(self.n_components):
+                Lab[j, :] = La[:, [j]].dot(Lb[:, [j]].T).reshape(-1)
+            Lc = hals(M_c, Lc, Lab)
+
+            # calculate fitting error
+            eem_stack_fitted = Lc.dot(Lab)
+            rel_error_new = (
+                    np.linalg.norm(eem_stack_fitted-M_c, ord='fro')/np.linalg.norm(M_c))
+
+            # detect convergence
+            if rel_error - rel_error_new < self.tol:
+                break
+
+        components = np.zeros([self.n_components, b, c])
+        for r in range(self.n_components):
+
+            if self.loadings_normalization == 'sd':
+                stdb = Lb[:, r].std()
+                stdc = Lc[:, r].std()
+                Lb[:, r] = Lb[:, r] / stdb
+                Lc[:, r] = Lc[:, r] / stdc
+                La[:, r] = La[:, r] * stdb * stdc
+            elif self.loadings_normalization == 'maximum':
+                maxb = Lb[:, r].max()
+                maxc = Lc[:, r].max()
+                Lb[:, r] = Lb[:, r] / maxb
+                Lc[:, r] = Lc[:, r] / maxc
+                La[:, r] = La[:, r] * maxb * maxc
+            component = np.array([Lb[:, r]]).T.dot(np.array([Lc[:, r]]))
+            components[r, :, :] = component
+
+        La, _, _ = eems_fit_components(eem_dataset.eem_stack, components, fit_intercept=False, positive=True)
+        score = pd.DataFrame(La)
+        fmax = La * components.max(axis=(1, 2))
+        ex_loadings = pd.DataFrame(np.flipud(Lb), index=eem_dataset.ex_range)
+        em_loadings = pd.DataFrame(Lc, index=eem_dataset.em_range)
+        if self.sort_em:
+            em_peaks = [c for c in em_loadings.idxmax()]
+            peak_rank = list(enumerate(stats.rankdata(em_peaks)))
+            order = [i[0] for i in sorted(peak_rank, key=lambda x: x[1])]
+            components = components[order]
+            ex_loadings = pd.DataFrame({'component {r} ex loadings'.format(r=i + 1): ex_loadings.iloc[:, order[i]]
+                                        for i in range(self.n_components)})
+            em_loadings = pd.DataFrame({'component {r} em loadings'.format(r=i + 1): em_loadings.iloc[:, order[i]]
+                                        for i in range(self.n_components)})
+            score = pd.DataFrame({'component {r} score'.format(r=i + 1): score.iloc[:, order[i]]
+                                  for i in range(self.n_components)})
+            fmax = pd.DataFrame({'component {r} fmax'.format(r=i + 1): fmax[:, order[i]]
+                                 for i in range(self.n_components)})
+        else:
+            column_labels = ['component {r}'.format(r=i + 1) for i in range(self.n_components)]
+            ex_loadings.columns = column_labels
+            em_loadings.columns = column_labels
+            score.columns = ['component {r} PARAFAC-score'.format(r=i + 1) for i in range(self.n_components)]
+            fmax = pd.DataFrame(fmax, columns=['component {r} PARAFAC-Fmax'.format(r=i + 1) for i in range(self.n_components)])
+
+        ex_loadings.index = eem_dataset.ex_range.tolist()
+        em_loadings.index = eem_dataset.em_range.tolist()
+
+        if eem_dataset.index:
+            score.index = eem_dataset.index
+            fmax.index = eem_dataset.index
+        else:
+            score.index = [i + 1 for i in range(a)]
+            fmax.index = [i + 1 for i in range(a)]
+
+        self.score = score
+        self.ex_loadings = ex_loadings
+        self.em_loadings = em_loadings
+        self.fmax = fmax
+        self.components = components
+        self.eem_stack_train = eem_dataset.eem_stack
+        self.ex_range = eem_dataset.ex_range
+        self.em_range = eem_dataset.em_range
+
+        return self
 
