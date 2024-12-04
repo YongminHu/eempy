@@ -1956,8 +1956,8 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                  index=eem_dataset_dict['index'])
                 if eem_dataset_dict['ref'] is not None else None,
             )
-    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
-    kw_optional = str_string_to_list(kw_optional) if kw_optional else []
+    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
+    kw_optional = str_string_to_list(kw_optional) if kw_optional else None
     eem_dataset_establishment.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional,
                                               copy=False)
 
@@ -2591,8 +2591,8 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
             ref=pd.DataFrame(eem_dataset_dict['ref'][1:], index=eem_dataset_dict['index'],
                              columns=eem_dataset_dict['ref'][0]) if eem_dataset_dict['ref'] is not None else None,
         )
-    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
-    kw_optional = str_string_to_list(kw_optional) if kw_optional else []
+    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
+    kw_optional = str_string_to_list(kw_optional) if kw_optional else None
     eem_dataset_predict.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, copy=False)
 
     if eem_dataset_predict.ref is not None:
@@ -3403,8 +3403,8 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                  index=eem_dataset_dict['index'])
                 if eem_dataset_dict['ref'] is not None else None,
             )
-    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
-    kw_optional = str_string_to_list(kw_optional) if kw_optional else []
+    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
+    kw_optional = str_string_to_list(kw_optional) if kw_optional else None
     eem_dataset_establishment.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional,
                                               copy=False)
     rank_list = num_string_to_list(rank)
@@ -3778,8 +3778,8 @@ def on_nmf_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, model_r
             ref=pd.DataFrame(eem_dataset_dict['ref'][1:], index=eem_dataset_dict['index'],
                              columns=eem_dataset_dict['ref'][0]) if eem_dataset_dict['ref'] is not None else None,
         )
-    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
-    kw_optional = str_string_to_list(kw_optional) if kw_optional else []
+    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
+    kw_optional = str_string_to_list(kw_optional) if kw_optional else None
     eem_dataset_predict.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, copy=False)
 
     if eem_dataset_predict.ref is not None:
@@ -4741,8 +4741,8 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
                                  index=eem_dataset_dict['index']) if eem_dataset_dict['ref'] is not None else None,
                 cluster=eem_dataset_dict['cluster']
             )
-    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
-    kw_optional = str_string_to_list(kw_optional) if kw_optional else []
+    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
+    kw_optional = str_string_to_list(kw_optional) if kw_optional else None
     eem_dataset_establishment.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional,
                                               copy=False)
 
@@ -5430,6 +5430,7 @@ def on_kmethod_establishment_correlations(k, indicator, ref_var, kmethod_models)
         fig = go.Figure()
         for n in range(1, k + 1):
             cluster_specific_model = kmethod_models[str(k)][str(n)]
+            r = len(cluster_specific_model['components'])
             ref_df = pd.DataFrame(cluster_specific_model['ref'][1:], columns=cluster_specific_model['ref'][0],
                                   index=cluster_specific_model['index'])
             if 'NNLS_Fmax' in list(cluster_specific_model.keys()):
@@ -5468,16 +5469,17 @@ def on_kmethod_establishment_correlations(k, indicator, ref_var, kmethod_models)
                                                      symbol=marker_shapes[n % len(marker_shapes)]),
                                          hoverinfo='text+x+y'))
                 fig.add_trace(go.Scatter(x=np.array([x.min(), x.max()]),
-                                         y=stats_k[ref_var][i][1] * np.array([x.min(), x.max()]) + stats_k[ref_var][i][2],
+                                         y=stats_k[ref_var][r*n-r+i][1] * np.array([x.min(), x.max()]) + stats_k[ref_var][r*n-r+i][2],
                                          mode='lines', name=f'Cluster {n}-{col}-Linear Regression Line',
                                          line=dict(dash='dash', color=colors[i % len(colors)])))
             fig.update_xaxes(title_text=ref_var)
             fig.update_yaxes(title_text=indicator)
 
+
         fig.update_layout(legend=dict(y=-0.3, x=0.5, xanchor='center', yanchor='top'))
 
         tbl = pd.DataFrame(
-            stats_k,
+            stats_k[ref_var],
             columns=['Variable', 'slope', 'intercept', 'R²', 'Pearson Correlation', 'Pearson p-value']
         )
         tbl = dbc.Table.from_dataframe(tbl, bordered=True, hover=True, index=False)
@@ -5531,4 +5533,4 @@ def serve_layout():
 app.layout = serve_layout
 
 if __name__ == '__main__':
-    app.run_server(debug=False)
+    app.run_server(debug=True)

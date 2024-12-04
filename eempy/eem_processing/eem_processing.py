@@ -15,6 +15,7 @@ import string
 import warnings
 import copy
 import json
+import tensorly as tl
 from math import sqrt
 from sklearn.metrics import mean_squared_error, explained_variance_score, r2_score, silhouette_score
 from sklearn.decomposition import PCA, NMF
@@ -24,9 +25,12 @@ from scipy.interpolate import RegularGridInterpolator, interp1d, griddata
 from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.spatial.distance import squareform
 from scipy.sparse.linalg import ArpackError
-from tensorly.tenalg import svd_interface
+from scipy.linalg import khatri_rao
+from tensorly.solvers.nnls import hals_nnls
 from tensorly.decomposition import parafac, non_negative_parafac, non_negative_parafac_hals
-from tensorly.cp_tensor import cp_to_tensor
+from tensorly.cp_tensor import cp_to_tensor, CPTensor
+from tensorly.decomposition._cp import initialize_cp
+from tensorly.tenalg import unfolding_dot_khatri_rao
 from tlviz.model_evaluation import core_consistency
 from tlviz.outliers import compute_leverage
 from tlviz.factor_tools import permute_cp_tensor
@@ -194,7 +198,7 @@ def eem_gaussian_filter(intensity, sigma=1, truncate=3):
     return intensity_filtered
 
 
-def eem_median_filter(intensity, footprint=(3,3), mode='reflect'):
+def eem_median_filter(intensity, footprint=(3, 3), mode='reflect'):
     """
     Apply Median filtering to an EEM. Reference: scipy.ndimage.median_filter
 
@@ -706,6 +710,7 @@ def eems_tf_normalization(intensity):
     intensity_normalized = intensity / weights[:, np.newaxis, np.newaxis]
     return intensity_normalized, weights
 
+
 def eems_fit_components(eem_stack, components, fit_intercept=False, positive=True):
     assert eem_stack.shape[1:] == components.shape[1:], "EEM and component have different shapes"
     eem_stack[np.isnan(eem_stack)] = 0
@@ -743,15 +748,79 @@ def eems_error(eem_stack_true, eem_stack_pred, metric: str = 'mse'):
     return np.array(error)
 
 
-def eems_svd_initialization(eem_stack, rank, method="truncated_svd"):
+def eems_decomposition_initialization(eem_stack, rank, method="nndsvd"):
     a, b, c = eem_stack.shape
-    eem_stack_unfolded_bc = eem_stack.reshape(a, b*c)
-    eem_stack_unfolded_ac = eem_stack.transpose(1, 0, 2).reshape(b, a*c)
-    eem_stack_unfolded_ab = eem_stack.transpose(2, 0, 1).reshape(c, a*b)
-    init_loadings_0 = svd_interface(eem_stack_unfolded_bc, n_eigenvecs=rank, method=method, non_negative=True)
-    init_loadings_1 = svd_interface(eem_stack_unfolded_ac, n_eigenvecs=rank, method=method, non_negative=True)
-    init_loadings_2 = svd_interface(eem_stack_unfolded_ab, n_eigenvecs=rank, method=method, non_negative=True)
-    return init_loadings_0[0], init_loadings_1[0], init_loadings_2[0]
+    M_a = eem_stack.reshape(a, b * c)
+    M_b = eem_stack.transpose(1, 0, 2).reshape(b, a * c)
+    M_c = eem_stack.transpose(2, 0, 1).reshape(c, a * b)
+
+    if method == "random":
+        La = np.random.uniform(0, sqrt(np.mean(M_a) / rank), (a, rank))
+        Lb = np.random.uniform(0, sqrt(np.mean(M_b) / rank), (b, rank))
+        Lc = np.random.uniform(0, sqrt(np.mean(M_c) / rank), (c, rank))
+        return La, Lb, Lc
+
+    elif method == 'svd':
+        weights_init, factors_init = initialize_cp(
+            eem_stack, non_negative=True, init="svd", rank=rank
+        )
+        return factors_init
+
+    else:
+        def NNDSVD(M):
+            # Step 1: Compute SVD of V
+            U, S, VT = np.linalg.svd(M, full_matrices=False)  # SVD decomposition
+
+            # Step 2: Keep the top-r components
+            U_r = U[:, :rank]
+            S_r = S[:rank]
+            VT_r = VT[:rank, :]
+
+            # Step 3: Initialize W and H
+            W = np.zeros((M.shape[0], rank))
+            H = np.zeros((rank, M.shape[1]))
+
+            for k in range(rank):
+                u_k = U_r[:, k]
+                v_k = VT_r[k, :]
+
+                # Positive and negative parts
+                u_k_pos = np.maximum(u_k, 0)
+                u_k_neg = np.maximum(-u_k, 0)
+                v_k_pos = np.maximum(v_k, 0)
+                v_k_neg = np.maximum(-v_k, 0)
+
+                # Normalize
+                u_norm_pos = np.linalg.norm(u_k_pos)
+                v_norm_pos = np.linalg.norm(v_k_pos)
+
+                # Assign components
+                if u_norm_pos * v_norm_pos > 0:
+                    W[:, k] = np.sqrt(S_r[k]) * (u_k_pos / u_norm_pos)
+                    H[k, :] = np.sqrt(S_r[k]) * (v_k_pos / v_norm_pos)
+                else:
+                    W[:, k] = np.sqrt(S_r[k]) * (u_k_neg / np.linalg.norm(u_k_neg))
+                    H[k, :] = np.sqrt(S_r[k]) * (v_k_neg / np.linalg.norm(v_k_neg))
+
+            # Step 4: Handle zero entries
+            if method == 'nndsvd':
+                # W[W == 0] = np.random.uniform(0, 1e-4, W[W == 0].shape)
+                # H[H == 0] = np.random.uniform(0, 1e-4, H[H == 0].shape)
+                pass
+            if method == 'nndsvda':
+                W[W == 0] = np.mean(M)
+                H[H == 0] = np.mean(M)
+            if method == 'nndsvdar':
+                W[W == 0] = np.random.uniform(0, np.mean(M) / 100, W[W == 0].shape)
+                H[H == 0] = np.random.uniform(0, np.mean(M) / 100, H[H == 0].shape)
+            return W, H
+
+        La, _ = NNDSVD(M_a)
+        Lb, _ = NNDSVD(M_b)
+        Lc, _ = NNDSVD(M_c)
+
+        return La, Lb, Lc
+
 
 class EEMDataset:
     """
@@ -951,8 +1020,8 @@ class EEMDataset:
                     except ValueError:
                         pass
             corr_dict.var = {'slope': w, 'intercept': b, 'r_square': r2, 'linear regression residual': e,
-                         'Pearson corr. coef.': pc, 'Pearson corr. coef. p-value': pc_p, 'Spearman corr. coef.': sc,
-                         'Spearman corr. coef. p-value': sc_p}
+                             'Pearson corr. coef.': pc, 'Pearson corr. coef. p-value': pc_p, 'Spearman corr. coef.': sc,
+                             'Spearman corr. coef. p-value': sc_p}
         return corr_dict
 
     # -----------------EEM dataset processing methods-----------------
@@ -1002,7 +1071,7 @@ class EEMDataset:
             self.eem_stack = eem_stack_filtered
         return eem_stack_filtered
 
-    def median_filter(self, footprint=(3,3), mode='reflect', copy=True):
+    def median_filter(self, footprint=(3, 3), mode='reflect', copy=True):
         """
         Apply median filtering to an EEM.
 
@@ -1021,7 +1090,7 @@ class EEMDataset:
         eem_stack_filtered: np.ndarray
             The filtered EEM.
         """
-        eem_stack_filtered = process_eem_stack(self.eem_stack, eem_median_filter, footprint=(3,3), mode='reflect')
+        eem_stack_filtered = process_eem_stack(self.eem_stack, eem_median_filter, footprint=(3, 3), mode='reflect')
         if not copy:
             self.eem_stack = eem_stack_filtered
         return eem_stack_filtered
@@ -1437,6 +1506,9 @@ class EEMDataset:
         sample_number_all_filtered: list
             Indexes (orders in the list) of samples that have been preserved after filtering.
         """
+        if mandatory_keywords is None and optional_keywords is None:
+            return self.eem_stack, self.index, self.ref, self.cluster, []
+
         if self.index is None:
             raise ValueError('index is not defined')
         if isinstance(mandatory_keywords, str):
@@ -1615,11 +1687,12 @@ class PARAFAC:
             else:
                 if np.isnan(eem_stack_tf).any():
                     mask = np.where(np.isnan(eem_stack_tf), 0, 1)
-                    cptensors = non_negative_parafac_hals(eem_stack_tf, rank=self.n_components, mask=mask, init=self.init,
-                                                     n_iter_max=self.n_iter_max, tol=self.tol)
+                    cptensors = non_negative_parafac_hals(eem_stack_tf, rank=self.n_components, mask=mask,
+                                                            init=self.init,
+                                                            n_iter_max=self.n_iter_max, tol=self.tol)
                 else:
                     cptensors = non_negative_parafac_hals(eem_stack_tf, rank=self.n_components, init=self.init,
-                                                     n_iter_max=self.n_iter_max, tol=self.tol)
+                                                            n_iter_max=self.n_iter_max, tol=self.tol)
         except ArpackError:
             print(
                 "PARAFAC failed possibly due to the presence of patches of nan values. Please consider cut or "
@@ -1678,7 +1751,8 @@ class PARAFAC:
             ex_loadings.columns = column_labels
             em_loadings.columns = column_labels
             score.columns = ['component {r} PARAFAC-score'.format(r=i + 1) for i in range(self.n_components)]
-            fmax = pd.DataFrame(fmax, columns=['component {r} PARAFAC-Fmax'.format(r=i + 1) for i in range(self.n_components)])
+            fmax = pd.DataFrame(fmax, columns=['component {r} PARAFAC-Fmax'.format(r=i + 1) for i in
+                                               range(self.n_components)])
 
         ex_loadings.index = eem_dataset.ex_range.tolist()
         em_loadings.index = eem_dataset.em_range.tolist()
@@ -2086,7 +2160,7 @@ def align_components_by_components(models_dict: dict, components_ref: dict, mode
             component_labels_var = [0] * len(permutation)
             for i, nc in enumerate(permutation):
                 component_labels_var[nc] = component_labels_ref_extended[i]
-        if model_type=='parafac':
+        if model_type == 'parafac':
             model.score.columns, model.ex_loadings.columns, model.em_loadings.columns, model.fmax.columns = (
                     [component_labels_var] * 4)
             model.score = model.score.iloc[:, permutation]
@@ -2095,7 +2169,7 @@ def align_components_by_components(models_dict: dict, components_ref: dict, mode
             model.fmax = model.fmax.iloc[:, permutation]
             model.components = model.components[permutation, :, :]
             model.cptensor = permute_cp_tensor(model.cptensors, permutation)
-        elif model_type=='nmf':
+        elif model_type == 'nmf':
             model.nmf_fmax.columns, model.nnls_fmax.columns = ([component_labels_var] * 2)
             model.nmf_fmax = model.nmf_fmax.iloc[:, permutation]
             model.nnls_fmax = model.nnls_fmax.iloc[:, permutation]
@@ -2253,7 +2327,9 @@ class EEMNMF:
     eem_stack_reconstructed: np.ndarray
         EEMs reconstructed by the established PARAFAC model.
     """
-    def __init__(self, n_components, solver='cd', init='nndsvda', beta_loss='frobenius', alpha_W=0, alpha_H=0, l1_ratio=1,
+
+    def __init__(self, n_components, solver='cd', init='nndsvda', beta_loss='frobenius', alpha_W=0, alpha_H=0,
+                 l1_ratio=1,
                  normalization='pixel_std', sort_em=True):
 
         # -----------Parameters-------------
@@ -2314,7 +2390,7 @@ class EEMNMF:
                                          eem_dataset.eem_stack.shape[2]])
         nmf_score = nmf_score.mul(factor_max, axis=1)
         _, nnls_score, eem_stack_reconstructed = eems_fit_components(eem_dataset.eem_stack, components,
-                                               fit_intercept=False, positive=True)
+                                                                     fit_intercept=False, positive=True)
         nnls_score = pd.DataFrame(nnls_score, index=eem_dataset.index,
                                   columns=["component {i} NNLS-Fmax".format(i=i + 1) for i in range(self.n_components)])
         if self.sort_em:
@@ -2353,14 +2429,14 @@ class EEMNMF:
     #         residual = residual.reshape([n_samples, self.eem_stack_train.eem_stack.shape[1],
     #                                      self.eem_stack_train.eem_stack.shape[2]])
     #         self.residual = residual
-        #         elif score_type=='nnls':
-        #             X_new = self.decomposer.fit_transform(self.eem_stack_unfolded)
-        #             X_reversed = self.decomposer.inverse_transform(X_new)*self.normalization_factor
-        #             n_samples = eem_dataset.eem_stack.shape[0]
-        #             residual = X_reversed - self.eem_stack_unfolded
-        #             residual = residual.reshape([n_samples, eem_dataset.eem_stack.shape[1], eem_dataset.eem_stack.shape[2]])
-        #             self.residual = residual
-        # return residual
+    #         elif score_type=='nnls':
+    #             X_new = self.decomposer.fit_transform(self.eem_stack_unfolded)
+    #             X_reversed = self.decomposer.inverse_transform(X_new)*self.normalization_factor
+    #             n_samples = eem_dataset.eem_stack.shape[0]
+    #             residual = X_reversed - self.eem_stack_unfolded
+    #             residual = residual.reshape([n_samples, eem_dataset.eem_stack.shape[1], eem_dataset.eem_stack.shape[2]])
+    #             self.residual = residual
+    # return residual
 
     def component_peak_locations(self):
         """
@@ -2415,7 +2491,8 @@ class EEMNMF:
         """
         res = self.residual()
         n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
-        rmse = pd.DataFrame(np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels), index=self.nnls_fmax.index, columns=['RMSE'])
+        rmse = pd.DataFrame(np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels), index=self.nnls_fmax.index,
+                            columns=['RMSE'])
         return rmse
 
     def sample_normalized_rmse(self):
@@ -2461,7 +2538,6 @@ class EEMNMF:
         score_sample = pd.DataFrame(score_sample, index=eem_dataset.index, columns=self.nmf_fmax.columns)
         fmax_sample = pd.DataFrame(fmax_sample, index=eem_dataset.index, columns=self.nmf_fmax.columns)
         return score_sample, fmax_sample, eem_stack_pred
-
 
     def greedy_selection(self, eem_dataset_train, eem_dataset_test, direction='backwards',
                          criteria: str = 'reconstruction_error', true_values=None, axis=0, n_steps='max',
@@ -2622,7 +2698,6 @@ class EEMNMF:
 #                                      self.eem_stack_train.eem_stack.shape[2]])
 #         self.residual = residual
 #         return residual
-
 
 
 class KMethod:
@@ -2801,7 +2876,7 @@ class KMethod:
             cluster_specific_models_new = estimation(sub_datasets_n)
             cluster_specific_models_new = align_components_by_components(
                 cluster_specific_models_new,
-                {f'component {i+1}': unified_model.components[i] for i in range(unified_model.components.shape[0])},
+                {f'component {i + 1}': unified_model.components[i] for i in range(unified_model.components.shape[0])},
                 model_type='parafac' if isinstance(self.base_model, PARAFAC) else 'nmf'
             )
 
@@ -2890,7 +2965,6 @@ class KMethod:
         # ---------Obtain consensus matrix, distance matrix and linkage matrix----------
         consensus_matrix = co_label_matrix / co_occurrence_matrix
 
-
         self.n_runs = n_base_clusterings
         self.subsampling_portion = subsampling_portion
         self.label_history = label_history
@@ -2927,7 +3001,7 @@ class KMethod:
         #     max_d = max(max_d, linkage_matrix[i, 2])
 
         linkage_matrix_sorted = linkage_matrix[linkage_matrix[:, 2].argsort()[::-1]]
-        max_d = linkage_matrix_sorted[n_clusters-2, 2]
+        max_d = linkage_matrix_sorted[n_clusters - 2, 2]
 
         self.threshold_r = max_d
 
@@ -2958,7 +3032,7 @@ class KMethod:
                 index_j = [eem_dataset.index[k] for k, idx in enumerate(labels) if idx == j]
             else:
                 index_j = None
-            cluster_j = [j]*eem_stack_j.shape[0]
+            cluster_j = [j] * eem_stack_j.shape[0]
             clusters[j] = EEMDataset(eem_stack=eem_stack_j, ex_range=eem_dataset.ex_range,
                                      em_range=eem_dataset.em_range, ref=ref_j, index=index_j, cluster=cluster_j)
             model = copy.deepcopy(self.base_model)
@@ -3022,15 +3096,17 @@ class KMethod:
 
         return best_model_label, score_all, fmax_all, sample_error
 
+
 class CorrPARAFAC:
 
-    def __init__(self, n_components, init='svd', n_iter_max=100, tol=1e-06,
+    def __init__(self, n_components, init='svd', n_inner_iter=1, n_outer_iter_max=100, tol=1e-08,
                  tf_normalization=True, loadings_normalization: Optional[str] = 'sd', sort_em=True):
 
         # ----------parameters--------------
         self.n_components = n_components
         self.init = init
-        self.n_iter_max = n_iter_max
+        self.n_outer_iter_max = n_outer_iter_max
+        self.n_inner_iter = n_inner_iter
         self.tol = tol
         self.tf_normalization = tf_normalization
         self.loadings_normalization = loadings_normalization
@@ -3051,101 +3127,92 @@ class CorrPARAFAC:
     # --------------methods------------------
     def fit(self, eem_dataset: EEMDataset, index_div1=None, index_div2=None):
 
-        def hals(M, W, H):
-            """
-
-            Parameters
-            ----------
-            M: np.array of shape (a, b)
-            W: np.array of shape (a, r)
-            H: np.array of shape (r, b)
-
-            Returns
-            -------
-
-            """
-            r = W.shape[1]
-            A = M.dot(H.T)
-            B = H.dot(H.T)
-            for i in range(r):
-                C = np.zeros([W.shape[0]])
-                index_fixed = np.arange(r).tolist()
-                index_fixed.pop(i)
-                for j in index_fixed:
-                    C_j = W[:, j].dot(B[j, i])
-                    C += C_j
-                W_i = (A[:, i] - C)/B[i, i]
-                W_i[W_i < 0] = 0
-                W[:, i] = W_i
-            return W
-
-        eem_stack_combined = eem_dataset.eem_stack
-        eem_stack_div1, _, _, _, _ = eem_dataset.filter_by_index(index_div1, optional_keywords=None, copy=True)
-        eem_stack_div2, _, _, _, _ = eem_dataset.filter_by_index(index_div2, optional_keywords=None, copy=True)
-
+        # def formulate_hals_elements(X, loadings_list: list, mode):
+        #     """
+        #
+        #     Parameters
+        #     ----------
+        #     X: 3-way tensor
+        #     loadings_list: list of loadings
+        #     mode: the mode being updated
+        #
+        #     Returns
+        #     -------
+        #     M: MTTKRP
+        #     P: Hadamard of cross-products
+        #
+        #     """
+        #     new_order = [mode] + [i for i in range(X.ndim) if i != mode]
+        #     X_unfolded = X.transpose(new_order).reshape(X.shape[mode], -1)
+        #     L_1, L_2 = [l for i, l in enumerate(loadings_list) if i != mode]
+        #     M = X_unfolded.dot(khatri_rao(L_2, L_1))
+        #     P = np.multiply(L_1.T.dot(L_1), L_2.T.dot(L_2))
+        #     return M, P
+        #
+        # def hals(M, U, V):
+        #     UtM = U.T.dot(M)
+        #     UtU = U.T.dot(U)
+        #     V = hals_nnls(UtM, UtU, V)
+        #     return V
+        #
         if self.tf_normalization:
             eem_stack_tf, tf_weights = eem_dataset.tf_normalization(copy=True)
         else:
             eem_stack_tf = eem_dataset.eem_stack
-
-        if self.init == 'svd':
-            La, Lb, Lc = eems_svd_initialization(eem_stack_tf, rank=self.n_components)
         a, b, c = eem_stack_tf.shape
-        M_a = eem_stack_tf.reshape([a, b*c])
-        M_b = eem_stack_tf.transpose(1, 0, 2).reshape([b, a*c])
-        M_c = eem_stack_tf.transpose(2, 0, 1).reshape([c, a*b])
-        rel_error = 0
-        for i in range(self.n_iter_max):
-            # update scores (L1)
-            Lbc = np.zeros([self.n_components, b*c])
-            for j in range(self.n_components):
-                Lbc[j, :] = Lb[:, [j]].dot(Lc[:, [j]].T).reshape(-1)
-            La = hals(M_a, La, Lbc)
+        # L_a, L_b, L_c = eems_decomposition_initialization(eem_stack_tf, rank=self.n_components, method=self.init)
+        # loadings = [L_a, L_b, L_c]
 
-            # update ex loadings (L2)
-            Lac = np.zeros([self.n_components, a*c])
-            for j in range(self.n_components):
-                Lac[j, :] = La[:, [j]].dot(Lc[:, [j]].T).reshape(-1)
-            Lb = hals(M_b, Lb, Lac)
+        # rel_error = []
+        #
+        # for i in range(self.n_outer_iter_max):
+        #
+        #     # HALS
+        #     for m, l in enumerate(loadings):
+        #         M, P = formulate_hals_elements(eem_stack_tf, loadings, mode=m)
+        #         L_T = hals(M.T, P, loadings[m].T)
+        #         loadings[m] = L_T.T
+        #
+        #     # calculate fitting error
+        #     eem_stack_fitted = cp_to_tensor([[1 for i in range(self.n_components)], loadings])
+        #     rel_error.append(
+        #             np.linalg.norm(eem_stack_fitted.reshape(-1)-eem_stack_tf.reshape(-1)) /
+        #             np.linalg.norm(eem_stack_tf.reshape(-1)))
+        #
+        #     # detect convergence
+        #     if i > 1:
+        #         if rel_error[-2] - rel_error[-1] < self.tol:
+        #             break
 
-            # update em loadings (L3)
-            Lab = np.zeros([self.n_components, a*b])
-            for j in range(self.n_components):
-                Lab[j, :] = La[:, [j]].dot(Lb[:, [j]].T).reshape(-1)
-            Lc = hals(M_c, Lc, Lab)
+        cptensors = non_negative_parafac_hals_r(eem_stack_tf, rank=self.n_components, init=self.init,
+                                                n_iter_max=self.n_outer_iter_max, tol=self.tol)
 
-            # calculate fitting error
-            eem_stack_fitted = Lc.dot(Lab)
-            rel_error_new = (
-                    np.linalg.norm(eem_stack_fitted-M_c, ord='fro')/np.linalg.norm(M_c))
-
-            # detect convergence
-            if rel_error - rel_error_new < self.tol:
-                break
+        L_a, L_b, L_c = cptensors[1]
 
         components = np.zeros([self.n_components, b, c])
         for r in range(self.n_components):
 
             if self.loadings_normalization == 'sd':
-                stdb = Lb[:, r].std()
-                stdc = Lc[:, r].std()
-                Lb[:, r] = Lb[:, r] / stdb
-                Lc[:, r] = Lc[:, r] / stdc
-                La[:, r] = La[:, r] * stdb * stdc
+                stdb = L_b[:, r].std()
+                stdc = L_c[:, r].std()
+                L_b[:, r] = L_b[:, r] / stdb
+                L_c[:, r] = L_c[:, r] / stdc
+                L_a[:, r] = L_a[:, r] * stdb * stdc
             elif self.loadings_normalization == 'maximum':
-                maxb = Lb[:, r].max()
-                maxc = Lc[:, r].max()
-                Lb[:, r] = Lb[:, r] / maxb
-                Lc[:, r] = Lc[:, r] / maxc
-                La[:, r] = La[:, r] * maxb * maxc
-            component = np.array([Lb[:, r]]).T.dot(np.array([Lc[:, r]]))
+                maxb = L_b[:, r].max()
+                maxc = L_c[:, r].max()
+                L_b[:, r] = L_b[:, r] / maxb
+                L_c[:, r] = L_c[:, r] / maxc
+                L_a[:, r] = L_a[:, r] * maxb * maxc
+            component = np.array([L_b[:, r]]).T.dot(np.array([L_c[:, r]]))
             components[r, :, :] = component
 
-        La, _, _ = eems_fit_components(eem_dataset.eem_stack, components, fit_intercept=False, positive=True)
-        score = pd.DataFrame(La)
-        fmax = La * components.max(axis=(1, 2))
-        ex_loadings = pd.DataFrame(np.flipud(Lb), index=eem_dataset.ex_range)
-        em_loadings = pd.DataFrame(Lc, index=eem_dataset.em_range)
+        L_a, _, eem_stack_fitted = eems_fit_components(eem_dataset.eem_stack, components, fit_intercept=False,
+                                                       positive=True)
+        score = pd.DataFrame(L_a)
+        fmax = L_a * components.max(axis=(1, 2))
+        ex_loadings = pd.DataFrame(np.flipud(L_b), index=eem_dataset.ex_range)
+        em_loadings = pd.DataFrame(L_c, index=eem_dataset.em_range)
         if self.sort_em:
             em_peaks = [c for c in em_loadings.idxmax()]
             peak_rank = list(enumerate(stats.rankdata(em_peaks)))
@@ -3164,7 +3231,8 @@ class CorrPARAFAC:
             ex_loadings.columns = column_labels
             em_loadings.columns = column_labels
             score.columns = ['component {r} PARAFAC-score'.format(r=i + 1) for i in range(self.n_components)]
-            fmax = pd.DataFrame(fmax, columns=['component {r} PARAFAC-Fmax'.format(r=i + 1) for i in range(self.n_components)])
+            fmax = pd.DataFrame(fmax, columns=['component {r} PARAFAC-Fmax'.format(r=i + 1) for i in
+                                               range(self.n_components)])
 
         ex_loadings.index = eem_dataset.ex_range.tolist()
         em_loadings.index = eem_dataset.em_range.tolist()
@@ -3184,6 +3252,255 @@ class CorrPARAFAC:
         self.eem_stack_train = eem_dataset.eem_stack
         self.ex_range = eem_dataset.ex_range
         self.em_range = eem_dataset.em_range
+        self.eem_stack_reconstructed = eem_stack_fitted
 
         return self
 
+    def residual(self):
+        """
+        Get the residual of the established PARAFAC model, i.e., the difference between the original EEM dataset and
+        the reconstructed EEM dataset.
+
+        Returns
+        -------
+        res: np.ndarray (3d)
+            the residual
+        """
+        res = self.eem_stack_train - self.eem_stack_reconstructed
+        return res
+
+    def sample_rmse(self):
+        """
+        Calculate the root mean squared error (RMSE) of EEM of each sample.
+
+        Returns
+        -------
+        sse: pandas.DataFrame
+            Table of RMSE
+        """
+        res = self.residual()
+        n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
+        rmse = pd.DataFrame(np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels), index=self.fmax.index, columns=['RMSE'])
+        return rmse
+
+
+
+def formulate_hals_elements(X, loadings_list: list, mode):
+    """
+
+    Parameters
+    ----------
+    X: 3-way tensor
+    loadings_list: list of loadings
+    mode: the mode being updated
+
+    Returns
+    -------
+    M: MTTKRP
+    P: Hadamard of cross-products
+
+    """
+    new_order = [mode] + [i for i in range(X.ndim) if i != mode]
+    X_unfolded = X.transpose(new_order).reshape(X.shape[mode], -1)
+    L_1, L_2 = [l for i, l in enumerate(loadings_list) if i != mode]
+    M = X_unfolded.dot(khatri_rao(L_2, L_1))
+    P = np.multiply(L_1.T.dot(L_1), L_2.T.dot(L_2))
+    return M, P
+
+
+def non_negative_parafac_hals_r(
+        tensor,
+        rank,
+        n_iter_max=100,
+        init="svd",
+        svd="truncated_svd",
+        tol=10e-8,
+        random_state=None,
+        sparsity_coefficients=None,
+        fixed_modes=None,
+        nn_modes="all",
+        exact=False,
+        normalize_factors=False,
+        verbose=False,
+        return_errors=False,
+        cvg_criterion="abs_rec_error",
+):
+    """
+    Non-negative CP decomposition via HALS
+
+    Uses Hierarchical ALS (Alternating Least Squares)
+    which updates each factor column-wise (one column at a time while keeping all other columns fixed), see [1]_
+
+    Parameters
+    ----------
+    tensor : ndarray
+    rank   : int
+            number of components
+    n_iter_max : int
+                 maximum number of iteration
+    init : {'svd', 'random'}, optional
+    svd : str, default is 'truncated_svd'
+        function to use to compute the SVD, acceptable values in tensorly.SVD_FUNS
+    tol : float, optional
+          tolerance: the algorithm stops when the variation in
+          the reconstruction error is less than the tolerance
+          Default: 1e-8
+    random_state : {None, int, np.random.RandomState}
+    sparsity_coefficients: array of float (of length the number of modes)
+        The sparsity coefficients on each factor.
+        If set to None, the algorithm is computed without sparsity
+        Default: None,
+    fixed_modes: array of integers (between 0 and the number of modes)
+        Has to be set not to update a factor, 0 and 1 for U and V respectively
+        Default: None
+    nn_modes: None, 'all' or array of integers (between 0 and the number of modes)
+        Used to specify which modes to impose non-negativity constraints on.
+        If 'all', then non-negativity is imposed on all modes.
+        Default: 'all'
+    exact: If it is True, the algorithm gives a results with high precision but it needs high computational cost.
+        If it is False, the algorithm gives an approximate solution
+        Default: False
+    normalize_factors : if True, aggregate the weights of each factor in a 1D-tensor
+        of shape (rank, ), which will contain the norms of the factors
+    verbose: boolean
+        Indicates whether the algorithm prints the successive
+        reconstruction errors or not
+        Default: False
+    return_errors: boolean
+        Indicates whether the algorithm should return all reconstruction errors
+        and computation time of each iteration or not
+        Default: False
+    cvg_criterion : {'abs_rec_error', 'rec_error'}, optional
+        Stopping criterion for ALS, works if `tol` is not None.
+        If 'rec_error',  ALS stops at current iteration if ``(previous rec_error - current rec_error) < tol``.
+        If 'abs_rec_error', ALS terminates when `|previous rec_error - current rec_error| < tol`.
+    sparsity : float or int
+    random_state : {None, int, np.random.RandomState}
+
+    Returns
+    -------
+    factors : ndarray list
+            list of positive factors of the CP decomposition
+            element `i` is of shape ``(tensor.shape[i], rank)``
+    errors: list
+        A list of reconstruction errors at each iteration of the algorithm.
+
+    References
+    ----------
+    .. [1] N. Gillis and F. Glineur, Accelerated Multiplicative Updates and
+           Hierarchical ALS Algorithms for Nonnegative Matrix Factorization,
+           Neural Computation 24 (4): 1085-1105, 2012.
+    """
+
+    weights, factors = initialize_cp(
+        tensor,
+        rank,
+        init=init,
+        svd=svd,
+        non_negative=True,
+        random_state=random_state,
+        normalize_factors=normalize_factors,
+    )
+
+    norm_tensor = tl.norm(tensor, 2)
+
+    n_modes = tl.ndim(tensor)
+    if sparsity_coefficients is None or isinstance(sparsity_coefficients, float):
+        sparsity_coefficients = [sparsity_coefficients] * n_modes
+
+    if fixed_modes is None:
+        fixed_modes = []
+
+    if nn_modes == "all":
+        nn_modes = set(range(n_modes))
+    elif nn_modes is None:
+        nn_modes = set()
+
+    # Avoiding errors
+    for fixed_value in fixed_modes:
+        sparsity_coefficients[fixed_value] = None
+
+    for mode in range(n_modes):
+        if sparsity_coefficients[mode] is not None:
+            warnings.warn("Sparsity coefficient is ignored in unconstrained modes.")
+    # Generating the mode update sequence
+    modes = [mode for mode in range(n_modes) if mode not in fixed_modes]
+
+    # initialisation - declare local varaibles
+    rec_errors = []
+
+    # Iteratation
+    for iteration in range(n_iter_max):
+        # One pass of least squares on each updated mode
+        for mode in modes:
+            # Computing Hadamard of cross-products
+            pseudo_inverse = tl.ones((rank, rank), **tl.context(tensor))
+            for i, factor in enumerate(factors):
+                if i != mode:
+                    pseudo_inverse = pseudo_inverse * tl.dot(
+                        tl.transpose(factor), factor
+                    )
+
+            pseudo_inverse = (
+                    tl.reshape(weights, (-1, 1))
+                    * pseudo_inverse
+                    * tl.reshape(weights, (1, -1))
+            )
+            mttkrp = unfolding_dot_khatri_rao(tensor, (weights, factors), mode)
+
+            _, pseudo_inverse = formulate_hals_elements(tensor, factors, mode)
+
+
+            if mode in nn_modes:
+                # Call the hals resolution with nnls, optimizing the current mode
+                nn_factor = hals_nnls(
+                    tl.transpose(mttkrp),
+                    pseudo_inverse,
+                    tl.transpose(factors[mode]),
+                    n_iter_max=100,
+                    sparsity_coefficient=sparsity_coefficients[mode],
+                    exact=exact,
+                )
+                factors[mode] = tl.transpose(nn_factor)
+            else:
+                factor = tl.solve(tl.transpose(pseudo_inverse), tl.transpose(mttkrp))
+                factors[mode] = tl.transpose(factor)
+            if normalize_factors and mode != modes[-1]:
+                weights, factors = tl.cp_normalize((weights, factors))
+        if tol:
+            factors_norm = tl.cp_norm((weights, factors))
+            iprod = tl.sum(tl.sum(mttkrp * factors[-1], axis=0))
+            rec_error = (
+                    tl.sqrt(tl.abs(norm_tensor ** 2 + factors_norm ** 2 - 2 * iprod))
+                    / norm_tensor
+            )
+            rec_errors.append(rec_error)
+            if iteration >= 1:
+                rec_error_decrease = rec_errors[-2] - rec_errors[-1]
+
+                if verbose:
+                    print(
+                        f"iteration {iteration}, reconstruction error: {rec_error}, decrease = {rec_error_decrease}"
+                    )
+
+                if cvg_criterion == "abs_rec_error":
+                    stop_flag = tl.abs(rec_error_decrease) < tol
+                elif cvg_criterion == "rec_error":
+                    stop_flag = rec_error_decrease < tol
+                else:
+                    raise TypeError("Unknown convergence criterion")
+
+                if stop_flag:
+                    if verbose:
+                        print(f"PARAFAC converged after {iteration} iterations")
+                    break
+            else:
+                if verbose:
+                    print(f"reconstruction error={rec_errors[-1]}")
+        if normalize_factors:
+            weights, factors = tl.cp_normalize((weights, factors))
+    cp_tensor = CPTensor((weights, factors))
+    if return_errors:
+        return cp_tensor, rec_errors
+    else:
+        return cp_tensor
