@@ -967,12 +967,14 @@ class EEMDataset:
         em_idx = dichotomy_search(self.em_range, em)
         ex_idx = dichotomy_search(self.ex_range, ex)
         fi = self.eem_stack[:, - ex_idx - 1, em_idx]
-        if self.index:
-            fi = pd.DataFrame(fi, index=self.index)
-        else:
-            fi = pd.DataFrame(fi, index=np.arange(fi.shape[0]))
         ex_actual = self.ex_range[ex_idx]
         em_actual = self.em_range[em_idx]
+        fi_name = f'Intensity (ex={ex_actual} nm, em={em_actual} nm)'
+        if self.index:
+            fi = pd.DataFrame(fi, index=self.index, columns=[fi_name])
+        else:
+            fi = pd.DataFrame(fi, index=np.arange(fi.shape[0]), columns=[fi_name])
+
         return fi, ex_actual, em_actual
 
     def correlation(self, variables, fit_intercept=True):
