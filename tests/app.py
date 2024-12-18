@@ -1613,6 +1613,16 @@ page_peak_picking = html.Div([
                                                             )
                                                         ]
                                                     ),
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dbc.Button(
+                                                                    [dbc.Spinner(size="sm",
+                                                                                 id='parafac-predict-spinner')],
+                                                                    id='predict-pp-model', className='col-2')
+                                                            )
+                                                        ]
+                                                    )
                                                 ],
                                                 gap=2, style={"margin": "20px"}
                                             ),
