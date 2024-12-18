@@ -9,7 +9,7 @@ from plotly.subplots import make_subplots
 
 # ------------Read EEM dataset-------------
 eem_dataset_path = \
-    "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_298_ex_274_em_310_gaussian.json"
+    "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_286_ex_274_em_310_mfem_7_gaussian.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
 eem_stack, index, ref, cluster, _ = eem_dataset.filter_by_index(None, ['M3', 'G1', 'G2', 'G3'], copy=True)
 eem_dataset = EEMDataset(eem_stack, eem_dataset.ex_range, eem_dataset.em_range, index, ref, cluster)
@@ -62,8 +62,8 @@ def get_q_coef(eem_dataset, model, kw_o, kw_q, fmax_col, ref_name, standard_comp
     fmax_original = fmax_slice[fmax_slice.index.str.contains(kw_o)]
     fmax_quenched = fmax_slice[fmax_slice.index.str.contains(kw_q)]
     fmax_ratio = fmax_original.to_numpy() / fmax_quenched.to_numpy()
-
-    return fmax_ratio, cor, p
+    fmax_ratio_df = pd.DataFrame(fmax_ratio, index=fmax_original.index)
+    return fmax_ratio, fmax_ratio_df, cor, p
 
 
 def leave_one_out_test(eem_dataset: EEMDataset, model, kw_o, kw_q, fmax_col):
@@ -112,8 +112,9 @@ kw_dict_trial = {
 
 n_components = 4
 model = PARAFAC(n_components=n_components)
-model.fit(eem_dataset)
-standard_bacteria_component = model.components[0]
+model_standard = PARAFAC(n_components=4)
+model_standard.fit(eem_dataset)
+standard_bacteria_component = model_standard.components[0]
 
 
 # -------------Correlation between Pearson-r and std(F0/F) in different operating conditions---------
@@ -122,6 +123,7 @@ standard_bacteria_component = model.components[0]
 # --------for the most correlated component
 fig_sq_corr = go.Figure()
 fig_sq_box = go.Figure()
+fmax_ratios = []
 for name, kw in kw_dict.items():
     eem_stack_filtered, index_filtered, ref_filtered, cluster_filtered, sample_number_all_filtered = (
         eem_dataset.filter_by_index(kw[0], kw[1], copy=True))
@@ -130,15 +132,18 @@ for name, kw in kw_dict.items():
                                       em_range=eem_dataset.em_range,
                                       index=index_filtered,
                                       ref=ref_filtered)
-    fmax_ratio, cor, p = get_q_coef(eem_dataset_specific, model, 'B1C1', 'B1C2', 'best_component', 'TCC',
+    fmax_ratio, fmax_ratio_df, cor, p = get_q_coef(eem_dataset_specific, model, 'B1C1', 'B1C2', 'best_component', 'ICC',
                                     standard_bacteria_component)
+    fmax_ratios.append(fmax_ratio_df)
     ratio_std = np.std(fmax_ratio)
     fig_sq_corr.add_trace(go.Scatter(
         x=[cor],
         y=[ratio_std],
-        mode='markers',  # Use 'lines', 'markers+lines', etc., for other styles
+        mode='markers+text',  # Use 'lines', 'markers+lines', etc., for other styles
+        text=[f'p={p:.2g}'],
+        textposition='top right',
         marker=dict(
-            size=12,  # Marker size
+            size=16,  # Marker size
             symbol='circle',  # Marker symbol
             opacity=0.8  # Transparency
         ),
