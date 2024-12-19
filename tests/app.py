@@ -1466,17 +1466,17 @@ card_pp_param = dbc.Card(
                             dbc.Row(
                                 [
                                     dbc.Col(
-                                        dbc.Label("Excitation wavelength"), width={'size': 1}
+                                        dbc.Label("Excitation wavelength"), width={'size': 2}
                                     ),
                                     dbc.Col(
                                         dcc.Input(id='pp-excitation', type='number',
                                                   placeholder='nm',
                                                   style={'width': '250px', 'height': '30px'}, debounce=True),
-                                        width={'size': 1}
+                                        width={'size': 2}
                                     ),
 
                                     dbc.Col(
-                                        dbc.Label("Emission wavelength"), width={'size': 1}
+                                        dbc.Label("Emission wavelength"), width={'size': 2, 'offset': 1}
                                     ),
                                     dbc.Col(
                                         dcc.Input(id='pp-emission', type='number',
@@ -1513,7 +1513,7 @@ page_peak_picking = html.Div([
             ),
             dbc.Row(
                 dcc.Tabs(
-                    id='parafac-results',
+                    id='pp-results',
                     children=[
                         dcc.Tab(label='Intensities', id='pp-intensities'),
                         dcc.Tab(
@@ -1559,7 +1559,7 @@ page_peak_picking = html.Div([
                                     style={'width': '90vw'},
                                 )
                             ],
-                            label='Correlations', id='parafac-establishment-corr'
+                            label='Correlations', id='pp-establishment-corr'
                         ),
                         dcc.Tab(
                             children=[
@@ -1618,7 +1618,7 @@ page_peak_picking = html.Div([
                                                             dbc.Col(
                                                                 dbc.Button(
                                                                     [dbc.Spinner(size="sm",
-                                                                                 id='parafac-predict-spinner')],
+                                                                                 id='pp-predict-spinner')],
                                                                     id='predict-pp-model', className='col-2')
                                                             )
                                                         ]
@@ -1635,6 +1635,11 @@ page_peak_picking = html.Div([
                                                         label='Intensities',
                                                         children=[],
                                                         id='pp-test-intensities'
+                                                    ),
+                                                    dcc.Tab(
+                                                        label='Error',
+                                                        children=[],
+                                                        id='pp-test-error'
                                                     ),
                                                     dcc.Tab(
                                                         label='Prediction of reference',
@@ -1869,7 +1874,7 @@ def on_build_pp_model(n_clicks, eem_graph_options, path_establishment, kw_mandat
             x = x.drop(nan_rows)
             if x.shape[0] < 1:
                 continue
-            y = fi
+            y = fi.squeeze()
             y = y.drop(nan_rows)
             x_reshaped = np.array(x).reshape(-1, 1)
             lm = LinearRegression().fit(x_reshaped, y)
@@ -1881,7 +1886,7 @@ def on_build_pp_model(n_clicks, eem_graph_options, path_establishment, kw_mandat
             pp_fit_params[ref_var] = stats
 
         pp_model = {
-            'Intensities': [fi.columns.tolist()] + fi.values.tolist(),
+            'intensities': [fi.columns.tolist()] + fi.values.tolist(),
             'index': eem_dataset_establishment.index,
             'ref': [eem_dataset_establishment.ref.columns.tolist()] + eem_dataset_establishment.ref.values.tolist()
             if eem_dataset_establishment.ref is not None else None,
@@ -1948,8 +1953,6 @@ def on_pp_establishment_correlations(ref_var, pp_model):
                                index=pp_model['index'])
         ref_df = pd.concat([ref_df, intensities_df], axis=1)
         var = ref_df[ref_var]
-        # parafac_var = pd.DataFrame(pp_model[indicator][1:], columns=pp_model[indicator][0],
-        #                            index=pp_model['index'])
         fig = go.Figure()
 
         stats = pp_model['fitting_params']
@@ -1961,11 +1964,11 @@ def on_pp_establishment_correlations(ref_var, pp_model):
         y = y.drop(nan_rows)
         if x.shape[0] < 1:
             return go.Figure(), None
-        fig.add_trace(go.Scatter(x=x, y=y, mode='markers', name=stats[ref_var][0], text=[i for i in x.index],
+        fig.add_trace(go.Scatter(x=x, y=y, mode='markers', name=stats[ref_var][0][0], text=[i for i in x.index],
                                  marker=dict(color=colors[0]), hoverinfo='text+x+y'))
         fig.add_trace(go.Scatter(x=np.array([x.min(), x.max()]),
-                                 y=stats[ref_var][1] * np.array([x.min(), x.max()]) + stats[ref_var][2],
-                                 mode='lines', name=f'{stats[ref_var][0]}-Linear Regression Line',
+                                 y=stats[ref_var][0][1] * np.array([x.min(), x.max()]) + stats[ref_var][0][2],
+                                 mode='lines', name=f'{stats[ref_var][0][0]}-Linear Regression Line',
                                  line=dict(dash='dash', color=colors[0])))
         fig.update_xaxes(title_text=ref_var)
         fig.update_yaxes(title_text='Intensity')
@@ -1984,7 +1987,7 @@ def on_pp_establishment_correlations(ref_var, pp_model):
 @app.callback(
     [
         Output('pp-eem-dataset-predict-message', 'children'),  # size, intervals?
-        Output('pp-test-fmax', 'children'),
+        Output('pp-test-intensities', 'children'),
         Output('pp-test-error', 'children'),
         Output('pp-test-corr-indicator-selection', 'options'),
         Output('pp-test-corr-indicator-selection', 'value'),
@@ -2039,15 +2042,15 @@ def on_pp_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, pp_model
     else:
         valid_ref = None
 
-    fi_sample = eem_dataset_predict.peak_picking(ex=pp_model['ex_actual'], em=pp_model['em_actual'])
+    fi_test, ex_actual_test, em_actual_test = eem_dataset_predict.peak_picking(ex=pp_model['ex_actual'], em=pp_model['em_actual'])
 
     pred = {}
     if eem_dataset_predict.ref is not None:
         for ref_var in valid_ref:
             if ref_var in pp_model['fitting_params'].keys():
                 params = pp_model['fitting_params'][ref_var]
-                pred_sample = fi_sample.copy()
-                pred_r = fi_sample.iloc[:, 0] - params[0][2]
+                pred_sample = fi_test.copy()
+                pred_r = fi_test.iloc[:, 0] - params[0][2]
                 pred_r = pred_r / params[0][1]
                 pred_sample.iloc[:,0] = pred_r
                 pred[ref_var] = [pred_sample.columns.tolist()] + pred_sample.values.tolist()
@@ -2059,7 +2062,7 @@ def on_pp_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, pp_model
             [
                 dbc.Col(
                     [
-                        dcc.Graph(figure=plot_fmax(fi_sample,
+                        dcc.Graph(figure=plot_fmax(fi_test,
                                                    display=False,
                                                    yaxis_title='Intensities of test dataset'
                                                    ),
@@ -2074,7 +2077,7 @@ def on_pp_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, pp_model
             [
                 dbc.Col(
                     [
-                        dbc.Table.from_dataframe(fi_sample,
+                        dbc.Table.from_dataframe(fi_test,
                                                  bordered=True, hover=True, index=True
                                                  )
                     ]
@@ -2098,7 +2101,7 @@ def on_pp_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, pp_model
     ref_options = [{'label': var, 'value': var} for var in eem_dataset_predict.ref.columns]
 
     test_results = {
-        'Intensities': [fi_sample.columns.tolist()] + fi_sample.values.tolist(),
+        'Intensities of test dataset': [fi_test.columns.tolist()] + fi_test.values.tolist(),
         'Prediction of reference': pred,
         'ref': [eem_dataset_predict.ref.columns.tolist()] + eem_dataset_predict.ref.values.tolist()
         if eem_dataset_predict.ref is not None else None,
@@ -6351,7 +6354,9 @@ def serve_layout():
         dcc.Store(id='pre-processed-eem'),
         dcc.Store(id='eem-dataset'),
         dcc.Store(id='pp-model'),
+        dcc.Store(id='pp-test-results'),
         dcc.Store(id='ri-model'),
+        dcc.Store(id='ri-test-results'),
         dcc.Store(id='parafac-models'),
         dcc.Store(id='parafac-test-results'),
         dcc.Store(id='kmethod-consensus-matrix-data'),
