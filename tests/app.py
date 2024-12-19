@@ -2291,20 +2291,39 @@ card_ri_param = dbc.Card(
                             dbc.Row(
                                 [
                                     dbc.Col(
-                                        dbc.Label("Excitation wavelength"), width={'size': 2}
+                                        dbc.Label("Ex range min"), width={'size': 1}
                                     ),
                                     dbc.Col(
-                                        dcc.Input(id='ri-excitation', type='number',
+                                        dcc.Input(id='ri-ex-min', type='number',
                                                   placeholder='nm',
                                                   style={'width': '250px', 'height': '30px'}, debounce=True),
-                                        width={'size': 2}
+                                        width={'size': 1}
                                     ),
 
                                     dbc.Col(
-                                        dbc.Label("Emission wavelength"), width={'size': 2, 'offset': 1}
+                                        dbc.Label("Ex range max"), width={'size': 1, 'offset': 0}
                                     ),
                                     dbc.Col(
-                                        dcc.Input(id='ri-emission', type='number',
+                                        dcc.Input(id='ri-ex-max', type='number',
+                                                  placeholder='nm',
+                                                  style={'width': '250px', 'height': '30px'}, debounce=True),
+                                        width={'size': 1}
+                                    ),
+                                    dbc.Col(
+                                        dbc.Label("Em range min"), width={'size': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='ri-em-min', type='number',
+                                                  placeholder='nm',
+                                                  style={'width': '250px', 'height': '30px'}, debounce=True),
+                                        width={'size': 1}
+                                    ),
+
+                                    dbc.Col(
+                                        dbc.Label("Em range max"), width={'size': 1, 'offset': 0}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='ri-em-max', type='number',
                                                   placeholder='nm',
                                                   style={'width': '250px', 'height': '30px'}, debounce=True),
                                         width={'size': 1}
@@ -2623,13 +2642,15 @@ page_regional_integration = html.Div([
         State('ri-eem-dataset-establishment-path-input', 'value'),
         State('ri-establishment-index-kw-mandatory', 'value'),
         State('ri-establishment-index-kw-optional', 'value'),
-        State('ri-excitation', 'value'),
-        State('ri-emission', 'value'),
+        State('ri-ex-min', 'value'),
+        State('ri-ex-max', 'value'),
+        State('ri-em-min', 'value'),
+        State('ri-em-max', 'value'),
         State('eem-dataset', 'data')
     ]
 )
-def on_build_ri_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, ex_target, em_target,
-                      eem_dataset_dict):
+def on_build_ri_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, ex_min, ex_max,
+                      em_min, em_max, eem_dataset_dict):
     if n_clicks is None:
         return None, None, 'Build model', [], None, [], None, None
     if not path_establishment:
@@ -2687,7 +2708,8 @@ def on_build_ri_model(n_clicks, eem_graph_options, path_establishment, kw_mandat
     else:
         valid_ref = None
 
-    fi, ex_actual, em_actual = eem_dataset_establishment.peak_picking(ex=ex_target, em=em_target)
+    fi, ex_actual, em_actual = eem_dataset_establishment.regional_integration(ex_min=ex_min, ex_max=ex_max,
+                                                                              em_min=em_min, em_max=ex_max)
     fi_name = f'Intensity (ex={ex_actual} nm, em={em_actual} nm)'
 
     ri_fit_params = {}
