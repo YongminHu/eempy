@@ -928,7 +928,7 @@ class EEMDataset:
         """
         return self.eem_stack.sum(axis=(1, 2))
 
-    def regional_integration(self, em_boundary, ex_boundary):
+    def regional_integration(self, ex_min, ex_max, em_min, em_max):
         """
         Calculate regional integration of samples.
 
@@ -940,8 +940,10 @@ class EEMDataset:
         -------
         integrations: np.ndarray
         """
-        integrations, _ = process_eem_stack(self.eem_stack, eem_regional_integration, ex_range=self.ex_range,
-                                            em_range=self.em_range, em_boundary=em_boundary, ex_boundary=ex_boundary)
+        integrations, _ = process_eem_stack(
+            self.eem_stack, eem_regional_integration, ex_range=self.ex_range,
+            em_range=self.em_range, ex_min=ex_min, ex_max=ex_max, em_min=em_min, em_max=em_max
+        )
         return integrations
 
     def peak_picking(self, ex, em):
