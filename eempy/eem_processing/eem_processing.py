@@ -944,7 +944,12 @@ class EEMDataset:
             self.eem_stack, eem_regional_integration, ex_range=self.ex_range,
             em_range=self.em_range, ex_min=ex_min, ex_max=ex_max, em_min=em_min, em_max=em_max
         )
-        return integrations
+        ri_name = f'RI (ex=[{ex_min}, {ex_max}] nm, em=[{em_min}, {em_max}] nm)'
+        if self.index:
+            ri = pd.DataFrame(integrations, index=self.index, columns=[ri_name])
+        else:
+            ri = pd.DataFrame(integrations, index=np.arange(integrations.shape[0]), columns=[ri_name])
+        return ri
 
     def peak_picking(self, ex, em):
         """

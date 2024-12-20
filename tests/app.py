@@ -1,12 +1,9 @@
-import math
+
 import os.path
 
 import dash
-import json
 import pickle
 
-import numpy as np
-import pandas as pd
 from dash import dcc, html, ctx
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
@@ -2296,8 +2293,8 @@ card_ri_param = dbc.Card(
                                     dbc.Col(
                                         dcc.Input(id='ri-ex-min', type='number',
                                                   placeholder='nm',
-                                                  style={'width': '250px', 'height': '30px'}, debounce=True),
-                                        width={'size': 1}
+                                                  style={'width': '100px', 'height': '30px'}, debounce=True),
+                                        width={'size': 2}
                                     ),
 
                                     dbc.Col(
@@ -2306,8 +2303,8 @@ card_ri_param = dbc.Card(
                                     dbc.Col(
                                         dcc.Input(id='ri-ex-max', type='number',
                                                   placeholder='nm',
-                                                  style={'width': '250px', 'height': '30px'}, debounce=True),
-                                        width={'size': 1}
+                                                  style={'width': '100px', 'height': '30px'}, debounce=True),
+                                        width={'size': 2}
                                     ),
                                     dbc.Col(
                                         dbc.Label("Em range min"), width={'size': 1}
@@ -2315,8 +2312,8 @@ card_ri_param = dbc.Card(
                                     dbc.Col(
                                         dcc.Input(id='ri-em-min', type='number',
                                                   placeholder='nm',
-                                                  style={'width': '250px', 'height': '30px'}, debounce=True),
-                                        width={'size': 1}
+                                                  style={'width': '100px', 'height': '30px'}, debounce=True),
+                                        width={'size': 2}
                                     ),
 
                                     dbc.Col(
@@ -2325,8 +2322,8 @@ card_ri_param = dbc.Card(
                                     dbc.Col(
                                         dcc.Input(id='ri-em-max', type='number',
                                                   placeholder='nm',
-                                                  style={'width': '250px', 'height': '30px'}, debounce=True),
-                                        width={'size': 1}
+                                                  style={'width': '100px', 'height': '30px'}, debounce=True),
+                                        width={'size': 2}
                                     ),
                                 ]
                             ),
@@ -2708,9 +2705,9 @@ def on_build_ri_model(n_clicks, eem_graph_options, path_establishment, kw_mandat
     else:
         valid_ref = None
 
-    fi, ex_actual, em_actual = eem_dataset_establishment.regional_integration(ex_min=ex_min, ex_max=ex_max,
-                                                                              em_min=em_min, em_max=ex_max)
-    fi_name = f'Intensity (ex={ex_actual} nm, em={em_actual} nm)'
+    ri = eem_dataset_establishment.regional_integration(ex_min=ex_min, ex_max=ex_max,
+                                                        em_min=em_min, em_max=em_max)
+    ri_name = f'RI (ex=[{ex_min}, {ex_max}] nm, em=[{em_min}, {em_max}] nm)'
 
     ri_fit_params = {}
     if eem_dataset_establishment.ref is not None:
@@ -2721,7 +2718,7 @@ def on_build_ri_model(n_clicks, eem_graph_options, path_establishment, kw_mandat
             x = x.drop(nan_rows)
             if x.shape[0] < 1:
                 continue
-            y = fi.squeeze()
+            y = ri.squeeze()
             y = y.drop(nan_rows)
             x_reshaped = np.array(x).reshape(-1, 1)
             lm = LinearRegression().fit(x_reshaped, y)
@@ -2729,16 +2726,18 @@ def on_build_ri_model(n_clicks, eem_graph_options, path_establishment, kw_mandat
             intercept = lm.intercept_
             slope = lm.coef_[0]
             pearson_corr, pearson_p = pearsonr(x, y)
-            stats.append([fi_name, slope, intercept, r_squared, pearson_corr, pearson_p])
+            stats.append([ri_name, slope, intercept, r_squared, pearson_corr, pearson_p])
             ri_fit_params[ref_var] = stats
 
         ri_model = {
-            'intensities': [fi.columns.tolist()] + fi.values.tolist(),
+            'intensities': [ri.columns.tolist()] + ri.values.tolist(),
             'index': eem_dataset_establishment.index,
             'ref': [eem_dataset_establishment.ref.columns.tolist()] + eem_dataset_establishment.ref.values.tolist()
             if eem_dataset_establishment.ref is not None else None,
-            'ex_actual': ex_actual,
-            'em_actual': em_actual,
+            'ex_min': ex_min,
+            'ex_max': ex_max,
+            'em_min': em_min,
+            'em_max': em_max,
             'fitting_params': ri_fit_params
         }
 
@@ -2749,9 +2748,9 @@ def on_build_ri_model(n_clicks, eem_graph_options, path_establishment, kw_mandat
                     [
                         dbc.Col(
                             [
-                                dcc.Graph(figure=plot_fmax(fi,
+                                dcc.Graph(figure=plot_fmax(ri,
                                                            display=False,
-                                                           yaxis_title=fi_name
+                                                           yaxis_title=ri_name
                                                            ),
                                           config={'autosizable': False},
                                           style={'width': 1700, 'height': 800}
@@ -2765,7 +2764,7 @@ def on_build_ri_model(n_clicks, eem_graph_options, path_establishment, kw_mandat
                     [
                         dbc.Col(
                             [
-                                dbc.Table.from_dataframe(fi,
+                                dbc.Table.from_dataframe(ri,
                                                          bordered=True, hover=True, index=True)
                             ]
                         )
@@ -2889,15 +2888,18 @@ def on_ri_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, ri_model
     else:
         valid_ref = None
 
-    fi_test, ex_actual_test, em_actual_test = eem_dataset_predict.peak_picking(ex=ri_model['ex_actual'], em=ri_model['em_actual'])
+    ri_test = eem_dataset_predict.regional_integration(
+        ex_min=ri_model['ex_min'], ex_max=ri_model['ex_max'],
+        em_min=ri_model['em_min'], em_max=ri_model['em_max']
+    )
 
     pred = {}
     if eem_dataset_predict.ref is not None:
         for ref_var in valid_ref:
             if ref_var in ri_model['fitting_params'].keys():
                 params = ri_model['fitting_params'][ref_var]
-                pred_sample = fi_test.copy()
-                pred_r = fi_test.iloc[:, 0] - params[0][2]
+                pred_sample = ri_test.copy()
+                pred_r = ri_test.iloc[:, 0] - params[0][2]
                 pred_r = pred_r / params[0][1]
                 pred_sample.iloc[:,0] = pred_r
                 pred[ref_var] = [pred_sample.columns.tolist()] + pred_sample.values.tolist()
@@ -2909,7 +2911,7 @@ def on_ri_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, ri_model
             [
                 dbc.Col(
                     [
-                        dcc.Graph(figure=plot_fmax(fi_test,
+                        dcc.Graph(figure=plot_fmax(ri_test,
                                                    display=False,
                                                    yaxis_title='Intensities of test dataset'
                                                    ),
@@ -2924,7 +2926,7 @@ def on_ri_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, ri_model
             [
                 dbc.Col(
                     [
-                        dbc.Table.from_dataframe(fi_test,
+                        dbc.Table.from_dataframe(ri_test,
                                                  bordered=True, hover=True, index=True
                                                  )
                     ]
@@ -2937,18 +2939,18 @@ def on_ri_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, ri_model
 
     if eem_dataset_predict.ref is not None:
         indicator_options = [
-            {'label': 'Intensities of test dataset', 'value': 'Intensities of test dataset'},
+            {'label': 'RI of test dataset', 'value': 'RI of test dataset'},
             {'label': 'Prediction of reference', 'value': 'Prediction of reference'}
         ]
     else:
         indicator_options = [
-            {'label': 'Intensities of test dataset', 'value': 'Intensities of test dataset'}
+            {'label': 'RI of test dataset', 'value': 'RI of test dataset'}
         ]
 
     ref_options = [{'label': var, 'value': var} for var in eem_dataset_predict.ref.columns]
 
     test_results = {
-        'Intensities of test dataset': [fi_test.columns.tolist()] + fi_test.values.tolist(),
+        'RI of test dataset': [ri_test.columns.tolist()] + ri_test.values.tolist(),
         'Prediction of reference': pred,
         'ref': [eem_dataset_predict.ref.columns.tolist()] + eem_dataset_predict.ref.values.tolist()
         if eem_dataset_predict.ref is not None else None,
