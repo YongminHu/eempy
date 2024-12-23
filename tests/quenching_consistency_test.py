@@ -110,7 +110,7 @@ kw_dict_trial = {
     'breakthrough': [['M3'], ['2024-10-21']],
 }
 
-n_components = 4
+n_components = 5
 model = PARAFAC(n_components=n_components)
 model_standard = PARAFAC(n_components=4)
 model_standard.fit(eem_dataset)
@@ -132,7 +132,7 @@ for name, kw in kw_dict.items():
                                       em_range=eem_dataset.em_range,
                                       index=index_filtered,
                                       ref=ref_filtered)
-    fmax_ratio, fmax_ratio_df, cor, p = get_q_coef(eem_dataset_specific, model, 'B1C1', 'B1C2', 'best_component', 'ICC',
+    fmax_ratio, fmax_ratio_df, cor, p = get_q_coef(eem_dataset_specific, model, 'B1C1', 'B1C2', 'best_component', 'TCC',
                                     standard_bacteria_component)
     fmax_ratios.append(fmax_ratio_df)
     ratio_std = np.std(fmax_ratio)
