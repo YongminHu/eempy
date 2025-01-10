@@ -26,6 +26,7 @@ from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.spatial.distance import squareform
 from scipy.sparse.linalg import ArpackError
 from scipy.linalg import khatri_rao
+from scipy.stats import pearsonr
 from tensorly.solvers.nnls import hals_nnls
 from tensorly.decomposition import parafac, non_negative_parafac, non_negative_parafac_hals
 from tensorly.cp_tensor import cp_to_tensor, CPTensor
@@ -1385,7 +1386,7 @@ class EEMDataset:
             A list of sub-datasets. Each of them is an EEMDataset object.
         """
         idx_eems = [i for i in range(self.eem_stack.shape[0])]
-        model_list = []
+        subset_list = []
         if rule == 'random':
             random.shuffle(idx_eems)
             idx_splits = np.array_split(idx_eems, n_split)
@@ -1395,21 +1396,21 @@ class EEMDataset:
             raise ValueError("'rule' should be either 'random' or 'sequential'")
         for split in idx_splits:
             if self.ref is not None:
-                ref = np.array([self.ref.iloc[i] for i in split])
+                ref = self.ref.iloc[split]
             else:
                 ref = None
-            if self.index:
+            if self.index is not None:
                 index = [self.index[i] for i in split]
             else:
                 index = None
-            if self.cluster:
+            if self.cluster is not None:
                 cluster = [self.cluster[i] for i in split]
             else:
                 cluster = None
             m = EEMDataset(eem_stack=np.array([self.eem_stack[i] for i in split]), ex_range=self.ex_range,
                            em_range=self.em_range, ref=ref, index=index, cluster=cluster)
-            model_list.append(m)
-        return model_list
+            subset_list.append(m)
+        return subset_list
 
     def subsampling(self, portion=0.8, copy=True):
         """
@@ -1424,12 +1425,8 @@ class EEMDataset:
 
         Returns
         -------
-        eem_stack_new: np.ndarray
+        eem_dataset_sub: np.ndarray
             New EEM stack.
-        index_new: list.
-            New index.
-        ref_new: np.ndarray
-            New reference data.
         selected_indices: np.ndarray
             Indices of selected EEMs.
         """
@@ -1453,7 +1450,11 @@ class EEMDataset:
             self.index = index_new
             self.ref = ref_new
             self.cluster = cluster_new
-        return eem_stack_new, index_new, ref_new, selected_indices
+        eem_dataset_sub = EEMDataset(eem_stack=eem_stack_new, ex_range=self.ex_range, em_range=self.em_range,
+                                     index=index_new, ref=ref_new, cluster=cluster_new)
+        eem_dataset_sub.sort_by_index()
+        selected_indices = sorted(selected_indices)
+        return eem_dataset_sub, selected_indices
 
     def sort_by_index(self):
         """
@@ -1464,13 +1465,13 @@ class EEMDataset:
         sorted_indices: np.ndarray
             The sorted sample order
         """
-        sorted_indices = np.argsort(self.index)
-        self.eem_stack = self.eem_stack[sorted_indices]
-        if self.ref:
-            self.ref = self.ref.iloc[sorted_indices]
-        if self.cluster:
-            self.cluster = self.cluster[sorted_indices]
+        sorted_indices = sorted(range(len(self.index)), key=lambda i: self.index[i])
         self.index = sorted(self.index)
+        self.eem_stack = self.eem_stack[sorted_indices]
+        if self.ref is not None:
+            self.ref = self.ref.iloc[sorted_indices]
+        if self.cluster is not None:
+            self.cluster = [self.cluster[i] for i in sorted_indices]
         return sorted_indices
 
     # def sort_by_ref(self):
@@ -1504,14 +1505,8 @@ class EEMDataset:
 
         Returns
         -------
-        eem_stack_filtered: np.ndarray
-            Filtered EEM stack.
-        index_filtered: list
-            Filtered sample indexes.
-        ref_filtered: np.ndarray
-            Filtered sample references.
-        cluster_filtered: list
-            Filtered sample clusters.
+        eem_dataset_filtered: EEMDataset
+            Filtered EEM dataset.
         sample_number_all_filtered: list
             Indexes (orders in the list) of samples that have been preserved after filtering.
         """
@@ -1544,12 +1539,17 @@ class EEMDataset:
         index_filtered = [self.index[i] for i in sample_number_all_filtered]
         cluster_filtered = [self.cluster[i] for i in sample_number_all_filtered] if self.cluster is not None else None
         ref_filtered = self.ref.iloc[sample_number_all_filtered] if self.ref is not None else None
+        eem_dataset_filtered = EEMDataset(eem_stack_filtered,
+                                          ex_range=self.ex_range,
+                                          em_range=self.em_range,
+                                          index=index_filtered,
+                                          ref=ref_filtered)
         if not copy:
             self.eem_stack = eem_stack_filtered
             self.index = index_filtered
             self.ref = ref_filtered
             self.cluster = cluster_filtered
-        return eem_stack_filtered, index_filtered, ref_filtered, cluster_filtered, sample_number_all_filtered
+        return eem_dataset_filtered, sample_number_all_filtered
 
 
 def combine_eem_datasets(list_eem_datasets):
@@ -1567,19 +1567,20 @@ def combine_eem_datasets(list_eem_datasets):
         EEM dataset combined.
     """
     eem_stack_combined = []
-    ref_combined = []
     index_combined = []
     cluster_combined = []
+    ref_combined = None
     ex_range_0 = list_eem_datasets[0].ex_range
     em_range_0 = list_eem_datasets[0].em_range
-    for d in list_eem_datasets:
+    for i, d in enumerate(list_eem_datasets):
         eem_stack_combined.append(d.eem_stack)
-        ref_combined.append(d.ref if d.ref is not None else np.array(d.eem_stack.shape[0] * [np.nan]))
-        if d.index:
+        if d.index is not None:
             index_combined = index_combined + d.index
         else:
             index_combined = index_combined + ['N/A' for i in range(d.eem_stack.shape[0])]
-        if d.cluster:
+        if d.ref is not None:
+            ref_combined = ref_combined.combine_first(d.ref) if ref_combined is not None else d.ref
+        if d.cluster is not None:
             cluster_combined = cluster_combined + d.cluster
         else:
             cluster_combined = cluster_combined + ['N/A' for i in range(d.eem_stack.shape[0])]
@@ -1589,7 +1590,8 @@ def combine_eem_datasets(list_eem_datasets):
                 'having different ex/em ranges, please consider unify the ex/em ranges using the interpolation() '
                 'method of EEMDataset object')
     eem_stack_combined = np.concatenate(eem_stack_combined, axis=0)
-    ref_combined = np.concatenate(ref_combined, axis=0)
+    if ref_combined is not None:
+        ref_combined = ref_combined.reindex(index_combined)
     eem_dataset_combined = EEMDataset(eem_stack=eem_stack_combined, ex_range=ex_range_0, em_range=em_range_0,
                                       ref=ref_combined, index=index_combined, cluster=cluster_combined)
     return eem_dataset_combined
@@ -1697,11 +1699,11 @@ class PARAFAC:
                 if np.isnan(eem_stack_tf).any():
                     mask = np.where(np.isnan(eem_stack_tf), 0, 1)
                     cptensors = non_negative_parafac_hals(eem_stack_tf, rank=self.n_components, mask=mask,
-                                                            init=self.init,
-                                                            n_iter_max=self.n_iter_max, tol=self.tol)
+                                                          init=self.init,
+                                                          n_iter_max=self.n_iter_max, tol=self.tol)
                 else:
                     cptensors = non_negative_parafac_hals(eem_stack_tf, rank=self.n_components, init=self.init,
-                                                            n_iter_max=self.n_iter_max, tol=self.tol)
+                                                          n_iter_max=self.n_iter_max, tol=self.tol)
         except ArpackError:
             print(
                 "PARAFAC failed possibly due to the presence of patches of nan values. Please consider cut or "
@@ -2711,7 +2713,7 @@ class EEMNMF:
 
 class KMethod:
     """
-    Conduct K-PARAFACs, an EEM clustering algorithm aiming to minimize the general PARAFAC reconstruction error. The
+    Conduct K-method, an EEM clustering algorithm aiming to minimize the general PARAFAC reconstruction error. The
     key hypothesis behind K-PARAFACs is that fitting EEMs with varied underlying chemical compositions using the same
     PARAFAC model could lead to a large reconstruction error. In contrast, samples with similar chemical composition
     can be incorporated into the same PARAFAC model with small reconstruction error (i.e., the root mean-squared
@@ -2756,14 +2758,18 @@ class KMethod:
         Sorted consensus matrix.
     """
 
-    def __init__(self, base_model, n_initial_splits, max_iter=20, tol=0.001, elimination='default'):
+    def __init__(self, base_model, n_initial_splits, error_calculation="reconstruction_error", max_iter=20, tol=0.001,
+                 elimination='default', kw_unquenched=None, kw_quenched=None):
 
         # -----------Parameters-------------
         self.base_model = base_model
         self.n_initial_splits = n_initial_splits
+        self.error_calculation = error_calculation
         self.max_iter = max_iter
         self.tol = tol
         self.elimination = elimination
+        self.kw_unquenched = kw_unquenched
+        self.kw_quenched = kw_quenched
         self.subsampling_portion = None
         self.n_runs = None
         self.consensus_conversion_power = None
@@ -2805,21 +2811,22 @@ class KMethod:
 
         # -------Generate a unified model as reference for ordering components--------
 
-        # unified_model = PARAFAC(rank=self.rank, non_negativity=self.non_negativity, init=self.init,
-        #                         tf_normalization=self.tf_normalization,
-        #                         loadings_normalization=self.loadings_normalization, sort_em=self.sort_em)
-
         unified_model = copy.deepcopy(self.base_model)
         unified_model.fit(eem_dataset)
 
         # -------Define functions for estimation and maximization steps-------
 
+        def get_quenching_coef(fmax_tot, kw_o, kw_q):
+            fmax_original = fmax_tot[fmax_tot.index.str.contains(kw_o)]
+            fmax_quenched = fmax_tot[fmax_tot.index.str.contains(kw_q)]
+            fmax_ratio = fmax_tot.copy()
+            fmax_ratio[fmax_ratio.index.str.contains(kw_o)] = fmax_original.to_numpy() / fmax_quenched.to_numpy()
+            fmax_ratio[fmax_ratio.index.str.contains(kw_q)] = fmax_original.to_numpy() / fmax_quenched.to_numpy()
+            return fmax_ratio.to_numpy()
+
         def estimation(sub_datasets: dict):
             models = {}
             for label, d in sub_datasets.items():
-                # model = PARAFAC(rank=self.rank, non_negativity=self.non_negativity, init=self.init,
-                #                 tf_normalization=self.tf_normalization,
-                #                 loadings_normalization=self.loadings_normalization, sort_em=self.sort_em)
                 model = copy.deepcopy(self.base_model)
                 model.fit(d)
                 models[label] = model
@@ -2830,10 +2837,28 @@ class KMethod:
             sub_datasets = {}
             for label, m in models.items():
                 score_m, fmax_m, eem_stack_re_m = m.predict(eem_dataset)
-                res = eem_dataset.eem_stack - eem_stack_re_m
-                n_pixels = m.eem_stack_train.shape[1] * m.eem_stack_train.shape[2]
-                rmse = np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels)
-                sample_error.append(rmse)
+                if self.error_calculation == "reconstruction_error":
+                    res = eem_dataset.eem_stack - eem_stack_re_m
+                    n_pixels = m.eem_stack_train.shape[1] * m.eem_stack_train.shape[2]
+                    rmse = np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels)
+                    sample_error.append(rmse)
+                elif self.error_calculation == "quenching_coefficient":
+                    if not all([self.kw_unquenched, self.kw_quenched]):
+                        raise ValueError("Both kw_unquenched and kw_quenched must be passed.")
+                    if type(m).__name__ == 'PARAFAC':
+                        fmax_establishment = m.fmax
+                    elif type(m).__name__ == 'EEMNMF':
+                        fmax_establishment = m.nnls_fmax
+                    else:
+                        raise TypeError("Invalid base model type.")
+                    quenching_coef_establishment = get_quenching_coef(fmax_establishment, self.kw_unquenched,
+                                                                      self.kw_quenched)
+                    quenching_coef_archetype = np.mean(quenching_coef_establishment, axis=0)
+
+                    quenching_coef_test = get_quenching_coef(fmax_m, self.kw_unquenched, self.kw_quenched)
+
+                    quenching_coef_diff = np.abs(quenching_coef_test - quenching_coef_archetype)
+                    sample_error.append(np.sum(quenching_coef_diff**2, axis=1))
             best_model_idx = np.argmin(sample_error, axis=0)
             least_model_errors = np.min(sample_error, axis=0)
             for j, label in enumerate(models.keys()):
@@ -2863,8 +2888,21 @@ class KMethod:
         # -------Initialization--------
         label_history = []
         error_history = []
+        sample_errors = []
         sub_datasets_n = {}
-        initial_sub_eem_datasets = eem_dataset.splitting(n_split=self.n_initial_splits)
+        if self.error_calculation == "reconstruction_error":
+            initial_sub_eem_datasets = eem_dataset.splitting(n_split=self.n_initial_splits)
+        elif self.error_calculation == "quenching_coefficient":
+            initial_sub_eem_datasets = []
+            eem_dataset_unquenched, _ = eem_dataset.filter_by_index(self.kw_unquenched, None, copy=True)
+            initial_sub_eem_datasets_unquenched = eem_dataset_unquenched.splitting(n_split=self.n_initial_splits)
+            eem_dataset_quenched, _ = eem_dataset.filter_by_index(self.kw_quenched, None, copy=True)
+            for subset in initial_sub_eem_datasets_unquenched:
+                pos = [eem_dataset_unquenched.index.index(idx) for idx in subset.index]
+                quenched_index = [eem_dataset_quenched.index[idx] for idx in pos]
+                sub_eem_dataset_quenched, _ = eem_dataset.filter_by_index(None, quenched_index, copy=True)
+                initial_sub_eem_datasets.append(combine_eem_datasets([subset, sub_eem_dataset_quenched]))
+
         for i, random_m in enumerate(initial_sub_eem_datasets):
             sub_datasets_n[i + 1] = random_m
 
@@ -2945,13 +2983,25 @@ class KMethod:
         n = 0
         label_history = []
         error_history = []
+
+        if self.error_calculation == "quenching_coefficient":
+            eem_dataset_unquenched, _ = eem_dataset.filter_by_index(self.kw_unquenched, None, copy=True)
+            eem_dataset_quenched, _ = eem_dataset.filter_by_index(self.kw_quenched, None, copy=True)
+
         while n < n_base_clusterings:
 
             # ------Subsampling-------
-            eem_dataset_new, index_new, ref_new, selected_indices = eem_dataset.subsampling(portion=subsampling_portion)
-            n_samples_new = eem_dataset_new.shape[0]
-            eem_dataset_n = EEMDataset(eem_stack=eem_dataset_new, ex_range=eem_dataset.ex_range,
-                                       em_range=eem_dataset.em_range, index=index_new, ref=ref_new)
+            if self.error_calculation == "reconstruction_error":
+                eem_dataset_n, selected_indices = eem_dataset.subsampling(portion=subsampling_portion)
+            elif self.error_calculation == "quenching_coefficient":
+                eem_dataset_new_uq, selected_indices_uq = eem_dataset_unquenched.subsampling(portion=subsampling_portion)
+                pos = [eem_dataset_unquenched.index.index(idx) for idx in eem_dataset_new_uq.index]
+                quenched_index = [eem_dataset_quenched.index[idx] for idx in pos]
+                eem_dataset_new_q, _ = eem_dataset.filter_by_index(None, quenched_index, copy=True)
+                eem_dataset_n = combine_eem_datasets([eem_dataset_new_uq, eem_dataset_new_q])
+                eem_dataset_n.sort_by_index()
+                selected_indices = [eem_dataset.index.index(idx) for idx in eem_dataset_n.index]
+            n_samples_new = eem_dataset_n.eem_stack.shape[0]
 
             # ------Base clustering-------
             cluster_labels_n, label_history_n, error_history_n = self.base_clustering(eem_dataset_n)
@@ -3293,7 +3343,6 @@ class CorrPARAFAC:
         return rmse
 
 
-
 def formulate_hals_elements(X, loadings_list: list, mode):
     """
 
@@ -3455,10 +3504,9 @@ def non_negative_parafac_hals_r(
                     * pseudo_inverse
                     * tl.reshape(weights, (1, -1))
             )
+            # _, pseudo_inverse = formulate_hals_elements(tensor, factors, mode)
+
             mttkrp = unfolding_dot_khatri_rao(tensor, (weights, factors), mode)
-
-            _, pseudo_inverse = formulate_hals_elements(tensor, factors, mode)
-
 
             if mode in nn_modes:
                 # Call the hals resolution with nnls, optimizing the current mode
