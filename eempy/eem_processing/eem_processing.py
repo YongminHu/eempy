@@ -3243,8 +3243,8 @@ class CorrPARAFAC:
         #         if rel_error[-2] - rel_error[-1] < self.tol:
         #             break
 
-        cptensors = non_negative_parafac_hals_r(eem_stack_tf, rank=self.n_components, init=self.init,
-                                                n_iter_max=self.n_outer_iter_max, tol=self.tol)
+        cptensors = non_negative_parafac_q(eem_stack_tf, rank=self.n_components, init=self.init,
+                                           n_iter_max=self.n_outer_iter_max, tol=self.tol)
 
         L_a, L_b, L_c = cptensors[1]
 
@@ -3366,7 +3366,7 @@ def formulate_hals_elements(X, loadings_list: list, mode):
     return M, P
 
 
-def non_negative_parafac_hals_r(
+def non_negative_parafac_q(
         tensor,
         rank,
         n_iter_max=100,
@@ -3561,3 +3561,126 @@ def non_negative_parafac_hals_r(
         return cp_tensor, rec_errors
     else:
         return cp_tensor
+
+
+def hals_nnls_q(
+    UtM,
+    UtU,
+    kw_o,
+    kw_q,
+    V=None,
+    n_iter_max=500,
+    tol=1e-8,
+):
+    """
+    Non Negative Least Squares (NNLS)
+
+    Computes an approximate solution of a nonnegative least
+    squares problem (NNLS) with an exact block-coordinate descent scheme.
+    M is m by n, U is m by r, V is r by n.
+    All matrices are nonnegative componentwise.
+
+    This algorithm is a simplified implementation of the accelerated HALS defined in [1]. It features an early stop stopping criterion. It is simplified to ensure reproducibility and expose a simple API to control the number of inner iterations.
+
+    This function is made for being used repetively inside an
+    outer-loop alternating algorithm, for instance for computing nonnegative
+    matrix Factorization or tensor factorization. To use as a stand-alone solver, set the exact flag to True.
+
+    Parameters
+    ----------
+    UtM: r-by-n array
+        Pre-computed product of the transposed of U and M, used in the update rule
+    UtU: r-by-r array
+        Pre-computed product of the transposed of U and U, used in the update rule
+    V: r-by-n initialization matrix (mutable)
+        Initialized V array
+        By default, is initialized with one non-zero entry per column
+        corresponding to the closest column of U of the corresponding column of M.
+    n_iter_max: Positive integer
+        Upper bound on the number of iterations
+        Default: 500
+    tol : float in [0,1]
+        early stop criterion, while err_k > delta*err_0. Set small for
+        almost exact nnls solution, or larger (e.g. 1e-2) for inner loops
+        of a PARAFAC computation.
+        Default: 10e-8
+    nonzero_rows: boolean
+        True if the lines of the V matrix can't be zero,
+        False if they can be zero
+        Default: False
+
+
+    Returns
+    -------
+    V: array
+        a r-by-n nonnegative matrix, see notes.
+
+    Notes
+    -----
+    We solve the following problem
+
+    .. math::
+
+            \\min_{V >= \\epsilon} ||M-UV||_F^2
+
+    The matrix V is updated linewise. The update rule for this resolution is
+
+    .. math::
+
+            \\begin{equation}
+                V[k,:]_{(j+1)} = V[k,:]_{(j)} + (UtM[k,:] - UtU[k,:]\\times V_{(j)})/UtU[k,k]
+            \\end{equation}
+
+    with j the update iteration index. V is then thresholded to be larger than epsilon.
+
+    This problem can also be defined by adding respectively a sparsity coefficient and a ridge coefficients
+
+    .. math:: \lambda_s, \lambda_r
+
+    enhancing sparsity or smoothness in the solution [2]. In this sparse/ridge version, the update rule becomes
+
+    .. math::
+
+            \\begin{equation}
+                V[k,:]_{(j+1)} = V[k,:]_{(j)} + (UtM[k,:] - UtU[k,:]\\times V_{(j)} - \lambda_s)/(UtU[k,k]+2\lambda_r)
+            \\end{equation}
+
+    Note that the data fitting is halved but not the ridge penalization.
+
+    References
+    ----------
+    .. [1] N. Gillis and F. Glineur, Accelerated Multiplicative Updates and
+       Hierarchical ALS Algorithms for Nonnegative Matrix Factorization,
+       Neural Computation 24 (4): 1085-1105, 2012.
+
+    .. [2] J. Eggert, and E. Korner. "Sparse coding and NMF."
+       2004 IEEE International Joint Conference on Neural Networks
+       (IEEE Cat. No. 04CH37541). Vol. 4. IEEE, 2004.
+
+    """
+
+    rank, _ = tl.shape(UtM)
+    if V is None:
+        V = tl.solve(UtU, UtM)
+        V = tl.clip(V, a_min=0, a_max=None)
+        # Scaling
+        scale = tl.sum(UtM * V) / tl.sum(UtU * tl.dot(V, tl.transpose(V)))
+        V = V * scale
+
+    for iteration in range(n_iter_max):
+        rec_error = 0
+        for k in range(rank):
+            if UtU[k, k]:
+                num = UtM[k, :] - tl.dot(UtU[k, :], V) + UtU[k, k] * V[k, :]
+                den = UtU[k, k]
+
+                newV = tl.clip(num / den, a_min=0)
+                rec_error += tl.norm(V - newV) ** 2
+                V = tl.index_update(V, tl.index[k, :], newV)
+
+        if iteration == 0:
+            rec_error0 = rec_error
+        if rec_error < tol * rec_error0:
+            break
+
+    return V
