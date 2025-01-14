@@ -3563,14 +3563,15 @@ def non_negative_parafac_q(
         return cp_tensor
 
 
-def hals_nnls_q(
+def hals_nnls_ic(
     UtM,
     UtU,
-    kw_o,
-    kw_q,
+    ic_coefficient=100,
     V=None,
-    n_iter_max=500,
-    tol=1e-8,
+    n_iter_max_outer=500,
+    n_iter_max_inner=100,
+    tol_outer=1e-8,
+    tol_inner=1e-3,
 ):
     """
     Non Negative Least Squares (NNLS)
@@ -3659,7 +3660,8 @@ def hals_nnls_q(
 
     """
 
-    rank, _ = tl.shape(UtM)
+    rank, n = tl.shape(UtM)
+    s = int(n/2)
     if V is None:
         V = tl.solve(UtU, UtM)
         V = tl.clip(V, a_min=0, a_max=None)
@@ -3667,20 +3669,35 @@ def hals_nnls_q(
         scale = tl.sum(UtM * V) / tl.sum(UtU * tl.dot(V, tl.transpose(V)))
         V = V * scale
 
-    for iteration in range(n_iter_max):
-        rec_error = 0
+    for iteration_o in range(n_iter_max_outer):
+        rec_error_o = 0
         for k in range(rank):
+            rec_error_i = 0
             if UtU[k, k]:
-                num = UtM[k, :] - tl.dot(UtU[k, :], V) + UtU[k, k] * V[k, :]
-                den = UtU[k, k]
+                for iteration_i in range(n_iter_max_inner):
+                    c1 = 2 * UtU[k, k] * np.identity(s)
+                    c2 = ic_coefficient/s * np.diagflat(V[k, s:])
+                    c3 = ic_coefficient/s**2 * np.outer(V[k, s:], V[k, s:])
+                    f1 = c1 + c2 - c3
+                    f2 = UtM[k, 0:s] - tl.dot(UtU[k, :], V[:, 0:s]) + UtU[k, k] * V[k, 0:s]
+                    newV = tl.clip(tl.dot(np.linalg.inv(f1), f2), amin=0)
+                    V = tl.index_update(V, tl.index[k, 0:s], newV)
 
-                newV = tl.clip(num / den, a_min=0)
-                rec_error += tl.norm(V - newV) ** 2
-                V = tl.index_update(V, tl.index[k, :], newV)
+                    c2 = ic_coefficient/s * np.diagflat(V[k, 0:s])
+                    c3 = ic_coefficient/s**2 * np.outer(V[k, 0:s], V[k, 0:s])
+                    f1 = c1 + c2 - c3
+                    f2 = UtM[k, s:] - tl.dot(UtU[k, :], V[:, s:]) + UtU[k, k] * V[k, s:]
+                    newV = tl.clip(tl.dot(np.linalg.inv(f1), f2), amin=0)
+                    V = tl.index_update(V, tl.index[k, s:], newV)
+                    rec_error_i = tl.norm(V[k, :] - newV) ** 2
+                    if iteration_i == 0:
+                        rec_error0_i = rec_error_i
+                    if rec_error_i < tol_inner * rec_error0_i:
+                        break
+            rec_error_o += rec_error_i
 
-        if iteration == 0:
-            rec_error0 = rec_error
-        if rec_error < tol * rec_error0:
+        if iteration_o == 0:
+            rec_error0_o = rec_error_o
+        if rec_error_o < tol_outer * rec_error0_o:
             break
-
     return V
