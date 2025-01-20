@@ -3624,7 +3624,7 @@ def hals_pr_nnls(UtM, UtU, z, V=None, p_coefficient=100, n_iter_max_outer=500, n
 
 
 def hals_nnls_prior(UtM, UtU, z, V=None, p_coefficient=100, n_iter_max_outer=500, n_iter_max_inner=100, tol_outer=1e-8,
-                 tol_inner=1e-8, epsilon=1e-8):
+                    tol_inner=1e-8, epsilon=1e-8):
     """
 
     """
@@ -3739,4 +3739,27 @@ def initialization_2d(M, rank, method='nndsvd'):
     if method == 'nndsvdar':
         W[W == 0] = np.random.uniform(0, np.mean(M) / 100, W[W == 0].shape)
         H[H == 0] = np.random.uniform(0, np.mean(M) / 100, H[H == 0].shape)
+
     return W, H
+
+
+def substitute_loadings_with_prior(eem_stack, loadings, prior_score_loading=None, prior_component_loading=None):
+    if prior_score_loading is None and prior_component_loading is not None:
+        for i in range(len(prior_component_loading)):
+            if len(loadings) == 2:
+                component_ref = prior_component_loading[0][:, i]
+            elif len(loadings) == 3:
+                component_ref = np.outer(prior_component_loading[0][:, i], prior_component_loading[1][:, i])
+            sim = -1
+            best_fit_idx = 0
+            for j in range(loadings[0].shape[1]):
+                if len(loadings) == 2:
+                    component_init = loadings[1][:, j]
+                    r, _ = pearsonr(component_init, component_ref)
+                elif len(loadings) == 3:
+                    component_init = np.outer(loadings[1][:, j], loadings[2][:, j])
+                    r, _ = pearsonr(component_init.reshape(-1), component_ref.reshape(-1))
+                if r > sim:
+                    sim = r
+                    best_fit_idx = j
+            loadings[0]
