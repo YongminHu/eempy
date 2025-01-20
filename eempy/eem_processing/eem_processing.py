@@ -2858,7 +2858,7 @@ class KMethod:
                     quenching_coef_test = get_quenching_coef(fmax_m, self.kw_unquenched, self.kw_quenched)
 
                     quenching_coef_diff = np.abs(quenching_coef_test - quenching_coef_archetype)
-                    sample_error.append(np.sum(quenching_coef_diff**2, axis=1))
+                    sample_error.append(np.sum(quenching_coef_diff ** 2, axis=1))
             best_model_idx = np.argmin(sample_error, axis=0)
             least_model_errors = np.min(sample_error, axis=0)
             for j, label in enumerate(models.keys()):
@@ -2994,7 +2994,8 @@ class KMethod:
             if self.error_calculation == "reconstruction_error":
                 eem_dataset_n, selected_indices = eem_dataset.subsampling(portion=subsampling_portion)
             elif self.error_calculation == "quenching_coefficient":
-                eem_dataset_new_uq, selected_indices_uq = eem_dataset_unquenched.subsampling(portion=subsampling_portion)
+                eem_dataset_new_uq, selected_indices_uq = eem_dataset_unquenched.subsampling(
+                    portion=subsampling_portion)
                 pos = [eem_dataset_unquenched.index.index(idx) for idx in eem_dataset_new_uq.index]
                 quenched_index = [eem_dataset_quenched.index[idx] for idx in pos]
                 eem_dataset_new_q, _ = eem_dataset.filter_by_index(None, quenched_index, copy=True)
@@ -3156,17 +3157,26 @@ class KMethod:
         return best_model_label, score_all, fmax_all, sample_error
 
 
-class CorrPARAFAC:
+class PRPARAFAC:
+    """
+    Proportionality-regularized PARAFAC.
 
-    def __init__(self, n_components, init='svd', n_inner_iter=1, n_outer_iter_max=100, tol=1e-08,
-                 tf_normalization=True, loadings_normalization: Optional[str] = 'sd', sort_em=True):
+    Parameters
+    ----------
+    z: dict
+        The prior knowledge. If a dict is given, the keys should be the mode number, and the values are the prior knowledge
+        vectors correspondingly. For self-correlation, the value of the corresponding mode can be specified as "self-correlation"
+    """
+    def __init__(self, n_components, z_dict, init="svd", n_iter_max=100, tol=1e-08, p_coefficient=0.1,
+                 tf_normalization=True, loadings_normalization: Optional[str] = "sd", sort_em=True):
 
         # ----------parameters--------------
         self.n_components = n_components
+        self.z_dict = z_dict
         self.init = init
-        self.n_outer_iter_max = n_outer_iter_max
-        self.n_inner_iter = n_inner_iter
+        self.n_iter_max = n_iter_max
         self.tol = tol
+        self.p_coefficient = p_coefficient
         self.tf_normalization = tf_normalization
         self.loadings_normalization = loadings_normalization
         self.sort_em = sort_em
@@ -3186,65 +3196,14 @@ class CorrPARAFAC:
     # --------------methods------------------
     def fit(self, eem_dataset: EEMDataset, index_div1=None, index_div2=None):
 
-        # def formulate_hals_elements(X, loadings_list: list, mode):
-        #     """
-        #
-        #     Parameters
-        #     ----------
-        #     X: 3-way tensor
-        #     loadings_list: list of loadings
-        #     mode: the mode being updated
-        #
-        #     Returns
-        #     -------
-        #     M: MTTKRP
-        #     P: Hadamard of cross-products
-        #
-        #     """
-        #     new_order = [mode] + [i for i in range(X.ndim) if i != mode]
-        #     X_unfolded = X.transpose(new_order).reshape(X.shape[mode], -1)
-        #     L_1, L_2 = [l for i, l in enumerate(loadings_list) if i != mode]
-        #     M = X_unfolded.dot(khatri_rao(L_2, L_1))
-        #     P = np.multiply(L_1.T.dot(L_1), L_2.T.dot(L_2))
-        #     return M, P
-        #
-        # def hals(M, U, V):
-        #     UtM = U.T.dot(M)
-        #     UtU = U.T.dot(U)
-        #     V = hals_nnls(UtM, UtU, V)
-        #     return V
-        #
         if self.tf_normalization:
             eem_stack_tf, tf_weights = eem_dataset.tf_normalization(copy=True)
         else:
             eem_stack_tf = eem_dataset.eem_stack
         a, b, c = eem_stack_tf.shape
-        # L_a, L_b, L_c = eems_decomposition_initialization(eem_stack_tf, rank=self.n_components, method=self.init)
-        # loadings = [L_a, L_b, L_c]
 
-        # rel_error = []
-        #
-        # for i in range(self.n_outer_iter_max):
-        #
-        #     # HALS
-        #     for m, l in enumerate(loadings):
-        #         M, P = formulate_hals_elements(eem_stack_tf, loadings, mode=m)
-        #         L_T = hals(M.T, P, loadings[m].T)
-        #         loadings[m] = L_T.T
-        #
-        #     # calculate fitting error
-        #     eem_stack_fitted = cp_to_tensor([[1 for i in range(self.n_components)], loadings])
-        #     rel_error.append(
-        #             np.linalg.norm(eem_stack_fitted.reshape(-1)-eem_stack_tf.reshape(-1)) /
-        #             np.linalg.norm(eem_stack_tf.reshape(-1)))
-        #
-        #     # detect convergence
-        #     if i > 1:
-        #         if rel_error[-2] - rel_error[-1] < self.tol:
-        #             break
-
-        cptensors = non_negative_parafac_q(eem_stack_tf, rank=self.n_components, init=self.init,
-                                           n_iter_max=self.n_outer_iter_max, tol=self.tol)
+        cptensors = non_negative_pr_parafac(eem_stack_tf, rank=self.n_components, z_dict=self.z_dict, init=self.init,
+                                            n_iter_max=self.n_iter_max, tol=self.tol, p_coefficient=self.p_coefficient)
 
         L_a, L_b, L_c = cptensors[1]
 
@@ -3366,23 +3325,10 @@ def formulate_hals_elements(X, loadings_list: list, mode):
     return M, P
 
 
-def non_negative_parafac_q(
-        tensor,
-        rank,
-        n_iter_max=100,
-        init="svd",
-        svd="truncated_svd",
-        tol=10e-8,
-        random_state=None,
-        sparsity_coefficients=None,
-        fixed_modes=None,
-        nn_modes="all",
-        exact=False,
-        normalize_factors=False,
-        verbose=False,
-        return_errors=False,
-        cvg_criterion="abs_rec_error",
-):
+def non_negative_pr_parafac(tensor, rank, z_dict, n_iter_max=100, p_coefficient=0.1, init="svd",
+                            svd="truncated_svd", tol=10e-8, random_state=None, sparsity_coefficients=None,
+                            fixed_modes=None, normalize_factors=False, verbose=False,
+                            return_errors=False, cvg_criterion="abs_rec_error"):
     """
     Non-negative CP decomposition via HALS
 
@@ -3411,10 +3357,6 @@ def non_negative_parafac_q(
     fixed_modes: array of integers (between 0 and the number of modes)
         Has to be set not to update a factor, 0 and 1 for U and V respectively
         Default: None
-    nn_modes: None, 'all' or array of integers (between 0 and the number of modes)
-        Used to specify which modes to impose non-negativity constraints on.
-        If 'all', then non-negativity is imposed on all modes.
-        Default: 'all'
     exact: If it is True, the algorithm gives a results with high precision but it needs high computational cost.
         If it is False, the algorithm gives an approximate solution
         Default: False
@@ -3443,11 +3385,6 @@ def non_negative_parafac_q(
     errors: list
         A list of reconstruction errors at each iteration of the algorithm.
 
-    References
-    ----------
-    .. [1] N. Gillis and F. Glineur, Accelerated Multiplicative Updates and
-           Hierarchical ALS Algorithms for Nonnegative Matrix Factorization,
-           Neural Computation 24 (4): 1085-1105, 2012.
     """
 
     weights, factors = initialize_cp(
@@ -3468,11 +3405,6 @@ def non_negative_parafac_q(
 
     if fixed_modes is None:
         fixed_modes = []
-
-    if nn_modes == "all":
-        nn_modes = set(range(n_modes))
-    elif nn_modes is None:
-        nn_modes = set()
 
     # Avoiding errors
     for fixed_value in fixed_modes:
@@ -3504,24 +3436,27 @@ def non_negative_parafac_q(
                     * pseudo_inverse
                     * tl.reshape(weights, (1, -1))
             )
-            # _, pseudo_inverse = formulate_hals_elements(tensor, factors, mode)
 
             mttkrp = unfolding_dot_khatri_rao(tensor, (weights, factors), mode)
 
-            if mode in nn_modes:
-                # Call the hals resolution with nnls, optimizing the current mode
-                nn_factor = hals_nnls(
+            if mode in list(z_dict.keys()):
+                nn_factor = hals_pr_nnls(
+                    UtM=tl.transpose(mttkrp),
+                    UtU=pseudo_inverse,
+                    V=tl.transpose(factors[mode]),
+                    z=z_dict[mode],
+                    n_iter_max_inner=50,
+                    n_iter_max_outer=100,
+                    p_coefficient=p_coefficient
+                )
+            else:
+                nn_factor = hals_nnls_normal(
                     tl.transpose(mttkrp),
                     pseudo_inverse,
                     tl.transpose(factors[mode]),
                     n_iter_max=100,
-                    sparsity_coefficient=sparsity_coefficients[mode],
-                    exact=exact,
                 )
-                factors[mode] = tl.transpose(nn_factor)
-            else:
-                factor = tl.solve(tl.transpose(pseudo_inverse), tl.transpose(mttkrp))
-                factors[mode] = tl.transpose(factor)
+            factors[mode] = tl.transpose(nn_factor)
             if normalize_factors and mode != modes[-1]:
                 weights, factors = tl.cp_normalize((weights, factors))
         if tol:
@@ -3563,105 +3498,69 @@ def non_negative_parafac_q(
         return cp_tensor
 
 
-def hals_nnls_ic(
-    UtM,
-    UtU,
-    ic_coefficient=100,
-    V=None,
-    n_iter_max_outer=500,
-    n_iter_max_inner=100,
-    tol_outer=1e-8,
-    tol_inner=1e-3,
-):
+def hals_nnls_normal(UtM, UtU, V=None, n_iter_max=500, tol=1e-8, sparsity_coefficient=None, ridge_coefficient=None,
+                     nonzero_rows=False, exact=False, epsilon=0.0, callback=None):
     """
-    Non Negative Least Squares (NNLS)
 
-    Computes an approximate solution of a nonnegative least
-    squares problem (NNLS) with an exact block-coordinate descent scheme.
-    M is m by n, U is m by r, V is r by n.
-    All matrices are nonnegative componentwise.
+    """
 
-    This algorithm is a simplified implementation of the accelerated HALS defined in [1]. It features an early stop stopping criterion. It is simplified to ensure reproducibility and expose a simple API to control the number of inner iterations.
+    rank, _ = tl.shape(UtM)
+    if V is None:
+        V = tl.solve(UtU, UtM)
+        V = tl.clip(V, a_min=0, a_max=None)
+        # Scaling
+        scale = tl.sum(UtM * V) / tl.sum(UtU * tl.dot(V, tl.transpose(V)))
+        V = V * scale
 
-    This function is made for being used repetively inside an
-    outer-loop alternating algorithm, for instance for computing nonnegative
-    matrix Factorization or tensor factorization. To use as a stand-alone solver, set the exact flag to True.
+    if exact:
+        n_iter_max = 50000
+        tol = 1e-16
 
-    Parameters
-    ----------
-    UtM: r-by-n array
-        Pre-computed product of the transposed of U and M, used in the update rule
-    UtU: r-by-r array
-        Pre-computed product of the transposed of U and U, used in the update rule
-    V: r-by-n initialization matrix (mutable)
-        Initialized V array
-        By default, is initialized with one non-zero entry per column
-        corresponding to the closest column of U of the corresponding column of M.
-    n_iter_max: Positive integer
-        Upper bound on the number of iterations
-        Default: 500
-    tol : float in [0,1]
-        early stop criterion, while err_k > delta*err_0. Set small for
-        almost exact nnls solution, or larger (e.g. 1e-2) for inner loops
-        of a PARAFAC computation.
-        Default: 10e-8
-    nonzero_rows: boolean
-        True if the lines of the V matrix can't be zero,
-        False if they can be zero
-        Default: False
+    for iteration in range(n_iter_max):
+        rec_error = 0
+        for k in range(rank):
+            if UtU[k, k]:
+                num = UtM[k, :] - tl.dot(UtU[k, :], V) + UtU[k, k] * V[k, :]
+                den = UtU[k, k]
+
+                if sparsity_coefficient is not None:
+                    num -= sparsity_coefficient
+                if ridge_coefficient is not None:
+                    den += 2 * ridge_coefficient
+
+                newV = tl.clip(num / den, a_min=epsilon)
+                rec_error += tl.norm(V[k, :] - newV) ** 2
+                V = tl.index_update(V, tl.index[k, :], newV)
+
+                # Safety procedure, if columns aren't allow to be zero
+                if nonzero_rows and tl.all(V[k, :] == 0):
+                    V[k, :] = tl.eps(V.dtype) * tl.max(V)
+            elif nonzero_rows:
+                raise ValueError(
+                    "Column " + str(k) + " of U is zero with nonzero condition"
+                )
+
+        if callback is not None:
+            retVal = callback(V, rec_error)
+            if retVal is True:
+                print("Received True from callback function. Exiting.")
+                break
+
+        if iteration == 0:
+            rec_error0 = rec_error
+        if rec_error < tol * rec_error0:
+            break
+
+    return V
 
 
-    Returns
-    -------
-    V: array
-        a r-by-n nonnegative matrix, see notes.
-
-    Notes
-    -----
-    We solve the following problem
-
-    .. math::
-
-            \\min_{V >= \\epsilon} ||M-UV||_F^2
-
-    The matrix V is updated linewise. The update rule for this resolution is
-
-    .. math::
-
-            \\begin{equation}
-                V[k,:]_{(j+1)} = V[k,:]_{(j)} + (UtM[k,:] - UtU[k,:]\\times V_{(j)})/UtU[k,k]
-            \\end{equation}
-
-    with j the update iteration index. V is then thresholded to be larger than epsilon.
-
-    This problem can also be defined by adding respectively a sparsity coefficient and a ridge coefficients
-
-    .. math:: \lambda_s, \lambda_r
-
-    enhancing sparsity or smoothness in the solution [2]. In this sparse/ridge version, the update rule becomes
-
-    .. math::
-
-            \\begin{equation}
-                V[k,:]_{(j+1)} = V[k,:]_{(j)} + (UtM[k,:] - UtU[k,:]\\times V_{(j)} - \lambda_s)/(UtU[k,k]+2\lambda_r)
-            \\end{equation}
-
-    Note that the data fitting is halved but not the ridge penalization.
-
-    References
-    ----------
-    .. [1] N. Gillis and F. Glineur, Accelerated Multiplicative Updates and
-       Hierarchical ALS Algorithms for Nonnegative Matrix Factorization,
-       Neural Computation 24 (4): 1085-1105, 2012.
-
-    .. [2] J. Eggert, and E. Korner. "Sparse coding and NMF."
-       2004 IEEE International Joint Conference on Neural Networks
-       (IEEE Cat. No. 04CH37541). Vol. 4. IEEE, 2004.
+def hals_pr_nnls(UtM, UtU, z, V=None, p_coefficient=100, n_iter_max_outer=500, n_iter_max_inner=100, tol_outer=1e-8,
+                 tol_inner=1e-8, epsilon=1e-8):
+    """
 
     """
 
     rank, n = tl.shape(UtM)
-    s = int(n/2)
     if V is None:
         V = tl.solve(UtU, UtM)
         V = tl.clip(V, a_min=0, a_max=None)
@@ -3671,33 +3570,173 @@ def hals_nnls_ic(
 
     for iteration_o in range(n_iter_max_outer):
         rec_error_o = 0
-        for k in range(rank):
-            rec_error_i = 0
-            if UtU[k, k]:
-                for iteration_i in range(n_iter_max_inner):
-                    c1 = 2 * UtU[k, k] * np.identity(s)
-                    c2 = ic_coefficient/s * np.diagflat(V[k, s:])
-                    c3 = ic_coefficient/s**2 * np.outer(V[k, s:], V[k, s:])
-                    f1 = c1 + c2 - c3
-                    f2 = UtM[k, 0:s] - tl.dot(UtU[k, :], V[:, 0:s]) + UtU[k, k] * V[k, 0:s]
-                    newV = tl.clip(tl.dot(np.linalg.inv(f1), f2), amin=0)
-                    V = tl.index_update(V, tl.index[k, 0:s], newV)
+        if isinstance(z, str) and z == "self-correlation":
+            s = int(n / 2)
+            for k in range(rank):
+                rec_error_i = 0
+                if UtU[k, k]:
+                    for iteration_i in range(n_iter_max_inner):
+                        c1 = 2 * UtU[k, k] * np.identity(s)
+                        c2 = p_coefficient / s * np.diagflat(V[k, s:] / 1)
+                        c3 = p_coefficient / s ** 2 * np.outer(V[k, s:] / 1, V[k, s:] / 1)
+                        f1 = c1 + c2 - c3
+                        f2 = UtM[k, 0:s] - tl.dot(UtU[k, :], V[:, 0:s]) + UtU[k, k] * V[k, 0:s]
+                        newV = tl.clip(2 * tl.dot(np.linalg.inv(f1), f2), a_min=epsilon)
+                        rec_error_i = tl.norm(V[k, 0:s] - newV) ** 2
+                        # V = tl.index_update(V, tl.index[k, 0:s], newV)
+                        V[k, 0:s] = newV
 
-                    c2 = ic_coefficient/s * np.diagflat(V[k, 0:s])
-                    c3 = ic_coefficient/s**2 * np.outer(V[k, 0:s], V[k, 0:s])
-                    f1 = c1 + c2 - c3
-                    f2 = UtM[k, s:] - tl.dot(UtU[k, :], V[:, s:]) + UtU[k, k] * V[k, s:]
-                    newV = tl.clip(tl.dot(np.linalg.inv(f1), f2), amin=0)
-                    V = tl.index_update(V, tl.index[k, s:], newV)
-                    rec_error_i = tl.norm(V[k, :] - newV) ** 2
-                    if iteration_i == 0:
-                        rec_error0_i = rec_error_i
-                    if rec_error_i < tol_inner * rec_error0_i:
-                        break
-            rec_error_o += rec_error_i
+                        c2 = p_coefficient / s * np.diagflat(V[k, 0:s] / 1)
+                        c3 = p_coefficient / s ** 2 * np.outer(V[k, 0:s] / 1, V[k, 0:s] / 1)
+                        f1 = c1 + c2 - c3
+                        f2 = UtM[k, s:] - tl.dot(UtU[k, :], V[:, s:]) + UtU[k, k] * V[k, s:]
+                        newV = tl.clip(2 * tl.dot(np.linalg.inv(f1), f2), a_min=epsilon)
+                        rec_error_i += tl.norm(V[k, s:] - newV) ** 2
+                        # V = tl.index_update(V, tl.index[k, s:], newV)
+                        V[k, s:] = newV
 
+                        if iteration_i == 0:
+                            rec_error0_i = rec_error_i
+                        if rec_error_i < tol_inner * rec_error0_i:
+                            break
+                    rec_error_o += rec_error_i
+        elif isinstance(z, np.ndarray):
+            for k in range(rank):
+                if UtU[k, k]:
+                    if k in [i for i in range(z.shape[1])]:
+                        c1 = 2 * UtU[k, k] * np.identity(n)
+                        c2 = p_coefficient / n * np.diagflat(z[:, k] / 1)
+                        c3 = p_coefficient / n ** 2 * np.outer(z[:, k] / 1, z[:, k] / 1)
+                        f1 = c1 + c2 - c3
+                        f2 = UtM[k, :] - tl.dot(UtU[k, :], V) + UtU[k, k] * V[k, :]
+                        newV = tl.clip(2 * tl.dot(np.linalg.inv(f1), f2), a_min=epsilon)
+                    else:
+                        num = UtM[k, :] - tl.dot(UtU[k, :], V) + UtU[k, k] * V[k, :]
+                        den = UtU[k, k]
+                        newV = tl.clip(num / den, a_min=epsilon)
+                    rec_error_o += tl.norm(V[k, :] - newV) ** 2
+                    V[k, :] = newV
         if iteration_o == 0:
             rec_error0_o = rec_error_o
         if rec_error_o < tol_outer * rec_error0_o:
             break
     return V
+
+
+def hals_nnls_prior(UtM, UtU, z, V=None, p_coefficient=100, n_iter_max_outer=500, n_iter_max_inner=100, tol_outer=1e-8,
+                 tol_inner=1e-8, epsilon=1e-8):
+    """
+
+    """
+
+    rank, n = tl.shape(UtM)
+    if V is None:
+        V = tl.solve(UtU, UtM)
+        V = tl.clip(V, a_min=0, a_max=None)
+        # Scaling
+        scale = tl.sum(UtM * V) / tl.sum(UtU * tl.dot(V, tl.transpose(V)))
+        V = V * scale
+
+    for iteration_o in range(n_iter_max_outer):
+        rec_error_o = 0
+        if isinstance(z, str) and z == "self-correlation":
+            s = int(n / 2)
+            for k in range(rank):
+                rec_error_i = 0
+                if UtU[k, k]:
+                    for iteration_i in range(n_iter_max_inner):
+                        c1 = 2 * UtU[k, k] * np.identity(s)
+                        c2 = p_coefficient / s * np.diagflat(V[k, s:] / 1)
+                        c3 = p_coefficient / s ** 2 * np.outer(V[k, s:] / 1, V[k, s:] / 1)
+                        f1 = c1 + c2 - c3
+                        f2 = UtM[k, 0:s] - tl.dot(UtU[k, :], V[:, 0:s]) + UtU[k, k] * V[k, 0:s]
+                        newV = tl.clip(2 * tl.dot(np.linalg.inv(f1), f2), a_min=epsilon)
+                        rec_error_i = tl.norm(V[k, 0:s] - newV) ** 2
+                        # V = tl.index_update(V, tl.index[k, 0:s], newV)
+                        V[k, 0:s] = newV
+
+                        c2 = p_coefficient / s * np.diagflat(V[k, 0:s] / 1)
+                        c3 = p_coefficient / s ** 2 * np.outer(V[k, 0:s] / 1, V[k, 0:s] / 1)
+                        f1 = c1 + c2 - c3
+                        f2 = UtM[k, s:] - tl.dot(UtU[k, :], V[:, s:]) + UtU[k, k] * V[k, s:]
+                        newV = tl.clip(2 * tl.dot(np.linalg.inv(f1), f2), a_min=epsilon)
+                        rec_error_i += tl.norm(V[k, s:] - newV) ** 2
+                        # V = tl.index_update(V, tl.index[k, s:], newV)
+                        V[k, s:] = newV
+
+                        if iteration_i == 0:
+                            rec_error0_i = rec_error_i
+                        if rec_error_i < tol_inner * rec_error0_i:
+                            break
+                    rec_error_o += rec_error_i
+        elif isinstance(z, np.ndarray):
+            for k in range(rank):
+                if UtU[k, k]:
+                    if k in [i for i in range(z.shape[1])]:
+                        c1 = 2 * UtU[k, k] * np.identity(n)
+                        c2 = p_coefficient / n * np.diagflat(z[:, k] / 1)
+                        c3 = p_coefficient / n ** 2 * np.outer(z[:, k] / 1, z[:, k] / 1)
+                        f1 = c1 + c2 - c3
+                        f2 = UtM[k, :] - tl.dot(UtU[k, :], V) + UtU[k, k] * V[k, :]
+                        newV = tl.clip(2 * tl.dot(np.linalg.inv(f1), f2), a_min=epsilon)
+                    else:
+                        num = UtM[k, :] - tl.dot(UtU[k, :], V) + UtU[k, k] * V[k, :]
+                        den = UtU[k, k]
+                        newV = tl.clip(num / den, a_min=epsilon)
+                    rec_error_o += tl.norm(V[k, :] - newV) ** 2
+                    V[k, :] = newV
+        if iteration_o == 0:
+            rec_error0_o = rec_error_o
+        if rec_error_o < tol_outer * rec_error0_o:
+            break
+    return V
+
+
+
+def initialization_2d(M, rank, method='nndsvd'):
+    # Step 1: Compute SVD of V
+    U, S, VT = np.linalg.svd(M, full_matrices=False)  # SVD decomposition
+
+    # Step 2: Keep the top-r components
+    U_r = U[:, :rank]
+    S_r = S[:rank]
+    VT_r = VT[:rank, :]
+
+    # Step 3: Initialize W and H
+    W = np.zeros((M.shape[0], rank))
+    H = np.zeros((rank, M.shape[1]))
+
+    for k in range(rank):
+        u_k = U_r[:, k]
+        v_k = VT_r[k, :]
+
+        # Positive and negative parts
+        u_k_pos = np.maximum(u_k, 0)
+        u_k_neg = np.maximum(-u_k, 0)
+        v_k_pos = np.maximum(v_k, 0)
+        v_k_neg = np.maximum(-v_k, 0)
+
+        # Normalize
+        u_norm_pos = np.linalg.norm(u_k_pos)
+        v_norm_pos = np.linalg.norm(v_k_pos)
+
+        # Assign components
+        if u_norm_pos * v_norm_pos > 0:
+            W[:, k] = np.sqrt(S_r[k]) * (u_k_pos / u_norm_pos)
+            H[k, :] = np.sqrt(S_r[k]) * (v_k_pos / v_norm_pos)
+        else:
+            W[:, k] = np.sqrt(S_r[k]) * (u_k_neg / np.linalg.norm(u_k_neg))
+            H[k, :] = np.sqrt(S_r[k]) * (v_k_neg / np.linalg.norm(v_k_neg))
+
+    # Step 4: Handle zero entries
+    if method == 'nndsvd':
+        # W[W == 0] = np.random.uniform(0, 1e-4, W[W == 0].shape)
+        # H[H == 0] = np.random.uniform(0, 1e-4, H[H == 0].shape)
+        pass
+    if method == 'nndsvda':
+        W[W == 0] = np.mean(M)
+        H[H == 0] = np.mean(M)
+    if method == 'nndsvdar':
+        W[W == 0] = np.random.uniform(0, np.mean(M) / 100, W[W == 0].shape)
+        H[H == 0] = np.random.uniform(0, np.mean(M) / 100, H[H == 0].shape)
+    return W, H

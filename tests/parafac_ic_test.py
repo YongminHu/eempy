@@ -1,19 +1,173 @@
+import numpy as np
+
 from eempy.read_data import read_eem_dataset, read_abs_dataset, read_eem, read_eem_dataset_from_json
 from eempy.eem_processing import *
 from eempy.plot import plot_eem, plot_loadings, plot_fmax
 from sklearn.metrics import mean_squared_error
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
 
+# ---------------Read EEM dataset-----------------
 
-# ---------------Effect of initialization-----------------
-eem_dataset_path = 'C:/PhD/Fluo-detect/_data/20240313_BSA_Ecoli/synthetic_samples.json'
+eem_dataset_path = \
+    "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_282_ex_274_em_310_mfem_7_gaussian.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
-true_components = np.array([eem_dataset.eem_stack[-5], eem_dataset.eem_stack[0]])
-_, fmax_measured, _ = eems_fit_components(eem_dataset.eem_stack, true_components)
-fmax_measured = pd.DataFrame(fmax_measured, index=eem_dataset.index)
-eem_dataset_o, _ = eem_dataset.filter_by_index(['0gL'], None, copy=True)
-eem_dataset_q, _ = eem_dataset.filter_by_index(['2_5gL'], None, copy=True)
+eem_dataset, _ = eem_dataset.filter_by_index(None, ['2024-10-17'], copy=True)
+eem_dataset_o, _ = eem_dataset.filter_by_index(['B1C1'], None, copy=True)
+eem_dataset_q, _ = eem_dataset.filter_by_index(['B1C2'], None, copy=True)
+eem_dataset_rearranged = combine_eem_datasets([eem_dataset_o, eem_dataset_q])
+
+
+# eem_dataset_path = 'C:/PhD/Fluo-detect/_data/20240313_BSA_Ecoli/synthetic_samples.json'
+# eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
+# true_components = np.array([eem_dataset.eem_stack[-5], eem_dataset.eem_stack[0]])
+# _, fmax_measured, _ = eems_fit_components(eem_dataset.eem_stack, true_components)
+# fmax_measured = pd.DataFrame(fmax_measured, index=eem_dataset.index)
+# eem_dataset_o, _ = eem_dataset.filter_by_index(['0gL'], None, copy=True)
+# eem_dataset_q, _ = eem_dataset.filter_by_index(['2_5gL'], None, copy=True)
+
+
+#------------nmf_ic--------------
 
 X1 = eem_dataset_o.eem_stack
-X2 = eem_dataset_q.eem_stack
-X = np.concatenate((X1, X2), axis=0)
+# X2 = eem_dataset_q.eem_stack
+# X = np.concatenate((X1, X2), axis=0)
+X = X1.reshape([X1.shape[0], -1])
+z_dict = {0: eem_dataset_o.ref["TCC"].to_numpy().reshape([eem_dataset_o.ref["TCC"].shape[0], 1])}
+rank = 4
+max_iter = 300
+
+U, V = initialization_2d(X, rank=rank)
+loadings = [U, V.T]
+for i in range(max_iter):
+    for mode_to_update in range(X.ndim):
+        mode_fixed = [i for i in range(X.ndim) if i != mode_to_update][0]
+        new_order = [mode_fixed] + [mode_to_update]
+        X_reshaped = X.transpose(new_order)
+        U = loadings[mode_fixed]
+        V = loadings[mode_to_update].T
+        UtU = U.T.dot(U)
+        UtM = U.T.dot(X_reshaped)
+        if mode_to_update == 0:
+            V = hals_pr_nnls(UtM, UtU, z=z_dict[0], V=V, p_coefficient=1e7, n_iter_max_inner=100, n_iter_max_outer=200)
+        else:
+            V = hals_nnls_normal(UtM, UtU, V)
+        loadings[mode_to_update] = V.T
+        # V = hals_nnls_normal(UtM, UtU, V, epsilon=1e-8)
+
+components = [loadings[1][:, i].reshape([eem_dataset.eem_stack.shape[1], -1]) for i in range(rank)]
+for c in components:
+    plot_eem(c, ex_range=eem_dataset.ex_range, em_range=eem_dataset.em_range)
+
+fig1, ax1 = plt.subplots()
+fig2, ax2 = plt.subplots()
+# ax1.plot(eem_dataset_o.ref['TCC'], loadings[0][:int(X.shape[0]/2), 1], 'o', color='red')
+for i in range(rank):
+    ax1.plot(eem_dataset_o.ref['TCC'], loadings[0][:, i], 'o')
+fig1.show()
+# ax2.plot([1.66, 0.83, 1.245, 0.415, 0], loadings[0][:int(X.shape[0]/2), 1], 'o', color='red')
+# fig2.show()
+
+# #------------parafac_ic--------------
+# rank = 4
+# ic_coeffcients = [500, 1000, 2000, 2500, 7500]
+# kw_o = "B1C1"
+# kw_q = "B1C2"
+#
+# n_cols = 2
+# n_rows = rank // n_cols + 1
+# fig_fmax_ratio_box = make_subplots(rows=n_rows,
+#                                    cols=n_cols,
+#                                    subplot_titles=[f"component{i+1}" for i in range(rank)])
+# fig_fmax_ratio_std = make_subplots(rows=n_rows,
+#                                    cols=n_cols,
+#                                    subplot_titles=[f"component{i+1}" for i in range(rank)])
+# fig_cor = make_subplots(rows=n_rows,
+#                         cols=n_cols,
+#                         subplot_titles=[f"component{i+1}" for i in range(rank)])
+# fig_p = make_subplots(rows=n_rows,
+#                       cols=n_cols,
+#                       subplot_titles=[f"component{i+1}" for i in range(rank)])
+#
+# fmax_ratio_stds = {f"component {i+1}": [] for i in range(rank)}
+# cors = {f"component {i+1}": [] for i in range(rank)}
+# ps = {f"component {i+1}": [] for i in range(rank)}
+# for icc in ic_coeffcients:
+#     model = PRPARAFAC(n_components=rank, n_iter_max=500, p_coefficient=icc,
+#                       z_dict={0: eem_dataset_o.ref["TCC"].to_numpy().reshape([eem_dataset_o.ref["TCC"].shape[0], 1])})
+#     model.fit(eem_dataset_o)
+#     fmax_tot = model.fmax
+#     fmax_original = fmax_tot[fmax_tot.index.str.contains(kw_o)]
+#     # fmax_quenched = fmax_tot[fmax_tot.index.str.contains(kw_q)]
+#     # fmax_ratio = fmax_original.to_numpy() / fmax_quenched.to_numpy()
+#     # fmax_ratio_std = np.std(fmax_ratio, axis=0)
+#     for i in range(rank):
+#         # fmax_ratio_stds[f"component {i+1}"].append(fmax_ratio_std[i])
+#         # fig_fmax_ratio_box.add_trace(
+#         #     go.Box(
+#         #         y=fmax_ratio[:, i],
+#         #         name=str(icc),
+#         #         showlegend=False,
+#         #     ),
+#         #     row=i // n_cols + 1, col=i % n_cols + 1
+#         # )
+#         cor, p = pearsonr(fmax_original.iloc[:, i], eem_dataset_o.ref["TCC"])
+#         cors[f"component {i+1}"].append(cor)
+#         ps[f"component {i+1}"].append(p)
+#
+# for i in range(rank):
+#     # fig_fmax_ratio_std.add_trace(
+#     #     go.Scatter(
+#     #         x=[str(c) for c in ic_coeffcients],  # Position the text at the x location of the box
+#     #         y=fmax_ratio_stds[f'component {i+1}'],  # Position the text near the mean of the box values
+#     #         # text=[f'std={ratio_std:.2g}<br>cor_tcc={cor_tcc:.2g}<br>cor_doc={cor_doc:.2g}'],  # Custom text
+#     #         mode='markers',  # Only display text
+#     #         textposition="top right",  # Position text relative to the point
+#     #         showlegend=False,  # Hide legend for this trace
+#     #         marker=dict(
+#     #             size=10,  # Marker size
+#     #             symbol='circle',  # Marker symbol
+#     #             opacity=0.8  # Transparency
+#     #         ),
+#     #     ),
+#     #     row=i // n_cols + 1, col=i % n_cols + 1
+#     # )
+#     fig_cor.add_trace(
+#         go.Scatter(
+#             x=[str(c) for c in ic_coeffcients],  # Position the text at the x location of the box
+#             y=cors[f'component {i+1}'],  # Position the text near the mean of the box values
+#             # text=[f'std={ratio_std:.2g}<br>cor_tcc={cor_tcc:.2g}<br>cor_doc={cor_doc:.2g}'],  # Custom text
+#             mode='markers',  # Only display text
+#             textposition="top right",  # Position text relative to the point
+#             showlegend=False,  # Hide legend for this trace
+#             marker=dict(
+#                 size=10,  # Marker size
+#                 symbol='circle',  # Marker symbol
+#                 opacity=0.8  # Transparency
+#             ),
+#         ),
+#         row=i // n_cols + 1, col=i % n_cols + 1
+#     )
+#     fig_p.add_trace(
+#         go.Scatter(
+#             x=[str(c) for c in ic_coeffcients],  # Position the text at the x location of the box
+#             y=ps[f'component {i+1}'],  # Position the text near the mean of the box values
+#             # text=[f'std={ratio_std:.2g}<br>cor_tcc={cor_tcc:.2g}<br>cor_doc={cor_doc:.2g}'],  # Custom text
+#             mode='markers',  # Only display text
+#             textposition="top right",  # Position text relative to the point
+#             showlegend=False,  # Hide legend for this trace
+#             marker=dict(
+#                 size=10,  # Marker size
+#                 symbol='circle',  # Marker symbol
+#                 opacity=0.8  # Transparency
+#             ),
+#         ),
+#         row=i // n_cols + 1, col=i % n_cols + 1
+#     )
+#
+# # fig_fmax_ratio_box.show()
+# # fig_fmax_ratio_std.show()
+# fig_cor.show()
+# fig_p.show()
+
 
