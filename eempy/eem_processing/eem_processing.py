@@ -3440,7 +3440,7 @@ def non_negative_pr_parafac(tensor, rank, z_dict, n_iter_max=100, p_coefficient=
             mttkrp = unfolding_dot_khatri_rao(tensor, (weights, factors), mode)
 
             if mode in list(z_dict.keys()):
-                nn_factor = hals_pr_nnls(
+                nn_factor = hals_pr_nnls2(
                     UtM=tl.transpose(mttkrp),
                     UtU=pseudo_inverse,
                     V=tl.transpose(factors[mode]),
@@ -3554,8 +3554,8 @@ def hals_nnls_normal(UtM, UtU, V=None, n_iter_max=500, tol=1e-8, sparsity_coeffi
     return V
 
 
-def hals_pr_nnls(UtM, UtU, z, V=None, p_coefficient=100, n_iter_max_outer=500, n_iter_max_inner=100, tol_outer=1e-8,
-                 tol_inner=1e-8, epsilon=1e-8):
+def hals_pr_nnls2(UtM, UtU, z, V=None, p_coefficient=100, n_iter_max_outer=500, n_iter_max_inner=100, tol_outer=1e-8,
+                  tol_inner=1e-8, epsilon=1e-8):
     """
 
     """
@@ -3623,10 +3623,13 @@ def hals_pr_nnls(UtM, UtU, z, V=None, p_coefficient=100, n_iter_max_outer=500, n
     return V
 
 
-def hals_nnls_prior(UtM, UtU, z, V=None, p_coefficient=100, n_iter_max_outer=500, n_iter_max_inner=100, tol_outer=1e-8,
-                    tol_inner=1e-8, epsilon=1e-8):
+def hals_prior_nnls(UtM, UtU, regularization_dict, V=None, l=100, n_iter_max=500, tol=1e-8, epsilon=1e-8):
     """
-
+    Parameters
+    ----------
+    regularization_dict : dict
+        A dictionary in which the key(s) refer to the rank number to be regularized and the value(s) refer to the
+        corresponding prior knowledge vector.
     """
 
     rank, n = tl.shape(UtM)
@@ -3637,57 +3640,23 @@ def hals_nnls_prior(UtM, UtU, z, V=None, p_coefficient=100, n_iter_max_outer=500
         scale = tl.sum(UtM * V) / tl.sum(UtU * tl.dot(V, tl.transpose(V)))
         V = V * scale
 
-    for iteration_o in range(n_iter_max_outer):
+    for iteration_o in range(n_iter_max):
         rec_error_o = 0
-        if isinstance(z, str) and z == "self-correlation":
-            s = int(n / 2)
-            for k in range(rank):
-                rec_error_i = 0
-                if UtU[k, k]:
-                    for iteration_i in range(n_iter_max_inner):
-                        c1 = 2 * UtU[k, k] * np.identity(s)
-                        c2 = p_coefficient / s * np.diagflat(V[k, s:] / 1)
-                        c3 = p_coefficient / s ** 2 * np.outer(V[k, s:] / 1, V[k, s:] / 1)
-                        f1 = c1 + c2 - c3
-                        f2 = UtM[k, 0:s] - tl.dot(UtU[k, :], V[:, 0:s]) + UtU[k, k] * V[k, 0:s]
-                        newV = tl.clip(2 * tl.dot(np.linalg.inv(f1), f2), a_min=epsilon)
-                        rec_error_i = tl.norm(V[k, 0:s] - newV) ** 2
-                        # V = tl.index_update(V, tl.index[k, 0:s], newV)
-                        V[k, 0:s] = newV
-
-                        c2 = p_coefficient / s * np.diagflat(V[k, 0:s] / 1)
-                        c3 = p_coefficient / s ** 2 * np.outer(V[k, 0:s] / 1, V[k, 0:s] / 1)
-                        f1 = c1 + c2 - c3
-                        f2 = UtM[k, s:] - tl.dot(UtU[k, :], V[:, s:]) + UtU[k, k] * V[k, s:]
-                        newV = tl.clip(2 * tl.dot(np.linalg.inv(f1), f2), a_min=epsilon)
-                        rec_error_i += tl.norm(V[k, s:] - newV) ** 2
-                        # V = tl.index_update(V, tl.index[k, s:], newV)
-                        V[k, s:] = newV
-
-                        if iteration_i == 0:
-                            rec_error0_i = rec_error_i
-                        if rec_error_i < tol_inner * rec_error0_i:
-                            break
-                    rec_error_o += rec_error_i
-        elif isinstance(z, np.ndarray):
-            for k in range(rank):
-                if UtU[k, k]:
-                    if k in [i for i in range(z.shape[1])]:
-                        c1 = 2 * UtU[k, k] * np.identity(n)
-                        c2 = p_coefficient / n * np.diagflat(z[:, k] / 1)
-                        c3 = p_coefficient / n ** 2 * np.outer(z[:, k] / 1, z[:, k] / 1)
-                        f1 = c1 + c2 - c3
-                        f2 = UtM[k, :] - tl.dot(UtU[k, :], V) + UtU[k, k] * V[k, :]
-                        newV = tl.clip(2 * tl.dot(np.linalg.inv(f1), f2), a_min=epsilon)
-                    else:
-                        num = UtM[k, :] - tl.dot(UtU[k, :], V) + UtU[k, k] * V[k, :]
-                        den = UtU[k, k]
-                        newV = tl.clip(num / den, a_min=epsilon)
-                    rec_error_o += tl.norm(V[k, :] - newV) ** 2
-                    V[k, :] = newV
+        for k in range(rank):
+            if UtU[k, k]:
+                if k in list(regularization_dict.keys()):
+                    num = UtM[k, :] - tl.dot(UtU[k, :], V) + UtU[k, k] * V[k, :] + l * regularization_dict[k]
+                    den = UtU[k, k] + l
+                    newV = tl.clip(num / den, a_min=epsilon)
+                else:
+                    num = UtM[k, :] - tl.dot(UtU[k, :], V) + UtU[k, k] * V[k, :]
+                    den = UtU[k, k]
+                    newV = tl.clip(num / den, a_min=epsilon)
+                rec_error_o += tl.norm(V[k, :] - newV) ** 2
+                V[k, :] = newV
         if iteration_o == 0:
             rec_error0_o = rec_error_o
-        if rec_error_o < tol_outer * rec_error0_o:
+        if rec_error_o < tol * rec_error0_o:
             break
     return V
 
@@ -3743,23 +3712,37 @@ def initialization_2d(M, rank, method='nndsvd'):
     return W, H
 
 
-def substitute_loadings_with_prior(eem_stack, loadings, prior_score_loading=None, prior_component_loading=None):
-    if prior_score_loading is None and prior_component_loading is not None:
-        for i in range(len(prior_component_loading)):
-            if len(loadings) == 2:
-                component_ref = prior_component_loading[0][:, i]
-            elif len(loadings) == 3:
-                component_ref = np.outer(prior_component_loading[0][:, i], prior_component_loading[1][:, i])
-            sim = -1
-            best_fit_idx = 0
-            for j in range(loadings[0].shape[1]):
-                if len(loadings) == 2:
-                    component_init = loadings[1][:, j]
-                    r, _ = pearsonr(component_init, component_ref)
-                elif len(loadings) == 3:
-                    component_init = np.outer(loadings[1][:, j], loadings[2][:, j])
-                    r, _ = pearsonr(component_init.reshape(-1), component_ref.reshape(-1))
-                if r > sim:
-                    sim = r
-                    best_fit_idx = j
-            loadings[0]
+def replace_factor_with_prior(factors, prior, replaced_mode, replaced_rank="best-fit", frozen_rank=None,
+                              project_prior=True, X=None, show_replaced_rank=False):
+    rank = factors[replaced_mode].shape[1]
+    if replaced_rank == "best-fit":
+        sim = -1
+        replaced_rank = 0
+        for j in [i for i in range(rank) if i != frozen_rank]:
+            factor_init = factors[replaced_mode][:, j]
+            r, _ = pearsonr(factor_init, prior)
+            if r > sim:
+                sim = r
+                replaced_rank = j
+        factors[replaced_mode][:, replaced_rank] = prior
+    else:
+        factors[replaced_mode][:, replaced_rank] = prior
+
+    if project_prior and X is not None:
+        residual = X
+        for j in [i for i in range(rank) if i != replaced_rank]:
+            residual -= np.outer(factors[0][:, j], factors[1][:, j])
+        if replaced_mode == 0:
+            E = residual.T
+        elif replaced_mode == 1:
+            E = residual
+        projection = E @ prior / np.inner(prior, prior)
+        projection[projection < 0] = 0
+        factors[int(1-replaced_mode)][:, replaced_rank] = projection
+
+    if show_replaced_rank:
+        return factors, replaced_rank
+    else:
+        return factors
+
+

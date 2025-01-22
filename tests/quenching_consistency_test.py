@@ -105,6 +105,7 @@ kw_dict = {
     'high_flow': [['M3'], ['2024-10-17']],
     'stagnation_october': [['M3'], ['2024-10-18']],
     'breakthrough': [['M3'], ['2024-10-21']],
+    'all': [['2024'], None]
 }
 
 kw_dict_trial = {
@@ -115,48 +116,112 @@ kw_dict_trial = {
 
 n_components = 4
 model = PARAFAC(n_components=n_components)
-eem_dataset_standard, _ = eem_dataset.filter_by_index(kw_dict['normal_july'][0], kw_dict['normal_july'][1], copy=True)
+eem_dataset_standard, _ = eem_dataset.filter_by_index(kw_dict['normal_october'][0], kw_dict['normal_october'][1], copy=True)
 model_standard = PARAFAC(n_components=4)
 model_standard.fit(eem_dataset_standard)
 standard_bacteria_component = model_standard.components[0]
 
-# # ------------Boxplots of F0/F for each operating condition------------
+# ------------Boxplots of F0/F for each operating condition------------
+
+n_cols = 2
+n_rows = len(kw_dict) // n_cols + 1
+fig_box_for_each_operating_condition = make_subplots(rows=n_rows, cols=n_cols, subplot_titles=list(kw_dict.keys()))
+
+for i, (name, kw) in enumerate(kw_dict.items()):
+    eem_dataset_specific, _ = eem_dataset.filter_by_index(kw[0], kw[1], copy=True)
+    fmax_ratio, fmax_ratio_df, cor_tcc, p_tcc = get_q_coef(eem_dataset_specific, model, 'B1C1', 'B1C2',
+                                                           [k for k in range(n_components)], 'TCC')
+    # if name == "all":
+    #     colors = ['black' if any(kw in idx for kw in ['G1', 'G2', 'G3']) else 'blue' for idx in fmax_ratio_df.index]
+    for j in range(n_components):
+        ratio_std = np.std(fmax_ratio[:, j])
+        fig_box_for_each_operating_condition.add_trace(
+            go.Box(
+                y=fmax_ratio[:, j].reshape(-1),
+                name=f"component {j+1}",
+                width=0.5,
+                showlegend=False,
+                boxpoints='all',
+                text=list(fmax_ratio_df.index),  # Assign custom labels to each point
+                hoverinfo="y+text",  # Show both value and custom index
+            ),
+            row=i // n_cols + 1, col=i % n_cols + 1)
+        axis_name = f"yaxis{i + 1}"  # yaxis1, yaxis2, yaxis3...
+        fig_box_for_each_operating_condition.update_layout({axis_name: dict(range=[0.95, 1.5])})
+fig_box_for_each_operating_condition.update_layout(width=2000, height=3000)
+
+fig_box_for_each_operating_condition.show()
+
+
+# # -------------Pairwise plots of F0/F----------
 #
-# n_cols = 3
-# n_rows = len(kw_dict) // n_cols + 1
-# fig_box_for_each_operating_condition = make_subplots(rows=n_rows, cols=n_cols, subplot_titles=list(kw_dict.keys()))
+# from sklearn.cluster import DBSCAN
+# from itertools import combinations
 #
+# # Simulate a dataset with 100 samples and 5 features
+#
+# fmax_ratio, fmax_ratio_df, cor_tcc, p_tcc = get_q_coef(eem_dataset, model, 'B1C1', 'B1C2',
+#                                                        [k for k in range(n_components)], 'TCC')
+# feature_names = [f'C{i+1}' for i in range(n_components)]
+#
+# # # Perform DBSCAN clustering
+# # dbscan = DBSCAN(eps=0.09, min_samples=5)
+# # labels = dbscan.fit_predict(fmax_ratio)
+#
+# # # Label the data by conditions
+# labels = list(fmax_ratio_df.index)
 # for i, (name, kw) in enumerate(kw_dict.items()):
-#     eem_dataset_specific, _ = eem_dataset.filter_by_index(kw[0], kw[1], copy=True)
-#     fmax_ratio, fmax_ratio_df, cor, p = get_q_coef(eem_dataset_specific, model, 'B1C1', 'B1C2', 'best_component', 'TCC',
-#                                                    standard_bacteria_component)
-#     for j in range(n_components):
-#         fmax_ratio, fmax_ratio_df, cor_tcc, p_tcc = get_q_coef(eem_dataset_specific, model, 'B1C1', 'B1C2',
-#                                                                j, 'TCC')
-#         fmax_ratio, fmax_ratio_df, cor_doc, p_doc = get_q_coef(eem_dataset_specific, model, 'B1C1', 'B1C2',
-#                                                                j, 'DOC')
-#         ratio_std = np.std(fmax_ratio)
-#         fig_box_for_each_operating_condition.add_trace(
-#             go.Box(
-#                 y=fmax_ratio,
-#                 name=f"component {j}",
-#                 width=1,
-#                 showlegend=False,
-#             ),
-#             row=i // n_cols + 1, col=i % n_cols + 1)
-#         fig_box_for_each_operating_condition.add_trace(
+#     eem_dataset_o, _ = eem_dataset.filter_by_index(['B1C1'], None, copy=True)
+#     _, filtered_idx = eem_dataset_o.filter_by_index(kw[0], kw[1], copy=True)
+#     labels = [name if i in filtered_idx else labels[i] for i in range(len(labels))]
+#
+# # Get unique clusters, including noise (-1)
+# unique_clusters = np.unique(labels)
+# colors = {label: f'rgb({np.random.randint(0,255)},{np.random.randint(0,255)},{np.random.randint(0,255)})'
+#           for label in unique_clusters}
+#
+# # Generate all feature combinations
+# feature_combinations = list(combinations(range(fmax_ratio.shape[1]), 2))
+# num_plots = len(feature_combinations)
+#
+# # Create subplots layout
+# rows = 2  # Adjust number of rows if needed
+# cols = 5  # Number of columns for 10 plots
+#
+# fig = make_subplots(rows=rows, cols=cols, subplot_titles=[f'{feature_names[i]} vs {feature_names[j]}'
+#                                                              for i, j in feature_combinations])
+#
+# # Add scatter plots for each pair of features
+# for idx, (i, j) in enumerate(feature_combinations):
+#     row = idx // cols + 1
+#     col = idx % cols + 1
+#
+#     for label in unique_clusters:
+#         # cluster_mask = labels == label
+#         cluster_mask = [i for i in range(len(labels)) if labels[i] == label]
+#         fig.add_trace(
 #             go.Scatter(
-#                 x=[f"component {j}"],  # Position the text at the x location of the box
-#                 y=[np.mean(fmax_ratio)],  # Position the text near the mean of the box values
-#                 text=[f'std={ratio_std:.2g}<br>cor_tcc={cor_tcc:.2g}<br>cor_doc={cor_doc:.2g}'],  # Custom text
-#                 mode='text',  # Only display text
-#                 textposition="top right",  # Position text relative to the point
-#                 showlegend=False  # Hide legend for this trace
+#                 x=fmax_ratio[cluster_mask, i],
+#                 y=fmax_ratio[cluster_mask, j],
+#                 mode='markers',
+#                 marker=dict(color=colors[label], size=6),
+#                 name=f'Cluster {label}' if label != -1 else 'Noise',
+#                 legendgroup=f'Cluster {label}',
+#                 text=fmax_ratio_df.index[cluster_mask],
+#                 hoverinfo="text"
 #             ),
-#             row=i // n_cols + 1, col=i % n_cols + 1
+#             row=row, col=col
 #         )
-# fig_box_for_each_operating_condition.update_layout(width=2500, height=2500)
-# fig_box_for_each_operating_condition.show()
+#
+# # Update layout
+# fig.update_layout(
+#     height=800, width=1500,
+#     title_text="Pairwise Feature Plots for DBSCAN Clustering",
+#     showlegend=True
+# )
+#
+# fig.show()
+
 
 # -------------Correlation between Pearson-r and std(F0/F) in different operating conditions---------
 
@@ -261,52 +326,52 @@ standard_bacteria_component = model_standard.components[0]
 # fig_loo.show()
 
 
-# --------------Greedy deletion for individual dataset------------------
-
-# -------Deletion by biggest std reduction-------
-
-eem_dataset_test, _ = eem_dataset.filter_by_index(
-    None,
-    ["2024-10-16", "2024-10-17", "2024-10-18", "2024-10-22"],
-    copy=True
-)
-fmax_ratio_init, _, cor_init, p_init = get_q_coef(eem_dataset_test, model, 'B1C1', 'B1C2', 'best_component', 'TCC',
-                                                  standard_bacteria_component)
-ratio_std_init = np.std(fmax_ratio_init)
-# n_iter = int(eem_dataset_test.eem_stack.shape[0] * 0.5)
-n_iter = 30
-ratio_std_trajectory = [ratio_std_init]
-cor_trajectory = [cor_init]
-p_trajectory = [p_init]
-index_removed_trajectory = ['Full']
-for i in range(n_iter):
-    ratio_std_diff, cor_diff, p_diff = leave_one_out_test(eem_dataset_test, model, 'B1C1', 'B1C2', 'best_component',
-                                                          'TCC', standard_bacteria_component)
-    biggest_std_diff = min(ratio_std_diff)
-    idx_biggest_std_diff = ratio_std_diff.index(biggest_std_diff)
-    ratio_std_trajectory.append(ratio_std_trajectory[-1] + biggest_std_diff)
-    cor_trajectory.append(cor_trajectory[-1] + cor_diff[idx_biggest_std_diff])
-    p_trajectory.append(p_trajectory[-1] + p_diff[idx_biggest_std_diff])
-    index_removed_trajectory.append(eem_dataset_test.index[2*idx_biggest_std_diff])
-    index_remained = [idx for pos, idx in enumerate(eem_dataset_test.index) if pos not in [2 * idx_biggest_std_diff, 2 * idx_biggest_std_diff + 1]]
-    eem_dataset_test.filter_by_index(None, index_remained, copy=False)
-fig_greedy = go.Figure()
-fig_greedy.add_trace(
-    go.Scatter(
-        mode="markers+lines",
-        x=ratio_std_trajectory,
-        y=cor_trajectory,
-        text=index_removed_trajectory
-    )
-)
-fig_greedy.update_layout(
-    # title="Correlation between Pearson r and std(F0/F)",
-    xaxis_title="std(F0/F)",
-    yaxis_title="Pearson r",
-    showlegend=True,  # Show legend
-    template="plotly_white"  # Use a clean template
-)
-fig_greedy.show()
+# # --------------Greedy deletion for individual dataset------------------
+#
+# # -------Deletion by biggest std reduction-------
+#
+# eem_dataset_test, _ = eem_dataset.filter_by_index(
+#     None,
+#     ["2024-10-16", "2024-10-17", "2024-10-18", "2024-10-22"],
+#     copy=True
+# )
+# fmax_ratio_init, _, cor_init, p_init = get_q_coef(eem_dataset_test, model, 'B1C1', 'B1C2', 'best_component', 'TCC',
+#                                                   standard_bacteria_component)
+# ratio_std_init = np.std(fmax_ratio_init)
+# # n_iter = int(eem_dataset_test.eem_stack.shape[0] * 0.5)
+# n_iter = 30
+# ratio_std_trajectory = [ratio_std_init]
+# cor_trajectory = [cor_init]
+# p_trajectory = [p_init]
+# index_removed_trajectory = ['Full']
+# for i in range(n_iter):
+#     ratio_std_diff, cor_diff, p_diff = leave_one_out_test(eem_dataset_test, model, 'B1C1', 'B1C2', 'best_component',
+#                                                           'TCC', standard_bacteria_component)
+#     biggest_std_diff = min(ratio_std_diff)
+#     idx_biggest_std_diff = ratio_std_diff.index(biggest_std_diff)
+#     ratio_std_trajectory.append(ratio_std_trajectory[-1] + biggest_std_diff)
+#     cor_trajectory.append(cor_trajectory[-1] + cor_diff[idx_biggest_std_diff])
+#     p_trajectory.append(p_trajectory[-1] + p_diff[idx_biggest_std_diff])
+#     index_removed_trajectory.append(eem_dataset_test.index[2*idx_biggest_std_diff])
+#     index_remained = [idx for pos, idx in enumerate(eem_dataset_test.index) if pos not in [2 * idx_biggest_std_diff, 2 * idx_biggest_std_diff + 1]]
+#     eem_dataset_test.filter_by_index(None, index_remained, copy=False)
+# fig_greedy = go.Figure()
+# fig_greedy.add_trace(
+#     go.Scatter(
+#         mode="markers+lines",
+#         x=ratio_std_trajectory,
+#         y=cor_trajectory,
+#         text=index_removed_trajectory
+#     )
+# )
+# fig_greedy.update_layout(
+#     # title="Correlation between Pearson r and std(F0/F)",
+#     xaxis_title="std(F0/F)",
+#     yaxis_title="Pearson r",
+#     showlegend=True,  # Show legend
+#     template="plotly_white"  # Use a clean template
+# )
+# fig_greedy.show()
 
 # # ---------Deletion by most deviated ratio----------
 #
@@ -511,16 +576,3 @@ fig_greedy.show()
 # fig_lso_box.show()
 
 
-# ----------------test QPARAFACs----------------
-
-# eem_dataset_test, _ = eem_dataset.filter_by_index(['2024-10-'], None, copy=True)
-# base_model = PARAFAC(n_components=4)
-# qparafacs = KMethod(base_model, n_initial_splits=3, error_calculation="quenching_coefficient", max_iter=10, tol=0.0001,
-#                     elimination='default', kw_unquenched='B1C1', kw_quenched='B1C2')
-# # cluster_labels, label_history, error_history = qparafacs.base_clustering(eem_dataset_test)
-# consensus_matrix, label_history, error_history = qparafacs.calculate_consensus(eem_dataset_test, 5, 0.8)
-#
-# # eem_dataset_test = combine_eem_datasets([eem_dataset.filter_by_index(['2024-10-17'], None, copy=True)[0],
-# #                                          eem_dataset.filter_by_index(['2024-10-18'], None, copy=True)[0]],)
-# # print(eem_dataset_test.index)
-# # print(eem_dataset_test.ref)

@@ -27,46 +27,100 @@ eem_dataset_rearranged = combine_eem_datasets([eem_dataset_o, eem_dataset_q])
 # eem_dataset_q, _ = eem_dataset.filter_by_index(['2_5gL'], None, copy=True)
 
 
-#------------nmf_ic--------------
-
+#------------nmf_prior--------------
 X1 = eem_dataset_o.eem_stack
 # X2 = eem_dataset_q.eem_stack
 # X = np.concatenate((X1, X2), axis=0)
 X = X1.reshape([X1.shape[0], -1])
 z_dict = {0: eem_dataset_o.ref["TCC"].to_numpy().reshape([eem_dataset_o.ref["TCC"].shape[0], 1])}
 rank = 4
-max_iter = 300
+max_iter = 500
 
 U, V = initialization_2d(X, rank=rank)
-loadings = [U, V.T]
+factors = [U, V.T]
+
+# for c in range(factors[1].shape[1]):
+#     plot_eem(factors[1][:, c].reshape([X1.shape[1], X1.shape[2]]), ex_range=eem_dataset.ex_range, em_range=eem_dataset.em_range)
+
+# factors, replaced_rank = replace_factor_with_prior(factors, eem_dataset_o.ref["TCC"].to_numpy(), 0, 3, X=X,
+#                                                    show_replaced_rank=True)
+
+# for c in range(factors[1].shape[1]):
+#     plot_eem(factors[1][:, c].reshape([X1.shape[1], X1.shape[2]]), ex_range=eem_dataset.ex_range, em_range=eem_dataset.em_range)
+
 for i in range(max_iter):
     for mode_to_update in range(X.ndim):
         mode_fixed = [i for i in range(X.ndim) if i != mode_to_update][0]
         new_order = [mode_fixed] + [mode_to_update]
         X_reshaped = X.transpose(new_order)
-        U = loadings[mode_fixed]
-        V = loadings[mode_to_update].T
+        U = factors[mode_fixed]
+        V = factors[mode_to_update].T
         UtU = U.T.dot(U)
         UtM = U.T.dot(X_reshaped)
         if mode_to_update == 0:
-            V = hals_pr_nnls(UtM, UtU, z=z_dict[0], V=V, p_coefficient=1e7, n_iter_max_inner=100, n_iter_max_outer=200)
+            V = hals_prior_nnls(UtM, UtU, regularization_dict={1: eem_dataset_o.ref["TCC"].to_numpy()}, V=V,
+                                l=0.75, n_iter_max=200, epsilon=1e-8)
         else:
             V = hals_nnls_normal(UtM, UtU, V)
-        loadings[mode_to_update] = V.T
+        factors[mode_to_update] = V.T
         # V = hals_nnls_normal(UtM, UtU, V, epsilon=1e-8)
 
-components = [loadings[1][:, i].reshape([eem_dataset.eem_stack.shape[1], -1]) for i in range(rank)]
+components = [factors[1][:, i].reshape([eem_dataset.eem_stack.shape[1], -1]) for i in range(rank)]
 for c in components:
     plot_eem(c, ex_range=eem_dataset.ex_range, em_range=eem_dataset.em_range)
 
 fig1, ax1 = plt.subplots()
 fig2, ax2 = plt.subplots()
 # ax1.plot(eem_dataset_o.ref['TCC'], loadings[0][:int(X.shape[0]/2), 1], 'o', color='red')
+
 for i in range(rank):
-    ax1.plot(eem_dataset_o.ref['TCC'], loadings[0][:, i], 'o')
+    r, _ = pearsonr(eem_dataset_o.ref['TCC'], factors[0][:, i])
+    ax1.plot(eem_dataset_o.ref['TCC'], factors[0][:, i], 'o', label=f"C{i}, r={r:2g}")
+ax1.legend()
 fig1.show()
 # ax2.plot([1.66, 0.83, 1.245, 0.415, 0], loadings[0][:int(X.shape[0]/2), 1], 'o', color='red')
 # fig2.show()
+
+#------------nmf_ic--------------
+
+# X1 = eem_dataset_o.eem_stack
+# # X2 = eem_dataset_q.eem_stack
+# # X = np.concatenate((X1, X2), axis=0)
+# X = X1.reshape([X1.shape[0], -1])
+# z_dict = {0: eem_dataset_o.ref["TCC"].to_numpy().reshape([eem_dataset_o.ref["TCC"].shape[0], 1])}
+# rank = 4
+# max_iter = 300
+#
+# U, V = initialization_2d(X, rank=rank)
+# loadings = [U, V.T]
+# for i in range(max_iter):
+#     for mode_to_update in range(X.ndim):
+#         mode_fixed = [i for i in range(X.ndim) if i != mode_to_update][0]
+#         new_order = [mode_fixed] + [mode_to_update]
+#         X_reshaped = X.transpose(new_order)
+#         U = loadings[mode_fixed]
+#         V = loadings[mode_to_update].T
+#         UtU = U.T.dot(U)
+#         UtM = U.T.dot(X_reshaped)
+#         if mode_to_update == 0:
+#             V = hals_pr_nnls2(UtM, UtU, z=z_dict[0], V=V, p_coefficient=1e7, n_iter_max_inner=100, n_iter_max_outer=200)
+#         else:
+#             V = hals_nnls_normal(UtM, UtU, V)
+#         loadings[mode_to_update] = V.T
+#         # V = hals_nnls_normal(UtM, UtU, V, epsilon=1e-8)
+#
+# components = [loadings[1][:, i].reshape([eem_dataset.eem_stack.shape[1], -1]) for i in range(rank)]
+# for c in components:
+#     plot_eem(c, ex_range=eem_dataset.ex_range, em_range=eem_dataset.em_range)
+#
+# fig1, ax1 = plt.subplots()
+# fig2, ax2 = plt.subplots()
+# # ax1.plot(eem_dataset_o.ref['TCC'], loadings[0][:int(X.shape[0]/2), 1], 'o', color='red')
+# for i in range(rank):
+#     ax1.plot(eem_dataset_o.ref['TCC'], loadings[0][:, i], 'o')
+# fig1.show()
+# # ax2.plot([1.66, 0.83, 1.245, 0.415, 0], loadings[0][:int(X.shape[0]/2), 1], 'o', color='red')
+# # fig2.show()
 
 # #------------parafac_ic--------------
 # rank = 4
