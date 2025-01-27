@@ -11,7 +11,7 @@ from matplotlib.colors import TABLEAU_COLORS
 colors = list(TABLEAU_COLORS.values())
 # ------------Read EEM dataset-------------
 eem_dataset_path = \
-    "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_282_ex_274_em_310_mfem_7_gaussian.json"
+    "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_286_ex_274_em_310_mfem_7_gaussian.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
 eem_dataset, _ = eem_dataset.filter_by_index(None, ['M3', 'G1', 'G2', 'G3'], copy=True)
 
@@ -140,6 +140,7 @@ table = {param: template.copy() for param in [
     'Mean(F0/F)',
     'Mean(F0/F)diff',
     'STD(F0/F)',
+    'STDdiff(F0/F)',
     'r_TCC',
     'p_TCC',
     'RMSE_TCC',
@@ -163,6 +164,7 @@ for i, (name_train, kw_train) in enumerate(kw_dict_type1.items()):
     fmax_quenched = fmax[fmax.index.str.contains('B1C2')]
     fmax_ratio_train = fmax_original.to_numpy() / fmax_quenched.to_numpy()
     ratio_mean_train = np.mean(fmax_ratio_train)
+    ratio_std_train = np.std(fmax_ratio_train)
 
     lr = LinearRegression()
     lr.fit(X=fmax_tcc_train.iloc[:, 0].to_numpy().reshape(-1, 1), y=fmax_tcc_train.iloc[:, 1].to_numpy().reshape(-1, 1))
@@ -187,9 +189,27 @@ for i, (name_train, kw_train) in enumerate(kw_dict_type1.items()):
             table['Mean(F0/F)'].iloc[i, j] = ratio_mean_test
             table['Mean(F0/F)diff'].iloc[i, j] = ratio_mean_train - ratio_mean_test
             table['STD(F0/F)'].iloc[i, j] = ratio_std_test
+            table['STDdiff(F0/F)'].iloc[i, j] = ratio_std_train - ratio_std_test
             table['r_TCC'].iloc[i, j] = cor_tcc_test
             table['p_TCC'].iloc[i, j] = p_tcc_test
             table['RMSE_TCC'].iloc[i, j] = rmse
+
+training_dataset = 'stagnation_jul'
+x_param = 'STD(F0/F)'
+y_param = 'r_TCC'
+
+x = table[x_param].loc[training_dataset]
+y = table[y_param].loc[training_dataset]
+
+fig = plt.figure()
+for i in range(x.size):
+  if x.iloc[i] is not np.nan and y.iloc[i] is not np.nan:
+  	plt.scatter(x.iloc[i], y.iloc[i], c=colors[i], label=x.index[i])
+plt.xlabel(x_param)
+plt.ylabel(y_param)
+plt.title(training_dataset)
+plt.legend()
+plt.show()
 
 
 # # ------------Boxplots of F0/F of all components for each operating condition------------
