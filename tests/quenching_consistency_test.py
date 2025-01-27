@@ -6,7 +6,9 @@ from eempy.plot import plot_eem, plot_loadings, plot_fmax
 from scipy.stats import pearsonr
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from matplotlib.colors import TABLEAU_COLORS
 
+colors = list(TABLEAU_COLORS.values())
 # ------------Read EEM dataset-------------
 eem_dataset_path = \
     "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_282_ex_274_em_310_mfem_7_gaussian.json"
@@ -96,61 +98,132 @@ def leave_one_out_test(eem_dataset: EEMDataset, model, kw_o, kw_q, fmax_col, ref
 
 
 kw_dict = {
-    'normal_july': [['M3'], ['2024-07-12', '2024-07-13', '2024-07-15', '2024-07-16', '2024-07-17']],
-    'stagnation_july': [['M3'], ['2024-07-18', '2024-07-19']],
-    'G1': [['G1'], None],
-    'G2': [['G2'], None],
-    'G3': [['G3'], None],
-    'normal_october': [['M3'], ['2024-10-16', '2024-10-22']],
-    'high_flow': [['M3'], ['2024-10-17']],
-    'stagnation_october': [['M3'], ['2024-10-18']],
-    'breakthrough': [['M3'], ['2024-10-21']],
-    'all': [['2024'], None]
+    'normal_jul': [['M3'], ['2024-07-12', '2024-07-13', '2024-07-15', '2024-07-16', '2024-07-17'], 4],
+    'stagnation_jul': [['M3'], ['2024-07-18', '2024-07-19'], 4],
+    'normal_oct': [['M3'], ['2024-10-16', '2024-10-22'], 4],
+    'stagnation_oct': [['M3'], ['2024-10-18'], 3],
+    'high_flow': [['M3'], ['2024-10-17'], 3],
+    'shortcut 1': [['G3'], None, 4],
+    'shortcut 2': [['G2'], None, 4],
+    'shortcut 3': [['G1'], None, 4],
+    'cross-connection': [['M3'], ['2024-10-21'], 4],
+    # 'all': [['2024'], None, 4]
 }
 
-kw_dict_trial = {
-    'high_flow': [['M3'], ['2024-10-17']],
-    'stagnation_october': [['M3'], ['2024-10-18']],
-    'breakthrough': [['M3'], ['2024-10-21']],
+kw_dict_type1 = {
+    'stagnation_jul': [['M3'], ['2024-07-18', '2024-07-19'], 4],
+    'normal_oct': [['M3'], ['2024-10-16', '2024-10-22'], 4],
+    'stagnation_oct': [['M3'], ['2024-10-18'], 4],
 }
 
-n_components = 4
-model = PARAFAC(n_components=n_components)
-eem_dataset_standard, _ = eem_dataset.filter_by_index(kw_dict['normal_october'][0], kw_dict['normal_october'][1], copy=True)
-model_standard = PARAFAC(n_components=4)
-model_standard.fit(eem_dataset_standard)
-standard_bacteria_component = model_standard.components[0]
+# kw_dict_trial = {
+#     'high_flow': [['M3'], ['2024-10-17']],
+#     'stagnation_october': [['M3'], ['2024-10-18']],
+#     'breakthrough': [['M3'], ['2024-10-21']],
+# }
 
-# ------------Boxplots of F0/F for each operating condition------------
+# n_components = 4
+# model = PARAFAC(n_components=n_components)
+# eem_dataset_standard, _ = eem_dataset.filter_by_index(kw_dict['normal_october'][0], kw_dict['normal_october'][1],
+#                                                       copy=True)
+# model_standard = PARAFAC(n_components=4)
+# model_standard.fit(eem_dataset_standard)
+# standard_bacteria_component = model_standard.components[0]
 
-n_cols = 2
-n_rows = len(kw_dict) // n_cols + 1
-fig_box_for_each_operating_condition = make_subplots(rows=n_rows, cols=n_cols, subplot_titles=list(kw_dict.keys()))
+# -----------------Predictive power of PARAFAC models--------------
 
-for i, (name, kw) in enumerate(kw_dict.items()):
-    eem_dataset_specific, _ = eem_dataset.filter_by_index(kw[0], kw[1], copy=True)
-    fmax_ratio, fmax_ratio_df, cor_tcc, p_tcc = get_q_coef(eem_dataset_specific, model, 'B1C1', 'B1C2',
-                                                           [k for k in range(n_components)], 'TCC')
-    # if name == "all":
-    #     colors = ['black' if any(kw in idx for kw in ['G1', 'G2', 'G3']) else 'blue' for idx in fmax_ratio_df.index]
-    for j in range(n_components):
-        ratio_std = np.std(fmax_ratio[:, j])
-        fig_box_for_each_operating_condition.add_trace(
-            go.Box(
-                y=fmax_ratio[:, j].reshape(-1),
-                name=f"component {j+1}",
-                width=0.5,
-                showlegend=False,
-                boxpoints='all',
-                text=list(fmax_ratio_df.index),  # Assign custom labels to each point
-                hoverinfo="y+text",  # Show both value and custom index
-            ),
-            row=i // n_cols + 1, col=i % n_cols + 1)
-        axis_name = f"yaxis{i + 1}"  # yaxis1, yaxis2, yaxis3...
-        fig_box_for_each_operating_condition.update_layout({axis_name: dict(range=[0.95, 1.5])})
-fig_box_for_each_operating_condition.update_layout(width=2000, height=3000)
+fig = go.Figure()
+template = pd.DataFrame(np.full([len(kw_dict_type1), len(kw_dict)], np.nan),
+                     index=list(kw_dict_type1.keys()),
+                     columns=list(kw_dict.keys()))
+table = {param: template.copy() for param in [
+    'Mean(F0/F)',
+    'Mean(F0/F)diff',
+    'STD(F0/F)',
+    'r_TCC',
+    'p_TCC',
+    'RMSE_TCC',
+    # 'r_DOC',
+    # 'p_DOC',
+    # 'RMSE_DOC'
+]}
 
-fig_box_for_each_operating_condition.show()
+for i, (name_train, kw_train) in enumerate(kw_dict_type1.items()):
+    eem_dataset_train, _ = eem_dataset.filter_by_index(kw_train[0], kw_train[1], copy=True)
+    n_components = kw_train[2]
+    model = PARAFAC(n_components=n_components)
+    model.fit(eem_dataset_train)
+    fmax = model.fmax.iloc[:, 0]
+    fmax_tcc_train = pd.concat([eem_dataset_train.ref['TCC'], fmax], axis=1)
+    fmax_tcc_train = fmax_tcc_train.dropna()
+    cor = -2
+    p = 1
+    cor_tcc_train, p_tcc_train = pearsonr(fmax_tcc_train.iloc[:, 0], fmax_tcc_train.iloc[:, 1])
+    fmax_original = fmax[fmax.index.str.contains('B1C1')]
+    fmax_quenched = fmax[fmax.index.str.contains('B1C2')]
+    fmax_ratio_train = fmax_original.to_numpy() / fmax_quenched.to_numpy()
+    ratio_mean_train = np.mean(fmax_ratio_train)
+
+    lr = LinearRegression()
+    lr.fit(X=fmax_tcc_train.iloc[:, 0].to_numpy().reshape(-1, 1), y=fmax_tcc_train.iloc[:, 1].to_numpy().reshape(-1, 1))
+    coef = lr.coef_[0]
+    intercept = lr.intercept_[0]
+
+    for j, (name_test, kw_test) in enumerate(kw_dict.items()):
+        if name_test != name_train:
+            eem_dataset_test, _ = eem_dataset.filter_by_index(kw_test[0], kw_test[1], copy=True)
+            fmax_test, _, eem_stack_pred = model.predict(eem_dataset_test)
+            fmax_original = fmax_test[fmax_test.index.str.contains('B1C1')]
+            fmax_quenched = fmax_test[fmax_test.index.str.contains('B1C2')]
+            fmax_ratio_test = fmax_original.to_numpy() / fmax_quenched.to_numpy()
+            ratio_mean_test = np.mean(fmax_ratio_test)
+            ratio_std_test = np.std(fmax_ratio_test)
+            fmax = fmax_test.iloc[:, 0]
+            fmax_tcc_test = pd.concat([eem_dataset_test.ref['TCC'], fmax], axis=1)
+            fmax_tcc_test = fmax_tcc_test.dropna()
+            cor_tcc_test, p_tcc_test = pearsonr(fmax_tcc_test.iloc[:, 0], fmax_tcc_test.iloc[:, 1])
+            pred_tcc = (fmax - intercept)/coef
+            rmse = np.sqrt(np.mean((fmax_tcc_test.iloc[:, 0] - pred_tcc) ** 2))
+            table['Mean(F0/F)'].iloc[i, j] = ratio_mean_test
+            table['Mean(F0/F)diff'].iloc[i, j] = ratio_mean_train - ratio_mean_test
+            table['STD(F0/F)'].iloc[i, j] = ratio_std_test
+            table['r_TCC'].iloc[i, j] = cor_tcc_test
+            table['p_TCC'].iloc[i, j] = p_tcc_test
+            table['RMSE_TCC'].iloc[i, j] = rmse
+
+
+# # ------------Boxplots of F0/F of all components for each operating condition------------
+#
+# n_cols = 2
+# n_rows = len(kw_dict) // n_cols + 1
+# fig_box_for_each_operating_condition = make_subplots(rows=n_rows, cols=n_cols, subplot_titles=list(kw_dict.keys()))
+#
+# for i, (name, kw) in enumerate(kw_dict.items()):
+#     eem_dataset_specific, _ = eem_dataset.filter_by_index(kw[0], kw[1], copy=True)
+#     n_components = kw[2]
+#     model = PARAFAC(n_components=n_components)
+#     fmax_ratio, fmax_ratio_df, cor_tcc, p_tcc = get_q_coef(eem_dataset_specific, model, 'B1C1', 'B1C2',
+#                                                            [k for k in range(n_components)], 'TCC')
+#     # if name == "all":
+#     #     colors = ['black' if any(kw in idx for kw in ['G1', 'G2', 'G3']) else 'blue' for idx in fmax_ratio_df.index]
+#     for j in range(n_components):
+#         ratio_std = np.std(fmax_ratio[:, j])
+#         fig_box_for_each_operating_condition.add_trace(
+#             go.Box(
+#                 y=fmax_ratio[:, j].reshape(-1),
+#                 name=f"component {j+1}",
+#                 width=0.5,
+#                 showlegend=False,
+#                 boxpoints='all',
+#                 text=list(fmax_ratio_df.index),  # Assign custom labels to each point
+#                 hoverinfo="y+text",  # Show both value and custom index
+#             ),
+#             row=i // n_cols + 1, col=i % n_cols + 1)
+#         axis_name = f"yaxis{i + 1}"  # yaxis1, yaxis2, yaxis3...
+#         fig_box_for_each_operating_condition.update_layout({axis_name: dict(range=[0.95, 1.5])})
+# fig_box_for_each_operating_condition.update_layout(width=2000, height=3000)
+#
+# fig_box_for_each_operating_condition.show()
 
 
 # # -------------Pairwise plots of F0/F----------
@@ -227,19 +300,21 @@ fig_box_for_each_operating_condition.show()
 
 # # --------for the most correlated component
 # fig_sq_corr = go.Figure()
-# fig_sq_box = go.Figure()
 # fmax_ratios = []
+# reference_param = 'DOC'
 # for name, kw in kw_dict.items():
+#     n_components = kw[2]
+#     model = PARAFAC(n_components=n_components)
 #     eem_dataset_specific, _ = (eem_dataset.filter_by_index(kw[0], kw[1], copy=True))
-#     fmax_ratio, fmax_ratio_df, cor, p = get_q_coef(eem_dataset_specific, model, 'B1C1', 'B1C2', 'best_component', 'TCC',
+#     fmax_ratio, fmax_ratio_df, cor, p = get_q_coef(eem_dataset_specific, model, 'B1C1', 'B1C2', [0], reference_param,
 #                                                    standard_bacteria_component)
 #     fmax_ratios.append(fmax_ratio_df)
 #     ratio_std = np.std(fmax_ratio)
 #     fig_sq_corr.add_trace(go.Scatter(
-#         x=[cor],
+#         x=cor,
 #         y=[ratio_std],
 #         mode='markers+text',  # Use 'lines', 'markers+lines', etc., for other styles
-#         text=[f'p={p:.2g}'],
+#         text=[f'p={p[0]:.2g}'],
 #         textposition='top right',
 #         marker=dict(
 #             size=16,  # Marker size
@@ -248,9 +323,143 @@ fig_box_for_each_operating_condition.show()
 #         ),
 #         name=name  # Legend name for this trace,
 #     ))
-#     fig_sq_box.add_trace(go.Box(y=fmax_ratio, name=f"{name}", width=0.5))
+# fig_sq_corr.update_layout(
+#     # title="Correlation between Pearson r and std(F0/F)",
+#     xaxis_title=f"Pearson r between {reference_param} and Fmax",
+#     yaxis_title="std(Fmax0/Fmax)",
+#     showlegend=True,  # Show legend
+#     template="plotly_white"  # Use a clean template
+# )
 # fig_sq_corr.show()
-# fig_sq_box.show()
+
+# -----------r-TCC vs. r-DOC--------------
+
+##------plotly--------
+# fig_sq_corr = go.Figure()
+# fmax_ratios = []
+# for c, (name, kw) in enumerate(kw_dict.items()):
+#     n_components = kw[2]
+#     model = PARAFAC(n_components=n_components)
+#     eem_dataset_specific, _ = (eem_dataset.filter_by_index(kw[0], kw[1], copy=True))
+#     fmax_ratio, fmax_ratio_df, cor_tcc, p_tcc = get_q_coef(eem_dataset_specific, model, 'B1C1', 'B1C2', [0], "TCC",
+#                                                            None)
+#     _, _, cor_doc, p_doc = get_q_coef(eem_dataset_specific, model, 'B1C1', 'B1C2', [0], "DOC",
+#                                                            None)
+#     fmax_ratios.append(fmax_ratio_df)
+#     ratio_std = np.std(fmax_ratio)
+#     fig_sq_corr.add_trace(go.Scatter(
+#         x=cor_tcc,
+#         y=cor_doc,
+#         mode='markers',  # Use 'lines', 'markers+lines', etc., for other styles
+#         textposition='top right',
+#         marker=dict(
+#             color=colors[c],
+#             size=800*ratio_std,  # Marker size
+#             symbol='circle',  # Marker symbol
+#             opacity=0.8,  # Transparency
+#         ),
+#         name=name  # Legend name for this trace,
+#     ))
+# fig_sq_corr.update_layout(
+#     height=600,
+#     width=800,
+#     xaxis=dict(range=[-1, 1]),
+#     yaxis=dict(range=[-1, 1]),
+#     xaxis_title="Pearson r between TCC and Fmax",
+#     yaxis_title="Pearson r between DOC and Fmax",
+#     showlegend=True,  # Show legend
+# )
+# fig_sq_corr.show()
+
+
+# #-------matplotlib--------
+# from matplotlib.font_manager import FontProperties
+#
+# # Initialize the figure
+# fig, ax = plt.subplots(figsize=(8, 8))
+#
+# for spine in ax.spines.values():
+#     spine.set_linewidth(2.5)  # Set the linewidth to make the frame bold
+#
+# fmax_ratios = []
+# scatter_plots = []  # To store scatter plot objects for legend
+#
+# # Define a set of example sizes for the legend
+# example_sizes = [0.01, 0.03, 0.05, 0.07]  # Example standard deviations
+# size_labels = [f"{s}" for s in example_sizes]  # Labels for the legend
+#
+# for c, (name, kw) in enumerate(kw_dict.items()):
+#     n_components = kw[2]
+#     model = PARAFAC(n_components=n_components)
+#     eem_dataset_train, _ = eem_dataset.filter_by_index(kw[0], kw[1], copy=True)
+#
+#     model.fit(eem_dataset_train)
+#     fmax = model.fmax.iloc[:, 0]
+#     fmax_tcc_train = pd.concat([eem_dataset_train.ref['TCC'], fmax], axis=1)
+#     fmax_tcc_train = fmax_tcc_train.dropna()
+#     fmax_doc_train = pd.concat([eem_dataset_train.ref['DOC'], fmax], axis=1)
+#     fmax_doc_train = fmax_doc_train.dropna()
+#
+#     lr = LinearRegression(fit_intercept=False)
+#     lr.fit(X=fmax_tcc_train.iloc[:, 0].to_numpy().reshape(-1, 1),
+#            y=fmax_tcc_train.iloc[:, 1].to_numpy().reshape(-1, 1))
+#     # coef = lr.coef_[0]
+#     # intercept = lr.intercept_[0]
+#     cor_tcc = lr.score(X=fmax_tcc_train.iloc[:, 0].to_numpy().reshape(-1, 1),
+#                        y=fmax_tcc_train.iloc[:, 1].to_numpy().reshape(-1, 1))
+#     lr.fit(X=fmax_doc_train.iloc[:, 0].to_numpy().reshape(-1, 1),
+#            y=fmax_doc_train.iloc[:, 1].to_numpy().reshape(-1, 1))
+#     cor_doc = lr.score(X=fmax_doc_train.iloc[:, 0].to_numpy().reshape(-1, 1),
+#                        y=fmax_doc_train.iloc[:, 1].to_numpy().reshape(-1, 1))
+#     # cor_tcc, p_tcc = pearsonr(fmax_tcc_train.iloc[:, 0], fmax_tcc_train.iloc[:, 1])
+#     # cor_doc, p_doc = pearsonr(fmax_doc_train.iloc[:, 0], fmax_doc_train.iloc[:, 1])
+#
+#     fmax_original = fmax[fmax.index.str.contains('B1C1')]
+#     fmax_quenched = fmax[fmax.index.str.contains('B1C2')]
+#     fmax_ratio = fmax_original.to_numpy() / fmax_quenched.to_numpy()
+#
+#     ratio_std = np.std(fmax_ratio)
+#
+#     # Plot the scatter plot and store the scatter object
+#     scatter = ax.scatter(
+#         cor_tcc,
+#         cor_doc,
+#         s=5000 * ratio_std,  # Marker size
+#         edgecolor='black',
+#         facecolor=colors[c],
+#         linewidth=1,
+#         alpha=0.8,  # Transparency
+#         label=name  # Legend name for this trace (used for color legend)
+#     )
+#     scatter_plots.append(scatter)
+#
+# # Set plot limits and labels
+# ax.set_xlim(-1, 1)
+# ax.set_ylim(-1, 1)
+# ax.grid(True, color='grey', linestyle='--', linewidth=0.5)
+# ax.axhline(0, color='black', linewidth=1.5)
+# ax.axvline(0, color='black', linewidth=1.5)
+# ax.tick_params(axis='both', which='major', labelsize=12)
+# ax.set_xlabel(r"$r_{TCC}$", fontsize=20)
+# ax.set_ylabel(r"$r_{DOC}$", fontsize=20)
+#
+# name_legend = ax.legend(loc="lower left", title="Dataset", labelspacing=0.8, fontsize=11,
+#                         title_fontproperties=FontProperties(size=12, weight='bold'))
+# ax.add_artist(name_legend)  # Add the color legend to the plot
+#
+# # Create a custom legend for marker sizes
+# size_handles = [
+#     plt.scatter([], [], s=4000 * s, edgecolor='black', facecolor='white', linewidth=1, alpha=0.8, label=size_labels[i])
+#     for i, s in enumerate(example_sizes)
+# ]
+# size_legend = ax.legend(handles=size_handles, title="STD(F0/F)", loc="lower left",
+#                         bbox_to_anchor=(0.30, 0), labelspacing=0.8, fontsize=11,
+#                         title_fontproperties=FontProperties(size=12, weight='bold'))
+# ax.add_artist(size_legend)  # Add the size legend to the plot
+#
+# # Show the plot
+# plt.show()
+
 
 # # --------iterate through all components--------
 # n_cols = 2
@@ -574,5 +783,3 @@ fig_box_for_each_operating_condition.show()
 # )
 # # Show the plot
 # fig_lso_box.show()
-
-

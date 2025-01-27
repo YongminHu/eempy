@@ -2285,12 +2285,12 @@ class SplitValidation:
             similarities_ex, orient='index',
             columns=['Similarities in C{i}-ex'.format(i=i + 1) for i in range(self.rank)]
         )
-        similarities_ex.index.name = 'Test'
+        similarities_ex.index.name_train = 'Test'
         similarities_em = pd.DataFrame.from_dict(
             similarities_em, orient='index',
             columns=['Similarities in C{i}-em'.format(i=i + 1) for i in range(self.rank)]
         )
-        similarities_em.index.name = 'Test'
+        similarities_em.index.name_train = 'Test'
         return similarities_ex, similarities_em
 
 
