@@ -1551,6 +1551,49 @@ class EEMDataset:
             self.cluster = cluster_filtered
         return eem_dataset_filtered, sample_number_all_filtered
 
+    def filter_by_cluster(self, cluster_names, copy=True):
+        """
+        Select the samples belong to certain cluster(s).
+
+        Parameters
+        -------
+        cluster_names: int/float/str or list of int/float/str
+            cluster names.
+        copy: bool
+            if False, overwrite the EEMDataset object.
+
+        Returns
+        -------
+        eem_dataset_filtered: EEMDataset
+            Filtered EEM dataset.
+        sample_number_all_filtered: list
+            Indexes (orders in the list) of samples that have been preserved after filtering.
+        """
+
+        if self.cluster is None:
+            raise ValueError('cluster of EEMDataset is not defined')
+        if not isinstance(cluster_names, list):
+            cluster_names = [cluster_names]
+        sample_number_all_filtered = []
+        for i, f in enumerate(self.cluster):
+            if f in cluster_names:
+                sample_number_all_filtered.append(i)
+        eem_stack_filtered = self.eem_stack[sample_number_all_filtered, :, :]
+        index_filtered = [self.index[i] for i in sample_number_all_filtered]
+        cluster_filtered = [self.cluster[i] for i in sample_number_all_filtered] if self.cluster is not None else None
+        ref_filtered = self.ref.iloc[sample_number_all_filtered] if self.ref is not None else None
+        eem_dataset_filtered = EEMDataset(eem_stack_filtered,
+                                          ex_range=self.ex_range,
+                                          em_range=self.em_range,
+                                          index=index_filtered,
+                                          ref=ref_filtered)
+        if not copy:
+            self.eem_stack = eem_stack_filtered
+            self.index = index_filtered
+            self.ref = ref_filtered
+            self.cluster = cluster_filtered
+        return eem_dataset_filtered, sample_number_all_filtered
+
 
 def combine_eem_datasets(list_eem_datasets):
     """
@@ -2728,7 +2771,7 @@ class KMethod:
     n_initial_splits: int
         Number of splits in clustering initialization (the first time that the EEM dataset is divided).
     max_iter: int
-        Maximum number of iterations of base clustering for a single run.
+        Maximum number of iterations in a single run of base clustering.
     tol: float
         Tolerance in regard to the average Tucker's congruence between the cluster-specific PARAFAC models
         of two consecutive iterations to declare convergence. If the Tucker's congruence > 1-tol, then convergence is
@@ -3033,7 +3076,7 @@ class KMethod:
 
         return consensus_matrix, label_history, error_history
 
-    def hierarchical_clustering(self, eem_dataset, n_clusters, consensus_conversion_power):
+    def hierarchical_clustering(self, eem_dataset, n_clusters, consensus_conversion_power=1):
         """
 
         Parameters
@@ -3051,6 +3094,8 @@ class KMethod:
         -------
 
         """
+        if self.consensus_matrix is None:
+            raise ValueError('Consensus matrix is not defined.')
         distance_matrix = (1 - self.consensus_matrix) ** consensus_conversion_power
         linkage_matrix = linkage(squareform(distance_matrix), method='complete')
         labels = fcluster(linkage_matrix, n_clusters, criterion='maxclust')

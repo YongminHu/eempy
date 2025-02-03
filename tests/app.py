@@ -1247,7 +1247,7 @@ def on_build_eem_dataset(n_clicks,
         return None, error_message, "Build"
 
     steps_track = []
-    if reference_path is not None:
+    if reference_path is not None and reference_path != []:
         if os.path.exists(reference_path):
             if reference_path.endswith('.csv'):
                 refs_from_file = pd.read_csv(reference_path, index_col=0, header=0)
@@ -1980,7 +1980,7 @@ def on_pp_establishment_correlations(ref_var, pp_model):
         return go.Figure(), None
 
 
-# -----------Fit a test EEM dataset using the established PARAFAC model components
+# -----------Fit a test EEM dataset using the established Linear model
 @app.callback(
     [
         Output('pp-eem-dataset-predict-message', 'children'),  # size, intervals?
