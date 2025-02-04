@@ -16,7 +16,7 @@ n_clusters = [2, 3, 4, 5]
 minimum_dataset_size = 10
 
 clustered_datasets = {"0": eem_dataset}
-total_levels = 3
+total_levels = 2
 
 base_model = PARAFAC(n_components=4)
 base_model.fit(eem_dataset)
@@ -111,4 +111,8 @@ for i in range(total_levels):
                         cor_doc,
                         p_doc
                     ]
-print(cluster_stats)
+
+clustering_level =  2
+dataset_list = [d for c, d in clustered_datasets.items() if len(c) == clustering_level+1]
+# for code, sub_dataset in clustered_datasets.items():
+#
