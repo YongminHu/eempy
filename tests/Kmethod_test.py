@@ -10,11 +10,8 @@ from matplotlib.colors import TABLEAU_COLORS
 from scipy.stats import ks_2samp
 
 colors = list(TABLEAU_COLORS.values())
+
 # ------------Read EEM dataset-------------
-eem_dataset_path = \
-    "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_250_ex_274_em_310_mfem_7_gaussian.json"
-eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
-eem_dataset, _ = eem_dataset.filter_by_index(None, ['M3', 'G1', 'G2', 'G3'], copy=True)
 
 
 def k_method_quenching(eem_dataset, base_model, n_clusters, minimum_dataset_size, depth):
@@ -64,7 +61,7 @@ def k_method_quenching(eem_dataset, base_model, n_clusters, minimum_dataset_size
                     kw_unquenched='B1C1',
                     kw_quenched='B1C2'
                 )
-                kmodel.calculate_consensus(mother_dataset, n_base_clusterings=10, subsampling_portion=1)
+                kmodel.calculate_consensus(mother_dataset, n_base_clusterings=50, subsampling_portion=0.8)
                 best_score = 0
                 eem_clusters = None
                 for n in n_clusters:
@@ -113,14 +110,18 @@ def k_method_quenching(eem_dataset, base_model, n_clusters, minimum_dataset_size
                         ]
     return clustered_datasets, cluster_stats
 
+eem_dataset_path = \
+    "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_250_ex_274_em_310_mfem_7_gaussian.json"
+eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
+eem_dataset, _ = eem_dataset.filter_by_index(None, ['M3', 'G1', 'G2', 'G3'], copy=True)
 
-clustered_datasets, cluster_stats = k_method_quenching(
-    eem_dataset=eem_dataset,
-    base_model=PARAFAC(n_components=4),
-    n_clusters=[2, 3, 4, 5],
-    minimum_dataset_size=10,
-    depth=2
-)
+# clustered_datasets, cluster_stats = k_method_quenching(
+#     eem_dataset=eem_dataset,
+#     base_model=PARAFAC(n_components=4),
+#     n_clusters=[2, 3, 4, 5],
+#     minimum_dataset_size=10,
+#     depth=1
+# )
 
 
 # --------------Outlier removal--------------
@@ -156,10 +157,11 @@ def outlier_removal(eem_dataset, clustered_datasets, base_model, target_depth, n
         'r_DOC': cor_doc,
         'p_DOC': p_doc,
     }, index=['0'])
-    ks_stats = {}
+
     clustered_datasets_filtered = {key: value for key, value in clustered_datasets.items() if
                                    len(key) == target_depth + 1}
     for n in range(n_steps):
+        ks_stats = {}
         # Compare each group to the pooled others
         for i, (code, dataset_excluded) in enumerate(clustered_datasets_filtered.items()):
             eem_dataset_remained = combine_eem_datasets(
@@ -217,17 +219,18 @@ def outlier_removal(eem_dataset, clustered_datasets, base_model, target_depth, n
             cor_doc,
             p_doc,
         ]
+        print(outlier_code)
     return outlier_removal_stats
 
 
 # ---------------go through combinations--------------
 
 kw_dict = {
-    'normal_jul': [['M3'], ['2024-07-12', '2024-07-13', '2024-07-15', '2024-07-16', '2024-07-17'], 3],
-    'stagnation_jul': [['M3'], ['2024-07-18', '2024-07-19'], 4],
-    'normal_oct': [['M3'], ['2024-10-16', '2024-10-22'], 4],
-    'stagnation_oct': [['M3'], ['2024-10-18'], 3],
-    'high_flow': [['M3'], ['2024-10-17'], 3],
+    # 'normal_jul': [['M3'], ['2024-07-12', '2024-07-13', '2024-07-15', '2024-07-16', '2024-07-17'], 3],
+    # 'stagnation_jul': [['M3'], ['2024-07-18', '2024-07-19'], 4],
+    # 'normal_oct': [['M3'], ['2024-10-16', '2024-10-22'], 4],
+    # 'stagnation_oct': [['M3'], ['2024-10-18'], 3],
+    # 'high_flow': [['M3'], ['2024-10-17'], 3],
     'shortcut 1': [['G3'], None, 4],
     'shortcut 2': [['G2'], None, 4],
     'shortcut 3': [['G1'], None, 4],
@@ -239,7 +242,7 @@ for name, kw in kw_dict.items():
     eem_dataset_conditioned, _ = eem_dataset.filter_by_index(kw[0], kw[1], copy=True)
     eem_dataset_pool[name] = eem_dataset_conditioned
 
-code_combinations = itertools.combinations(eem_dataset_pool.keys(), 5)
+code_combinations = itertools.combinations(eem_dataset_pool.keys(), 4)
 eem_dataset_combinations = {
     combo: combine_eem_datasets([eem_dataset_pool[code] for code in combo]) for combo in code_combinations
 }
