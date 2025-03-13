@@ -1892,37 +1892,37 @@ def on_build_pp_model(n_clicks, eem_graph_options, path_establishment, kw_mandat
             'fitting_params': pp_fit_params
         }
 
-        # fmax
-        intensities_tabs.children.append(
-            html.Div([
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            [
-                                dcc.Graph(figure=plot_fmax(fi,
-                                                           display=False,
-                                                           yaxis_title=fi_name
-                                                           ),
-                                          config={'autosizable': False},
-                                          style={'width': 1700, 'height': 800}
-                                          )
-                            ]
-                        )
-                    ]
-                ),
+    # fmax
+    intensities_tabs.children.append(
+        html.Div([
+            dbc.Row(
+                [
+                    dbc.Col(
+                        [
+                            dcc.Graph(figure=plot_fmax(fi,
+                                                       display=False,
+                                                       yaxis_title=fi_name
+                                                       ),
+                                      config={'autosizable': False},
+                                      style={'width': 1700, 'height': 800}
+                                      )
+                        ]
+                    )
+                ]
+            ),
 
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            [
-                                dbc.Table.from_dataframe(fi,
-                                                         bordered=True, hover=True, index=True)
-                            ]
-                        )
-                    ]
-                )
-            ]),
-        )
+            dbc.Row(
+                [
+                    dbc.Col(
+                        [
+                            dbc.Table.from_dataframe(fi,
+                                                     bordered=True, hover=True, index=True)
+                        ]
+                    )
+                ]
+            )
+        ]),
+    )
 
     ref_options = [{'label': var, 'value': var} for var in valid_ref] if \
         (eem_dataset_establishment.ref is not None) else None
@@ -2742,36 +2742,36 @@ def on_build_ri_model(n_clicks, eem_graph_options, path_establishment, kw_mandat
         }
 
         # fmax
-        intensities_tabs.children.append(
-            html.Div([
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            [
-                                dcc.Graph(figure=plot_fmax(ri,
-                                                           display=False,
-                                                           yaxis_title=ri_name
-                                                           ),
-                                          config={'autosizable': False},
-                                          style={'width': 1700, 'height': 800}
-                                          )
-                            ]
-                        )
-                    ]
-                ),
+    intensities_tabs.children.append(
+        html.Div([
+            dbc.Row(
+                [
+                    dbc.Col(
+                        [
+                            dcc.Graph(figure=plot_fmax(ri,
+                                                       display=False,
+                                                       yaxis_title=ri_name
+                                                       ),
+                                      config={'autosizable': False},
+                                      style={'width': 1700, 'height': 800}
+                                      )
+                        ]
+                    )
+                ]
+            ),
 
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            [
-                                dbc.Table.from_dataframe(ri,
-                                                         bordered=True, hover=True, index=True)
-                            ]
-                        )
-                    ]
-                )
-            ]),
-        )
+            dbc.Row(
+                [
+                    dbc.Col(
+                        [
+                            dbc.Table.from_dataframe(ri,
+                                                     bordered=True, hover=True, index=True)
+                        ]
+                    )
+                ]
+            )
+        ]),
+    )
 
     ref_options = [{'label': var, 'value': var} for var in valid_ref] if \
         (eem_dataset_establishment.ref is not None) else None
@@ -3779,7 +3779,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                                             plot_tool='plotly',
                                                             display=False,
                                                             figure_size=(5, 3.5),
-                                                            label_font_size=14,
+                                                            axis_label_font_size=14,
                                                             cbar_font_size=12,
                                                             title_font_size=16,
                                                             title=f'C{3 * i + 1}',
@@ -3805,7 +3805,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                                             plot_tool='plotly',
                                                             display=False,
                                                             figure_size=(5, 3.5),
-                                                            label_font_size=14,
+                                                            axis_label_font_size=14,
                                                             cbar_font_size=12,
                                                             title_font_size=16,
                                                             title=f'C{3 * i + 2}',
@@ -3831,7 +3831,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                                             plot_tool='plotly',
                                                             display=False,
                                                             figure_size=(5, 3.5),
-                                                            label_font_size=14,
+                                                            axis_label_font_size=14,
                                                             cbar_font_size=12,
                                                             title_font_size=16,
                                                             title=f'C{3 * i + 3}',
@@ -5174,7 +5174,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                                             plot_tool='plotly',
                                                             display=False,
                                                             figure_size=(5, 3.5),
-                                                            label_font_size=14,
+                                                            axis_label_font_size=14,
                                                             cbar_font_size=12,
                                                             title_font_size=16,
                                                             title=f'C{3 * i + 1}',
@@ -5201,7 +5201,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                                             plot_tool='plotly',
                                                             display=False,
                                                             figure_size=(5, 3.5),
-                                                            label_font_size=14,
+                                                            axis_label_font_size=14,
                                                             cbar_font_size=12,
                                                             title_font_size=16,
                                                             title=f'C{3 * i + 2}',
@@ -5228,7 +5228,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                                             plot_tool='plotly',
                                                             display=False,
                                                             figure_size=(5, 3.5),
-                                                            label_font_size=14,
+                                                            axis_label_font_size=14,
                                                             cbar_font_size=12,
                                                             title_font_size=16,
                                                             title=f'C{3 * i + 3}',
@@ -7011,7 +7011,7 @@ def on_plot_kmethod_components(k, cluster_i, eem_graph_options, kmethod_models, 
                                             plot_tool='plotly',
                                             display=False,
                                             figure_size=(5, 3.5),
-                                            label_font_size=14,
+                                            axis_label_font_size=14,
                                             cbar_font_size=12,
                                             title_font_size=16,
                                             title=f'C{3 * i + 1}',
@@ -7038,7 +7038,7 @@ def on_plot_kmethod_components(k, cluster_i, eem_graph_options, kmethod_models, 
                                             plot_tool='plotly',
                                             display=False,
                                             figure_size=(5, 3.5),
-                                            label_font_size=14,
+                                            axis_label_font_size=14,
                                             cbar_font_size=12,
                                             title_font_size=16,
                                             title=f'C{3 * i + 2}',
@@ -7065,7 +7065,7 @@ def on_plot_kmethod_components(k, cluster_i, eem_graph_options, kmethod_models, 
                                             plot_tool='plotly',
                                             display=False,
                                             figure_size=(5, 3.5),
-                                            label_font_size=14,
+                                            axis_label_font_size=14,
                                             cbar_font_size=12,
                                             title_font_size=16,
                                             title=f'C{3 * i + 3}',

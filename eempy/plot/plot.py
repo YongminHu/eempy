@@ -20,8 +20,8 @@ import plotly.figure_factory as ff
 
 
 def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_type='linear', vmin=0, vmax=10000,
-             n_cbar_ticks=5, cbar=True, cmap='jet', figure_size=(10, 7), label_font_size=18,
-             cbar_label="Intensity (a.u.)", cbar_font_size=16, fix_aspect_ratio=True, rotate=False,
+             n_cbar_ticks=5, cbar=True, cmap='jet', figure_size=(10, 7), axis_label_font_size=18, axis_ticks_font_size=16,
+             cbar_label="Intensity (a.u.)", cbar_font_size=16, cbar_fraction=0.02, fix_aspect_ratio=True, rotate=False,
              plot_tool='matplotlib', display=True, title=None, title_font_size=20):
     """
     plot EEM or EEM-like data.
@@ -48,14 +48,18 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
         The colormap, see https://matplotlib.org/stable/users/explain/colors/colormaps.html.
     figure_size: tuple or list with two elements
         The figure size.
-    label_font_size: int
+    axis_label_font_size: int
         The fontsize of the x and y axes labels.
+    axis_ticks_font_size: int
+        The fontsize of the x and y ticks labels.
     cbar: bool
         Whether to plot the colorscale bar.
     cbar_label: str
         The label of the colorbar scale.
     cbar_font_size: int
         The label size of the colorbar scale.
+    cbar_fraction: float
+        The size fraction of the colorbar scale.
     fix_aspect_ratio: bool
         Whether to fix the aspect ratio to be one.
     rotate: bool
@@ -75,8 +79,8 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
 
     if plot_tool == 'matplotlib':
         fig, ax = plt.subplots(figsize=figure_size)
-        font = {'size': label_font_size}
-        plt.rc('font', **font)
+        # font = {'size': label_font_size}
+        # plt.rc('font', **font)
         # reset the axis direction
         if scale_type == 'log':
             c_norm = LogNorm(vmin=vmin, vmax=vmax)
@@ -90,8 +94,9 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
         else:
             extent = (ex_range.min(), ex_range.max(), em_range.min(), em_range.max())
             ax.set_xlim([ex_range[0], ex_range[-1]])
-        ax.set_xlabel('Emission wavelength [nm]' if not rotate else 'Excitation wavelength [nm]')
-        ax.set_ylabel('Excitation wavelength [nm]' if not rotate else 'Emission wavelength [nm]')
+        ax.set_xlabel('Emission wavelength [nm]' if not rotate else 'Excitation wavelength [nm]', fontsize=axis_label_font_size)
+        ax.set_ylabel('Excitation wavelength [nm]' if not rotate else 'Emission wavelength [nm]', fontsize=axis_label_font_size)
+        ax.tick_params(labelsize=axis_ticks_font_size)
         if not auto_intensity_range:
             if scale_type == 'log':
                 im = ax.imshow(intensity if not rotate else np.flipud(np.fliplr(intensity.T)), cmap=cmap,
@@ -106,14 +111,15 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
                            interpolation='none', extent=extent, origin='upper',
                            aspect=1 if fix_aspect_ratio else None)
         if cbar:
-            cbar = fig.colorbar(im, ax=ax, ticks=t_cbar, fraction=0.03, pad=0.04)
-            cbar.set_label(cbar_label, labelpad=1.5)
+            cbar = fig.colorbar(im, ax=ax, ticks=t_cbar, fraction=cbar_fraction, pad=0.06)
+            cbar.set_label(cbar_label, labelpad=2.5, fontsize=axis_label_font_size)
             cbar.ax.tick_params(labelsize=cbar_font_size)
 
         if title:
             ax.set_title(title, pad=20, fontsize=title_font_size)
 
         if display:
+            plt.tight_layout()
             plt.show()
 
         return fig, ax
@@ -153,7 +159,7 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
         layout = go.Layout(
             xaxis=dict(title=xaxis_title),
             yaxis=dict(title=yaxis_title),
-            font=dict(size=label_font_size),
+            font=dict(size=axis_label_font_size),
             # width=figure_size[0] * 100,
             # height=figure_size[1] * 100 if not fix_aspect_ratio else None,
             yaxis_scaleanchor="x" if fix_aspect_ratio else None,

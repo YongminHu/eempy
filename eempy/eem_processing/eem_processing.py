@@ -27,6 +27,7 @@ from scipy.spatial.distance import squareform
 from scipy.sparse.linalg import ArpackError
 from scipy.linalg import khatri_rao
 from scipy.stats import pearsonr
+from scipy.optimize import linear_sum_assignment
 from tensorly.solvers.nnls import hals_nnls
 from tensorly.decomposition import parafac, non_negative_parafac, non_negative_parafac_hals
 from tensorly.cp_tensor import cp_to_tensor, CPTensor
@@ -1426,7 +1427,7 @@ class EEMDataset:
         Returns
         -------
         eem_dataset_sub: np.ndarray
-            New EEM stack.
+            New EEM dataset.
         selected_indices: np.ndarray
             Indices of selected EEMs.
         """
@@ -1885,7 +1886,7 @@ class PARAFAC:
         res = self.eem_stack_train - self.eem_stack_reconstructed
         return res
 
-    def explained_variance(self):
+    def variance_explained(self):
         """
         Calculate the explained variance of the established PARAFAC model
 
@@ -1894,10 +1895,10 @@ class PARAFAC:
         ev: float
             the explained variance
         """
-        y_train = self.eem_stack_train.reshape(-1)
-        y_pred = self.eem_stack_reconstructed.reshape(-1)
-        ev = 100 * (1 - np.var(y_pred - y_train) / np.var(y_train))
-        return ev
+        ss_total = tl.norm(self.eem_stack_train) ** 2
+        ss_residual = tl.norm(self.eem_stack_train - self.eem_stack_reconstructed) ** 2
+        variance_explained = (ss_total - ss_residual) / ss_total * 100
+        return variance_explained
 
     def core_consistency(self):
         """
@@ -2123,35 +2124,26 @@ def align_components_by_loadings(models_dict: dict, ex_ref: pd.DataFrame, em_ref
     component_labels_ref = ex_ref.columns
     models_dict_new = {}
     for model_label, model in models_dict.items():
-        m_sim_ex = loadings_similarity(model.ex_loadings, ex_ref, wavelength_alignment=wavelength_alignment)
-        m_sim_em = loadings_similarity(model.em_loadings, em_ref, wavelength_alignment=wavelength_alignment)
+        m_sim_ex = loadings_similarity(ex_ref, model.ex_loadings, wavelength_alignment=wavelength_alignment)
+        m_sim_em = loadings_similarity(em_ref, model.em_loadings, wavelength_alignment=wavelength_alignment)
         m_sim = (m_sim_ex + m_sim_em) / 2
-        ex_var, em_var = (model.ex_loadings, model.em_loadings)
-        matched_index = []
-        m_sim_copy = m_sim.copy()
-        if ex_var.shape[1] <= ex_ref.shape[1]:
-            for n_var in range(ex_var.shape[1]):
-                max_index = np.argmax(m_sim.iloc[n_var, :])
-                while max_index in matched_index:
-                    m_sim_copy.iloc[n_var, max_index] = -2
-                    max_index = np.argmax(m_sim_copy.iloc[n_var, :])
-                matched_index.append(max_index)
-            component_labels_var = [component_labels_ref[i] for i in matched_index]
-            permutation = get_indices_smallest_to_largest(matched_index)
-        else:
-            for n_ref in range(ex_ref.shape[1]):
-                max_index = np.argmax(m_sim.iloc[:, n_ref])
-                while max_index in matched_index:
-                    m_sim_copy.iloc[max_index, n_ref] = -2
-                    max_index = np.argmax(m_sim_copy.iloc[:, n_ref])
-                matched_index.append(max_index)
-            non_ordered_index = list(set([i for i in range(ex_var.shape[1])]) - set(matched_index))
-            permutation = matched_index + non_ordered_index
+        padded_matrix = np.zeros((max(m_sim.shape), max(m_sim.shape)))
+        padded_matrix[:m_sim.shape[0], :m_sim.shape[1]] = m_sim
+        row_ind, col_ind = linear_sum_assignment(-padded_matrix)
+        pairs = [(i, j) for i, j in zip(row_ind, col_ind) if i < m_sim.shape[0]]
+        sorted_pairs = sorted(pairs, key=lambda x: x[0])
+        row_ind, col_ind = zip(*sorted_pairs)
+        col_ind = list(col_ind)
+        non_ordered_index = list(set([i for i in range(m_sim.shape[1])]) - set(col_ind))
+        permutation = col_ind + non_ordered_index
+        if non_ordered_index:
             component_labels_ref_extended = component_labels_ref + ['O{i}'.format(i=i + 1) for i in
                                                                     range(len(non_ordered_index))]
-            component_labels_var = [0] * len(permutation)
-            for i, nc in enumerate(permutation):
-                component_labels_var[nc] = component_labels_ref_extended[i]
+        else:
+            component_labels_ref_extended = component_labels_ref
+        component_labels_var = [0] * len(permutation)
+        for i, nc in enumerate(permutation):
+            component_labels_var[nc] = component_labels_ref_extended[i]
         model.score.columns, model.ex_loadings.columns, model.em_loadings.columns, model.fmax.columns = (
                 [component_labels_var] * 4)
         model.score = model.score.iloc[:, permutation]
