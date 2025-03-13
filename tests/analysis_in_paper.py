@@ -182,6 +182,16 @@ target_name = 'TCC (million #/mL)'
 model = PARAFAC(n_components=r, init='svd', non_negativity=True,
                 tf_normalization=True, sort_em=True, loadings_normalization='maximum')
 model.fit(dataset_train)
+
+# # # export model
+# info_dict = {
+#     'name': 'October_5_component',
+#     'creator': 'Yongmin Hu',
+#     'date': '2025-03',
+#     'email': 'yongmin.hu@eawag.ch',
+# }
+# model.export('C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/model_October_5_component.txt', info_dict)
+
 target_train = dataset_train.ref[target_name]
 valid_indices_train = target_train.index[~target_train.isna()]
 target_train = target_train.dropna().to_numpy()
