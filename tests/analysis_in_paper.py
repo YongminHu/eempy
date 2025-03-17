@@ -1,10 +1,8 @@
-import math
-
-import numpy as np
 import pandas as pd
 
 from eempy.read_data import read_eem_dataset, read_abs_dataset, read_eem, read_eem_dataset_from_json
 from eempy.eem_processing import *
+from eempy.plot import *
 from scipy.stats import pearsonr
 from matplotlib.colors import TABLEAU_COLORS
 from datetime import datetime
@@ -15,7 +13,7 @@ colors = list(TABLEAU_COLORS.values())
 
 # ------------Read EEM dataset-------------
 eem_dataset_path = \
-    "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_260_ex_274_em_310_mfem_3.json"
+    "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_286_ex_274_em_310_mfem_7_gaussian.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
 eem_dataset, _ = eem_dataset.filter_by_index(None, ['M3', 'G1', 'G2', 'G3'], copy=True)
 
@@ -70,7 +68,8 @@ plt.legend()
 plt.tight_layout()
 plt.show()
 
-#--------Table 1: n_components determination with F0/F and numerical methods---------
+
+# --------Table 1: n_components determination with F0/F and numerical methods---------
 
 def calculate_split_half_score(dataset, n_components, n_try):
     score = 0
@@ -87,9 +86,10 @@ def calculate_split_half_score(dataset, n_components, n_try):
         eml2 = model2.em_loadings
         m_sim_ex = loadings_similarity(exl1, exl2)
         m_sim_em = loadings_similarity(eml1, eml2)
-        m_sim = (m_sim_ex + m_sim_em)/2
+        m_sim = (m_sim_ex + m_sim_em) / 2
         score += np.mean(np.diag(m_sim.to_numpy()))
-    return score/n_try
+    return score / n_try
+
 
 kw_dict_tbl1 = {
     'july+october': [None, '2024'],
@@ -134,8 +134,7 @@ for name, kw in kw_dict_tbl1.items():
         results_all_r[r] = results_r
     scores_results[name] = results_all_r
 
-
-#--------Fig 2: applying established model to quantify new samples: outlier detection-------
+# --------Fig 2: applying established model to quantify new samples: outlier detection-------
 
 dataset_train, _ = eem_dataset.filter_by_index(None,
                                                [
@@ -248,9 +247,9 @@ threshold = np.quantile(fmax_ratio_target_train, 0.95)
 #             )
 plt.figure()
 ax = sns.histplot(fmax_ratio_target_train, binwidth=0.01, binrange=binrange, kde=False, stat='density', color="blue",
-             alpha=0.5, label='training')
+                  alpha=0.5, label='training')
 sns.histplot(fmax_ratio_target_test, binwidth=0.01, binrange=binrange, kde=False, stat='density', color="orange",
-                  alpha=0.5, label='test (qualified)')
+             alpha=0.5, label='test (qualified)')
 sns.histplot([0], binwidth=0.01, binrange=binrange, kde=True, stat='density', color="orange",
              alpha=0.5, label='test (outliers)', hatch='////', edgecolor='red')
 for bar in ax.patches:
@@ -361,7 +360,7 @@ plt.show()
 # fig.tight_layout()
 # fig.show()
 
-#---------Fig 3: timeseries of anomalies detected-----------
+# ---------Fig 3: timeseries of anomalies detected-----------
 
 time = [datetime.strptime(t[0:16], '%Y-%m-%d-%H-%M') for t in fmax_original_test.index]
 sampling_point_labels_dict = {
@@ -493,11 +492,13 @@ for i, day in enumerate(unique_days):
                    color=plot_config[f'C{fmax_col + 1} Fmax']['color'],
                    linestyle='-', label=f'C{fmax_col + 1} Fmax')
     for j, m in enumerate(daily_data['markers'].to_list()):
-        ax.plot(daily_data.index[j], daily_data[f'C{fmax_col + 1} ' + '$F_{0}/F$'].iloc[j], markersize=8, markeredgecolor='black',
+        ax.plot(daily_data.index[j], daily_data[f'C{fmax_col + 1} ' + '$F_{0}/F$'].iloc[j], markersize=8,
+                markeredgecolor='black',
                 marker=m, linestyle='', color=plot_config[f'C{fmax_col + 1} ' + '$F_{0}/F$']['color'])
         tr1.plot(daily_data.index[j], daily_data[target_name].iloc[j], markersize=8, markeredgecolor='black',
                  marker=m, linestyle='', color=plot_config[target_name]['color'])
-        tr2.plot(daily_data.index[j], daily_data[f'C{fmax_col + 1} Fmax'].iloc[j], markersize=8, markeredgecolor='black',
+        tr2.plot(daily_data.index[j], daily_data[f'C{fmax_col + 1} Fmax'].iloc[j], markersize=8,
+                 markeredgecolor='black',
                  marker=m, linestyle='', color=plot_config[f'C{fmax_col + 1} Fmax']['color'])
         # if daily_data['is_outlier'].iloc[j]:
         #     gap_left = (daily_data.index[j] - daily_data.index[j - 1]) / 2 if j != 0 else pd.Timedelta(hours=0.5)
@@ -523,7 +524,8 @@ for i, day in enumerate(unique_days):
         #                  y=threshold + 0.02, s='$F_{0}/F=$' + f'{threshold:.2f}',
         #                  c=plot_config[f'C{fmax_col + 1} ' + '$F_{0}/F$']['color'], fontsize=14)
         outlier_rate = np.sum(daily_data['is_outlier']) / daily_data.shape[0] * 100
-        outlier_rate_eff = np.sum(daily_data['is_outlier'][daily_data['sampling point'] == 'GAC effluent']) / np.sum(daily_data['sampling point'] == 'GAC effluent') * 100
+        outlier_rate_eff = np.sum(daily_data['is_outlier'][daily_data['sampling point'] == 'GAC effluent']) / np.sum(
+            daily_data['sampling point'] == 'GAC effluent') * 100
         outlier_rate_col = np.sum(daily_data['is_outlier'][daily_data['sampling point'] != 'GAC effluent']) / np.sum(
             daily_data['sampling point'] != 'GAC effluent') * 100
         if not np.isnan(outlier_rate_col):
@@ -544,20 +546,246 @@ plt.subplots_adjust(bottom=0.25)
 plt.tight_layout()
 plt.show()
 
-
 # ----------create legends--------
 plt.figure()
-plt.plot([0,0], [1,1], label='$F_{0}/F$', color='#1f77b4')
-plt.plot([0,0], [1,1], label='TCC or DOC', color='#2ca02c')
-plt.plot([0,0], [1,1], label='Fmax', color='#ff7f0e')
+plt.plot([0, 0], [1, 1], label='$F_{0}/F$', color='#1f77b4')
+plt.plot([0, 0], [1, 1], label='TCC or DOC', color='#2ca02c')
+plt.plot([0, 0], [1, 1], label='Fmax', color='#ff7f0e')
 plt.legend(ncol=3, title='variables', fontsize=12, title_fontsize=12, frameon=True)
 plt.show()
 
 plt.figure()
-plt.plot([0,0], [1,1], marker='^', markersize=6, markeredgecolor='black', color='white', label='BAC top')
-plt.plot([0,0], [1,1], marker='s', markersize=6, markeredgecolor='black', color='white', label='BAC middle')
-plt.plot([0,0], [1,1], marker='v', markersize=6, markeredgecolor='black', color='white', label='BAC bottom')
-plt.plot([0,0], [1,1], marker='o', markersize=6, markeredgecolor='black', color='white', label='BAC effluent')
+plt.plot([0, 0], [1, 1], marker='^', markersize=6, markeredgecolor='black', color='white', label='BAC top')
+plt.plot([0, 0], [1, 1], marker='s', markersize=6, markeredgecolor='black', color='white', label='BAC middle')
+plt.plot([0, 0], [1, 1], marker='v', markersize=6, markeredgecolor='black', color='white', label='BAC bottom')
+plt.plot([0, 0], [1, 1], marker='o', markersize=6, markeredgecolor='black', color='white', label='BAC effluent')
 plt.legend(ncol=4, title='sampling point', fontsize=10, title_fontsize=10, frameon=True, bbox_to_anchor=(1, -0.2))
+plt.tight_layout()
+plt.show()
+
+# ----------Other numerical outlier detection methods: rmse and leverage--------
+
+dataset_train, _ = eem_dataset.filter_by_index(['B1C1'],
+                                               [
+                                                   '2024-07-13',
+                                                   '2024-07-15',
+                                                   '2024-07-16',
+                                                   '2024-07-17',
+                                                   '2024-07-18',
+                                                   '2024-07-19',
+                                                   # '2024-10-17',
+                                                   # '2024-10-21',
+                                                   # 'G1',
+                                                   # 'G2',
+                                                   # 'G3',
+                                                   # '2024-'
+                                               ]
+                                               )
+
+dataset_test, _ = eem_dataset.filter_by_index(['B1C1'],
+                                              [
+                                                  # '2024-07-15',
+                                                  # '2024-07-16',
+                                                  # '2024-07-17',
+                                                  # '2024-07-18',
+                                                  # '2024-07-19',
+                                                  '2024-10-'
+                                                  # '2024-10-17',
+                                                  # '2024-10-21',
+                                                  # 'G1',
+                                                  # 'G2',
+                                                  # 'G3',
+                                              ]
+                                              )
+
+model = PARAFAC(n_components=4)
+model.fit(dataset_train)
+fmax_train = model.fmax
+leverage_train = model.leverage()
+rmse_train = model.sample_rmse().to_numpy().reshape(-1)
+relative_rmse_train = model.sample_relative_rmse().to_numpy().reshape(-1)
+
+# ------------rmse and relative rmse----------
+_, fmax_test, recon_eem_stack = model.predict(dataset_test)
+res = dataset_test.eem_stack - recon_eem_stack
+n_pixels = recon_eem_stack.shape[1] * recon_eem_stack.shape[2]
+rmse_test = np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels)
+rmse_test_df = pd.DataFrame(rmse_test, index=fmax_test.index)
+relative_rmse_test = rmse_test / np.average(dataset_test.eem_stack, axis=(1, 2))
+
+# plot_eem(dataset_train.eem_stack[1], ex_range=dataset_train.ex_range, em_range=dataset_train.em_range)
+# plot_eem(model.eem_stack_reconstructed[1], ex_range=dataset_train.ex_range, em_range=dataset_train.em_range)
+
+# ------------leverage---------
+indices_test = dataset_test.index
+leverage_test = []
+for idx in indices_test:
+    one_sample_dataset, _ = dataset_test.filter_by_index([idx], None)
+    new_dataset = combine_eem_datasets([dataset_train, one_sample_dataset])
+    model = PARAFAC(n_components=4)
+    model.fit(new_dataset)
+    leverage = model.leverage()
+    leverage_test.append(leverage.loc[one_sample_dataset.index[0]].to_numpy()[0])
+
+
+# -----------boxplots of training and testing---------
+def round_2d(num, direction):
+    if direction == 'up':
+        return math.ceil(num * 100) / 100
+    elif direction == 'down':
+        return math.floor(num * 100) / 100
+
+
+def round_0d(num, direction):
+    if direction == 'up':
+        return math.ceil(num)
+    elif direction == 'down':
+        return math.floor(num)
+
+
+# -----------rmse---------
+indicator_train = rmse_train
+indicator_test = rmse_test
+# threshold = round_2d(np.max(indicator_train), 'up')
+binrange = (round_2d(np.min(np.concatenate([indicator_train, indicator_test]) - 20, axis=0), 'down'),
+            round_2d(np.max(np.concatenate([indicator_train, indicator_test]) + 20, axis=0), 'up')
+            )
+# threshold = np.max(indicator_train)
+threshold = np.quantile(indicator_train, 0.95)
+# binrange = (np.min(np.concatenate([indicator_train, indicator_test]) - 0.02, axis=0),
+#             np.max(np.concatenate([indicator_train, indicator_test]) + 0.02, axis=0)
+#             )
+plt.figure()
+ax = sns.histplot(indicator_train, binwidth=10, binrange=binrange, kde=False, stat='density', color="blue",
+                  alpha=0.5, label='training', zorder=0)
+sns.histplot(indicator_test, binwidth=10, binrange=binrange, kde=False, stat='density', color="orange",
+             alpha=0.5, label='test (qualified)', zorder=1)
+sns.histplot([-100], binwidth=10, binrange=binrange, kde=True, stat='density', color="orange",
+             alpha=0.5, label='test (outliers)', hatch='////', edgecolor='red')
+for bar in ax.patches:
+    # Calculate the midpoint of the bin
+    bin_left = bar.get_x()
+    bin_width = bar.get_width()
+    bin_mid = bin_left + bin_width / 2
+
+    # Check if the midpoint is above the threshold
+    if threshold <= bin_mid and bar.zorder == 1:
+        # Add hatch pattern and change color
+        bar.set_hatch("////")  # Hatch pattern (e.g., "////", "xxx", "..")
+        bar.set_edgecolor('red')
+plt.xlim(binrange)
+plt.xlabel("EEM-RMSE", fontsize=20)
+plt.ylabel("Density", fontsize=20)
+plt.legend(fontsize=16, loc='upper right')
+plt.tick_params(labelsize=18)
+plt.tight_layout()
+plt.show()
+
+target_name = 'DOC'
+target_train = dataset_train.ref[target_name]
+target_test_true = dataset_test.ref[target_name]
+fmax_col = 1
+plt.figure()
+# a, b = np.polyfit(target_train, fmax_train.iloc[:, fmax_col], deg=1)
+# plt.plot(
+#     [-1, 10],
+#     a * np.array([-1, 10]) + b,
+#     '--',
+#     color='blue',
+#     label='reg. training'
+# )
+plt.scatter(target_train, fmax_train.iloc[:, fmax_col], label='training', color='blue', alpha=0.6)
+plt.scatter(target_test_true[indicator_test <= threshold],
+            fmax_test.iloc[indicator_test <= threshold, fmax_col],
+            label='test (qualified)', color='orange', alpha=0.6)
+plt.scatter(target_test_true[indicator_test > threshold],
+            fmax_test.iloc[indicator_test > threshold, fmax_col],
+            label='test (outliers)', color='red', alpha=0.6)
+plt.xlabel(target_name, fontsize=20)
+plt.ylabel(f'C{fmax_col + 1} Fmax', fontsize=20)
+plt.legend(
+    bbox_to_anchor=[1.02, 0.37],
+    # bbox_to_anchor=[0.58, 0.63],
+    fontsize=16
+)
+plt.tick_params(labelsize=16)
+plt.tight_layout()
+# plt.xlim([0, 2.5])
+# plt.ylim([0, 2500])
+plt.show()
+
+# ----------relative rmse----------
+indicator_train = relative_rmse_train
+indicator_test = relative_rmse_test
+# threshold = round_2d(np.max(indicator_train), 'up')
+binrange = (round_2d(np.min(np.concatenate([indicator_train, indicator_test]) - 0.05, axis=0), 'down'),
+            round_2d(np.max(np.concatenate([indicator_train, indicator_test]) + 0.05, axis=0), 'up')
+            )
+# threshold = np.max(indicator_train)
+threshold = np.quantile(indicator_train, 0.95)
+# binrange = (np.min(np.concatenate([indicator_train, indicator_test]) - 0.02, axis=0),
+#             np.max(np.concatenate([indicator_train, indicator_test]) + 0.02, axis=0)
+#             )
+plt.figure()
+ax = sns.histplot(indicator_train, binwidth=0.025, binrange=binrange, kde=False, stat='density', color="blue",
+                  alpha=0.5, label='training', zorder=0)
+sns.histplot(indicator_test, binwidth=0.025, binrange=binrange, kde=False, stat='density', color="orange",
+             alpha=0.5, label='test (qualified)', zorder=1)
+sns.histplot([-100], binwidth=0.025, binrange=binrange, kde=True, stat='density', color="orange",
+             alpha=0.5, label='test (outliers)', hatch='////', edgecolor='red')
+for bar in ax.patches:
+    # Calculate the midpoint of the bin
+    bin_left = bar.get_x()
+    bin_width = bar.get_width()
+    bin_mid = bin_left + bin_width / 2
+
+    # Check if the midpoint is above the threshold
+    if threshold <= bin_mid and bar.zorder == 1:
+        # Add hatch pattern and change color
+        bar.set_hatch("////")  # Hatch pattern (e.g., "////", "xxx", "..")
+        bar.set_edgecolor('red')
+plt.xlim(binrange)
+plt.xlabel("Relative EEM-RMSE", fontsize=20)
+plt.ylabel("Density", fontsize=20)
+plt.legend(fontsize=16, loc='upper right')
+plt.tick_params(labelsize=18)
+plt.tight_layout()
+plt.show()
+
+#----------leverage---------
+indicator_train = leverage_train.to_numpy().reshape(-1)
+indicator_test = np.array(leverage_test)
+# threshold = round_2d(np.max(indicator_train), 'up')
+binrange = (round_2d(np.min(np.concatenate([indicator_train, indicator_test]) - 0.05, axis=0), 'down'),
+            round_2d(np.max(np.concatenate([indicator_train, indicator_test]) + 0.05, axis=0), 'up')
+            )
+# threshold = np.max(indicator_train)
+threshold = np.quantile(indicator_train, 0.95)
+# binrange = (np.min(np.concatenate([indicator_train, indicator_test]) - 0.02, axis=0),
+#             np.max(np.concatenate([indicator_train, indicator_test]) + 0.02, axis=0)
+#             )
+plt.figure()
+ax = sns.histplot(indicator_train, binwidth=0.025, binrange=binrange, kde=False, stat='density', color="blue",
+                  alpha=0.5, label='training', zorder=0)
+sns.histplot(indicator_test, binwidth=0.025, binrange=binrange, kde=False, stat='density', color="orange",
+             alpha=0.5, label='test (qualified)', zorder=1)
+sns.histplot([-100], binwidth=0.025, binrange=binrange, kde=True, stat='density', color="orange",
+             alpha=0.5, label='test (outliers)', hatch='////', edgecolor='red')
+for bar in ax.patches:
+    # Calculate the midpoint of the bin
+    bin_left = bar.get_x()
+    bin_width = bar.get_width()
+    bin_mid = bin_left + bin_width / 2
+
+    # Check if the midpoint is above the threshold
+    if threshold <= bin_mid and bar.zorder == 1:
+        # Add hatch pattern and change color
+        bar.set_hatch("////")  # Hatch pattern (e.g., "////", "xxx", "..")
+        bar.set_edgecolor('red')
+plt.xlim(binrange)
+plt.xlabel("Sample leverage", fontsize=20)
+plt.ylabel("Density", fontsize=20)
+plt.legend(fontsize=16, loc='upper right')
+plt.tick_params(labelsize=18)
 plt.tight_layout()
 plt.show()

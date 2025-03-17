@@ -285,7 +285,7 @@ def plot_fi_correlation(fi: pd.DataFrame, ref):
         A DataFrame of shape (n,1), where n is the number of samples. The output of EEMdataset.peak_picking() can be
         passed to this parameter.
     ref: np.ndarray (1d)
-        The reference value. It should be an 1d numpy array of shape (n,), where n is the number of samples.
+        The reference value. It should be a 1d numpy array of shape (n,), where n is the number of samples.
 
     Returns
     ----------

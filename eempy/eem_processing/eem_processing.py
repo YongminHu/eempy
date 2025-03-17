@@ -1947,30 +1947,30 @@ class PARAFAC:
 
         Returns
         -------
-        sse: pandas.DataFrame
+        rmse: pandas.DataFrame
             Table of RMSE
         """
         res = self.residual()
         n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
-        rmse = pd.DataFrame(np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels), index=self.fmax.index, columns=['RMSE'])
+        rmse = pd.DataFrame(np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels),
+                            index=self.fmax.index, columns=['RMSE'])
         return rmse
 
-    def sample_normalized_rmse(self):
+    def sample_relative_rmse(self):
         """
         Calculate the normalized root mean squared error (normalized RMSE) of EEM of each sample. It is defined as the
         RMSE divided by the mean of original signal.
 
         Returns
         -------
-        normalized_sse: pandas.DataFrame
+        relative_rmse: pandas.DataFrame
             Table of normalized RMSE
         """
         res = self.residual()
         n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
-        normalized_sse = pd.DataFrame(sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels) /
-                                      np.average(self.eem_stack_train, axis=(1, 2)),
-                                      index=self.score.index, columns=['Normalized RMSE'])
-        return normalized_sse
+        relative_rmse = pd.DataFrame(np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels) / np.average(self.eem_stack_train, axis=(1, 2)),
+                                     index=self.score.index, columns=['Relative RMSE'])
+        return relative_rmse
 
     def sample_summary(self):
         """

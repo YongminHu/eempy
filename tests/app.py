@@ -2121,7 +2121,7 @@ def on_pp_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, pp_model
         State('pp-test-results', 'data'),
     ]
 )
-def on_parafac_test_predict_reference(n_clicks, ref_var, pp_test_results):
+def on_pp_test_predict_reference(n_clicks, ref_var, pp_test_results):
     if all([ref_var, pp_test_results]):
         pred = pp_test_results['Prediction of reference'][ref_var]
         pred = pd.DataFrame(pred[1:], columns=pred[0], index=pp_test_results['index'])
@@ -2172,26 +2172,26 @@ def on_parafac_test_predict_reference(n_clicks, ref_var, pp_test_results):
         State('pp-test-results', 'data'),
     ]
 )
-def on_parafac_test_correlations(indicator, ref_var, pp_test_results):
+def on_pp_test_correlations(indicator, ref_var, pp_test_results):
     if all([indicator, ref_var, pp_test_results]):
         ref_df = pd.DataFrame(pp_test_results['ref'][1:], columns=pp_test_results['ref'][0],
                               index=pp_test_results['index'])
         var = ref_df[ref_var]
         if indicator != 'Prediction of reference':
-            parafac_var = pd.DataFrame(pp_test_results[indicator][1:], columns=pp_test_results[indicator][0],
+            pp_var = pd.DataFrame(pp_test_results[indicator][1:], columns=pp_test_results[indicator][0],
                                        index=pp_test_results['index'])
         else:
             if pp_test_results[indicator][ref_var] is not None:
-                parafac_var = pd.DataFrame(pp_test_results[indicator][ref_var][1:],
+                pp_var = pd.DataFrame(pp_test_results[indicator][ref_var][1:],
                                            columns=pp_test_results[indicator][ref_var][0],
                                            index=pp_test_results['index'])
             else:
                 return go.Figure(), None
         fig = go.Figure()
         stats = []
-        for i, col in enumerate(parafac_var.columns):
+        for i, col in enumerate(pp_var.columns):
             x = var
-            y = parafac_var[col]
+            y = pp_var[col]
             nan_rows = x[x.isna()].index
             x = x.drop(nan_rows)
             y = y.drop(nan_rows)
@@ -2829,7 +2829,7 @@ def on_ri_establishment_correlations(ref_var, ri_model):
         return go.Figure(), None
 
 
-# -----------Fit a test EEM dataset using the established PARAFAC model components
+# -----------Fit a test EEM dataset using the established RFI model
 @app.callback(
     [
         Output('ri-eem-dataset-predict-message', 'children'),  # size, intervals?
@@ -2973,7 +2973,7 @@ def on_ri_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, ri_model
         State('ri-test-results', 'data'),
     ]
 )
-def on_parafac_test_predict_reference(n_clicks, ref_var, ri_test_results):
+def on_ri_test_predict_reference(n_clicks, ref_var, ri_test_results):
     if all([ref_var, ri_test_results]):
         pred = ri_test_results['Prediction of reference'][ref_var]
         pred = pd.DataFrame(pred[1:], columns=pred[0], index=ri_test_results['index'])
@@ -3024,26 +3024,26 @@ def on_parafac_test_predict_reference(n_clicks, ref_var, ri_test_results):
         State('ri-test-results', 'data'),
     ]
 )
-def on_parafac_test_correlations(indicator, ref_var, ri_test_results):
+def on_ri_test_correlations(indicator, ref_var, ri_test_results):
     if all([indicator, ref_var, ri_test_results]):
         ref_df = pd.DataFrame(ri_test_results['ref'][1:], columns=ri_test_results['ref'][0],
                               index=ri_test_results['index'])
         var = ref_df[ref_var]
         if indicator != 'Prediction of reference':
-            parafac_var = pd.DataFrame(ri_test_results[indicator][1:], columns=ri_test_results[indicator][0],
+            ri_var = pd.DataFrame(ri_test_results[indicator][1:], columns=ri_test_results[indicator][0],
                                        index=ri_test_results['index'])
         else:
             if ri_test_results[indicator][ref_var] is not None:
-                parafac_var = pd.DataFrame(ri_test_results[indicator][ref_var][1:],
+                ri_var = pd.DataFrame(ri_test_results[indicator][ref_var][1:],
                                            columns=ri_test_results[indicator][ref_var][0],
                                            index=ri_test_results['index'])
             else:
                 return go.Figure(), None
         fig = go.Figure()
         stats = []
-        for i, col in enumerate(parafac_var.columns):
+        for i, col in enumerate(ri_var.columns):
             x = var
-            y = parafac_var[col]
+            y = ri_var[col]
             nan_rows = x[x.isna()].index
             x = x.drop(nan_rows)
             y = y.drop(nan_rows)
