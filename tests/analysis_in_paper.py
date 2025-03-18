@@ -629,15 +629,15 @@ relative_error_test = abs(target_test_true - target_test_pred) / target_test_tru
 # plot_eem(model.eem_stack_reconstructed[1], ex_range=dataset_train.ex_range, em_range=dataset_train.em_range)
 
 # ------------leverage---------
-# indices_test = dataset_test.index
-# leverage_test = []
-# for idx in indices_test:
-#     one_sample_dataset, _ = dataset_test.filter_by_index([idx], None)
-#     new_dataset = combine_eem_datasets([dataset_train, one_sample_dataset])
-#     model = PARAFAC(n_components=4)
-#     model.fit(new_dataset)
-#     leverage = model.leverage()
-#     leverage_test.append(leverage.loc[one_sample_dataset.index[0]].to_numpy()[0])
+indices_test = dataset_test.index
+leverage_test = {}
+for idx in indices_test:
+    one_sample_dataset, _ = dataset_test.filter_by_index([idx], None)
+    new_dataset = combine_eem_datasets([dataset_train, one_sample_dataset])
+    model = PARAFAC(n_components=4)
+    model.fit(new_dataset)
+    leverage = model.leverage()
+    leverage_test[one_sample_dataset.index[0]] = leverage
 
 
 # -----------boxplots of training and testing---------
@@ -803,40 +803,17 @@ plt.show()
 # #----------leverage---------
 # indicator_train = leverage_train.to_numpy().reshape(-1)
 # indicator_test = np.array(leverage_test)
-# # threshold = round_2d(np.max(indicator_train), 'up')
-# binrange = (round_2d(np.min(np.concatenate([indicator_train, indicator_test]) - 0.05, axis=0), 'down'),
-#             round_2d(np.max(np.concatenate([indicator_train, indicator_test]) + 0.05, axis=0), 'up')
-#             )
-# # threshold = np.max(indicator_train)
-# threshold = np.quantile(indicator_train, 0.95)
-# # binrange = (np.min(np.concatenate([indicator_train, indicator_test]) - 0.02, axis=0),
-# #             np.max(np.concatenate([indicator_train, indicator_test]) + 0.02, axis=0)
-# #             )
-# plt.figure()
-# ax = sns.histplot(indicator_train, binwidth=0.025, binrange=binrange, kde=False, stat='density', color="blue",
-#                   alpha=0.5, label='training', zorder=0)
-# sns.histplot(indicator_test, binwidth=0.025, binrange=binrange, kde=False, stat='density', color="orange",
-#              alpha=0.5, label='test (qualified)', zorder=1)
-# sns.histplot([-100], binwidth=0.025, binrange=binrange, kde=True, stat='density', color="orange",
-#              alpha=0.5, label='test (outliers)', hatch='////', edgecolor='red')
-# for bar in ax.patches:
-#     # Calculate the midpoint of the bin
-#     bin_left = bar.get_x()
-#     bin_width = bar.get_width()
-#     bin_mid = bin_left + bin_width / 2
-#
-#     # Check if the midpoint is above the threshold
-#     if threshold <= bin_mid and bar.zorder == 1:
-#         # Add hatch pattern and change color
-#         bar.set_hatch("////")  # Hatch pattern (e.g., "////", "xxx", "..")
-#         bar.set_edgecolor('red')
-# plt.xlim(binrange)
-# plt.xlabel("Sample leverage", fontsize=20)
-# plt.ylabel("Density", fontsize=20)
-# plt.legend(fontsize=16, loc='upper right')
-# plt.tick_params(labelsize=18)
-# plt.tight_layout()
-# plt.show()
+
+plt.figure()
+for sample_idx, lvg in leverage_test.items():
+    lvg_train_samples = lvg.iloc[:-1]
+    plt.plot(np.max(lvg_train_samples), lvg.iloc[-1], 'o')
+plt.plot([0, 1], [0, 1], color='black', linestyle='--')
+plt.xlim([0, 1])
+plt.ylim([0, 1])
+plt.xlabel('Maximum leverage in training samples')
+plt.ylabel('Leverage of the test sample')
+plt.show()
 
 #--------multi-variate regression for DOC--------
 
@@ -879,7 +856,7 @@ fmax_quenched_train = fmax_quenched_train[mask_train]
 # fmax_ratio_train = fmax_original_train.to_numpy() / fmax_quenched_train.to_numpy()
 # fmax_ratio_target_train = fmax_ratio_train[:, fmax_col]
 # r_target_train, p_target_train = pearsonr(target_train, fmax_original_train.iloc[:, fmax_col])
-reg = LinearRegression(positive=True)
+reg = LinearRegression(positive=False)
 reg.fit(fmax_original_train.iloc[:, fmax_col], target_train)
 weights = reg.coef_
 intercept = reg.intercept_
