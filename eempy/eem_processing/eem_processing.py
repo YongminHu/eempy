@@ -1951,6 +1951,7 @@ class PARAFAC:
             Table of RMSE
         """
         res = self.residual()
+        res = eem_rayleigh_scattering_removal(res, ex_range=self.ex_range, em_range=self.em_range)
         n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
         rmse = pd.DataFrame(np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels),
                             index=self.fmax.index, columns=['RMSE'])
@@ -1967,6 +1968,7 @@ class PARAFAC:
             Table of normalized RMSE
         """
         res = self.residual()
+        res = eem_rayleigh_scattering_removal(res, ex_range=self.ex_range, em_range=self.em_range)
         n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
         relative_rmse = pd.DataFrame(np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels) / np.average(self.eem_stack_train, axis=(1, 2)),
                                      index=self.score.index, columns=['Relative RMSE'])
