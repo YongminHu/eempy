@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 from eempy.read_data import read_eem_dataset, read_abs_dataset, read_eem, read_eem_dataset_from_json
 from eempy.eem_processing import *
@@ -9,6 +10,7 @@ from datetime import datetime
 import seaborn as sns
 from sklearn.linear_model import LinearRegression
 from matplotlib.dates import DateFormatter, HourLocator
+from scipy.stats import zscore
 
 colors = list(TABLEAU_COLORS.values())
 
@@ -180,6 +182,16 @@ target_train = dataset_train.ref[target_name]
 valid_indices_train = target_train.index[~target_train.isna()]
 target_train = target_train.dropna().to_numpy()
 fmax_train = model.fmax
+
+# #----
+# # peak-picking
+# dataset_train.gaussian_filter(sigma=1, truncate=3, copy=False)
+# pp1, _, _ = dataset_train.peak_picking(ex=280, em=340)
+# pp2, _, _ = dataset_train.peak_picking(ex=308, em=362)
+# pp3, _, _ = dataset_train.peak_picking(ex=336, em=407)
+# fmax_train = pd.concat([pp1, pp2, pp3], axis=1)
+# #---
+
 fmax_original_train = fmax_train[fmax_train.index.str.contains('B1C1')]
 mask_train = fmax_original_train.index.isin(valid_indices_train)
 fmax_original_train = fmax_original_train[mask_train]
@@ -197,6 +209,15 @@ target_test_true = dataset_test.ref[target_name]
 valid_indices_test = target_test_true.index[~target_test_true.isna()]
 target_test_true = target_test_true.dropna().to_numpy()
 _, fmax_test, _ = model.predict(eem_dataset=dataset_test)
+
+# # ----
+# dataset_test.gaussian_filter(sigma=2, truncate=3, copy=False)
+# pp1, _, _ = dataset_test.peak_picking(ex=280, em=340)
+# pp2, _, _ = dataset_test.peak_picking(ex=308, em=362)
+# pp3, _, _ = dataset_test.peak_picking(ex=336, em=407)
+# fmax_test = pd.concat([pp1, pp2, pp3], axis=1)
+# # ----
+
 fmax_original_test = fmax_test[fmax_test.index.str.contains('B1C1')]
 mask_test = fmax_original_test.index.isin(valid_indices_test)
 fmax_original_test = fmax_original_test[mask_test]
@@ -204,6 +225,7 @@ fmax_quenched_test = fmax_test[fmax_test.index.str.contains('B1C2')]
 fmax_quenched_test = fmax_quenched_test[mask_test]
 fmax_ratio_test = fmax_original_test.to_numpy() / fmax_quenched_test.to_numpy()
 fmax_ratio_target_test = fmax_ratio_test[:, fmax_col]
+fmax_ratio_target_test_df = pd.DataFrame(fmax_ratio_target_test, index=fmax_original_test.index)
 r_target_test, p_target_test = pearsonr(target_test_true, fmax_original_test.iloc[:, fmax_col])
 slope_test, intercept_test = np.polyfit(target_test_true, fmax_original_test.iloc[:, fmax_col], deg=1)
 target_test_pred = (fmax_original_test.iloc[:, fmax_col] - intercept_train) / slope_train
@@ -212,83 +234,86 @@ residual_test = np.abs(target_test_true - target_test_pred)
 relative_error_test = abs(target_test_true - target_test_pred) / target_test_true * 100
 
 
-# # ---------Histplot of F0/F for training and testing, with outliers labeled---------
-#
-# def round_2d(num, direction):
-#     if direction == 'up':
-#         return math.ceil(num * 100) / 100
-#     elif direction == 'down':
-#         return math.floor(num * 100) / 100
-#
-#
-# # threshold = round_2d(np.max(fmax_ratio_target_train), 'up')
-# binrange = (round_2d(np.min(np.concatenate([fmax_ratio_target_train, fmax_ratio_target_test]) - 0.02, axis=0), 'down'),
-#             round_2d(np.max(np.concatenate([fmax_ratio_target_train, fmax_ratio_target_test]) + 0.02, axis=0), 'up')
+# ---------Histplot of F0/F for training and testing, with outliers labeled---------
+
+def round_2d(num, direction):
+    if direction == 'up':
+        return math.ceil(num * 100) / 100
+    elif direction == 'down':
+        return math.floor(num * 100) / 100
+
+
+# threshold = round_2d(np.max(fmax_ratio_target_train), 'up')
+binrange = (round_2d(np.min(np.concatenate([fmax_ratio_target_train, fmax_ratio_target_test]) - 0.02, axis=0), 'down'),
+            round_2d(np.max(np.concatenate([fmax_ratio_target_train, fmax_ratio_target_test]) + 0.02, axis=0), 'up')
+            )
+# threshold = np.max(fmax_ratio_target_train)
+fmax_ratio_train_z_scores = zscore(fmax_ratio_target_train)
+filtered_fmax_ratio_target_train = fmax_ratio_target_train[np.abs(fmax_ratio_train_z_scores) <= 2.5]
+threshold = np.quantile(filtered_fmax_ratio_target_train, 1)
+# threshold = 1.148
+# binrange = (np.min(np.concatenate([fmax_ratio_target_train, fmax_ratio_target_test]) - 0.02, axis=0),
+#             np.max(np.concatenate([fmax_ratio_target_train, fmax_ratio_target_test]) + 0.02, axis=0)
 #             )
-# # threshold = np.max(fmax_ratio_target_train)
-# threshold = np.quantile(fmax_ratio_target_train, 0.95)
-# # binrange = (np.min(np.concatenate([fmax_ratio_target_train, fmax_ratio_target_test]) - 0.02, axis=0),
-# #             np.max(np.concatenate([fmax_ratio_target_train, fmax_ratio_target_test]) + 0.02, axis=0)
-# #             )
-# plt.figure()
-# ax = sns.histplot(fmax_ratio_target_train, binwidth=0.01, binrange=binrange, kde=False, stat='density', color="blue",
-#                   alpha=0.5, label='training')
-# sns.histplot(fmax_ratio_target_test, binwidth=0.01, binrange=binrange, kde=False, stat='density', color="orange",
-#              alpha=0.5, label='test (qualified)')
-# sns.histplot([0], binwidth=0.01, binrange=binrange, kde=True, stat='density', color="orange",
-#              alpha=0.5, label='test (outliers)', hatch='////', edgecolor='red')
-# for bar in ax.patches:
-#     # Calculate the midpoint of the bin
-#     bin_left = bar.get_x()
-#     bin_width = bar.get_width()
-#     bin_mid = bin_left + bin_width / 2
-#
-#     # Check if the midpoint is above the threshold
-#     if threshold <= bin_mid:
-#         # Add hatch pattern and change color
-#         bar.set_hatch("////")  # Hatch pattern (e.g., "////", "xxx", "..")
-#         bar.set_edgecolor('red')
-# plt.xlim(binrange)
-# plt.xlabel("C{i} ".format(i=fmax_col + 1) + "$F_{0}/F$", fontsize=20)
-# plt.ylabel("Density", fontsize=20)
-# plt.legend(fontsize=16, bbox_to_anchor=(0.5, 0.7))
-# plt.tick_params(labelsize=18)
-# plt.tight_layout()
-# plt.show()
-#
-# # ---------Fmax vs. TCC or DOC in training and testing------------
-#
-# plt.figure()
-# a, b = np.polyfit(target_train, fmax_original_train.iloc[:, fmax_col], deg=1)
-# plt.plot(
-#     [-1, 10],
-#     a * np.array([-1, 10]) + b,
-#     '--',
-#     color='blue',
-#     label='reg. training'
-# )
-# plt.scatter(target_train, fmax_original_train.iloc[:, fmax_col], label='training', color='blue', alpha=0.6)
-# plt.scatter(target_test_true[fmax_ratio_target_test <= threshold],
-#             fmax_original_test.iloc[fmax_ratio_target_test <= threshold, fmax_col],
-#             label='test (qualified)', color='orange', alpha=0.6)
-# plt.scatter(target_test_true[fmax_ratio_target_test > threshold],
-#             fmax_original_test.iloc[fmax_ratio_target_test > threshold, fmax_col],
-#             label='test (outliers)', color='red', alpha=0.6)
-# plt.xlabel(target_name, fontsize=20)
-# plt.ylabel(f'C{fmax_col + 1} Fmax', fontsize=20)
-# plt.legend(
-#     bbox_to_anchor=[1.02, 0.37],
-#     # bbox_to_anchor=[0.58, 0.63],
-#     fontsize=16
-# )
-# plt.tick_params(labelsize=16)
-# plt.tight_layout()
-# plt.xlim([0, 2.5])
-# plt.ylim([0, 2500])
-# plt.show()
-#
-# # ---------Boxplots of RMSE for training, testing (qualified and outliers)---------
-#
+plt.figure()
+ax = sns.histplot(fmax_ratio_target_train, binwidth=0.01, binrange=binrange, kde=False, stat='density', color="blue",
+                  alpha=0.5, label='training', zorder=0)
+sns.histplot(fmax_ratio_target_test, binwidth=0.01, binrange=binrange, kde=False, stat='density', color="orange",
+             alpha=0.5, label='test (qualified)', zorder=1)
+sns.histplot([0], binwidth=0.01, binrange=binrange, kde=True, stat='density', color="orange",
+             alpha=0.5, label='test (outliers)', hatch='////', edgecolor='red')
+for bar in ax.patches:
+    # Calculate the midpoint of the bin
+    bin_left = bar.get_x()
+    bin_width = bar.get_width()
+    bin_mid = bin_left + bin_width / 2
+
+    # Check if the midpoint is above the threshold
+    if threshold <= bin_mid and bar.zorder == 1:
+        # Add hatch pattern and change color
+        bar.set_hatch("////")  # Hatch pattern (e.g., "////", "xxx", "..")
+        bar.set_edgecolor('red')
+plt.xlim(binrange)
+plt.xlabel("C{i} ".format(i=fmax_col + 1) + "$F_{0}/F$", fontsize=20)
+plt.ylabel("Density", fontsize=20)
+plt.legend(fontsize=16, bbox_to_anchor=(0.5, 0.7))
+plt.tick_params(labelsize=18)
+plt.tight_layout()
+plt.show()
+
+# ---------Fmax vs. TCC or DOC in training and testing------------
+
+plt.figure()
+a, b = np.polyfit(target_train, fmax_original_train.iloc[:, fmax_col], deg=1)
+plt.plot(
+    [-1, 10],
+    a * np.array([-1, 10]) + b,
+    '--',
+    color='blue',
+    label='reg. training'
+)
+plt.scatter(target_train, fmax_original_train.iloc[:, fmax_col], label='training', color='blue', alpha=0.6)
+plt.scatter(target_test_true[fmax_ratio_target_test <= threshold],
+            fmax_original_test.iloc[fmax_ratio_target_test <= threshold, fmax_col],
+            label='test (qualified)', color='orange', alpha=0.6)
+plt.scatter(target_test_true[fmax_ratio_target_test > threshold],
+            fmax_original_test.iloc[fmax_ratio_target_test > threshold, fmax_col],
+            label='test (outliers)', color='red', alpha=0.6)
+plt.xlabel(target_name, fontsize=20)
+plt.ylabel(f'C{fmax_col + 1} Fmax', fontsize=20)
+plt.legend(
+    bbox_to_anchor=[1.02, 0.37],
+    # bbox_to_anchor=[0.58, 0.63],
+    fontsize=16
+)
+plt.tick_params(labelsize=16)
+plt.tight_layout()
+plt.xlim([0, 2.5])
+plt.ylim([0, 2500])
+plt.show()
+
+# ---------Boxplots of RMSE for training, testing (qualified and outliers)---------
+
 # # plt.figure(figsize=(2.2, 4))
 # plt.figure(figsize=(5, 3.5))
 # bplot = plt.boxplot(
@@ -308,25 +333,112 @@ relative_error_test = abs(target_test_true - target_test_pred) / target_test_tru
 # plt.xticks(rotation=90)
 # plt.tight_layout()
 # plt.show()
-#
-# # plt.figure(figsize=(2.3, 4))
-# # bplot = plt.boxplot(
-# #     [
-# #         residual_train,
-# #         residual_test[fmax_ratio_target_test <= threshold],
-# #         residual_test[fmax_ratio_target_test > threshold]
-# #     ],
-# #     labels=('training', 'test (qualified)', 'test (outliers)'),
-# #     patch_artist=True,
-# #     widths=0.75
-# # )
-# # for patch, color in zip(bplot['boxes'], ['blue', 'orange', 'red']):
-# #     patch.set_facecolor(color)
-# # plt.ylabel('absolute residual\n (million #/mL)', fontsize=16)
-# # plt.tick_params(labelsize=14)
-# # plt.xticks(rotation=90)
-# # plt.tight_layout()
-# # plt.show()
+
+model = PARAFAC(n_components=4)
+model.fit(dataset_train)
+
+for fmax_col, target_name in zip([0, 1, 2], ['TCC (million #/mL)', 'DOC (mg/L)', 'DOC (mg/L)']):
+    fmax_original_train = fmax_train[fmax_train.index.str.contains('B1C1')]
+    mask_train = fmax_original_train.index.isin(valid_indices_train)
+    fmax_original_train = fmax_original_train[mask_train]
+    fmax_quenched_train = fmax_train[fmax_train.index.str.contains('B1C2')]
+    fmax_quenched_train = fmax_quenched_train[mask_train]
+    fmax_ratio_train = fmax_original_train.to_numpy() / fmax_quenched_train.to_numpy()
+    fmax_ratio_target_train = fmax_ratio_train[:, fmax_col]
+    r_target_train, p_target_train = pearsonr(target_train, fmax_original_train.iloc[:, fmax_col])
+    slope_train, intercept_train = np.polyfit(target_train, fmax_original_train.iloc[:, fmax_col], deg=1)
+    target_train_pred = (fmax_original_train.iloc[:, fmax_col] - intercept_train) / slope_train
+    residual_train = np.abs(target_train - target_train_pred)
+    relative_error_train = abs(target_train - target_train_pred) / target_train * 100
+    target_test_true = dataset_test.ref[target_name]
+    valid_indices_test = target_test_true.index[~target_test_true.isna()]
+    target_test_true = target_test_true.dropna().to_numpy()
+    _, fmax_test, recon_eem_stack_test = model.predict(eem_dataset=dataset_test)
+    fmax_original_test = fmax_test[fmax_test.index.str.contains('B1C1')]
+    mask_test = fmax_original_test.index.isin(valid_indices_test)
+    fmax_original_test = fmax_original_test[mask_test]
+    fmax_quenched_test = fmax_test[fmax_test.index.str.contains('B1C2')]
+    fmax_quenched_test = fmax_quenched_test[mask_test]
+    fmax_ratio_test = fmax_original_test.to_numpy() / fmax_quenched_test.to_numpy()
+    fmax_ratio_target_test = fmax_ratio_test[:, fmax_col]
+    fmax_ratio_target_test_df = pd.DataFrame(fmax_ratio_target_test, index=fmax_original_test.index)
+    r_target_test, p_target_test = pearsonr(target_test_true, fmax_original_test.iloc[:, fmax_col])
+    slope_test, intercept_test = np.polyfit(target_test_true, fmax_original_test.iloc[:, fmax_col], deg=1)
+    target_test_pred = (fmax_original_test.iloc[:, fmax_col] - intercept_train) / slope_train
+    residual_test = np.abs(target_test_true - target_test_pred)
+    relative_error_test = abs(target_test_true - target_test_pred) / target_test_true * 100
+    fmax_ratio_train_z_scores = zscore(fmax_ratio_target_train)
+    filtered_fmax_ratio_target_train = fmax_ratio_target_train[np.abs(fmax_ratio_train_z_scores) <= 2.5]
+    threshold_upper = np.quantile(filtered_fmax_ratio_target_train, 1)
+    threshold_lower = np.quantile(filtered_fmax_ratio_target_train, 0)
+    recon_eem_stack_train = model.eem_stack_reconstructed
+    res_train = dataset_train.eem_stack - recon_eem_stack_train
+    n_pixels = recon_eem_stack_train.shape[1] * recon_eem_stack_train.shape[2]
+    if fmax_col == 0:
+        res_train, _ = process_eem_stack(res_train, eem_cutting,
+                                        ex_range_old=dataset_test.ex_range,
+                                        em_range_old=dataset_test.em_range,
+                                        ex_min_new=274, # 274   274   300
+                                        ex_max_new=300, # 300   340   370
+                                        em_min_new=310, # 310   330   365
+                                        em_max_new=370, # 370   450   470
+                                        )
+    elif fmax_col == 1:
+        res_train, _ = process_eem_stack(res_train, eem_cutting,
+                                        ex_range_old=dataset_test.ex_range,
+                                        em_range_old=dataset_test.em_range,
+                                        ex_min_new=274, # 274   274   300
+                                        ex_max_new=340, # 300   340   370
+                                        em_min_new=330, # 310   330   365
+                                        em_max_new=470, # 370   450   470
+                                        )
+    elif fmax_col == 2:
+        res_train, _ = process_eem_stack(res_train, eem_cutting,
+                                        ex_range_old=dataset_test.ex_range,
+                                        em_range_old=dataset_test.em_range,
+                                        ex_min_new=300, # 274   274   300
+                                        ex_max_new=370, # 300   340   370
+                                        em_min_new=365, # 310   330   365
+                                        em_max_new=470, # 370   450   470
+                                        )
+    rmse_train = np.sqrt(np.sum(res_train ** 2, axis=(1, 2)) / n_pixels)
+    rmse_train_df = pd.DataFrame(rmse_train, index=fmax_train.index)
+    relative_rmse_train = rmse_train / np.average(dataset_train.eem_stack, axis=(1, 2))
+    res_test = dataset_test.eem_stack - recon_eem_stack_test
+    if fmax_col == 0:
+        res_train, _ = process_eem_stack(res_train, eem_cutting,
+                                         ex_range_old=dataset_test.ex_range,
+                                         em_range_old=dataset_test.em_range,
+                                         ex_min_new=274,  # 274   274   300
+                                         ex_max_new=300,  # 300   340   370
+                                         em_min_new=310,  # 310   330   365
+                                         em_max_new=370,  # 370   450   470
+                                         )
+    n_pixels = recon_eem_stack_test.shape[1] * recon_eem_stack_test.shape[2]
+    rmse_test = np.sqrt(np.sum(res_test ** 2, axis=(1, 2)) / n_pixels)
+    rmse_test_df = pd.DataFrame(rmse_test, index=fmax_test.index)
+    relative_rmse_test = rmse_test / np.average(dataset_test.eem_stack, axis=(1, 2))
+
+
+
+# plt.figure(figsize=(2.3, 4))
+# bplot = plt.boxplot(
+#     [
+#         residual_train,
+#         residual_test[fmax_ratio_target_test <= threshold],
+#         residual_test[fmax_ratio_target_test > threshold]
+#     ],
+#     labels=('training', 'test (qualified)', 'test (outliers)'),
+#     patch_artist=True,
+#     widths=0.75
+# )
+# for patch, color in zip(bplot['boxes'], ['blue', 'orange', 'red']):
+#     patch.set_facecolor(color)
+# plt.ylabel('absolute residual\n (million #/mL)', fontsize=16)
+# plt.tick_params(labelsize=14)
+# plt.xticks(rotation=90)
+# plt.tight_layout()
+# plt.show()
 #
 # # ---------Histplot of outlier rates in each scenario---------
 # # outlier_indices = fmax_original_test.index[fmax_ratio_target_test > threshold]
@@ -573,16 +685,16 @@ fmax_train = model.fmax
 leverage_train = model.leverage()
 recon_eem_stack_train = model.eem_stack_reconstructed
 res_train = dataset_train.eem_stack - recon_eem_stack_train
-n_pixels = recon_eem_stack_train.shape[1] * recon_eem_stack_train.shape[2]
 # res_train, _ = process_eem_stack(res_train, eem_rayleigh_scattering_removal, ex_range=dataset_train.ex_range, em_range=dataset_train.em_range)
-# res_train, _ = process_eem_stack(res_train, eem_cutting,
-#                                 ex_range_old=dataset_test.ex_range,
-#                                 em_range_old=dataset_test.em_range,
-#                                 ex_min_new=300, # 274   274   300
-#                                 ex_max_new=370, # 300   380   370
-#                                 em_min_new=365, # 310   330   365
-#                                 em_max_new=470, # 370   450   470
-#                                 )
+res_train, _ = process_eem_stack(res_train, eem_cutting,
+                                ex_range_old=dataset_test.ex_range,
+                                em_range_old=dataset_test.em_range,
+                                ex_min_new=300, # 274   274   300
+                                ex_max_new=370, # 300   340   370
+                                em_min_new=365, # 310   330   365
+                                em_max_new=470, # 370   450   470
+                                )
+n_pixels = res_train.shape[1] * res_train.shape[2]
 rmse_train = np.sqrt(np.sum(res_train ** 2, axis=(1, 2)) / n_pixels)
 rmse_train_df = pd.DataFrame(rmse_train, index=fmax_train.index)
 relative_rmse_train = rmse_train / np.average(dataset_train.eem_stack, axis=(1, 2))
@@ -595,22 +707,22 @@ relative_rmse_train = rmse_train / np.average(dataset_train.eem_stack, axis=(1, 
 _, fmax_test, recon_eem_stack_test = model.predict(dataset_test)
 res_test = dataset_test.eem_stack - recon_eem_stack_test
 # res_test, _ = process_eem_stack(res_test, eem_rayleigh_scattering_removal, ex_range=dataset_test.ex_range, em_range=dataset_test.em_range)
-# res_test, _ = process_eem_stack(res_test, eem_cutting,
-#                                 ex_range_old=dataset_test.ex_range,
-#                                 em_range_old=dataset_test.em_range,
-#                                 ex_min_new=300, # 274   274   300
-#                                 ex_max_new=370, # 300   380   370
-#                                 em_min_new=365, # 310   330   365
-#                                 em_max_new=470, # 370   450   470
-#                                 )
-n_pixels = recon_eem_stack_test.shape[1] * recon_eem_stack_test.shape[2]
+res_test, _ = process_eem_stack(res_test, eem_cutting,
+                                ex_range_old=dataset_test.ex_range,
+                                em_range_old=dataset_test.em_range,
+                                ex_min_new=300, # 274   274   300
+                                ex_max_new=370, # 300   340   370
+                                em_min_new=365, # 310   330   365
+                                em_max_new=470, # 370   450   470
+                                )
+n_pixels = res_test.shape[1] * res_test.shape[2]
 rmse_test = np.sqrt(np.sum(res_test ** 2, axis=(1, 2)) / n_pixels)
 rmse_test_df = pd.DataFrame(rmse_test, index=fmax_test.index)
 relative_rmse_test = rmse_test / np.average(dataset_test.eem_stack, axis=(1, 2))
 
 # target_name = 'TCC (million #/mL)'
 target_name = 'DOC (mg/L)'
-fmax_col = 1
+fmax_col = 2
 target_train = dataset_train.ref[target_name]
 valid_indices_train = target_train.index[~target_train.isna()]
 mask_train = fmax_train.index.isin(valid_indices_train)
@@ -628,16 +740,16 @@ relative_error_test = abs(target_test_true - target_test_pred) / target_test_tru
 # plot_eem(dataset_train.eem_stack[1], ex_range=dataset_train.ex_range, em_range=dataset_train.em_range)
 # plot_eem(model.eem_stack_reconstructed[1], ex_range=dataset_train.ex_range, em_range=dataset_train.em_range)
 
-# ------------leverage---------
-indices_test = dataset_test.index
-leverage_test = {}
-for idx in indices_test:
-    one_sample_dataset, _ = dataset_test.filter_by_index([idx], None)
-    new_dataset = combine_eem_datasets([dataset_train, one_sample_dataset])
-    model = PARAFAC(n_components=4)
-    model.fit(new_dataset)
-    leverage = model.leverage()
-    leverage_test[one_sample_dataset.index[0]] = leverage
+# # ------------leverage---------
+# indices_test = dataset_test.index
+# leverage_test = {}
+# for idx in indices_test:
+#     one_sample_dataset, _ = dataset_test.filter_by_index([idx], None)
+#     new_dataset = combine_eem_datasets([dataset_train, one_sample_dataset])
+#     model = PARAFAC(n_components=4)
+#     model.fit(new_dataset)
+#     leverage = model.leverage()
+#     leverage_test[one_sample_dataset.index[0]] = leverage
 
 
 # -----------boxplots of training and testing---------
@@ -663,7 +775,10 @@ binrange = (round_2d(np.min(np.concatenate([indicator_train, indicator_test]) - 
             round_2d(np.max(np.concatenate([indicator_train, indicator_test]) + 20, axis=0), 'up')
             )
 # threshold = np.max(indicator_train)
-threshold = np.ceil(np.quantile(indicator_train, 0.95))
+# threshold = np.quantile(indicator_train, 0.95)
+indicator_train_z_scores = zscore(indicator_train)
+filtered_indicator_train = indicator_train[np.abs(indicator_train_z_scores) <= 2.5]
+threshold = np.quantile(filtered_indicator_train, 1)
 # binrange = (np.min(np.concatenate([indicator_train, indicator_test]) - 0.02, axis=0),
 #             np.max(np.concatenate([indicator_train, indicator_test]) + 0.02, axis=0)
 #             )
@@ -686,7 +801,7 @@ for bar in ax.patches:
         bar.set_hatch("////")  # Hatch pattern (e.g., "////", "xxx", "..")
         bar.set_edgecolor('red')
 plt.xlim(binrange)
-plt.xlabel("EEM-RMSE", fontsize=20)
+plt.xlabel("Reconstruction error", fontsize=20)
 plt.ylabel("Density", fontsize=20)
 plt.legend(fontsize=16, loc='upper right')
 plt.tick_params(labelsize=18)
@@ -724,43 +839,43 @@ plt.ylim([0, 2500])
 plt.show()
 
 
-plt.figure(figsize=(2.3, 4))
-bplot = plt.boxplot(
-    [
-        relative_error_train,
-        relative_error_test[indicator_test <= threshold],
-        relative_error_test[indicator_test > threshold]
-    ],
-    labels=('training', 'test (qualified)', 'test (outliers)'),
-    patch_artist=True,
-    widths=0.75
-)
-for patch, color in zip(bplot['boxes'], ['blue', 'orange', 'red']):
-    patch.set_facecolor(color)
-plt.ylabel('relative error (%)', fontsize=16)
-plt.tick_params(labelsize=14)
-plt.xticks(rotation=90)
-plt.tight_layout()
-plt.show()
-
-plt.figure(figsize=(2.3, 4))
-bplot = plt.boxplot(
-    [
-        residual_train,
-        residual_test[indicator_test <= threshold],
-        residual_test[indicator_test > threshold]
-    ],
-    labels=('training', 'test (qualified)', 'test (outliers)'),
-    patch_artist=True,
-    widths=0.75
-)
-for patch, color in zip(bplot['boxes'], ['blue', 'orange', 'red']):
-    patch.set_facecolor(color)
-plt.ylabel('absolute residual\n (million #/mL)', fontsize=16)
-plt.tick_params(labelsize=14)
-plt.xticks(rotation=90)
-plt.tight_layout()
-plt.show()
+# plt.figure(figsize=(2.3, 4))
+# bplot = plt.boxplot(
+#     [
+#         relative_error_train,
+#         relative_error_test[indicator_test <= threshold],
+#         relative_error_test[indicator_test > threshold]
+#     ],
+#     labels=('training', 'test (qualified)', 'test (outliers)'),
+#     patch_artist=True,
+#     widths=0.75
+# )
+# for patch, color in zip(bplot['boxes'], ['blue', 'orange', 'red']):
+#     patch.set_facecolor(color)
+# plt.ylabel('relative error (%)', fontsize=16)
+# plt.tick_params(labelsize=14)
+# plt.xticks(rotation=90)
+# plt.tight_layout()
+# plt.show()
+#
+# plt.figure(figsize=(2.3, 4))
+# bplot = plt.boxplot(
+#     [
+#         residual_train,
+#         residual_test[indicator_test <= threshold],
+#         residual_test[indicator_test > threshold]
+#     ],
+#     labels=('training', 'test (qualified)', 'test (outliers)'),
+#     patch_artist=True,
+#     widths=0.75
+# )
+# for patch, color in zip(bplot['boxes'], ['blue', 'orange', 'red']):
+#     patch.set_facecolor(color)
+# plt.ylabel('absolute residual\n (million #/mL)', fontsize=16)
+# plt.tick_params(labelsize=14)
+# plt.xticks(rotation=90)
+# plt.tight_layout()
+# plt.show()
 
 # ----------relative rmse----------
 indicator_train = relative_rmse_train
@@ -804,16 +919,18 @@ plt.show()
 # indicator_train = leverage_train.to_numpy().reshape(-1)
 # indicator_test = np.array(leverage_test)
 
-plt.figure()
-for sample_idx, lvg in leverage_test.items():
-    lvg_train_samples = lvg.iloc[:-1]
-    plt.plot(np.max(lvg_train_samples), lvg.iloc[-1], 'o')
-plt.plot([0, 1], [0, 1], color='black', linestyle='--')
-plt.xlim([0, 1])
-plt.ylim([0, 1])
-plt.xlabel('Maximum leverage in training samples')
-plt.ylabel('Leverage of the test sample')
-plt.show()
+# plt.figure()
+# for sample_idx, lvg in leverage_test.items():
+#     lvg_train_samples = lvg.iloc[:-1]
+#     plt.plot(np.max(lvg_train_samples), lvg.iloc[-1], 'o', color='black')
+# plt.plot([0, 1], [0, 1], color='black', linestyle='--')
+# plt.xlim([0, 1])
+# plt.ylim([0, 1])
+# plt.xlabel('Maximum leverage among training samples', fontsize=16)
+# plt.ylabel('Leverage of the test sample', fontsize=16)
+# plt.tick_params(labelsize=12)
+# plt.tight_layout()
+# plt.show()
 
 #--------multi-variate regression for DOC--------
 

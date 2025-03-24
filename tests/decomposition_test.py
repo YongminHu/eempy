@@ -149,7 +149,7 @@ means_bsa = []
 mins_bsa = []
 maxs_bsa = []
 std_bsa = []
-for c_key in ["1_25gL", "2_5gL", "3_75gL", "+5gL"]:
+for c_key in ["0gL", "1_25gL", "2_5gL", "3_75gL", "+5gL"]:
     c_key = re.escape(c_key)
     fmax_quenched = fmax[fmax.index.str.contains(c_key)]
     fmax_ratio = fmax_original.to_numpy() / fmax_quenched.to_numpy()
@@ -164,7 +164,7 @@ for c_key in ["1_25gL", "2_5gL", "3_75gL", "+5gL"]:
     maxs_bsa.append(np.max(coef_bsa))
     std_bsa.append(np.std(coef_bsa))
 
-x = np.array([1.25, 2.5, 3.75, 5])
+x = np.array([0, 1.25, 2.5, 3.75, 5])
 
 slope_bsa, intercept_bsa = np.polyfit(x, means_bsa, 1)
 regression_line_bsa = slope_bsa * x + intercept_bsa
@@ -216,6 +216,7 @@ ax.plot(
 # Customize the plot
 ax.set_xticks(x)
 ax.set_ylim([0.75, 3])
+ax.set_xlim([0, 5.2])
 ax.tick_params(axis='both', which='major', labelsize=16)
 ax.set_xlabel('KI concentration (g/L)', fontsize=18)
 ax.set_ylabel(r"$F_{0}/F$", fontsize=18)
