@@ -8,6 +8,7 @@ from scipy.stats import ks_2samp
 from matplotlib.colors import Normalize, BoundaryNorm, ListedColormap
 import matplotlib.ticker as ticker
 import pickle
+import seaborn as sns
 
 colors = list(TABLEAU_COLORS.values())
 
@@ -215,6 +216,28 @@ cluster_stats_all_combos, clustered_dataset_all_combos = k_method_consensus_to_c
 eem_cluster2 = clustered_dataset_all_combos['cluster1']['01']
 eem_cluster3 = clustered_dataset_all_combos['cluster1']['02']
 
+
+# consensus_matrices, cluster_stats = k_method_quenching(
+#     eem_dataset=eem_cluster3,
+#     base_model=PARAFAC(n_components=4),
+#     n_clusters=[5],
+#     minimum_dataset_size=10,
+#     depth=1,
+#     consensus_only=True,
+#     n_base_clusterings=30,
+#     subsampling_portion=0.8
+# )
+#
+# cluster_stats_all_combos, clustered_dataset_all_combos = k_method_consensus_to_clusters_stats(
+#     eem_dataset_combinations={'cluster1': eem_cluster3},
+#     consensus_matrices_combos={'cluster1': consensus_matrices},
+#     base_model=PARAFAC(n_components=4),
+#     n_clusters=2
+# )
+
+# eem_cluster3 = clustered_dataset_all_combos['cluster1']['01']
+# eem_cluster4 = clustered_dataset_all_combos['cluster1']['02']
+
 # #---------step 3: analysis and plotting
 
 # colors = ['darkgoldenrod', 'olivedrab', 'royalblue']
@@ -241,50 +264,67 @@ def calculate_f0f_sfc(dataset, fmax_col, target_ref):
     fmax_quenched = fmax[fmax.index.str.contains('B1C2')]
     fmax_quenched = fmax_quenched[mask]
     fmax_ratio = fmax_original.to_numpy() / fmax_quenched.to_numpy()
-    sfc = fmax_original.iloc[:, fmax_col].to_numpy() / target
+    sfc =  target / fmax_original.iloc[:, fmax_col].to_numpy()
     return fmax_ratio[:, fmax_col], sfc
 
-plt.figure()
-for i, cluster in enumerate([eem_cluster1, eem_cluster2, eem_cluster3]):
-    model = PARAFAC(n_components=4)
-    model.fit(cluster)
-    fmax = model.fmax
-    # ------sfc1-------
-    _, sfc1 = calculate_f0f_sfc(cluster, sfc_pair1[0], sfc_pair1[1])
-    # --------sfc2------
-    _, sfc2 = calculate_f0f_sfc(cluster, sfc_pair2[0], sfc_pair2[1])
-    # ---------plot-------
-    plt.plot(sfc1, sfc2, 'o', markersize=6, markeredgecolor='black', color=colors[i])
-    plt.xlabel(f'C{sfc_pair1[0]+1} Fmax/{sfc_pair1[1][0:3]}')
-    plt.ylabel(f'C{sfc_pair2[0] + 1} Fmax/{sfc_pair2[1][0:3]}')
-plt.show()
+# plt.figure()
+# for i, cluster in enumerate([eem_cluster1, eem_cluster2, eem_cluster3]):
+#     model = PARAFAC(n_components=4)
+#     model.fit(cluster)
+#     fmax = model.fmax
+#     # ------sfc1-------
+#     _, sfc1 = calculate_f0f_sfc(cluster, sfc_pair1[0], sfc_pair1[1])
+#     # --------sfc2------
+#     _, sfc2 = calculate_f0f_sfc(cluster, sfc_pair2[0], sfc_pair2[1])
+#     # ---------plot-------
+#     plt.plot(sfc1, sfc2, 'o', markersize=6, markeredgecolor='black', color=colors[i])
+#     plt.xlabel(f'C{sfc_pair1[0]+1} Fmax/{sfc_pair1[1][0:3]}')
+#     plt.ylabel(f'C{sfc_pair2[0] + 1} Fmax/{sfc_pair2[1][0:3]}')
+# plt.show()
 
 #----------boxplots--------
 # Define colors for the boxes
-colors = ['gold', 'olivedrab', 'royalblue', 'black']
+# colors = ['gold', 'olivedrab', 'royalblue']
+colors = ['red', 'dimgrey', 'dimgrey']
 
 f0fs = []
 sfcs = []
 for pair in [sfc_pair1, sfc_pair2, sfc_pair3, sfc_pair4]:
     f0fs_r = []
     sfcs_r = []
-    for i, cluster in enumerate([eem_cluster3, eem_cluster2, eem_cluster1, eem_dataset]):
+    for i, cluster in enumerate([eem_cluster3, eem_cluster2, eem_cluster1]):
         f0f, sfc = calculate_f0f_sfc(cluster, pair[0], pair[1])
         f0fs_r.append(f0f)
         sfcs_r.append(sfc)
     f0fs.append(f0fs_r)
     sfcs.append(sfcs_r)
 
-fig, axes = plt.subplots(nrows=4, ncols=1, figsize=(4, 7), sharex=True)
+fig, axes = plt.subplots(nrows=4, ncols=1, figsize=(4, 7), sharex=False)
 for i, ax in enumerate(axes):
     box = ax.boxplot(f0fs[i], vert=False, patch_artist=True)  # Horizontal boxplot with colors
     # Apply colors to boxes
     for patch, color in zip(box['boxes'], colors):
         patch.set_facecolor(color)
-    ax.set_yticks((4,3,2,1))  # Positions of the groups (1, 2, 3, 4)
-    ax.set_yticklabels(['all', 'cluster 1', 'cluster 2', 'cluster 3'], fontsize=12)  # Labels for the groups
-    ax.set_xlabel(f"C{i+1} " + "$F_{0}/F$", fontsize=14)
-plt.tick_params(labelsize=12)
+    ax.set_yticks((3,2,1))  # Positions of the groups (1, 2, 3, 4)
+    ax.set_yticklabels(['cluster 1', 'cluster 2', 'cluster 3'], fontsize=12)  # Labels for the groups
+    ax.set_xlabel(f"C{i+1} apparent " + "$F_{0}/F$", fontsize=14)
+    ax.set_xlim([0.98, 1.45])
+    ax.tick_params(labelsize=10)
+plt.tight_layout()
+plt.show()
+
+
+
+fig, axes = plt.subplots(nrows=4, ncols=1, figsize=(4, 7), sharex=False)
+
+for i, ax in enumerate(axes):
+    sns.violinplot(data=f0fs[i][::-1], orient="h", ax=ax, palette=colors[::-1],  cut=0, bw_adjust=0.3)  # Horizontal violin plot
+    ax.set_yticks([0,1,2])  # Adjust positions of the groups
+    ax.set_yticklabels(['cluster 1', 'cluster 2', 'cluster 3'], fontsize=12)  # Labels for the groups
+    ax.set_xlabel(f"C{i+1} apparent " + "$F_{0}/F$", fontsize=14)
+    ax.set_xlim([0.98, 1.45])
+    ax.tick_params(labelsize=10)
+
 plt.tight_layout()
 plt.show()
 
@@ -303,10 +343,10 @@ plt.show()
 # plt.show()
 
 xlabels = [
-    'C1 Fmax/TCC (mL/million #)',
-    'C2 Fmax/DOC (L/mg)',
-    'C3 Fmax/DOC (L/mg)',
-    'C4 Fmax/DOC (L/mg)',
+    'TCC/C1 $F_{max}$ (million #/mL/A.U.)',
+    'DOC/C2 $F_{max}$ (mg/L/A.U.)',
+    'DOC/C3 $F_{max}$ (mg/L/A.U.)',
+    'DOC/C4 $F_{max}$ (mg/L/A.U.)',
 ]
 
 fig, axes = plt.subplots(nrows=4, ncols=1, figsize=(4, 7), sharex=False)
@@ -319,9 +359,31 @@ for i, ax in enumerate(axes):
     ax.set_yticklabels(['all', 'cluster 1', 'cluster 2', 'cluster 3'], fontsize=12)  # Labels for the groups
     # ax.set_xlabel(f"C{i+1} " + "Fmax/" + [sfc_pair1, sfc_pair2, sfc_pair3, sfc_pair4][i][1], fontsize=14)
     ax.set_xlabel(xlabels[i], fontsize=14)
-plt.tick_params(labelsize=12)
+    if i > 0:
+        ax.set_xlim([0, 0.01])
+    ax.tick_params(labelsize=14)
 plt.tight_layout()
 plt.show()
+
+
+
+fig, axes = plt.subplots(nrows=4, ncols=1, figsize=(4, 7), sharex=False)
+
+for i, ax in enumerate(axes):
+    sns.violinplot(data=sfcs[i][::-1], orient="h", ax=ax, palette=colors[::-1], cut=0, bw_adjust=0.3)  # Horizontal violin plot
+    ax.set_yticks([0, 1, 2])  # Adjusted to match violin plot indexing
+    ax.set_yticklabels(['cluster 1', 'cluster 2', 'cluster 3'], fontsize=12)  # Labels for the groups
+    ax.set_xlabel(xlabels[i], fontsize=14)
+
+    if i > 0:
+        ax.set_xlim([0, 0.01])  # Apply x-axis limit conditionally
+
+    ax.tick_params(labelsize=10)
+
+plt.tight_layout()
+plt.show()
+
+
 #
 # # ----------cluster vs. sample categories--------
 colors = ['royalblue', 'olivedrab', 'gold']
@@ -333,7 +395,7 @@ categories_kw_dict = {
     'July-all': [['2024-07'], None],
     'October-all': [['2024-10'], None],
     'High flow': [['2024-10-17'], None],
-    'Cross-connection': [['2024-10-21'], None],
+    'Simulated\ncross-connection': [['2024-10-21'], None],
     'BAC top': [['G1'], None],
     'BAC middle': [['G2'], None],
     'BAC bottom': [['G3'], None],
@@ -771,3 +833,121 @@ plt.show()
 #                                                                 PARAFAC(n_components=4),
 #                                                                 n_clusters=5
 #                                                                 )
+
+
+# ----------
+
+from sklearn.cluster import KMeans
+
+colors = ['purple', 'royalblue', 'olivedrab', 'gold']
+
+categories_kw_dict = {
+    # 'Jul-low MBR influence': [['2024-07'], None],
+    # 'Oct-low MBR influence': [['2024-10', 'M3'], ['2024-10-16', '2024-10-18', '2024-10-22']],
+    # 'Oct-high MBR influence': [['2024-10'], ['G1', 'G2', 'G3', '2024-10-17', '2024-10-21']]
+    'July-all': [['2024-07'], None],
+    'October-all': [['2024-10'], None],
+    'High flow': [['2024-10-17'], None],
+    'Cross-connection': [['2024-10-21'], None],
+    'BAC top': [['G1'], None],
+    'BAC middle': [['G2'], None],
+    'BAC bottom': [['G3'], None],
+    'October-others$*$': [['M3'], ['2024-10-16', '2024-10-22']]
+}
+
+model = PARAFAC(n_components=4)
+model.fit(eem_dataset)
+fmax = model.fmax
+fmax_original = fmax[fmax.index.str.contains('B1C1')]
+fmax_quenched = fmax[fmax.index.str.contains('B1C2')]
+fmax_ratio = fmax_original.to_numpy() / fmax_quenched.to_numpy()
+
+from sklearn.cluster import KMeans
+n_clusters = 3
+kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init="auto").fit(fmax_ratio)
+labels = kmeans.labels_
+
+f0fs = []
+sfcs = []
+for i in range(4):
+    f0f_r = []
+    sfc_r = []
+    target_name = 'TCC (million #/mL)' if i == 0 else 'DOC (mg/L)'
+    for j in range(n_clusters):
+        f0f_r.append(fmax_ratio[labels==j, i])
+        target_j = eem_dataset.ref[target_name]
+        target_j = target_j[target_j.index.str.contains('B1C1')]
+        target_j = target_j.iloc[labels==j].to_numpy()
+        fmax_original_j = fmax_original.iloc[labels==j, i].to_numpy()
+        sfc_r.append(np.where(np.isnan(target_j), np.nan, target_j / fmax_original_j))
+    # f0f_r.append(fmax_ratio[:, i])
+    # target_j = eem_dataset.ref[target_name]
+    # target_j = target_j[target_j.index.str.contains('B1C1')].to_numpy()
+    # fmax_original_j = fmax_original.iloc[:, i].to_numpy()
+    # sfc_r.append(np.where(np.isnan(target_j), np.nan, target_j / fmax_original_j))
+    sfcs.append(sfc_r)
+    f0fs.append(f0f_r)
+
+fig, axes = plt.subplots(nrows=4, ncols=1, figsize=(4, 7), sharex=False)
+for i, ax in enumerate(axes):
+    sns.violinplot(data=f0fs[i], orient="h", ax=ax, cut=0, bw_adjust=0.5)  # Horizontal violin plot
+    ax.set_yticks([0, 1, 2, 3, 4])  # Adjust positions of the groups
+    ax.set_yticklabels(['cluster 1', 'cluster 2', 'cluster 3', 'cluster 4', 'cluster 5'], fontsize=12)  # Labels for the groups
+    ax.set_xlabel(f"C{i+1} apparent " + "$F_{0}/F$", fontsize=14)
+    ax.set_xlim([0.98, 1.45])
+    ax.tick_params(labelsize=10)
+plt.tight_layout()
+plt.show()
+
+xlabels = [
+    'TCC/C1 $F_{max}$ (million #/mL/A.U.)',
+    'DOC/C2 $F_{max}$ (mg/L/A.U.)',
+    'DOC/C3 $F_{max}$ (mg/L/A.U.)',
+    'DOC/C4 $F_{max}$ (mg/L/A.U.)',
+]
+
+fig, axes = plt.subplots(nrows=4, ncols=1, figsize=(4, 7), sharex=False)
+for i, ax in enumerate(axes):
+    sns.violinplot(data=sfcs[i], orient="h", ax=ax, cut=0, bw_adjust=0.3)  # Horizontal violin plot
+    ax.set_yticks([0, 1, 2, 3, 4])  # Adjusted to match violin plot indexing
+    ax.set_yticklabels(['cluster 1', 'cluster 2', 'cluster 3', 'cluster 4', 'cluster 5'], fontsize=12)  # Labels for the groups
+    ax.set_xlabel(xlabels[i], fontsize=14)
+    if i > 0:
+        ax.set_xlim([0, 0.01])  # Apply x-axis limit conditionally
+    else:
+        ax.set_xticks([0, 0.001, 0.002])
+
+    ax.tick_params(labelsize=10)
+plt.tight_layout()
+plt.show()
+
+cluster_indices = [[fmax_original.index[j] for j in range(labels.shape[0]) if labels[j]==i] for i in range(n_clusters)]
+cluster_categories_counts = {}
+for cluster_index, cluster_name in zip(cluster_indices, ['cluster 1', 'cluster 2', 'cluster 3', 'cluster 4', 'cluster 5']):
+    counts_list = []
+    for category, indices in categories_indices.items():
+        counts = len(set(indices) & set(cluster_index))
+        counts_list.append(counts/len(indices)*200)
+    cluster_categories_counts[cluster_name] = counts_list
+
+
+fig, ax = plt.subplots(figsize=(6, 8))
+bottom = np.zeros(8)
+# colors_bar = ['#1f77b4', '#2ca02c', '#ff7f0e']
+
+for i, (name, weight_count) in enumerate(cluster_categories_counts.items()):
+    p = ax.barh(
+        list(categories_kw_dict.keys()),
+        # ['cluster 1', 'cluster 2', 'cluster 3'],
+        weight_count, 0.3,
+        label=name, left=bottom,
+    )
+    bottom += weight_count
+
+ax.tick_params(labelsize=16, axis='both', rotation=0)
+ax.legend(loc="best", fontsize=16, bbox_to_anchor=(1.05, -0.1), ncol=2, handlelength=0.5)
+ax.set_xlabel('Share (%)', fontsize=16)
+ax.set_xlim([0, 100])
+plt.gca().invert_yaxis()
+plt.tight_layout()
+plt.show()

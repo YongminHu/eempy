@@ -19,6 +19,7 @@ eem_dataset_path = \
     "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_260_ex_274_em_310_mfem_3.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
 eem_dataset, _ = eem_dataset.filter_by_index(None, ['M3', 'G1', 'G2', 'G3'], copy=True)
+eem_dataset.gaussian_filter(sigma=1, truncate=3, copy=False)
 
 # ------------Define conditions--------------
 
@@ -250,7 +251,8 @@ binrange = (round_2d(np.min(np.concatenate([fmax_ratio_target_train, fmax_ratio_
 # threshold = np.max(fmax_ratio_target_train)
 fmax_ratio_train_z_scores = zscore(fmax_ratio_target_train)
 filtered_fmax_ratio_target_train = fmax_ratio_target_train[np.abs(fmax_ratio_train_z_scores) <= 2.5]
-threshold = np.quantile(filtered_fmax_ratio_target_train, 1)
+threshold_upper = np.quantile(filtered_fmax_ratio_target_train, 1)
+threshold_lower = np.quantile(filtered_fmax_ratio_target_train, 0)
 # threshold = 1.148
 # binrange = (np.min(np.concatenate([fmax_ratio_target_train, fmax_ratio_target_test]) - 0.02, axis=0),
 #             np.max(np.concatenate([fmax_ratio_target_train, fmax_ratio_target_test]) + 0.02, axis=0)
@@ -269,7 +271,7 @@ for bar in ax.patches:
     bin_mid = bin_left + bin_width / 2
 
     # Check if the midpoint is above the threshold
-    if threshold <= bin_mid and bar.zorder == 1:
+    if (threshold_upper <= bin_mid or threshold_lower>= bin_mid) and bar.zorder == 1:
         # Add hatch pattern and change color
         bar.set_hatch("////")  # Hatch pattern (e.g., "////", "xxx", "..")
         bar.set_edgecolor('red')
@@ -293,11 +295,11 @@ plt.plot(
     label='reg. training'
 )
 plt.scatter(target_train, fmax_original_train.iloc[:, fmax_col], label='training', color='blue', alpha=0.6)
-plt.scatter(target_test_true[fmax_ratio_target_test <= threshold],
-            fmax_original_test.iloc[fmax_ratio_target_test <= threshold, fmax_col],
+plt.scatter(target_test_true[(fmax_ratio_target_test < threshold_upper) & (fmax_ratio_target_test > threshold_lower)],
+            fmax_original_test.iloc[(fmax_ratio_target_test < threshold_upper) & (fmax_ratio_target_test > threshold_lower), fmax_col],
             label='test (qualified)', color='orange', alpha=0.6)
-plt.scatter(target_test_true[fmax_ratio_target_test > threshold],
-            fmax_original_test.iloc[fmax_ratio_target_test > threshold, fmax_col],
+plt.scatter(target_test_true[(fmax_ratio_target_test >= threshold_upper) | (fmax_ratio_target_test <= threshold_lower)],
+            fmax_original_test.iloc[(fmax_ratio_target_test >= threshold_upper) | (fmax_ratio_target_test <= threshold_lower), fmax_col],
             label='test (outliers)', color='red', alpha=0.6)
 plt.xlabel(target_name, fontsize=20)
 plt.ylabel(f'C{fmax_col + 1} Fmax', fontsize=20)
@@ -458,190 +460,190 @@ for fmax_col, target_name in zip([0, 1, 2], ['TCC (million #/mL)', 'DOC (mg/L)',
 # # fig.show()
 #
 # # ---------Fig 3: timeseries of anomalies detected-----------
-#
-# time = [datetime.strptime(t[0:16], '%Y-%m-%d-%H-%M') for t in fmax_original_test.index]
-# sampling_point_labels_dict = {
-#     'GAC top': 'G1',
-#     'GAC middle': 'G2',
-#     'GAC bottom': 'G3',
-#     'GAC effluent': 'M3',
-# }
-# sampling_point_labels = []
-# for idx in fmax_original_test.index:
-#     for label, kw in sampling_point_labels_dict.items():
-#         if kw in idx:
-#             sampling_point_labels.append(label)
-#             break
-#
-# markers = []
-# for i in sampling_point_labels:
-#     if i == 'GAC top':
-#         markers.append('^')
-#     elif i == 'GAC middle':
-#         markers.append('s')
-#     elif i == 'GAC bottom':
-#         markers.append('v')
-#     elif i == 'GAC effluent':
-#         markers.append('o')
-#
-# df = pd.DataFrame(
-#     {
-#         # target_name: target_train,
-#         # f'C{fmax_col + 1} Fmax': fmax_original_train.iloc[:, fmax_col].to_numpy(),
-#         # f'C{fmax_col + 1} ' + '$F_{0}/F$': fmax_ratio_target_train,
-#         # 'sampling point': sampling_point_labels,
-#         # 'markers': markers,
-#         # 'is_outlier': fmax_ratio_target_train > threshold
-#
-#         target_name: target_test_true,
-#         f'C{fmax_col + 1} Fmax': fmax_original_test.iloc[:, fmax_col].to_numpy(),
-#         f'C{fmax_col + 1} ' + '$F_{0}/F$': fmax_ratio_target_test,
-#         'sampling point': sampling_point_labels,
-#         'markers': markers,
-#         'is_outlier': fmax_ratio_target_test > threshold
-#     },
-#     index=time,
-# )
-#
-# # df.loc[datetime(2024, 7, 13, 11, 20)] = [-1000, -1000, -1000, 'GAC effluent', 'o', False]
-# # df.loc[datetime(2024, 7, 13, 14, 54)] = [-1000, -1000, -1000, 'GAC effluent', 'o', False]
-#
-# # Automatically detect unique days
-# unique_days = df.index.normalize().unique().sort_values()
-# n_days = len(unique_days)
-#
-# # Create subplots with adjusted spacing
-# fig, axes = plt.subplots(1, n_days, figsize=(max(3.5 * n_days, 8), 4),
-#                          gridspec_kw={'wspace': 0, 'right': 0.8})
-# if n_days == 1:
-#     axes = [axes]
-#
-# # Configure plot styles
-# plot_config = {
-#     f'C{fmax_col + 1} ' + '$F_{0}/F$': {'color': '#1f77b4', 'marker': 'o'},
-#     target_name: {'color': '#2ca02c', 'marker': '^'},
-#     f'C{fmax_col + 1} Fmax': {'color': '#ff7f0e', 'marker': 's'},
-# }
-#
-# # Create shared axis system
-# main_ax = axes[0]
-# main_ax.yaxis.set_label_position('left')
-# twin_right1 = main_ax.twinx()
-# twin_right2 = main_ax.twinx()
-# twin_right2.spines.right.set_position(("axes", 1.3))
-# twin_right2.spines.right.set_color((0, 0, 0, 0))
-#
-# # Configure main axis colors
-# main_ax.yaxis.label.set_color(plot_config[f'C{fmax_col + 1} ' + '$F_{0}/F$']['color'])
-# twin_right1.yaxis.label.set_color((0, 0, 0, 0))
-# twin_right2.yaxis.label.set_color((0, 0, 0, 0))
-# main_ax.tick_params(axis='y', colors=plot_config[f'C{fmax_col + 1} ' + '$F_{0}/F$']['color'], labelsize=14)
-# twin_right1.tick_params(axis='y', colors=(0, 0, 0, 0))
-# twin_right2.tick_params(axis='y', colors=(0, 0, 0, 0))
-#
-# # Plot data
-# for i, day in enumerate(unique_days):
-#     ax = axes[i]
-#     daily_data = df[df.index.normalize() == day]
-#
-#     ax.sharey(main_ax)
-#
-#     # Create shared right twins
-#     tr1 = ax.twinx()
-#     tr2 = ax.twinx()
-#     tr1.sharey(twin_right1)
-#     tr2.sharey(twin_right2)
-#     tr2.spines.right.set_position(("axes", 1.35))
-#     ax.set_xlabel(day.strftime('%Y-%m-%d'), fontsize=12)
-#     ax.xaxis.set_major_formatter(DateFormatter('%H:%M'))
-#
-#     # Hide right axes for non-last plots
-#     if i != 0:
-#         # ax.yaxis.set_visible(False)
-#         ax.yaxis.label.set_color((0, 0, 0, 0))
-#         ax.tick_params(axis='y', colors=(0, 0, 0, 0))
-#     if i != len(axes) - 1:
-#         tr1.set_ylabel('')
-#         tr2.set_ylabel('')
-#         tr1.yaxis.label.set_color((0, 0, 0, 0))
-#         tr2.yaxis.label.set_color((0, 0, 0, 0))
-#         tr1.tick_params(axis='y', colors=(0, 0, 0, 0))
-#         tr2.tick_params(axis='y', colors=(0, 0, 0, 0))
-#         tr2.spines.right.set_color((0, 0, 0, 0))
-#     else:
-#         tr1.set_ylabel(target_name, fontsize=18)
-#         tr2.set_ylabel(f'C{fmax_col + 1} Fmax', fontsize=18)
-#         tr1.yaxis.label.set_color(plot_config[target_name]['color'])
-#         tr2.yaxis.label.set_color(plot_config[f'C{fmax_col + 1} Fmax']['color'])
-#         tr1.tick_params(axis='y', colors=plot_config[target_name]['color'], labelsize=14)
-#         tr2.tick_params(axis='y', colors=plot_config[f'C{fmax_col + 1} Fmax']['color'], labelsize=14)
-#
-#     # Plot variables
-#     p1, = ax.plot(daily_data.index, daily_data[f'C{fmax_col + 1} ' + '$F_{0}/F$'],
-#                   color=plot_config[f'C{fmax_col + 1} ' + '$F_{0}/F$']['color'],
-#                   linestyle='-', label=f'C{fmax_col + 1} ' + '$F_{0}/F$')
-#
-#     p2, = tr1.plot(daily_data.index, daily_data[target_name],
-#                    color=plot_config[target_name]['color'],
-#                    linestyle='-', label=target_name)
-#
-#     p3, = tr2.plot(daily_data.index, daily_data[f'C{fmax_col + 1} Fmax'],
-#                    color=plot_config[f'C{fmax_col + 1} Fmax']['color'],
-#                    linestyle='-', label=f'C{fmax_col + 1} Fmax')
-#     for j, m in enumerate(daily_data['markers'].to_list()):
-#         ax.plot(daily_data.index[j], daily_data[f'C{fmax_col + 1} ' + '$F_{0}/F$'].iloc[j], markersize=8,
-#                 markeredgecolor='black',
-#                 marker=m, linestyle='', color=plot_config[f'C{fmax_col + 1} ' + '$F_{0}/F$']['color'])
-#         tr1.plot(daily_data.index[j], daily_data[target_name].iloc[j], markersize=8, markeredgecolor='black',
-#                  marker=m, linestyle='', color=plot_config[target_name]['color'])
-#         tr2.plot(daily_data.index[j], daily_data[f'C{fmax_col + 1} Fmax'].iloc[j], markersize=8,
-#                  markeredgecolor='black',
-#                  marker=m, linestyle='', color=plot_config[f'C{fmax_col + 1} Fmax']['color'])
-#         # if daily_data['is_outlier'].iloc[j]:
-#         #     gap_left = (daily_data.index[j] - daily_data.index[j - 1]) / 2 if j != 0 else pd.Timedelta(hours=0.5)
-#         #     gap_right = (daily_data.index[j + 1] - daily_data.index[j]) / 2 if j != len(
-#         #         daily_data['markers'].to_list()) - 1 else pd.Timedelta(hours=0.5)
-#         #     ax.axvspan(daily_data.index[j] - gap_left, daily_data.index[j] + gap_right, color='red', alpha=0.3)
-#
-#     # Format subplot
-#     ax.tick_params(axis='x', rotation=0, labelsize=12)
-#     ax.grid(alpha=0.3, axis='x')
-#
-#     buffer = pd.Timedelta(hours=1.25)
-#     # Set dynamic xlim with buffer
-#     if not daily_data.empty:
-#         ax.set_xlim(daily_data.index.min() - buffer,
-#                     daily_data.index.max() + buffer)
-#         ax.xaxis.set_major_locator(HourLocator(interval=2))
-#         l1 = ax.hlines(xmin=daily_data.index.min() - buffer, xmax=daily_data.index.max() + buffer,
-#                        y=threshold, color=plot_config[f'C{fmax_col + 1} ' + '$F_{0}/F$']['color'],
-#                        linestyles='--')
-#         # if i == 0:
-#         #     t1 = ax.text(x=daily_data.index.min() - buffer + pd.Timedelta(hours=0.5),
-#         #                  y=threshold + 0.02, s='$F_{0}/F=$' + f'{threshold:.2f}',
-#         #                  c=plot_config[f'C{fmax_col + 1} ' + '$F_{0}/F$']['color'], fontsize=14)
-#         outlier_rate = np.sum(daily_data['is_outlier']) / daily_data.shape[0] * 100
-#         outlier_rate_eff = np.sum(daily_data['is_outlier'][daily_data['sampling point'] == 'GAC effluent']) / np.sum(
-#             daily_data['sampling point'] == 'GAC effluent') * 100
-#         outlier_rate_col = np.sum(daily_data['is_outlier'][daily_data['sampling point'] != 'GAC effluent']) / np.sum(
-#             daily_data['sampling point'] != 'GAC effluent') * 100
-#         if not np.isnan(outlier_rate_col):
-#             t2 = ax.text(1, 0.99, '$OR_{col}$=' + f'{outlier_rate_col:.2f}%', transform=ax.transAxes,
-#                          fontsize=14, color='black', verticalalignment='top', horizontalalignment='right')
-#         if not np.isnan(outlier_rate_eff):
-#             t3 = ax.text(1, 0.91, '$OR_{eff}$=' + f'{outlier_rate_eff:.2f}%', transform=ax.transAxes,
-#                          fontsize=14, color='black', verticalalignment='top', horizontalalignment='right')
-#     tr1.set_ylim([0, 2.5])
-#     tr2.set_ylim([0, 2500])
-#
-# # Configure axis labels
-# main_ax.set_ylabel(f'C{fmax_col + 1} ' + '$F_{0}/F$', fontsize=18)
-# main_ax.set_ylim([0.95, 1.35])
-#
-# # Final adjustments
-# plt.subplots_adjust(bottom=0.25)
-# plt.tight_layout()
-# plt.show()
+
+time = [datetime.strptime(t[0:16], '%Y-%m-%d-%H-%M') for t in fmax_original_train.index]
+sampling_point_labels_dict = {
+    'GAC top': 'G1',
+    'GAC middle': 'G2',
+    'GAC bottom': 'G3',
+    'GAC effluent': 'M3',
+}
+sampling_point_labels = []
+for idx in fmax_original_train.index:
+    for label, kw in sampling_point_labels_dict.items():
+        if kw in idx:
+            sampling_point_labels.append(label)
+            break
+
+markers = []
+for i in sampling_point_labels:
+    if i == 'GAC top':
+        markers.append('^')
+    elif i == 'GAC middle':
+        markers.append('s')
+    elif i == 'GAC bottom':
+        markers.append('v')
+    elif i == 'GAC effluent':
+        markers.append('o')
+
+df = pd.DataFrame(
+    {
+        target_name: target_train,
+        f'C{fmax_col + 1} Fmax': fmax_original_train.iloc[:, fmax_col].to_numpy(),
+        f'C{fmax_col + 1} ' + '$F_{0}/F$': fmax_ratio_target_train,
+        'sampling point': sampling_point_labels,
+        'markers': markers,
+        'is_outlier': fmax_ratio_target_train > threshold
+
+        # target_name: target_test_true,
+        # f'C{fmax_col + 1} Fmax': fmax_original_test.iloc[:, fmax_col].to_numpy(),
+        # f'C{fmax_col + 1} ' + '$F_{0}/F$': fmax_ratio_target_test,
+        # 'sampling point': sampling_point_labels,
+        # 'markers': markers,
+        # 'is_outlier': fmax_ratio_target_test > threshold
+    },
+    index=time,
+)
+
+# df.loc[datetime(2024, 7, 13, 11, 20)] = [-1000, -1000, -1000, 'GAC effluent', 'o', False]
+# df.loc[datetime(2024, 7, 13, 14, 54)] = [-1000, -1000, -1000, 'GAC effluent', 'o', False]
+
+# Automatically detect unique days
+unique_days = df.index.normalize().unique().sort_values()
+n_days = len(unique_days)
+
+# Create subplots with adjusted spacing
+fig, axes = plt.subplots(1, n_days, figsize=(max(3.5 * n_days, 8), 4),
+                         gridspec_kw={'wspace': 0, 'right': 0.8})
+if n_days == 1:
+    axes = [axes]
+
+# Configure plot styles
+plot_config = {
+    f'C{fmax_col + 1} ' + '$F_{0}/F$': {'color': '#1f77b4', 'marker': 'o'},
+    target_name: {'color': '#2ca02c', 'marker': '^'},
+    f'C{fmax_col + 1} Fmax': {'color': '#ff7f0e', 'marker': 's'},
+}
+
+# Create shared axis system
+main_ax = axes[0]
+main_ax.yaxis.set_label_position('left')
+twin_right1 = main_ax.twinx()
+twin_right2 = main_ax.twinx()
+twin_right2.spines.right.set_position(("axes", 1.3))
+twin_right2.spines.right.set_color((0, 0, 0, 0))
+
+# Configure main axis colors
+main_ax.yaxis.label.set_color(plot_config[f'C{fmax_col + 1} ' + '$F_{0}/F$']['color'])
+twin_right1.yaxis.label.set_color((0, 0, 0, 0))
+twin_right2.yaxis.label.set_color((0, 0, 0, 0))
+main_ax.tick_params(axis='y', colors=plot_config[f'C{fmax_col + 1} ' + '$F_{0}/F$']['color'], labelsize=14)
+twin_right1.tick_params(axis='y', colors=(0, 0, 0, 0))
+twin_right2.tick_params(axis='y', colors=(0, 0, 0, 0))
+
+# Plot data
+for i, day in enumerate(unique_days):
+    ax = axes[i]
+    daily_data = df[df.index.normalize() == day]
+
+    ax.sharey(main_ax)
+
+    # Create shared right twins
+    tr1 = ax.twinx()
+    tr2 = ax.twinx()
+    tr1.sharey(twin_right1)
+    tr2.sharey(twin_right2)
+    tr2.spines.right.set_position(("axes", 1.35))
+    ax.set_xlabel(day.strftime('%Y-%m-%d'), fontsize=12)
+    ax.xaxis.set_major_formatter(DateFormatter('%H:%M'))
+
+    # Hide right axes for non-last plots
+    if i != 0:
+        # ax.yaxis.set_visible(False)
+        ax.yaxis.label.set_color((0, 0, 0, 0))
+        ax.tick_params(axis='y', colors=(0, 0, 0, 0))
+    if i != len(axes) - 1:
+        tr1.set_ylabel('')
+        tr2.set_ylabel('')
+        tr1.yaxis.label.set_color((0, 0, 0, 0))
+        tr2.yaxis.label.set_color((0, 0, 0, 0))
+        tr1.tick_params(axis='y', colors=(0, 0, 0, 0))
+        tr2.tick_params(axis='y', colors=(0, 0, 0, 0))
+        tr2.spines.right.set_color((0, 0, 0, 0))
+    else:
+        tr1.set_ylabel(target_name, fontsize=18)
+        tr2.set_ylabel(f'C{fmax_col + 1} Fmax', fontsize=18)
+        tr1.yaxis.label.set_color(plot_config[target_name]['color'])
+        tr2.yaxis.label.set_color(plot_config[f'C{fmax_col + 1} Fmax']['color'])
+        tr1.tick_params(axis='y', colors=plot_config[target_name]['color'], labelsize=14)
+        tr2.tick_params(axis='y', colors=plot_config[f'C{fmax_col + 1} Fmax']['color'], labelsize=14)
+
+    # Plot variables
+    p1, = ax.plot(daily_data.index, daily_data[f'C{fmax_col + 1} ' + '$F_{0}/F$'],
+                  color=plot_config[f'C{fmax_col + 1} ' + '$F_{0}/F$']['color'],
+                  linestyle='-', label=f'C{fmax_col + 1} ' + '$F_{0}/F$')
+
+    p2, = tr1.plot(daily_data.index, daily_data[target_name],
+                   color=plot_config[target_name]['color'],
+                   linestyle='-', label=target_name)
+
+    p3, = tr2.plot(daily_data.index, daily_data[f'C{fmax_col + 1} Fmax'],
+                   color=plot_config[f'C{fmax_col + 1} Fmax']['color'],
+                   linestyle='-', label=f'C{fmax_col + 1} Fmax')
+    for j, m in enumerate(daily_data['markers'].to_list()):
+        ax.plot(daily_data.index[j], daily_data[f'C{fmax_col + 1} ' + '$F_{0}/F$'].iloc[j], markersize=8,
+                markeredgecolor='black',
+                marker=m, linestyle='', color=plot_config[f'C{fmax_col + 1} ' + '$F_{0}/F$']['color'])
+        tr1.plot(daily_data.index[j], daily_data[target_name].iloc[j], markersize=8, markeredgecolor='black',
+                 marker=m, linestyle='', color=plot_config[target_name]['color'])
+        tr2.plot(daily_data.index[j], daily_data[f'C{fmax_col + 1} Fmax'].iloc[j], markersize=8,
+                 markeredgecolor='black',
+                 marker=m, linestyle='', color=plot_config[f'C{fmax_col + 1} Fmax']['color'])
+        # if daily_data['is_outlier'].iloc[j]:
+        #     gap_left = (daily_data.index[j] - daily_data.index[j - 1]) / 2 if j != 0 else pd.Timedelta(hours=0.5)
+        #     gap_right = (daily_data.index[j + 1] - daily_data.index[j]) / 2 if j != len(
+        #         daily_data['markers'].to_list()) - 1 else pd.Timedelta(hours=0.5)
+        #     ax.axvspan(daily_data.index[j] - gap_left, daily_data.index[j] + gap_right, color='red', alpha=0.3)
+
+    # Format subplot
+    ax.tick_params(axis='x', rotation=0, labelsize=12)
+    ax.grid(alpha=0.3, axis='x')
+
+    buffer = pd.Timedelta(hours=1.25)
+    # Set dynamic xlim with buffer
+    if not daily_data.empty:
+        ax.set_xlim(daily_data.index.min() - buffer,
+                    daily_data.index.max() + buffer)
+        ax.xaxis.set_major_locator(HourLocator(interval=2))
+        l1 = ax.hlines(xmin=daily_data.index.min() - buffer, xmax=daily_data.index.max() + buffer,
+                       y=threshold, color=plot_config[f'C{fmax_col + 1} ' + '$F_{0}/F$']['color'],
+                       linestyles='--')
+        # if i == 0:
+        #     t1 = ax.text(x=daily_data.index.min() - buffer + pd.Timedelta(hours=0.5),
+        #                  y=threshold + 0.02, s='$F_{0}/F=$' + f'{threshold:.2f}',
+        #                  c=plot_config[f'C{fmax_col + 1} ' + '$F_{0}/F$']['color'], fontsize=14)
+        outlier_rate = np.sum(daily_data['is_outlier']) / daily_data.shape[0] * 100
+        outlier_rate_eff = np.sum(daily_data['is_outlier'][daily_data['sampling point'] == 'GAC effluent']) / np.sum(
+            daily_data['sampling point'] == 'GAC effluent') * 100
+        outlier_rate_col = np.sum(daily_data['is_outlier'][daily_data['sampling point'] != 'GAC effluent']) / np.sum(
+            daily_data['sampling point'] != 'GAC effluent') * 100
+        # if not np.isnan(outlier_rate_col):
+        #     t2 = ax.text(1, 0.99, '$OR_{col}$=' + f'{outlier_rate_col:.2f}%', transform=ax.transAxes,
+        #                  fontsize=14, color='black', verticalalignment='top', horizontalalignment='right')
+        # if not np.isnan(outlier_rate_eff):
+        #     t3 = ax.text(1, 0.91, '$OR_{eff}$=' + f'{outlier_rate_eff:.2f}%', transform=ax.transAxes,
+        #                  fontsize=14, color='black', verticalalignment='top', horizontalalignment='right')
+    tr1.set_ylim([0, 2.5])
+    tr2.set_ylim([0, 2500])
+
+# Configure axis labels
+main_ax.set_ylabel(f'C{fmax_col + 1} ' + '$F_{0}/F$', fontsize=18)
+main_ax.set_ylim([0.95, 1.35])
+
+# Final adjustments
+plt.subplots_adjust(bottom=0.25)
+plt.tight_layout()
+plt.show()
 #
 # # ----------create legends--------
 # plt.figure()
@@ -679,25 +681,39 @@ dataset_test, _ = eem_dataset.filter_by_index(['B1C1'],
                                               ]
                                               )
 
-model = PARAFAC(n_components=4)
+model = PARAFAC(n_components=4, loadings_normalization='maximum', tf_normalization=True)
 model.fit(dataset_train)
 fmax_train = model.fmax
 leverage_train = model.leverage()
 recon_eem_stack_train = model.eem_stack_reconstructed
 res_train = dataset_train.eem_stack - recon_eem_stack_train
+# plot_eem(recon_eem_stack_train[0], ex_range=dataset_train.ex_range, em_range=dataset_train.em_range, auto_intensity_range=False, vmin=0, vmax=800)
 # res_train, _ = process_eem_stack(res_train, eem_rayleigh_scattering_removal, ex_range=dataset_train.ex_range, em_range=dataset_train.em_range)
+# res_train = process_eem_stack(res_train, eem_gaussian_filter, sigma=1, truncate=3)
 res_train, _ = process_eem_stack(res_train, eem_cutting,
-                                ex_range_old=dataset_test.ex_range,
-                                em_range_old=dataset_test.em_range,
-                                ex_min_new=300, # 274   274   300
-                                ex_max_new=370, # 300   340   370
-                                em_min_new=365, # 310   330   365
-                                em_max_new=470, # 370   450   470
+                                ex_range_old=dataset_train.ex_range,
+                                em_range_old=dataset_train.em_range,
+                                ex_min_new=274, # 274   274   300
+                                ex_max_new=294, # 294   332   366
+                                em_min_new=310, # 310   338   367
+                                em_max_new=469, # 369   457   466
+                                )
+dataset_train_cut, _ = process_eem_stack(dataset_train.eem_stack, eem_cutting,
+                                ex_range_old=dataset_train.ex_range,
+                                em_range_old=dataset_train.em_range,
+                                ex_min_new=274, # 274   274   300
+                                ex_max_new=294, # 294   332   366
+                                em_min_new=310, # 310   338   367
+                                em_max_new=469, # 369   457   466
                                 )
 n_pixels = res_train.shape[1] * res_train.shape[2]
 rmse_train = np.sqrt(np.sum(res_train ** 2, axis=(1, 2)) / n_pixels)
 rmse_train_df = pd.DataFrame(rmse_train, index=fmax_train.index)
-relative_rmse_train = rmse_train / np.average(dataset_train.eem_stack, axis=(1, 2))
+relative_rmse_train = rmse_train / np.average(
+    dataset_train_cut,
+    # dataset_train.eem_stack,
+    axis=(1, 2)
+)
 
 
 # rmse_train = model.sample_rmse().to_numpy().reshape(-1)
@@ -707,22 +723,35 @@ relative_rmse_train = rmse_train / np.average(dataset_train.eem_stack, axis=(1, 
 _, fmax_test, recon_eem_stack_test = model.predict(dataset_test)
 res_test = dataset_test.eem_stack - recon_eem_stack_test
 # res_test, _ = process_eem_stack(res_test, eem_rayleigh_scattering_removal, ex_range=dataset_test.ex_range, em_range=dataset_test.em_range)
+# res_test = process_eem_stack(res_test, eem_gaussian_filter, sigma=1, truncate=3)
 res_test, _ = process_eem_stack(res_test, eem_cutting,
                                 ex_range_old=dataset_test.ex_range,
                                 em_range_old=dataset_test.em_range,
-                                ex_min_new=300, # 274   274   300
-                                ex_max_new=370, # 300   340   370
-                                em_min_new=365, # 310   330   365
-                                em_max_new=470, # 370   450   470
+                                ex_min_new=274, # 274   274   300
+                                ex_max_new=294, # 294   332   366
+                                em_min_new=310, # 310   338   367
+                                em_max_new=469, # 369   457   466
+                                )
+dataset_test_cut, _ = process_eem_stack(dataset_test.eem_stack, eem_cutting,
+                                ex_range_old=dataset_test.ex_range,
+                                em_range_old=dataset_test.em_range,
+                                ex_min_new=274, # 274   274   300
+                                ex_max_new=294, # 294   332   366
+                                em_min_new=310, # 310   338   367
+                                em_max_new=469, # 369   457   466
                                 )
 n_pixels = res_test.shape[1] * res_test.shape[2]
 rmse_test = np.sqrt(np.sum(res_test ** 2, axis=(1, 2)) / n_pixels)
 rmse_test_df = pd.DataFrame(rmse_test, index=fmax_test.index)
-relative_rmse_test = rmse_test / np.average(dataset_test.eem_stack, axis=(1, 2))
+relative_rmse_test = rmse_test / np.average(
+    dataset_test_cut,
+    # dataset_test.eem_stack,
+    axis=(1, 2))
+relative_rmse_test_df = pd.DataFrame(relative_rmse_test, index=fmax_test.index)
 
 # target_name = 'TCC (million #/mL)'
-target_name = 'DOC (mg/L)'
-fmax_col = 2
+target_name = 'TCC (million #/mL)'
+fmax_col = 0
 target_train = dataset_train.ref[target_name]
 valid_indices_train = target_train.index[~target_train.isna()]
 mask_train = fmax_train.index.isin(valid_indices_train)
@@ -770,38 +799,34 @@ def round_0d(num, direction):
 # -----------rmse---------
 indicator_train = rmse_train
 indicator_test = rmse_test
-# threshold = round_2d(np.max(indicator_train), 'up')
-binrange = (round_2d(np.min(np.concatenate([indicator_train, indicator_test]) - 20, axis=0), 'down'),
-            round_2d(np.max(np.concatenate([indicator_train, indicator_test]) + 20, axis=0), 'up')
-            )
-# threshold = np.max(indicator_train)
-# threshold = np.quantile(indicator_train, 0.95)
 indicator_train_z_scores = zscore(indicator_train)
 filtered_indicator_train = indicator_train[np.abs(indicator_train_z_scores) <= 2.5]
 threshold = np.quantile(filtered_indicator_train, 1)
-# binrange = (np.min(np.concatenate([indicator_train, indicator_test]) - 0.02, axis=0),
-#             np.max(np.concatenate([indicator_train, indicator_test]) + 0.02, axis=0)
-#             )
+binwidth = 5
+binrange = (threshold - binwidth * np.ceil((threshold - np.min(indicator_train))/binwidth),
+            threshold + binwidth * np.ceil((np.max(indicator_test) - threshold)/binwidth)
+            )
 plt.figure()
-ax = sns.histplot(indicator_train, binwidth=10, binrange=binrange, kde=False, stat='density', color="blue",
+ax = sns.histplot(indicator_train, binwidth=binwidth, binrange=binrange, kde=False, stat='density', color="blue",
                   alpha=0.5, label='training', zorder=0)
-sns.histplot(indicator_test, binwidth=10, binrange=binrange, kde=False, stat='density', color="orange",
+sns.histplot(indicator_test, binwidth=binwidth, binrange=binrange, kde=False, stat='density', color="orange",
              alpha=0.5, label='test (qualified)', zorder=1)
-sns.histplot([-100], binwidth=10, binrange=binrange, kde=True, stat='density', color="orange",
+sns.histplot([-100], binwidth=binwidth, binrange=binrange, kde=True, stat='density', color="orange",
              alpha=0.5, label='test (outliers)', hatch='////', edgecolor='red')
 for bar in ax.patches:
     # Calculate the midpoint of the bin
     bin_left = bar.get_x()
     bin_width = bar.get_width()
     bin_mid = bin_left + bin_width / 2
+    print(bin_left)
 
     # Check if the midpoint is above the threshold
-    if threshold <= bin_left and bar.zorder == 1:
+    if threshold-0.0001 <= bin_left and bar.zorder == 1:
         # Add hatch pattern and change color
         bar.set_hatch("////")  # Hatch pattern (e.g., "////", "xxx", "..")
         bar.set_edgecolor('red')
 plt.xlim(binrange)
-plt.xlabel("Reconstruction error", fontsize=20)
+plt.xlabel("Relative reconstruction error", fontsize=20)
 plt.ylabel("Density", fontsize=20)
 plt.legend(fontsize=16, loc='upper right')
 plt.tick_params(labelsize=18)
@@ -884,8 +909,8 @@ indicator_test = relative_rmse_test
 binrange = (round_2d(np.min(np.concatenate([indicator_train, indicator_test]) - 0.05, axis=0), 'down'),
             round_2d(np.max(np.concatenate([indicator_train, indicator_test]) + 0.05, axis=0), 'up')
             )
-# threshold = np.max(indicator_train)
-threshold = np.quantile(indicator_train, 0.95)
+threshold = np.max(indicator_train)
+# threshold = np.quantile(indicator_train, 0.95)
 # binrange = (np.min(np.concatenate([indicator_train, indicator_test]) - 0.02, axis=0),
 #             np.max(np.concatenate([indicator_train, indicator_test]) + 0.02, axis=0)
 #             )
@@ -903,7 +928,7 @@ for bar in ax.patches:
     bin_mid = bin_left + bin_width / 2
 
     # Check if the midpoint is above the threshold
-    if threshold <= bin_mid and bar.zorder == 1:
+    if threshold <= bin_mid - bin_width and bar.zorder == 1:
         # Add hatch pattern and change color
         bar.set_hatch("////")  # Hatch pattern (e.g., "////", "xxx", "..")
         bar.set_edgecolor('red')
@@ -955,7 +980,7 @@ indices_test_in_scenarios = {}
 
 r = 4
 n_outliers = 40
-fmax_col = [1, 2, 3]
+fmax_col = [0, 1, 2, 3]
 target_name = 'DOC (mg/L)'
 model = PARAFAC(n_components=r, init='svd', non_negativity=True,
                 tf_normalization=True, sort_em=True, loadings_normalization='maximum')
@@ -973,7 +998,7 @@ fmax_quenched_train = fmax_quenched_train[mask_train]
 # fmax_ratio_train = fmax_original_train.to_numpy() / fmax_quenched_train.to_numpy()
 # fmax_ratio_target_train = fmax_ratio_train[:, fmax_col]
 # r_target_train, p_target_train = pearsonr(target_train, fmax_original_train.iloc[:, fmax_col])
-reg = LinearRegression(positive=False)
+reg = LinearRegression(positive=True)
 reg.fit(fmax_original_train.iloc[:, fmax_col], target_train)
 weights = reg.coef_
 intercept = reg.intercept_
@@ -998,26 +1023,26 @@ residual_test = np.abs(target_test_true - target_test_pred)
 relative_error_test = abs(target_test_true - target_test_pred) / target_test_true * 100
 
 plt.figure()
-# a, b = np.polyfit(target_train, target_train_pred, deg=1)
-# plt.plot(
-#     [-1, 10],
-#     a * np.array([-1, 10]) + b,
-#     '--',
-#     color='blue',
-#     label='reg. training'
-# )
+a, b = np.polyfit(target_train, target_train_pred, deg=1)
+plt.plot(
+    [-1, 10],
+    a * np.array([-1, 10]) + b,
+    '--',
+    color='blue',
+    label='reg. training'
+)
 plt.scatter(target_train, target_train_pred, label='training', color='blue', alpha=0.6)
 plt.scatter(target_test_true,
             target_test_pred, label='test', color='red', alpha=0.6)
-plt.xlabel(target_name, fontsize=20)
-plt.ylabel(f'pred', fontsize=20)
+plt.xlabel('True ' + target_name, fontsize=20)
+plt.ylabel(f'Predicted DOC (mg/L)', fontsize=20)
 plt.legend(
-    bbox_to_anchor=[1.02, 0.37],
+    # bbox_to_anchor=[1.02, 0.37],
     # bbox_to_anchor=[0.58, 0.63],
     fontsize=16
 )
 plt.tick_params(labelsize=16)
 plt.tight_layout()
-# plt.xlim([0, 2.5])
+plt.xlim([0, 2.5])
 # plt.ylim([0, 2500])
 plt.show()

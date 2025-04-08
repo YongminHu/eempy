@@ -1651,6 +1651,9 @@ class PARAFAC:
         The number of components
     non_negativity: bool
         Whether to apply the non-negativity constraint
+    optimizer: str, {'mu', 'hals'}
+        Optimizer to for PARAFAC. 'mu' for multiplicative update optimizer, 'hals' for hierarchical alternating least
+        square. 'hals' can only be applied together with non-negativity contraint.
     init: str or tensorly.CPTensor, {‘svd’, ‘random’, CPTensor}
         Type of factor matrix initialization
     tf_normalization: bool
@@ -1686,7 +1689,7 @@ class PARAFAC:
         Emission wavelengths.
     """
 
-    def __init__(self, n_components, non_negativity=True, init='svd', n_iter_max=100, tol=1e-06,
+    def __init__(self, n_components, non_negativity=True, optimizer='hals', init='svd', n_iter_max=100, tol=1e-06,
                  tf_normalization=True, loadings_normalization: Optional[str] = 'sd', sort_em=True):
 
         # ----------parameters--------------
@@ -1698,6 +1701,7 @@ class PARAFAC:
         self.tf_normalization = tf_normalization
         self.loadings_normalization = loadings_normalization
         self.sort_em = sort_em
+        self.optimizer = optimizer
 
         # -----------attributes---------------
         self.score = None
@@ -1729,7 +1733,7 @@ class PARAFAC:
         if self.tf_normalization:
             eem_stack_tf, tf_weights = eem_dataset.tf_normalization(copy=True)
         else:
-            eem_stack_tf = eem_dataset.eem_stack
+            eem_stack_tf = eem_dataset.eem_stack.copy()
         try:
             if not self.non_negativity:
                 if np.isnan(eem_stack_tf).any():
@@ -1742,12 +1746,21 @@ class PARAFAC:
             else:
                 if np.isnan(eem_stack_tf).any():
                     mask = np.where(np.isnan(eem_stack_tf), 0, 1)
-                    cptensors = non_negative_parafac_hals(eem_stack_tf, rank=self.n_components, mask=mask,
-                                                          init=self.init,
-                                                          n_iter_max=self.n_iter_max, tol=self.tol)
+                    if self.optimizer == 'hals':
+                        cptensors = non_negative_parafac_hals(eem_stack_tf, rank=self.n_components, mask=mask,
+                                                              init=self.init,
+                                                              n_iter_max=self.n_iter_max, tol=self.tol)
+                    elif self.optimizer == 'mu':
+                        cptensors = non_negative_parafac(eem_stack_tf, rank=self.n_components, mask=mask,
+                                                         init=self.init,
+                                                         n_iter_max=self.n_iter_max, tol=self.tol)
                 else:
-                    cptensors = non_negative_parafac_hals(eem_stack_tf, rank=self.n_components, init=self.init,
-                                                          n_iter_max=self.n_iter_max, tol=self.tol)
+                    if self.optimizer == 'hals':
+                        cptensors = non_negative_parafac_hals(eem_stack_tf, rank=self.n_components, init=self.init,
+                                                              n_iter_max=self.n_iter_max, tol=self.tol)
+                    elif self.optimizer == 'mu':
+                        cptensors = non_negative_parafac(eem_stack_tf, rank=self.n_components, init=self.init,
+                                                         n_iter_max=self.n_iter_max, tol=self.tol)
         except ArpackError:
             print(
                 "PARAFAC failed possibly due to the presence of patches of nan values. Please consider cut or "
@@ -1819,6 +1832,8 @@ class PARAFAC:
             score.index = [i + 1 for i in range(a.shape[0])]
             fmax.index = [i + 1 for i in range(a.shape[0])]
 
+        eem_stack_reconstructed = np.tensordot(score.to_numpy(), components, axes=(1, 0))
+
         self.score = score
         self.ex_loadings = ex_loadings
         self.em_loadings = em_loadings
@@ -1828,7 +1843,7 @@ class PARAFAC:
         self.eem_stack_train = eem_dataset.eem_stack
         self.ex_range = eem_dataset.ex_range
         self.em_range = eem_dataset.em_range
-        self.eem_stack_reconstructed = cp_to_tensor(cptensors)
+        self.eem_stack_reconstructed = eem_stack_reconstructed
         return self
 
     def predict(self, eem_dataset: EEMDataset, fit_intercept=False):
@@ -1970,8 +1985,9 @@ class PARAFAC:
         res = self.residual()
         res = eem_rayleigh_scattering_removal(res, ex_range=self.ex_range, em_range=self.em_range)
         n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
-        relative_rmse = pd.DataFrame(np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels) / np.average(self.eem_stack_train, axis=(1, 2)),
-                                     index=self.score.index, columns=['Relative RMSE'])
+        relative_rmse = pd.DataFrame(
+            np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels) / np.average(self.eem_stack_train, axis=(1, 2)),
+            index=self.score.index, columns=['Relative RMSE'])
         return relative_rmse
 
     def sample_summary(self):
@@ -3206,6 +3222,7 @@ class PRPARAFAC:
         The prior knowledge. If a dict is given, the keys should be the mode number, and the values are the prior knowledge
         vectors correspondingly. For self-correlation, the value of the corresponding mode can be specified as "self-correlation"
     """
+
     def __init__(self, n_components, z_dict, init="svd", n_iter_max=100, tol=1e-08, p_coefficient=0.1,
                  tf_normalization=True, loadings_normalization: Optional[str] = "sd", sort_em=True):
 
@@ -3700,7 +3717,6 @@ def hals_prior_nnls(UtM, UtU, regularization_dict, V=None, l=100, n_iter_max=500
     return V
 
 
-
 def initialization_2d(M, rank, method='nndsvd'):
     # Step 1: Compute SVD of V
     U, S, VT = np.linalg.svd(M, full_matrices=False)  # SVD decomposition
@@ -3777,11 +3793,9 @@ def replace_factor_with_prior(factors, prior, replaced_mode, replaced_rank="best
             E = residual
         projection = E @ prior / np.inner(prior, prior)
         projection[projection < 0] = 0
-        factors[int(1-replaced_mode)][:, replaced_rank] = projection
+        factors[int(1 - replaced_mode)][:, replaced_rank] = projection
 
     if show_replaced_rank:
         return factors, replaced_rank
     else:
         return factors
-
-

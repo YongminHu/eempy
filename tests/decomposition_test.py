@@ -1,9 +1,7 @@
 from eempy.read_data import read_eem_dataset, read_abs_dataset, read_eem, read_eem_dataset_from_json
 from eempy.eem_processing import *
-from eempy.plot import plot_eem, plot_loadings, plot_fmax
-from sklearn.metrics import mean_squared_error
-
 import re
+
 
 #
 #
@@ -86,7 +84,7 @@ fmax_measured = pd.DataFrame(fmax_measured, index=eem_dataset.index,
 #
 fmax_ideal_ecoli = np.array([0, 2.75, 1.375, 4.125, 5.5])/5.5*np.max(true_components[0])
 fmax_ideal_bsa = np.array([1.66, 0.83, 1.245, 0.415, 0])/1.66*np.max(true_components[1])
-parafac_model = PARAFAC(n_components=2, init='svd', tol=1e-09, n_iter_max=500)
+parafac_model = PARAFAC(n_components=2, init='svd', tol=1e-09, n_iter_max=500, tf_normalization=False)
 parafac_model.fit(eem_dataset)
 fmax = parafac_model.fmax
 fmax.columns = ['component 1 modelled fmax', 'component 2 modelled fmax']
@@ -420,3 +418,15 @@ plt.show()
 # corr_parfac.fit(eem_dataset)
 # plot_eem(corr_parfac.components[0], ex_range=corr_parfac.ex_range, em_range=corr_parfac.em_range)
 # plot_eem(corr_parfac.components[1], ex_range=corr_parfac.ex_range, em_range=corr_parfac.em_range)
+
+
+eem_stack, ex_range, em_range, indexes = read_eem_dataset(
+    folder_path='C:/PhD/Fluo-detect/_data/20250327_BSA_Ecoli_HA',
+    mandatory_keywords='SYM',
+    wavelength_alignment=True,
+)
+
+abs_stack, ex_range, indexes = read_abs_dataset(
+    folder_path='C:/PhD/Fluo-detect/_data/20250327_BSA_Ecoli_HA',
+    wavelength_alignment=True,
+)

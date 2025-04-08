@@ -14,7 +14,8 @@ import pandas as pd
 import json
 from datetime import datetime
 from typing import Union, Tuple, List
-from eempy.eem_processing import eem_interpolation, process_eem_stack, EEMDataset
+from eempy.eem_processing import eem_interpolation, eem_cutting, process_eem_stack, EEMDataset
+from eempy.utils import dichotomy_search
 from scipy.interpolate import interp1d
 
 
@@ -161,50 +162,57 @@ def read_eem_dataset(folder_path: str, mandatory_keywords=None, optional_keyword
         filename_list = get_filelist(folder_path, mandatory_keywords, optional_keywords)
     else:
         filename_list = custom_filename_list
-    path = folder_path + '/' + filename_list[0]
-    intensity, ex_range, em_range, index = read_eem(path, data_format=data_format, index_pos=index_pos,
-                                                    as_timestamp=as_timestamp, timestamp_format=timestamp_format)
-    num_datfile = len(filename_list)
-    eem_stack = np.zeros([num_datfile, intensity.shape[0], intensity.shape[1]])
-    eem_stack[0, :, :] = intensity
-    indexes = [index]
-    em_range_old = np.copy(em_range)
-    ex_range_old = np.copy(ex_range)
-    for n in range(1, len(filename_list)):
+    intensity_list = []
+    indexes = []
+    ex_range_list = []
+    em_range_list = []
+    ex_min = 0
+    ex_max = 5000
+    em_min = 0
+    em_max = 5000
+
+    for n in range(0, len(filename_list)):
         path = folder_path + '/' + filename_list[n]
         intensity, ex_range, em_range, index = read_eem(path, data_format=data_format, index_pos=index_pos,
                                                         as_timestamp=as_timestamp, timestamp_format=timestamp_format)
         indexes.append(index)
+        intensity_list.append(intensity)
+        ex_range_list.append(ex_range)
+        em_range_list.append(em_range)
         if wavelength_alignment:
-            em_interval_new = (np.max(em_range) - np.min(em_range)) / (em_range.shape[0] - 1)
-            em_interval_old = (np.max(em_range_old) - np.min(em_range_old)) / (em_range_old.shape[0] - 1)
-            ex_interval_new = (np.max(ex_range) - np.min(ex_range)) / (ex_range.shape[0] - 1)
-            ex_interval_old = (np.max(ex_range_old) - np.min(ex_range_old)) / (ex_range_old.shape[0] - 1)
-            if em_interval_new > em_interval_old:
-                em_range_target = em_range_old
-            else:
-                em_range_target = em_range
-            if ex_interval_new > ex_interval_old:
-                ex_range_target = ex_range_old
-            else:
-                ex_range_target = ex_range
-            if em_interval_new > em_interval_old or ex_interval_new > ex_interval_old:
-                intensity = eem_interpolation(intensity, ex_range, em_range, ex_range_target,
-                                              em_range_target, method=interpolation_method)
-                em_range = np.copy(em_range_old)
-                ex_range = np.copy(ex_range_old)
-            if em_interval_new < em_interval_old or ex_interval_new < ex_interval_old:
-                eem_stack = process_eem_stack(eem_stack, eem_interpolation, ex_range_old=ex_range_old,
-                                              em_range_old=em_range_old,
-                                              ex_range_new=ex_range_target,
-                                              em_range_new=em_range_target)
-        try:
-            eem_stack[n, :, :] = intensity
-        except ValueError:
-            print('Check data dimension: ', filename_list[n])
-        em_range_old = np.copy(em_range)
-        ex_range_old = np.copy(ex_range)
-    return eem_stack, ex_range, em_range, indexes
+            ex_min = min(ex_range) if min(ex_range) > ex_min else ex_min
+            ex_max = max(ex_range) if max(ex_range) < ex_max else ex_max
+            em_min = min(em_range) if min(em_range) > em_min else em_min
+            em_max = max(em_range) if max(em_range) < em_max else em_max
+
+    ex_range_opt = np.zeros(1)
+    em_range_opt = np.zeros(1)
+    if wavelength_alignment:
+        for ex_range_i, em_range_i in zip(ex_range_list, em_range_list):
+            ex_min_idx = dichotomy_search(ex_range_i, ex_min)
+            ex_max_idx = dichotomy_search(ex_range_i, ex_max)
+            ex_range_cut = ex_range_i[ex_min_idx: ex_max_idx + 1]
+            em_min_idx = dichotomy_search(em_range_i, em_min)
+            em_max_idx = dichotomy_search(em_range_i, em_max)
+            em_range_cut = em_range_i[em_min_idx: em_max_idx + 1]
+            if ex_range_cut.shape[0] >= ex_range_opt.shape[0]:
+                ex_range_opt = ex_range_cut
+            if em_range_cut.shape[0] >= em_range_opt.shape[0]:
+                em_range_opt = em_range_cut
+
+        for i, (intensity_i, ex_range_i, em_range_i) in enumerate(zip(intensity_list, ex_range_list, em_range_list)):
+            intensity = eem_interpolation(intensity_i, ex_range_i, em_range_i, ex_range_opt, em_range_opt,
+                                          method=interpolation_method)
+            intensity_list[i] = intensity
+    try:
+        eem_stack = np.array(intensity_list)
+    except ValueError:
+        print('Check data dimension: ', filename_list[n])
+
+    if wavelength_alignment:
+        return eem_stack, ex_range_opt, em_range_opt, indexes
+    else:
+        return eem_stack, ex_range, em_range, indexes
 
 
 def read_eem_dataset_from_json(path):
@@ -316,32 +324,39 @@ def read_abs_dataset(folder_path, mandatory_keywords='ABS', optional_keywords=[]
         filename_list = get_filelist(folder_path, mandatory_keywords, optional_keywords)
     else:
         filename_list = custom_filename_list
-    path = folder_path + '/' + filename_list[0]
-    absorbance, ex_range, index = read_abs(path, data_format=data_format, index_pos=index_pos)
-    num_datfile = len(filename_list)
-    abs_stack = np.zeros([num_datfile, absorbance.shape[0]])
-    abs_stack[0, :] = absorbance
-    indexes = [index]
-    ex_range_old = ex_range
-    for n in range(1, len(filename_list)):
+    indexes = []
+    abs_list = []
+    ex_range_list = []
+    ex_min = 0
+    ex_max = 5000
+    for n in range(0, len(filename_list)):
         path = folder_path + '/' + filename_list[n]
         absorbance, ex_range, index = read_abs(path, data_format=data_format, index_pos=index_pos)
         indexes.append(index)
+        abs_list.append(absorbance)
+        ex_range_list.append(ex_range)
         if wavelength_alignment:
-            ex_interval_new = (np.max(ex_range) - np.min(ex_range)) / (ex_range.shape[0] - 1)
-            ex_interval_old = (np.max(ex_range_old) - np.min(ex_range_old)) / (ex_range_old.shape[0] - 1)
-            if ex_interval_new > ex_interval_old:
-                f = interp1d(ex_range, absorbance, kind=interpolation_method, fill_value='extrapolate')
-                absorbance = f(ex_range_old)
-            if ex_interval_new < ex_interval_old:
-                abs_stack_new = np.zeros([num_datfile, absorbance.shape[0]])
-                for i in range(n):
-                    f = interp1d(ex_range_old, abs_stack[i, :], kind=interpolation_method, fill_value='extrapolate')
-                    abs_stack_new[i, :] = f(ex_range)
-                abs_stack = abs_stack_new
-        abs_stack[n, :] = absorbance
-        ex_range_old = ex_range
-    return abs_stack, ex_range, indexes
+            ex_min = min(ex_range) if min(ex_range) > ex_min else ex_min
+            ex_max = max(ex_range) if max(ex_range) < ex_max else ex_max
+
+    ex_range_opt = np.zeros(1)
+    if wavelength_alignment:
+        for ex_range_i in ex_range_list:
+            ex_min_idx = dichotomy_search(ex_range_i, ex_min)
+            ex_max_idx = dichotomy_search(ex_range_i, ex_max)
+            ex_range_cut = ex_range_i[ex_min_idx: ex_max_idx + 1]
+            if ex_range_cut.shape[0] >= ex_range_opt.shape[0]:
+                ex_range_opt = ex_range_cut
+        for i, (abs_i, ex_range_i) in enumerate(zip(abs_list, ex_range_list)):
+            f = interp1d(ex_range_i, abs_i, kind=interpolation_method, fill_value='extrapolate')
+            absorbance = f(ex_range_opt)
+            abs_list[i] = absorbance
+    abs_stack = np.array(abs_list)
+    print(abs_stack)
+    if wavelength_alignment:
+        return abs_stack, ex_range_opt, indexes
+    else:
+        return abs_stack, ex_range, indexes
 
 
 def read_reference_from_text(filepath):

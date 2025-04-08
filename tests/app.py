@@ -3187,11 +3187,24 @@ card_parafac_param = dbc.Card(
                             ),
                             dbc.Row([
                                 dbc.Col(
+                                    dbc.Label("Optimizer"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Dropdown(
+                                        options=[
+                                            {'label': 'Multiplicative update', 'value': 'mu'},
+                                            {'label': 'Hierarchical ALS', 'value': 'hals'},
+                                        ],
+                                        id='parafac-optimizer', value='mu'),
+                                    width={'size': 2}
+                                ),
+                                dbc.Col(
                                     dbc.Label("Validations"), width={'size': 1}
                                 ),
                                 dbc.Col(
                                     dcc.Dropdown(
                                         options=[
+                                            {'label': 'Variance explained', 'value': 'variance_explained'},
                                             {'label': 'Core consistency', 'value': 'core_consistency'},
                                             {'label': 'Leverage', 'value': 'leverage'},
                                             {'label': 'Split-half validation', 'value': 'split_half'},
@@ -3199,6 +3212,7 @@ card_parafac_param = dbc.Card(
                                         multi=True, id='parafac-validations', value=[]),
                                     width={'size': 4}
                                 ),
+
                             ]),
                             dbc.Row(
                                 dbc.Col(
@@ -3233,6 +3247,7 @@ page_parafac = html.Div([
                         dcc.Tab(label='Components', id='parafac-components'),
                         # dcc.Tab(label='Scores', id='parafac-scores'),
                         dcc.Tab(label='Fmax', id='parafac-fmax'),
+                        dcc.Tab(label='Variance explained', id='parafac-variance-explained'),
                         dcc.Tab(label='Core consistency', id='parafac-core-consistency'),
                         dcc.Tab(label='Leverage', id='parafac-leverage'),
                         dcc.Tab(label='Split-half validation', id='parafac-split-half'),
@@ -3555,6 +3570,7 @@ page_parafac = html.Div([
         Output('parafac-components', 'children'),
         # Output('parafac-scores', 'children'),
         Output('parafac-fmax', 'children'),
+        Output('parafac-variance-explained', 'children'),
         Output('parafac-core-consistency', 'children'),
         Output('parafac-leverage', 'children'),
         Output('parafac-split-half', 'children'),
@@ -3579,21 +3595,22 @@ page_parafac = html.Div([
         State('parafac-init-method', 'value'),
         State('parafac-nn-checkbox', 'value'),
         State('parafac-tf-checkbox', 'value'),
+        State('parafac-optimizer', 'value'),
         State('parafac-validations', 'value'),
         State('eem-dataset', 'data')
     ]
 )
 def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, rank, init, nn,
-                           tf, validations, eem_dataset_dict):
+                           tf, optimizer, validations, eem_dataset_dict):
     if n_clicks is None:
-        return (None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None,
+        return (None, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None,
                 None)
     if not path_establishment:
         if eem_dataset_dict is None:
             message = (
                 'Error: No built EEM dataset detected. Please build an EEM dataset first in "EEM pre-processing" '
                 'section, or import an EEM dataset from file.')
-            return (message, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, None)
+            return (message, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, None)
         eem_dataset_establishment = EEMDataset(
             eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
                                 in eem_dataset_dict['eem_stack']]),
@@ -3607,7 +3624,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
     else:
         if not os.path.exists(path_establishment):
             message = ('Error: No such file or directory: ' + path_establishment)
-            return (message, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, None)
+            return (message, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, None)
         else:
             _, file_extension = os.path.splitext(path_establishment)
 
@@ -3641,10 +3658,12 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
     components_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     scores_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     fmax_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    variance_explained_tabs = dbc.Card(children=[])
     core_consistency_tabs = dbc.Card(children=[])
     leverage_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     split_half_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     cc = []
+    ve = []
 
     if eem_dataset_establishment.ref is not None:
         valid_ref = eem_dataset_establishment.ref.columns[~eem_dataset_establishment.ref.isna().all()].tolist()
@@ -3653,7 +3672,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
 
     for r in rank_list:
         parafac_r = PARAFAC(n_components=r, init=init, non_negativity=True if 'non_negative' in nn else False,
-                            tf_normalization=True if 'tf_normalization' in tf else False,
+                            tf_normalization=True if 'tf_normalization' in tf else False, optimizer=optimizer,
                             sort_em=True, loadings_normalization='maximum')
         parafac_r.fit(eem_dataset_establishment)
         parafac_fit_params_r = {}
@@ -3927,6 +3946,10 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                     )
         )
 
+        # variance explained
+        if 'variance_explained' in validations:
+            ve.append(parafac_r.variance_explained())
+
         # core consistency
         if 'core_consistency' in validations:
             cc.append(parafac_r.core_consistency())
@@ -4091,6 +4114,43 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                         )
             )
 
+    if 'variance_explained' in validations:
+        ve_table = pd.DataFrame({'Number of components': rank_list, 'Variance explained': ve})
+        variance_explained_tabs.children.append(
+            html.Div([
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                dcc.Graph(
+                                    figure=px.line(
+                                        x=ve_table['Number of components'],
+                                        y=ve_table['Variance explained'],
+                                        markers=True,
+                                        labels={'x': 'Number of components', 'y': 'Core consistency'},
+                                    ),
+                                    config={'autosizable': False},
+                                )
+                            ]
+                        )
+                    ]
+                ),
+
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                dbc.Table.from_dataframe(ve_table,
+                                                         bordered=True, hover=True,
+                                                         )
+                            ]
+                        ),
+                    ]
+                ),
+            ]),
+        )
+
+
     if 'core_consistency' in validations:
         cc_table = pd.DataFrame({'Number of components': rank_list, 'Core consistency': cc})
         core_consistency_tabs.children.append(
@@ -4131,8 +4191,9 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
     ref_options = [{'label': var, 'value': var} for var in valid_ref] if \
         (eem_dataset_establishment.ref is not None) else None
 
-    return (None, loadings_tabs, components_tabs, fmax_tabs, core_consistency_tabs, leverage_tabs,
-            split_half_tabs, 'Build model', model_options, None, model_options, None, ref_options, None, parafac_models)
+    return (None, loadings_tabs, components_tabs, fmax_tabs, variance_explained_tabs, core_consistency_tabs,
+            leverage_tabs, split_half_tabs, 'Build model', model_options, None, model_options, None, ref_options,
+            None, parafac_models)
 
 
 # -----------Update reference selection dropdown
