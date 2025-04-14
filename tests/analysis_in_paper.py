@@ -162,10 +162,10 @@ for name, kw in kw_dict.items():
     dataset_test_filtered, _ = dataset_test.filter_by_index(kw[0], kw[1], copy=True)
     indices_test_in_scenarios[name] = dataset_test_filtered.index
 
-r = 4
+r = 6
 n_outliers = 40
-fmax_col = 0
-target_name = 'TCC (million #/mL)'
+fmax_col = 2
+target_name = 'DOC (mg/L)'
 model = PARAFAC(n_components=r, init='svd', non_negativity=True,
                 tf_normalization=True, sort_em=True, loadings_normalization='maximum')
 model.fit(dataset_train)
@@ -187,8 +187,8 @@ fmax_train = model.fmax
 # #----
 # # peak-picking
 # dataset_train.gaussian_filter(sigma=1, truncate=3, copy=False)
-# pp1, _, _ = dataset_train.peak_picking(ex=280, em=340)
-# pp2, _, _ = dataset_train.peak_picking(ex=308, em=362)
+# pp1, _, _ = dataset_train.peak_picking(ex=274, em=323)
+# pp2, _, _ = dataset_train.peak_picking(ex=300, em=383)
 # pp3, _, _ = dataset_train.peak_picking(ex=336, em=407)
 # fmax_train = pd.concat([pp1, pp2, pp3], axis=1)
 # #---
@@ -201,7 +201,11 @@ fmax_quenched_train = fmax_quenched_train[mask_train]
 fmax_ratio_train = fmax_original_train.to_numpy() / fmax_quenched_train.to_numpy()
 fmax_ratio_target_train = fmax_ratio_train[:, fmax_col]
 r_target_train, p_target_train = pearsonr(target_train, fmax_original_train.iloc[:, fmax_col])
-slope_train, intercept_train = np.polyfit(target_train, fmax_original_train.iloc[:, fmax_col], deg=1)
+reg = LinearRegression(positive=True, fit_intercept=False)
+reg.fit(target_train.reshape(-1, 1), fmax_original_train.iloc[:, fmax_col])
+slope_train = reg.coef_
+intercept_train = reg.intercept_
+r2_train = reg.score(target_train.reshape(-1, 1), fmax_original_train.iloc[:, fmax_col])
 target_train_pred = (fmax_original_train.iloc[:, fmax_col] - intercept_train) / slope_train
 residual_train = np.abs(target_train - target_train_pred)
 relative_error_train = abs(target_train - target_train_pred) / target_train * 100
@@ -212,9 +216,9 @@ target_test_true = target_test_true.dropna().to_numpy()
 _, fmax_test, _ = model.predict(eem_dataset=dataset_test)
 
 # # ----
-# dataset_test.gaussian_filter(sigma=2, truncate=3, copy=False)
-# pp1, _, _ = dataset_test.peak_picking(ex=280, em=340)
-# pp2, _, _ = dataset_test.peak_picking(ex=308, em=362)
+# dataset_test.gaussian_filter(sigma=1, truncate=3, copy=False)
+# pp1, _, _ = dataset_test.peak_picking(ex=274, em=323)
+# pp2, _, _ = dataset_test.peak_picking(ex=300, em=383)
 # pp3, _, _ = dataset_test.peak_picking(ex=336, em=407)
 # fmax_test = pd.concat([pp1, pp2, pp3], axis=1)
 # # ----
@@ -228,7 +232,6 @@ fmax_ratio_test = fmax_original_test.to_numpy() / fmax_quenched_test.to_numpy()
 fmax_ratio_target_test = fmax_ratio_test[:, fmax_col]
 fmax_ratio_target_test_df = pd.DataFrame(fmax_ratio_target_test, index=fmax_original_test.index)
 r_target_test, p_target_test = pearsonr(target_test_true, fmax_original_test.iloc[:, fmax_col])
-slope_test, intercept_test = np.polyfit(target_test_true, fmax_original_test.iloc[:, fmax_col], deg=1)
 target_test_pred = (fmax_original_test.iloc[:, fmax_col] - intercept_train) / slope_train
 
 residual_test = np.abs(target_test_true - target_test_pred)
@@ -271,14 +274,14 @@ for bar in ax.patches:
     bin_mid = bin_left + bin_width / 2
 
     # Check if the midpoint is above the threshold
-    if (threshold_upper <= bin_mid or threshold_lower>= bin_mid) and bar.zorder == 1:
+    if (threshold_upper <= bin_mid or threshold_lower >= bin_mid) and bar.zorder == 1:
         # Add hatch pattern and change color
         bar.set_hatch("////")  # Hatch pattern (e.g., "////", "xxx", "..")
         bar.set_edgecolor('red')
 plt.xlim(binrange)
-plt.xlabel("C{i} ".format(i=fmax_col + 1) + "$F_{0}/F$", fontsize=20)
+plt.xlabel("C{i} apparent ".format(i=fmax_col + 1) + "$F_{0}/F$", fontsize=20)
 plt.ylabel("Density", fontsize=20)
-plt.legend(fontsize=16, bbox_to_anchor=(0.5, 0.7))
+plt.legend(fontsize=16)
 plt.tick_params(labelsize=18)
 plt.tight_layout()
 plt.show()
@@ -286,7 +289,12 @@ plt.show()
 # ---------Fmax vs. TCC or DOC in training and testing------------
 
 plt.figure()
-a, b = np.polyfit(target_train, fmax_original_train.iloc[:, fmax_col], deg=1)
+
+reg = LinearRegression(positive=True, fit_intercept=False)
+reg.fit(target_train.reshape(-1, 1), fmax_original_train.iloc[:, fmax_col])
+a = reg.coef_
+b = reg.intercept_
+
 plt.plot(
     [-1, 10],
     a * np.array([-1, 10]) + b,
@@ -302,7 +310,8 @@ plt.scatter(target_test_true[(fmax_ratio_target_test >= threshold_upper) | (fmax
             fmax_original_test.iloc[(fmax_ratio_target_test >= threshold_upper) | (fmax_ratio_target_test <= threshold_lower), fmax_col],
             label='test (outliers)', color='red', alpha=0.6)
 plt.xlabel(target_name, fontsize=20)
-plt.ylabel(f'C{fmax_col + 1} Fmax', fontsize=20)
+# plt.ylabel(f'C{fmax_col + 1} Fmax', fontsize=20)
+plt.ylabel(f'Intensity \n (ex = 336 nm, em = 407 nm)', fontsize=18)
 plt.legend(
     bbox_to_anchor=[1.02, 0.37],
     # bbox_to_anchor=[0.58, 0.63],
@@ -316,26 +325,28 @@ plt.show()
 
 # ---------Boxplots of RMSE for training, testing (qualified and outliers)---------
 
-# # plt.figure(figsize=(2.2, 4))
-# plt.figure(figsize=(5, 3.5))
-# bplot = plt.boxplot(
-#     [
-#         relative_error_train,
-#         relative_error_test[fmax_ratio_target_test <= threshold],
-#         relative_error_test[fmax_ratio_target_test > threshold]
-#     ],
-#     labels=('training', 'test (qualified)', 'test (outliers)'),
-#     patch_artist=True,
-#     widths=0.75
-# )
-# for patch, color in zip(bplot['boxes'], ['blue', 'orange', 'red']):
-#     patch.set_facecolor(color)
-# plt.ylabel('relative error (%)', fontsize=16)
-# plt.tick_params(labelsize=14)
-# plt.xticks(rotation=90)
-# plt.tight_layout()
-# plt.show()
+# plt.figure(figsize=(2.2, 4))
+plt.figure(figsize=(5, 3.5))
+bplot = plt.boxplot(
+    [
+        relative_error_train,
+        relative_error_test[(fmax_ratio_target_test < threshold_upper) & (fmax_ratio_target_test > threshold_lower)],
+        relative_error_test[(fmax_ratio_target_test >= threshold_upper) | (fmax_ratio_target_test <= threshold_lower)]
+    ],
+    labels=('training', 'test (qualified)', 'test (outliers)'),
+    patch_artist=True,
+    widths=0.75
+)
+for patch, color in zip(bplot['boxes'], ['blue', 'orange', 'red']):
+    patch.set_facecolor(color)
+plt.ylabel('relative error (%)', fontsize=16)
+plt.tick_params(labelsize=14)
+plt.xticks(rotation=90)
+plt.tight_layout()
+plt.show()
 
+
+#------------
 model = PARAFAC(n_components=4)
 model.fit(dataset_train)
 

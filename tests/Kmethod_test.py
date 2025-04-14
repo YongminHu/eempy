@@ -218,10 +218,10 @@ eem_cluster3 = clustered_dataset_all_combos['cluster1']['02']
 
 
 # consensus_matrices, cluster_stats = k_method_quenching(
-#     eem_dataset=eem_cluster3,
+#     eem_dataset=eem_cluster1,
 #     base_model=PARAFAC(n_components=4),
-#     n_clusters=[5],
-#     minimum_dataset_size=10,
+#     n_clusters=[4],
+#     minimum_dataset_size=5,
 #     depth=1,
 #     consensus_only=True,
 #     n_base_clusterings=30,
@@ -229,14 +229,55 @@ eem_cluster3 = clustered_dataset_all_combos['cluster1']['02']
 # )
 #
 # cluster_stats_all_combos, clustered_dataset_all_combos = k_method_consensus_to_clusters_stats(
-#     eem_dataset_combinations={'cluster1': eem_cluster3},
+#     eem_dataset_combinations={'cluster1': eem_cluster1},
 #     consensus_matrices_combos={'cluster1': consensus_matrices},
 #     base_model=PARAFAC(n_components=4),
 #     n_clusters=2
 # )
+#
+# eem_cluster1 = clustered_dataset_all_combos['cluster1']['01']
+# eem_cluster2 = clustered_dataset_all_combos['cluster1']['02']
 
-# eem_cluster3 = clustered_dataset_all_combos['cluster1']['01']
-# eem_cluster4 = clustered_dataset_all_combos['cluster1']['02']
+with open("C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/all_5clusters.pkl",
+          'rb') as file:
+    list_5clusters = pickle.load(file)
+
+d1d2 = combine_eem_datasets([list_5clusters[0], list_5clusters[1]])
+list_4clusters = [d1d2, list_5clusters[2], list_5clusters[4], list_5clusters[3]]
+
+# cluster_labels = []
+# for l in eem_dataset.index:
+#     if l in list_4clusters[0].index:
+#         cluster_labels.append(1)
+#     elif l in list_4clusters[1].index:
+#         cluster_labels.append(2)
+#     elif l in list_4clusters[2].index:
+#         cluster_labels.append(3)
+#     elif l in list_4clusters[3].index:
+#         cluster_labels.append(4)
+#
+sorted_indices = np.argsort(labels)
+matrix = consensus_matrices['0']
+# Step 2: Rearrange matrix and labels
+sorted_matrix = matrix[sorted_indices, :][:, sorted_indices]
+sorted_labels = np.array(labels)[sorted_indices]
+
+plt.imshow(sorted_matrix, cmap='Reds')
+plt.show()
+
+import numpy as np
+from scipy.cluster.hierarchy import linkage, fcluster
+from scipy.spatial.distance import squareform
+
+
+# Convert to condensed form
+condensed = squareform(1-matrix)
+
+# Hierarchical clustering
+Z = linkage(condensed, method='average')  # or 'ward', 'single', etc.
+
+# Get cluster labels for a given number of clusters, e.g., k=5
+labels = fcluster(Z, t=8, criterion='maxclust')
 
 # #---------step 3: analysis and plotting
 
@@ -284,15 +325,15 @@ def calculate_f0f_sfc(dataset, fmax_col, target_ref):
 
 #----------boxplots--------
 # Define colors for the boxes
-# colors = ['gold', 'olivedrab', 'royalblue']
-colors = ['red', 'dimgrey', 'dimgrey']
+# colors = ['orangered', 'gold', 'olivedrab', 'royalblue']
+colors = ['red', 'red', 'dimgrey', 'dimgrey']
 
 f0fs = []
 sfcs = []
 for pair in [sfc_pair1, sfc_pair2, sfc_pair3, sfc_pair4]:
     f0fs_r = []
     sfcs_r = []
-    for i, cluster in enumerate([eem_cluster3, eem_cluster2, eem_cluster1]):
+    for i, cluster in enumerate(list_4clusters[::-1]):
         f0f, sfc = calculate_f0f_sfc(cluster, pair[0], pair[1])
         f0fs_r.append(f0f)
         sfcs_r.append(sfc)
@@ -305,8 +346,8 @@ for i, ax in enumerate(axes):
     # Apply colors to boxes
     for patch, color in zip(box['boxes'], colors):
         patch.set_facecolor(color)
-    ax.set_yticks((3,2,1))  # Positions of the groups (1, 2, 3, 4)
-    ax.set_yticklabels(['cluster 1', 'cluster 2', 'cluster 3'], fontsize=12)  # Labels for the groups
+    ax.set_yticks((4,3,2,1))  # Positions of the groups (1, 2, 3, 4)
+    ax.set_yticklabels(['cluster 1', 'cluster 2', 'cluster 3', 'cluster 4'], fontsize=12)  # Labels for the groups
     ax.set_xlabel(f"C{i+1} apparent " + "$F_{0}/F$", fontsize=14)
     ax.set_xlim([0.98, 1.45])
     ax.tick_params(labelsize=10)
@@ -318,9 +359,9 @@ plt.show()
 fig, axes = plt.subplots(nrows=4, ncols=1, figsize=(4, 7), sharex=False)
 
 for i, ax in enumerate(axes):
-    sns.violinplot(data=f0fs[i][::-1], orient="h", ax=ax, palette=colors[::-1],  cut=0, bw_adjust=0.3)  # Horizontal violin plot
-    ax.set_yticks([0,1,2])  # Adjust positions of the groups
-    ax.set_yticklabels(['cluster 1', 'cluster 2', 'cluster 3'], fontsize=12)  # Labels for the groups
+    sns.violinplot(data=f0fs[i][::-1], orient="h", ax=ax, palette=colors[::-1],  cut=0, bw_adjust=0.5)  # Horizontal violin plot
+    ax.set_yticks([0, 1, 2, 3])  # Adjust positions of the groups
+    ax.set_yticklabels(['cluster 1', 'cluster 2', 'cluster 3', 'cluster 4'], fontsize=12)  # Labels for the groups
     ax.set_xlabel(f"C{i+1} apparent " + "$F_{0}/F$", fontsize=14)
     ax.set_xlim([0.98, 1.45])
     ax.tick_params(labelsize=10)
@@ -370,13 +411,15 @@ plt.show()
 fig, axes = plt.subplots(nrows=4, ncols=1, figsize=(4, 7), sharex=False)
 
 for i, ax in enumerate(axes):
-    sns.violinplot(data=sfcs[i][::-1], orient="h", ax=ax, palette=colors[::-1], cut=0, bw_adjust=0.3)  # Horizontal violin plot
-    ax.set_yticks([0, 1, 2])  # Adjusted to match violin plot indexing
-    ax.set_yticklabels(['cluster 1', 'cluster 2', 'cluster 3'], fontsize=12)  # Labels for the groups
+    sns.violinplot(data=sfcs[i][::-1], orient="h", ax=ax, palette=colors[::-1], cut=0, bw_adjust=0.5)  # Horizontal violin plot
+    ax.set_yticks([0, 1, 2, 3])  # Adjusted to match violin plot indexing
+    ax.set_yticklabels(['cluster 1', 'cluster 2', 'cluster 3', 'cluster 4'], fontsize=12)  # Labels for the groups
     ax.set_xlabel(xlabels[i], fontsize=14)
 
-    if i > 0:
-        ax.set_xlim([0, 0.01])  # Apply x-axis limit conditionally
+    # if i > 0:
+    #     ax.set_xlim([0, 0.01])  # Apply x-axis limit conditionally
+    # else:
+    #     ax.set_xlim([])
 
     ax.tick_params(labelsize=10)
 
@@ -386,7 +429,7 @@ plt.show()
 
 #
 # # ----------cluster vs. sample categories--------
-colors = ['royalblue', 'olivedrab', 'gold']
+colors = ['royalblue', 'olivedrab', 'gold', 'orangered']
 
 categories_kw_dict = {
     # 'Jul-low MBR influence': [['2024-07'], None],
@@ -416,7 +459,7 @@ for name, kw in categories_kw_dict.items():
 #     cluster_categories_counts[category] = counts_list
 
 cluster_categories_counts = {}
-for cluster_data, cluster_name in zip([eem_cluster1, eem_cluster2, eem_cluster3], ['cluster 1', 'cluster 2', 'cluster 3']):
+for cluster_data, cluster_name in zip(list_4clusters, ['cluster 1', 'cluster 2', 'cluster 3', 'cluster 4']):
     counts_list = []
     for category, indices in categories_indices.items():
         counts = len(set(indices) & set(cluster_data.index))
@@ -438,7 +481,7 @@ for i, (name, weight_count) in enumerate(cluster_categories_counts.items()):
     bottom += weight_count
 
 ax.tick_params(labelsize=16, axis='both', rotation=0)
-ax.legend(loc="best", fontsize=16, bbox_to_anchor=(1.05, -0.1), ncol=3, handlelength=0.5)
+ax.legend(loc="best", fontsize=16, bbox_to_anchor=(1.05, -0.1), ncol=2, handlelength=0.5)
 ax.set_xlabel('Share (%)', fontsize=16)
 ax.set_xlim([0, 100])
 plt.gca().invert_yaxis()
@@ -711,7 +754,7 @@ for combo_code, combo_consensus in consensus_matrices_combos.items():
 
 
 with open(
-        "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/outlier_removal_stats_combos_30_percent_jul.pkl",
+        "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/outlier_removal_stats_combos_0_percent_jul_5_splits.pkl",
         'rb') as file:
     outlier_removal_stats_combos = pickle.load(file)
 
@@ -788,8 +831,8 @@ cb.ax.tick_params(labelsize=16)
 cb.set_ticklabels(tick_labels)
 
 # Plot settings (unchanged from your original code)
-ax_dot_r_r.set_ylabel(r"$r_{TCC}$ after outliers removal", fontsize=20)
-ax_dot_r_r.set_xlabel(r"$r_{TCC}$ before outliers removal", fontsize=20)
+ax_dot_r_r.set_ylabel(r"$r_{TCC}$ after outlier removal", fontsize=20)
+ax_dot_r_r.set_xlabel(r"$r_{TCC}$ before outlier removal", fontsize=20)
 ax_dot_r_r.tick_params(axis='both', labelsize=16)
 ax_dot_r_r.plot([-1, 1], [-1, 1], '--', color='black', linewidth=2, alpha=0.5)
 # ax_dot_r_r.plot([-1, 1], [-0.9, 1.1], '--', color='black', linewidth=2, alpha=0.5)

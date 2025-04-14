@@ -910,16 +910,6 @@ class EEMDataset:
         """
         return np.std(self.eem_stack, axis=0)
 
-    # def rel_std(self, threshold=0.05):
-    #
-    #     coef_variation = stats.variation(self.eem_stack, axis=0)
-    #     rel_std = abs(coef_variation)
-    #     if threshold:
-    #         qualified_pixel_proportion = np.count_nonzero(rel_std < threshold) / np.count_nonzero(~np.isnan(rel_std))
-    #         print("The proportion of pixels with relative STD < {t}: ".format(t=threshold),
-    #               qualified_pixel_proportion)
-    #     return rel_std
-
     def total_fluorescence(self):
         """
         Calculate total fluorescence of each sample.
@@ -985,6 +975,96 @@ class EEMDataset:
             fi = pd.DataFrame(fi, index=np.arange(fi.shape[0]), columns=[fi_name])
 
         return fi, ex_actual, em_actual
+
+    def hix(self):
+        """
+        Calculate the humification index (HIX).
+
+        Returns
+        -------
+        hix: pandas.DataFrame
+            HIX
+        """
+        em1 = 300
+        em2 = 345
+        em3 = 435
+        em4 = 480
+        ex = 254
+        if self.em_range.min() <= em1 and self.em_range.max() >= em4 and self.ex_range.min() <= ex <= self.ex_range.max():
+            numerator = self.regional_integration(ex, ex, em3, em4)
+            denominator = self.regional_integration(ex, ex, em1, em2) + numerator
+            hix = numerator / denominator
+            return hix
+        else:
+            raise ValueError("The ranges of excitation or emission wavelengths do not support the calculation.")
+
+    def bix(self):
+        """
+        Calculate the biological index (BIX).
+
+        Returns
+        -------
+        bix: pandas.DataFrame
+            BIX
+
+        """
+        ex = 310
+        em1 = 380
+        em2 = 430
+        if self.em_range.min() <= em1 and self.em_range.max() >= em2 and self.ex_range.min() <= ex <= self.ex_range.max():
+            numerator, _, _ = self.peak_picking(ex, em1)
+            denominator, _, _ = self.peak_picking(ex, em2)
+            bix = numerator / denominator
+            return bix
+        else:
+            raise ValueError("The ranges of excitation or emission wavelengths do not support the calculation.")
+
+    def fi(self):
+        """
+        Calculate the fluorescence index (FI).
+
+        Returns
+        -------
+        fi: pandas.DataFrame
+            FI
+        """
+        ex = 370
+        em1 = 470
+        em2 = 520
+        if self.em_range.min() <= em1 and self.em_range.max() >= em2 and self.ex_range.min() <= ex <= self.ex_range.max():
+            numerator, _, _ = self.peak_picking(ex, em1)
+            denominator, _, _ = self.peak_picking(ex, em2)
+            fi = numerator / denominator
+            return fi
+        else:
+            raise ValueError("The ranges of excitation or emission wavelengths do not support the calculation.")
+
+    def aqy(self, abs_stack, ex_range_abs):
+        """
+        Calculate the apparent_quantum_yield (AQY).
+
+        Parameters
+        ----------
+        abs_stack: np.ndarray
+            absorbance spectra stack
+        ex_range_abs: np.ndarray
+            excitation wavelengths of absorbance spectra
+
+        Returns
+        -------
+        aqy: pandas.DataFrame
+            apparent quantum yield (AQY)
+        """
+        aqy = []
+        for i in self.eem_stack.shape[0]:
+            intensity = self.eem_stack[i]
+            abs = abs_stack[i]
+            f1 = interp1d(ex_range_abs, abs, kind='linear', bounds_error=False, fill_value='extrapolate')
+            abs_interpolated = f1(self.ex_range)
+            aqy.append(np.sum(intensity, axis=1)/abs_interpolated)
+        aqy = pd.DataFrame(aqy, index=self.index, columns=self.ex_range)
+        return aqy
+
 
     def correlation(self, variables, fit_intercept=True):
         """
@@ -1348,27 +1428,6 @@ class EEMDataset:
             self.em_range = em_range_new
         return eem_stack_interpolated
 
-    # def outlier_detection_if(self, tf_normalization=True, grid_size=(10, 10), contamination=0.02, deletion=False):
-    #     labels = eems_outlier_detection_if(eem_stack=self.eem_stack, ex_range=self.ex_range, em_range=self.em_range,
-    #                                        tf_normalization=tf_normalization, grid_size=grid_size,
-    #                                        contamination=contamination)
-    #     if deletion:
-    #         self.eem_stack = self.eem_stack[labels != -1]
-    #         self.ref = self.ref[labels != -1]
-    #         self.index = [idx for i, idx in enumerate(self.index) if labels[i] != -1]
-    #     return labels
-    #
-    # def outlier_detection_ocs(self, tf_normalization=True, grid_size=(10, 10), nu=0.02, kernel='rbf', gamma=10000,
-    #                           deletion=False):
-    #     labels = eems_outlier_detection_ocs(eem_stack=self.eem_stack, ex_range=self.ex_range, em_range=self.em_range,
-    #                                         tf_normalization=tf_normalization, grid_size=grid_size, nu=nu,
-    #                                         kernel=kernel, gamma=gamma)
-    #     if deletion:
-    #         self.eem_stack = self.eem_stack[labels != -1]
-    #         self.ref = self.ref[labels != -1]
-    #         self.index = [idx for i, idx in enumerate(self.index) if labels[i] != -1]
-    #     return labels
-
     def splitting(self, n_split, rule: str = 'random'):
         """
         To split the EEM dataset and form multiple sub-datasets.
@@ -1475,21 +1534,6 @@ class EEMDataset:
             self.cluster = [self.cluster[i] for i in sorted_indices]
         return sorted_indices
 
-    # def sort_by_ref(self):
-    #     """
-    #     Sort the sample order of eem_stack, reference and index (if exists) by the reference.
-    #
-    #     Returns
-    #     -------
-    #     sorted_indices: np.ndarray
-    #         The sorted sample order
-    #     """
-    #     sorted_indices = np.argsort(self.ref)
-    #     self.eem_stack = self.eem_stack[sorted_indices]
-    #     if self.index:
-    #         self.index = self.index[sorted_indices]
-    #     self.ref = np.array(sorted(self.ref))
-    #     return sorted_indices
 
     def filter_by_index(self, mandatory_keywords, optional_keywords, copy=True):
         """
