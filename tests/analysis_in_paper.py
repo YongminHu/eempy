@@ -19,6 +19,7 @@ eem_dataset_path = \
     "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_260_ex_274_em_310_mfem_3.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
 eem_dataset, _ = eem_dataset.filter_by_index(None, ['M3', 'G1', 'G2', 'G3'], copy=True)
+abs_stack, ex_range_abs, _ = read_abs_dataset('C:/PhD/Fluo-detect/_data/_greywater/2024_quenching')
 eem_dataset.gaussian_filter(sigma=1, truncate=3, copy=False)
 
 # ------------Define conditions--------------

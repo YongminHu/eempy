@@ -1014,8 +1014,8 @@ class EEMDataset:
         if self.em_range.min() <= em1 and self.em_range.max() >= em2 and self.ex_range.min() <= ex <= self.ex_range.max():
             numerator, _, _ = self.peak_picking(ex, em1)
             denominator, _, _ = self.peak_picking(ex, em2)
-            bix = numerator / denominator
-            return bix
+            bix = numerator.to_numpy() / denominator.to_numpy()
+            return pd.DataFrame(bix, index=self.index, columns=['BIX'])
         else:
             raise ValueError("The ranges of excitation or emission wavelengths do not support the calculation.")
 
@@ -1034,8 +1034,8 @@ class EEMDataset:
         if self.em_range.min() <= em1 and self.em_range.max() >= em2 and self.ex_range.min() <= ex <= self.ex_range.max():
             numerator, _, _ = self.peak_picking(ex, em1)
             denominator, _, _ = self.peak_picking(ex, em2)
-            fi = numerator / denominator
-            return fi
+            fi = numerator.to_numpy() / denominator.to_numpy()
+            return pd.DataFrame(fi, index=self.index, columns=['BIX'])
         else:
             raise ValueError("The ranges of excitation or emission wavelengths do not support the calculation.")
 
@@ -1056,13 +1056,13 @@ class EEMDataset:
             apparent quantum yield (AQY)
         """
         aqy = []
-        for i in self.eem_stack.shape[0]:
+        for i in range(self.eem_stack.shape[0]):
             intensity = self.eem_stack[i]
             abs = abs_stack[i]
             f1 = interp1d(ex_range_abs, abs, kind='linear', bounds_error=False, fill_value='extrapolate')
             abs_interpolated = f1(self.ex_range)
             aqy.append(np.sum(intensity, axis=1)/abs_interpolated)
-        aqy = pd.DataFrame(aqy, index=self.index, columns=self.ex_range)
+        aqy = pd.DataFrame(aqy, index=self.index, columns=[f'AQY (ex = {l} nm)' for l in list(self.ex_range)])
         return aqy
 
 
