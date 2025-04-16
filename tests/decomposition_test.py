@@ -1,3 +1,5 @@
+import matplotlib.pyplot as plt
+
 from eempy.read_data import read_eem_dataset, read_abs_dataset, read_eem, read_eem_dataset_from_json
 from eempy.eem_processing import *
 import re
@@ -168,6 +170,8 @@ slope_bsa, intercept_bsa = np.polyfit(x, means_bsa, 1)
 regression_line_bsa = slope_bsa * x + intercept_bsa
 slope_ecoli, intercept_ecoli = np.polyfit(x, means_ecoli, 1)
 regression_line_ecoli = slope_ecoli * x + intercept_ecoli
+
+
 # Plot
 fig, ax = plt.subplots()
 
@@ -223,6 +227,43 @@ ax.legend(fontsize=16)
 plt.grid(True, linestyle='--', alpha=0.7)
 plt.tight_layout()
 plt.show()
+
+
+# x = [0, 1.25, 2.5, 3.75, 5]
+# y1 = [1,
+# 1.0355639,
+# 1.048505315,
+# 1.064714791,
+# 1.065128945,
+# ]
+# y2 = [1,
+# 1.135652709,
+# 1.263106661,
+# 1.370956137,
+# 1.415734177,
+# ]
+
+
+x = [0, 10, 20, 30, 40]
+y1 = [1, 0.995705883, 1.002963338, 1.00615731, 1.019670217]
+y2 = [1, 1.199828224, 1.376983275, 1.617179995, 1.888277423]
+
+
+fig, ax = plt.subplots(figsize=(3, 3))
+ax.plot(x, y1, '-o', label='E. coli', color='black', markeredgecolor='black', markerfacecolor='white')
+ax.plot(x, y2, '-o', label='BSA', color='black', markeredgecolor='black', markerfacecolor='black')
+# ax.set_xlabel(r'HA ($\mu$g/L)', fontsize=14)
+ax.set_xlabel(r'HA ($\mu$g/L)', fontsize=12)
+ax.set_ylabel(r'True $F_{0}/F$', fontsize=12)
+ax.set_xticks([0,10,20,30,40])
+ax.set_yticks([1, 1.2,1.4,1.6,1.8,2])
+ax.set_ylim(0.98, 2)
+ax.tick_params(labelsize=10)
+plt.legend(bbox_to_anchor=(0.99, -0.33), ncol=2)
+plt.grid(alpha=0.5)
+plt.tight_layout()
+plt.show()
+
 
 
 # # ---------------Effect of initialization-----------------

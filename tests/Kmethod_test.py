@@ -6,9 +6,11 @@ from scipy.stats import pearsonr
 from matplotlib.colors import TABLEAU_COLORS
 from scipy.stats import ks_2samp
 from matplotlib.colors import Normalize, BoundaryNorm, ListedColormap
+from sklearn.linear_model import LinearRegression
 import matplotlib.ticker as ticker
 import pickle
 import seaborn as sns
+
 
 colors = list(TABLEAU_COLORS.values())
 
@@ -396,7 +398,7 @@ for i, ax in enumerate(axes):
     # Apply colors to boxes
     for patch, color in zip(box['boxes'], colors):
         patch.set_facecolor(color)
-    ax.set_yticks((4,3,2,1))  # Positions of the groups (1, 2, 3, 4)
+    ax.set_yticks((4, 3, 2, 1))  # Positions of the groups (1, 2, 3, 4)
     ax.set_yticklabels(['all', 'cluster 1', 'cluster 2', 'cluster 3'], fontsize=12)  # Labels for the groups
     # ax.set_xlabel(f"C{i+1} " + "Fmax/" + [sfc_pair1, sfc_pair2, sfc_pair3, sfc_pair4][i][1], fontsize=14)
     ax.set_xlabel(xlabels[i], fontsize=14)
@@ -882,7 +884,8 @@ plt.show()
 
 from sklearn.cluster import KMeans
 
-colors = ['purple', 'royalblue', 'olivedrab', 'gold']
+colors = ['royalblue','olivedrab','gold']
+colors = ['grey', 'grey', 'red']
 
 categories_kw_dict = {
     # 'Jul-low MBR influence': [['2024-07'], None],
@@ -891,7 +894,7 @@ categories_kw_dict = {
     'July-all': [['2024-07'], None],
     'October-all': [['2024-10'], None],
     'High flow': [['2024-10-17'], None],
-    'Cross-connection': [['2024-10-21'], None],
+    'Simulated\ncross-connection': [['2024-10-21'], None],
     'BAC top': [['G1'], None],
     'BAC middle': [['G2'], None],
     'BAC bottom': [['G3'], None],
@@ -905,7 +908,6 @@ fmax_original = fmax[fmax.index.str.contains('B1C1')]
 fmax_quenched = fmax[fmax.index.str.contains('B1C2')]
 fmax_ratio = fmax_original.to_numpy() / fmax_quenched.to_numpy()
 
-from sklearn.cluster import KMeans
 n_clusters = 3
 kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init="auto").fit(fmax_ratio)
 labels = kmeans.labels_
@@ -916,7 +918,7 @@ for i in range(4):
     f0f_r = []
     sfc_r = []
     target_name = 'TCC (million #/mL)' if i == 0 else 'DOC (mg/L)'
-    for j in range(n_clusters):
+    for j in [2, 0, 1]:
         f0f_r.append(fmax_ratio[labels==j, i])
         target_j = eem_dataset.ref[target_name]
         target_j = target_j[target_j.index.str.contains('B1C1')]
@@ -933,9 +935,9 @@ for i in range(4):
 
 fig, axes = plt.subplots(nrows=4, ncols=1, figsize=(4, 7), sharex=False)
 for i, ax in enumerate(axes):
-    sns.violinplot(data=f0fs[i], orient="h", ax=ax, cut=0, bw_adjust=0.5)  # Horizontal violin plot
-    ax.set_yticks([0, 1, 2, 3, 4])  # Adjust positions of the groups
-    ax.set_yticklabels(['cluster 1', 'cluster 2', 'cluster 3', 'cluster 4', 'cluster 5'], fontsize=12)  # Labels for the groups
+    sns.violinplot(data=f0fs[i], orient="h", ax=ax, cut=0, bw_adjust=0.3, palette=colors)  # Horizontal violin plot
+    ax.set_yticks([0, 1, 2])  # Adjust positions of the groups
+    ax.set_yticklabels(['cluster 1', 'cluster 2', 'cluster 3'], fontsize=12)  # Labels for the groups
     ax.set_xlabel(f"C{i+1} apparent " + "$F_{0}/F$", fontsize=14)
     ax.set_xlim([0.98, 1.45])
     ax.tick_params(labelsize=10)
@@ -951,9 +953,9 @@ xlabels = [
 
 fig, axes = plt.subplots(nrows=4, ncols=1, figsize=(4, 7), sharex=False)
 for i, ax in enumerate(axes):
-    sns.violinplot(data=sfcs[i], orient="h", ax=ax, cut=0, bw_adjust=0.3)  # Horizontal violin plot
-    ax.set_yticks([0, 1, 2, 3, 4])  # Adjusted to match violin plot indexing
-    ax.set_yticklabels(['cluster 1', 'cluster 2', 'cluster 3', 'cluster 4', 'cluster 5'], fontsize=12)  # Labels for the groups
+    sns.violinplot(data=sfcs[i], orient="h", ax=ax, cut=0, bw_adjust=0.3, palette=colors)  # Horizontal violin plot
+    ax.set_yticks([0, 1, 2])  # Adjusted to match violin plot indexing
+    ax.set_yticklabels(['cluster 1', 'cluster 2', 'cluster 3'], fontsize=12)  # Labels for the groups
     ax.set_xlabel(xlabels[i], fontsize=14)
     if i > 0:
         ax.set_xlim([0, 0.01])  # Apply x-axis limit conditionally
@@ -964,9 +966,9 @@ for i, ax in enumerate(axes):
 plt.tight_layout()
 plt.show()
 
-cluster_indices = [[fmax_original.index[j] for j in range(labels.shape[0]) if labels[j]==i] for i in range(n_clusters)]
+cluster_indices = [[fmax_original.index[j] for j in range(labels.shape[0]) if labels[j]==i] for i in [2, 0, 1]]
 cluster_categories_counts = {}
-for cluster_index, cluster_name in zip(cluster_indices, ['cluster 1', 'cluster 2', 'cluster 3', 'cluster 4', 'cluster 5']):
+for cluster_index, cluster_name in zip(cluster_indices, ['cluster 1', 'cluster 2', 'cluster 3']):
     counts_list = []
     for category, indices in categories_indices.items():
         counts = len(set(indices) & set(cluster_index))
@@ -983,14 +985,147 @@ for i, (name, weight_count) in enumerate(cluster_categories_counts.items()):
         list(categories_kw_dict.keys()),
         # ['cluster 1', 'cluster 2', 'cluster 3'],
         weight_count, 0.3,
-        label=name, left=bottom,
+        label=name, left=bottom, color=colors[i]
     )
     bottom += weight_count
 
 ax.tick_params(labelsize=16, axis='both', rotation=0)
-ax.legend(loc="best", fontsize=16, bbox_to_anchor=(1.05, -0.1), ncol=2, handlelength=0.5)
+ax.legend(loc="best", fontsize=16, bbox_to_anchor=(1.05, -0.1), ncol=3, handlelength=0.5)
 ax.set_xlabel('Share (%)', fontsize=16)
 ax.set_xlim([0, 100])
 plt.gca().invert_yaxis()
 plt.tight_layout()
 plt.show()
+
+
+
+#----------------------
+
+eem_dataset.cluster = [item for item in labels for _ in range(2)]
+eem_cluster1, _ = eem_dataset.filter_by_cluster(2, copy=True)
+eem_cluster2, _ = eem_dataset.filter_by_cluster(0, copy=True)
+eem_cluster3, _ = eem_dataset.filter_by_cluster(1, copy=True)
+
+model_full = PARAFAC(n_components=4).fit(eem_dataset)
+dataset_outlier_removed = combine_eem_datasets([eem_cluster1, eem_cluster2])
+model_outlier_removed = PARAFAC(n_components=4).fit(dataset_outlier_removed)
+model_in_use = model_outlier_removed
+dataset_in_use = dataset_outlier_removed
+
+fmax = model_in_use.fmax
+target = dataset_in_use.ref['TCC (million #/mL)']
+valid_indices = target.index[~target.isna()]
+target = target.dropna().to_numpy()
+fmax_original = fmax[fmax.index.str.contains('B1C1')]
+mask = fmax_original.index.isin(valid_indices)
+fmax_original = fmax_original[mask]
+
+outlier_mask = labels==1
+
+plt.figure()
+# a, b = np.polyfit(target, fmax_original.iloc[:, 0], deg=1)
+a, b = np.polyfit(target, fmax_original.iloc[:, 0], deg=1)
+plt.plot(
+    [-1, 10],
+    a * np.array([-1, 10]) + b,
+    '--',
+    color='grey',
+    label='reg.'
+)
+fmax_original_target_numpy = fmax_original.to_numpy()
+
+plt.scatter(target, fmax_original_target_numpy[:, 0], label='other clusters', color='black', alpha=0.6)
+# plt.scatter(target[[not b for b in outlier_mask]], fmax_original_target_numpy[[not b for b in outlier_mask]][:, 0], label='other clusters', color='black', alpha=0.6)
+# plt.scatter(target[outlier_mask], fmax_original_target_numpy[outlier_mask][:, 0], label='outlier cluster(s)', color='red', alpha=0.6)
+
+plt.xlabel('TCC (million #/mL)', fontsize=20)
+plt.ylabel(f'C1 Fmax', fontsize=20)
+plt.legend(
+    # bbox_to_anchor=[1.02, 0.37],
+    # bbox_to_anchor=[0.58, 0.63],
+    fontsize=16
+)
+plt.tick_params(labelsize=16)
+plt.tight_layout()
+plt.xlim([0, 2.5])
+plt.ylim([0, 2500])
+plt.show()
+
+print(pearsonr(fmax_original_target_numpy[:, 0], target))
+
+
+#-----------------------
+
+def outlier_removal_simple(eem_dataset_work, n_clusters, set_point, r):
+    model = PARAFAC(n_components=4)
+    model.fit(eem_dataset_work)
+    fmax = model.fmax
+    fmax_original = fmax[fmax.index.str.contains('B1C1')]
+    fmax_quenched = fmax[fmax.index.str.contains('B1C2')]
+    fmax_ratio = fmax_original.to_numpy() / fmax_quenched.to_numpy()
+    target = eem_dataset_work.ref['TCC (million #/mL)']
+    target = target.dropna().to_numpy()
+    r_before, p_before = pearsonr(fmax_original.iloc[:, r], target)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init="auto").fit(fmax_ratio)
+    labels = kmeans.labels_
+    eem_dataset_work.cluster = [item for item in labels for _ in range(2)]
+    fmax_ratio_r = fmax_ratio[:, r]
+    mean_fmax_ratios = [np.mean(fmax_ratio_r[labels == j]) for j in range(n_clusters)]
+    qualified_clusters = [index for index, value in enumerate(mean_fmax_ratios) if value <= set_point]
+    qualified_dataset, _ = eem_dataset_work.filter_by_cluster(qualified_clusters, copy=True)
+    model.fit(qualified_dataset)
+    fmax_after = model.fmax
+    fmax_after_original = fmax_after[fmax_after.index.str.contains('B1C1')]
+    target_after = qualified_dataset.ref['TCC (million #/mL)']
+    target_after = target_after.dropna().to_numpy()
+    r_after, p_after = pearsonr(fmax_after_original.iloc[:, r], target_after)
+    outlier_rate = fmax_after_original.shape[0] / fmax_original.shape[0]  * 100
+    return r_before, r_after, p_before, p_after, outlier_rate
+
+
+kw_dict_types = {
+    'type 1': [['2024-07-'], None],
+    'other types': [['2024-10'], None]
+}
+
+eem_dataset_pool = {}
+for name, kw in kw_dict_types.items():
+    eem_dataset_conditioned, _ = eem_dataset.filter_by_index(kw[0], kw[1], copy=True)
+    eem_dataset_pool[name] = eem_dataset_conditioned
+# type1_proportion = 36 / eem_dataset_pool['type 1'].eem_stack.shape[0]
+other_type_proportion = 120 / eem_dataset_pool['other types'].eem_stack.shape[0]
+eem_dataset_combinations = {}
+for i in range(10):
+    # eem_dataset_unquenched_type1, _ = eem_dataset_pool['type 1'].filter_by_index('B1C1', None, copy=True)
+    # eem_dataset_quenched_type1, _ = eem_dataset_pool['type 1'].filter_by_index('B1C2', None, copy=True)
+    # eem_dataset_new_uq, selected_indices_uq = eem_dataset_unquenched_type1.subsampling(portion=type1_proportion)
+    # pos = [eem_dataset_unquenched_type1.index.index(idx) for idx in eem_dataset_new_uq.index]
+    # quenched_index = [eem_dataset_quenched_type1.index[idx] for idx in pos]
+    # eem_dataset_new_q, _ = eem_dataset_pool['type 1'].filter_by_index(None, quenched_index, copy=True)
+    # eem_dataset_type_1 = combine_eem_datasets([eem_dataset_new_uq, eem_dataset_new_q])
+
+    eem_dataset_unquenched_other, _ = eem_dataset_pool['other types'].filter_by_index('B1C1', None, copy=True)
+    eem_dataset_quenched_other, _ = eem_dataset_pool['other types'].filter_by_index('B1C2', None, copy=True)
+    eem_dataset_new_uq, selected_indices_uq = eem_dataset_unquenched_other.subsampling(portion=other_type_proportion)
+    pos = [eem_dataset_unquenched_other.index.index(idx) for idx in eem_dataset_new_uq.index]
+    quenched_index = [eem_dataset_quenched_other.index[idx] for idx in pos]
+    eem_dataset_new_q, _ = eem_dataset_pool['other types'].filter_by_index(None, quenched_index, copy=True)
+    eem_dataset_other_type = combine_eem_datasets([eem_dataset_new_uq, eem_dataset_new_q])
+
+    # combined_data = combine_eem_datasets([eem_dataset_type_1, eem_dataset_other_type])
+    # eem_dataset_combinations[i] = combined_data
+    eem_dataset_combinations[i] = eem_dataset_other_type
+
+rs_before = []
+rs_after = []
+ps_before = []
+ps_after = []
+outlier_rates = []
+for code, dataset in eem_dataset_combinations.items():
+    r_before, r_after, p_before, p_after, outlier_rate = outlier_removal_simple(dataset, n_clusters=3, set_point=1.1,
+                                                                                r=0)
+    rs_before.append(r_before)
+    rs_after.append(r_after)
+    ps_before.append(p_before)
+    ps_after.append(p_after)
+    outlier_rates.append(outlier_rate)

@@ -1,3 +1,5 @@
+import pandas as pd
+
 from eempy.read_data import read_eem_dataset, read_abs_dataset, read_eem, read_eem_dataset_from_json
 from eempy.eem_processing import *
 from eempy.plot import *
@@ -16,7 +18,8 @@ eem_dataset_path = \
     "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_260_ex_274_em_310_mfem_3.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
 eem_dataset, _ = eem_dataset.filter_by_index(None, ['M3', 'G1', 'G2', 'G3'], copy=True)
-abs_stack, ex_range_abs, _ = read_abs_dataset('C:/PhD/Fluo-detect/_data/_greywater/2024_quenching', ['ABS', 'B1C1'])
+eem_dataset_original, _ = eem_dataset.filter_by_index(['B1C1'], None, copy=True)
+# abs_stack, ex_range_abs, _ = read_abs_dataset('C:/PhD/Fluo-detect/_data/_greywater/2024_quenching', ['ABS', 'B1C1'])
 # eem_dataset.gaussian_filter(sigma=1, truncate=3, copy=False)
 
 # ------------Define conditions--------------
@@ -33,6 +36,28 @@ kw_dict = {
     'cc': [['M3'], ['2024-10-21'], 4],
     # 'all': [['2024'], None, 4]
 }
+
+eem_dataset_normal_oct, _ = eem_dataset_original.filter_by_index(None, ['2024-10-15', '2024-10-16', '2024-10-22'], copy=True)
+eem_dataset_normal_oct_col, _ = eem_dataset_normal_oct.filter_by_index(None, ['G1', 'G2', 'G3'], copy=True)
+eem_dataset_normal_oct_eff, _ = eem_dataset_normal_oct.filter_by_index(None, ['M3'], copy=True)
+eem_dataset_lowflow_oct_col, _ = eem_dataset_original.filter_by_index(['2024-10-18'], ['G1', 'G2', 'G3'], copy=True)
+eem_dataset_lowflow_oct_eff, _ = eem_dataset_original.filter_by_index(['2024-10-18', 'M3'], None, copy=True)
+eem_dataset_highflow_oct_col, _ = eem_dataset_original.filter_by_index(['2024-10-17'], ['G1', 'G2', 'G3'], copy=True)
+eem_dataset_highflow_oct_eff, _ = eem_dataset_original.filter_by_index(['2024-10-17', 'M3'], None, copy=True)
+eem_dataset_crossconnection_oct_eff, _ = eem_dataset_original.filter_by_index(['2024-10-21'], None,  copy=True)
+
+dataset_divisions = {
+    'normal-oct-col': eem_dataset_normal_oct_col,
+    'normal_oct_eff': eem_dataset_normal_oct_eff,
+    'lowflow-oct-col': eem_dataset_lowflow_oct_eff,
+    'lowflow_oct_eff': eem_dataset_lowflow_oct_eff,
+    'highflow-oct-col': eem_dataset_highflow_oct_col,
+    'highflow_oct_eff': eem_dataset_highflow_oct_eff,
+    'crossconnection-oct-eff': eem_dataset_crossconnection_oct_eff
+}
+
+
+
 #
 # # # --------N_components vs. r_tcc and mean(F0/F)--------
 # # # --------Fig 1: Histplots of model on testing dataset: effect of N components-------
@@ -272,31 +297,31 @@ def round_2d(num, direction):
 # fmax_ratio_target_test_df = pd.DataFrame(fmax_ratio_target_test, index=dataset_test_original.index)
 
 
-#------------numerical indicators-------
-_, fmax_train, recon_eem_stack_train = model.predict(dataset_train_original)
-res_train = dataset_train_original.eem_stack - recon_eem_stack_train
-n_pixels = res_train.shape[1] * res_train.shape[2]
-rmse_train = np.sqrt(np.sum(res_train ** 2, axis=(1, 2)) / n_pixels)
-rmse_train_df = pd.DataFrame(rmse_train, index=fmax_train.index)
-relative_rmse_train = rmse_train / np.average(
-    dataset_train_original.eem_stack,
-    axis=(1, 2)
-)
-_, fmax_test, recon_eem_stack_test = model.predict(dataset_test_original)
-res_test = dataset_test_original.eem_stack - recon_eem_stack_test
-n_pixels = res_test.shape[1] * res_test.shape[2]
-rmse_test = np.sqrt(np.sum(res_test ** 2, axis=(1, 2)) / n_pixels)
-rmse_test_df = pd.DataFrame(rmse_test, index=fmax_test.index)
-relative_rmse_test = rmse_test / np.average(
-    dataset_test_original.eem_stack,
-    axis=(1, 2))
-relative_rmse_test_df = pd.DataFrame(relative_rmse_test, index=fmax_test.index)
-fmax_ratio_target_train = rmse_train
-fmax_ratio_target_test = rmse_test
-fmax_ratio_target_test_df = pd.DataFrame(rmse_test, index=dataset_test_original.index)
+# #------------numerical indicators-------
+# _, fmax_train, recon_eem_stack_train = model.predict(dataset_train_original)
+# res_train = dataset_train_original.eem_stack - recon_eem_stack_train
+# n_pixels = res_train.shape[1] * res_train.shape[2]
+# rmse_train = np.sqrt(np.sum(res_train ** 2, axis=(1, 2)) / n_pixels)
+# rmse_train_df = pd.DataFrame(rmse_train, index=fmax_train.index)
+# relative_rmse_train = rmse_train / np.average(
+#     dataset_train_original.eem_stack,
+#     axis=(1, 2)
+# )
+# _, fmax_test, recon_eem_stack_test = model.predict(dataset_test_original)
+# res_test = dataset_test_original.eem_stack - recon_eem_stack_test
+# n_pixels = res_test.shape[1] * res_test.shape[2]
+# rmse_test = np.sqrt(np.sum(res_test ** 2, axis=(1, 2)) / n_pixels)
+# rmse_test_df = pd.DataFrame(rmse_test, index=fmax_test.index)
+# relative_rmse_test = rmse_test / np.average(
+#     dataset_test_original.eem_stack,
+#     axis=(1, 2))
+# relative_rmse_test_df = pd.DataFrame(relative_rmse_test, index=fmax_test.index)
+# fmax_ratio_target_train = rmse_train
+# fmax_ratio_target_test = rmse_test
+# fmax_ratio_target_test_df = pd.DataFrame(rmse_test, index=dataset_test_original.index)
 
 
-binwidth = 5
+binwidth = 0.01
 # threshold = round_2d(np.max(fmax_ratio_target_train), 'up')
 binrange = (round_2d(np.min(np.concatenate([fmax_ratio_target_train, fmax_ratio_target_test]) - binwidth, axis=0), 'down'),
             round_2d(np.max(np.concatenate([fmax_ratio_target_train, fmax_ratio_target_test]) + binwidth, axis=0), 'up')
@@ -334,14 +359,15 @@ for bar in ax.patches:
         bar.set_hatch("////")  # Hatch pattern (e.g., "////", "xxx", "..")
         bar.set_edgecolor('red')
 plt.xlim(binrange)
-# plt.xlabel("C{i} apparent ".format(i=fmax_col + 1) + "$F_{0}/F$", fontsize=20)
+plt.xlabel("C{i} apparent ".format(i=fmax_col + 1) + "$F_{0}/F$", fontsize=20)
 # plt.xlabel("AQY at ex = 320 nm", fontsize=20)
-plt.xlabel("Reconstruction error (A.U.)")
+# plt.xlabel("Reconstruction error (A.U.)")
 plt.ylabel("Density", fontsize=20)
 plt.legend(fontsize=16)
 plt.tick_params(labelsize=18)
 plt.tight_layout()
 plt.show()
+
 
 # ---------Fmax vs. TCC or DOC in training and testing------------
 
@@ -401,6 +427,111 @@ plt.tick_params(labelsize=14)
 plt.xticks(rotation=90)
 plt.tight_layout()
 plt.show()
+
+
+
+# ---------Table of outlier rates of different indicators----------
+
+metric_dict = {}
+metric_dict['C1 apparent F0/F'] = [fmax_ratio_train[:, 0], fmax_ratio_test[:, 0]]
+metric_dict['C2 apparent F0/F'] = [fmax_ratio_train[:, 1], fmax_ratio_test[:, 1]]
+metric_dict['C3 apparent F0/F'] = [fmax_ratio_train[:, 2], fmax_ratio_test[:, 2]]
+
+# ------------fluorescence indices-----------
+# eem_dataset_path_bulk = \
+#     "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_130_ex_250_em_280_mfem_5_gaussian_1.json"
+# eem_dataset_bulk = read_eem_dataset_from_json(eem_dataset_path_bulk)
+# abs_stack_bulk, ex_range_abs_bulk, _ = read_abs_dataset('C:/PhD/Fluo-detect/_data/_greywater/2024_quenching', ['ABS', 'B1C1'])
+# dataset_train_bulk, _ = eem_dataset_bulk.filter_by_index(None,
+#                                                [
+#                                                    '2024-07-13',
+#                                                    '2024-07-15',
+#                                                    '2024-07-16',
+#                                                    '2024-07-17',
+#                                                    '2024-07-18',
+#                                                    '2024-07-19',
+#                                                ]
+#                                                )
+# dataset_test_bulk, _ = eem_dataset_bulk.filter_by_index(None,
+#                                               [
+#                                                   '2024-10-'
+#                                               ]
+#                                               )
+# aqy254_train = dataset_train_bulk.aqy(abs_stack_bulk, ex_range_abs_bulk, 254).to_numpy() / 1e5
+# aqy254_test = dataset_test_bulk.aqy(abs_stack_bulk, ex_range_abs_bulk, 254).to_numpy() / 1e5
+#
+# aqy280_train = dataset_train_bulk.aqy(abs_stack_bulk, ex_range_abs_bulk, 280).to_numpy() / 1e5
+# aqy280_test = dataset_test_bulk.aqy(abs_stack_bulk, ex_range_abs_bulk, 280).to_numpy() / 1e5
+#
+# aqy320_train = dataset_train_bulk.aqy(abs_stack_bulk, ex_range_abs_bulk, 320).to_numpy() / 1e5
+# aqy320_test = dataset_test_bulk.aqy(abs_stack_bulk, ex_range_abs_bulk, 320).to_numpy() / 1e5
+# metric_dict['aqy254'] = [aqy254_train, aqy254_test]
+# metric_dict['aqy280'] = [aqy280_train, aqy280_test]
+# metric_dict['aqy320'] = [aqy320_train, aqy320_test]
+
+# metric_dict['bix'] = [dataset_train_bulk.bix().to_numpy(), dataset_test_bulk.bix().to_numpy()]
+# metric_dict['hix'] = [dataset_train_bulk.hix().to_numpy(), dataset_test_bulk.hix().to_numpy()]
+
+#------------numerical indicators-------
+
+_, fmax_train, recon_eem_stack_train = model.predict(dataset_train_original)
+res_train = dataset_train_original.eem_stack - recon_eem_stack_train
+n_pixels = res_train.shape[1] * res_train.shape[2]
+rmse_train = np.sqrt(np.sum(res_train ** 2, axis=(1, 2)) / n_pixels)
+relative_rmse_train = rmse_train / np.average(
+    dataset_train_original.eem_stack,
+    axis=(1, 2)
+)
+_, fmax_test, recon_eem_stack_test = model.predict(dataset_test_original)
+res_test = dataset_test_original.eem_stack - recon_eem_stack_test
+n_pixels = res_test.shape[1] * res_test.shape[2]
+rmse_test = np.sqrt(np.sum(res_test ** 2, axis=(1, 2)) / n_pixels)
+relative_rmse_test = rmse_test / np.average(
+    dataset_test_original.eem_stack,
+    axis=(1, 2))
+
+metric_dict['rmse'] = [rmse_train, rmse_test]
+metric_dict['relative_rmse'] = [relative_rmse_train, relative_rmse_test]
+
+outlier_rates_by_conditions = []
+outlier_rates_by_error_quantiles = []
+outlier_rates_by_error_values = []
+
+relative_error_quantile_labels = pd.qcut(relative_error_test, q=10, labels=False)
+quantile_groups = [[] for _ in range(10)]
+for idx, label in zip(dataset_test_original.index, relative_error_quantile_labels):
+    quantile_groups[label].append(idx)
+quantile_groups = {f'{q*10}-{q*10+10} quantile': idx for q, idx in enumerate(quantile_groups)}
+
+for name, metric in metric_dict.items():
+    metric_train, metric_test = metric
+    metric_train_z_scores = zscore(metric_train)
+    filtered_metric_train = metric_train[np.abs(metric_train_z_scores) <= 2.5]
+    threshold_upper = np.quantile(filtered_metric_train, 1)
+    threshold_lower = np.quantile(filtered_metric_train, 0)
+    outlier_boolean = list((metric_test > threshold_upper) | (metric_test < threshold_lower))
+    outlier_indices = [di for di, oi in zip(dataset_test_original.index, outlier_boolean) if oi]
+    outlier_rates_by_conditions_i = []
+    outlier_rates_by_errors_i = []
+    for sub_dataset in dataset_divisions.values():
+        num_outliers = sum([idx in outlier_indices for idx in sub_dataset.index])
+        num_total = len(sub_dataset.index)
+        outlier_rates_by_conditions_i.append(num_outliers/num_total*100)
+    for q in quantile_groups.values():
+        num_outliers = sum([idx in outlier_indices for idx in q])
+        num_total = len(q)
+        outlier_rates_by_errors_i.append(num_outliers/num_total*100)
+    outlier_rates_by_conditions.append(outlier_rates_by_conditions_i)
+    outlier_rates_by_error_quantiles.append(outlier_rates_by_errors_i)
+
+outlier_rates_by_conditions = pd.DataFrame(outlier_rates_by_conditions, index=list(metric_dict.keys()), columns=list(dataset_divisions.keys()))
+outlier_rates_by_error_quantiles = pd.DataFrame(outlier_rates_by_error_quantiles, index=list(metric_dict.keys()), columns=list(quantile_groups.keys()))
+
+
+
+
+
+
 
 
 #------------

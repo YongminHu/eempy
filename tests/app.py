@@ -4232,6 +4232,7 @@ def update_parafac_reference_dropdown_by_selected_model(r, parafac_model):
 )
 def on_parafac_establishment_correlations(r, indicator, ref_var, parafac_models):
     if all([r, indicator, ref_var, parafac_models]):
+        ## future fix: make it work for model without external ref
         ref_df = pd.DataFrame(parafac_models[str(r)]['ref'][1:], columns=parafac_models[str(r)]['ref'][0],
                               index=parafac_models[str(r)]['index'])
         fmax_df = pd.DataFrame(parafac_models[str(r)]['Fmax'][1:], columns=parafac_models[str(r)]['Fmax'][0],
