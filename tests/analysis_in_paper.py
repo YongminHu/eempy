@@ -1,6 +1,3 @@
-import numpy as np
-import pandas as pd
-
 from eempy.read_data import read_eem_dataset, read_abs_dataset, read_eem, read_eem_dataset_from_json
 from eempy.eem_processing import *
 from eempy.plot import *
@@ -19,8 +16,8 @@ eem_dataset_path = \
     "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_260_ex_274_em_310_mfem_3.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
 eem_dataset, _ = eem_dataset.filter_by_index(None, ['M3', 'G1', 'G2', 'G3'], copy=True)
-abs_stack, ex_range_abs, _ = read_abs_dataset('C:/PhD/Fluo-detect/_data/_greywater/2024_quenching')
-eem_dataset.gaussian_filter(sigma=1, truncate=3, copy=False)
+abs_stack, ex_range_abs, _ = read_abs_dataset('C:/PhD/Fluo-detect/_data/_greywater/2024_quenching', ['ABS', 'B1C1'])
+# eem_dataset.gaussian_filter(sigma=1, truncate=3, copy=False)
 
 # ------------Define conditions--------------
 
@@ -151,22 +148,24 @@ dataset_train, _ = eem_dataset.filter_by_index(None,
                                                    '2024-07-19',
                                                ]
                                                )
+dataset_train_original, _ = dataset_train.filter_by_index(['B1C1'], None)
 
 dataset_test, _ = eem_dataset.filter_by_index(None,
                                               [
                                                   '2024-10-'
                                               ]
                                               )
+dataset_test_original, _ = dataset_test.filter_by_index(['B1C1'], None)
 
 indices_test_in_scenarios = {}
 for name, kw in kw_dict.items():
     dataset_test_filtered, _ = dataset_test.filter_by_index(kw[0], kw[1], copy=True)
     indices_test_in_scenarios[name] = dataset_test_filtered.index
 
-r = 6
+r = 4
 n_outliers = 40
-fmax_col = 2
-target_name = 'DOC (mg/L)'
+fmax_col = 0
+target_name = 'TCC (million #/mL)'
 model = PARAFAC(n_components=r, init='svd', non_negativity=True,
                 tf_normalization=True, sort_em=True, loadings_normalization='maximum')
 model.fit(dataset_train)
@@ -247,10 +246,60 @@ def round_2d(num, direction):
     elif direction == 'down':
         return math.floor(num * 100) / 100
 
+# ------------fluorescence indices-----------
+# eem_dataset_path_bulk = \
+#     "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_130_ex_250_em_280_mfem_5_gaussian_1.json"
+# eem_dataset_bulk = read_eem_dataset_from_json(eem_dataset_path_bulk)
+# eem_dataset_bulk, _ = eem_dataset_bulk.filter_by_index(None, ['M3', 'G1', 'G2', 'G3'], copy=True)
+# abs_stack_bulk, ex_range_abs_bulk, _ = read_abs_dataset('C:/PhD/Fluo-detect/_data/_greywater/2024_quenching', ['ABS', 'B1C1'])
+# dataset_train_bulk, _ = eem_dataset_bulk.filter_by_index(None,
+#                                                [
+#                                                    '2024-07-13',
+#                                                    '2024-07-15',
+#                                                    '2024-07-16',
+#                                                    '2024-07-17',
+#                                                    '2024-07-18',
+#                                                    '2024-07-19',
+#                                                ]
+#                                                )
+# dataset_test_bulk, _ = eem_dataset_bulk.filter_by_index(None,
+#                                               [
+#                                                   '2024-10-'
+#                                               ]
+#                                               )
+# fmax_ratio_target_train = dataset_train_bulk.aqy(abs_stack_bulk, ex_range_abs_bulk, 320).to_numpy() / 1e5
+# fmax_ratio_target_test = dataset_test_bulk.aqy(abs_stack_bulk, ex_range_abs_bulk, 320).to_numpy() / 1e5
+# fmax_ratio_target_test_df = pd.DataFrame(fmax_ratio_target_test, index=dataset_test_original.index)
 
+
+#------------numerical indicators-------
+_, fmax_train, recon_eem_stack_train = model.predict(dataset_train_original)
+res_train = dataset_train_original.eem_stack - recon_eem_stack_train
+n_pixels = res_train.shape[1] * res_train.shape[2]
+rmse_train = np.sqrt(np.sum(res_train ** 2, axis=(1, 2)) / n_pixels)
+rmse_train_df = pd.DataFrame(rmse_train, index=fmax_train.index)
+relative_rmse_train = rmse_train / np.average(
+    dataset_train_original.eem_stack,
+    axis=(1, 2)
+)
+_, fmax_test, recon_eem_stack_test = model.predict(dataset_test_original)
+res_test = dataset_test_original.eem_stack - recon_eem_stack_test
+n_pixels = res_test.shape[1] * res_test.shape[2]
+rmse_test = np.sqrt(np.sum(res_test ** 2, axis=(1, 2)) / n_pixels)
+rmse_test_df = pd.DataFrame(rmse_test, index=fmax_test.index)
+relative_rmse_test = rmse_test / np.average(
+    dataset_test_original.eem_stack,
+    axis=(1, 2))
+relative_rmse_test_df = pd.DataFrame(relative_rmse_test, index=fmax_test.index)
+fmax_ratio_target_train = rmse_train
+fmax_ratio_target_test = rmse_test
+fmax_ratio_target_test_df = pd.DataFrame(rmse_test, index=dataset_test_original.index)
+
+
+binwidth = 5
 # threshold = round_2d(np.max(fmax_ratio_target_train), 'up')
-binrange = (round_2d(np.min(np.concatenate([fmax_ratio_target_train, fmax_ratio_target_test]) - 0.02, axis=0), 'down'),
-            round_2d(np.max(np.concatenate([fmax_ratio_target_train, fmax_ratio_target_test]) + 0.02, axis=0), 'up')
+binrange = (round_2d(np.min(np.concatenate([fmax_ratio_target_train, fmax_ratio_target_test]) - binwidth, axis=0), 'down'),
+            round_2d(np.max(np.concatenate([fmax_ratio_target_train, fmax_ratio_target_test]) + binwidth, axis=0), 'up')
             )
 # threshold = np.max(fmax_ratio_target_train)
 fmax_ratio_train_z_scores = zscore(fmax_ratio_target_train)
@@ -261,13 +310,18 @@ threshold_lower = np.quantile(filtered_fmax_ratio_target_train, 0)
 # binrange = (np.min(np.concatenate([fmax_ratio_target_train, fmax_ratio_target_test]) - 0.02, axis=0),
 #             np.max(np.concatenate([fmax_ratio_target_train, fmax_ratio_target_test]) + 0.02, axis=0)
 #             )
-plt.figure()
-ax = sns.histplot(fmax_ratio_target_train, binwidth=0.01, binrange=binrange, kde=False, stat='density', color="blue",
-                  alpha=0.5, label='training', zorder=0)
-sns.histplot(fmax_ratio_target_test, binwidth=0.01, binrange=binrange, kde=False, stat='density', color="orange",
-             alpha=0.5, label='test (qualified)', zorder=1)
-sns.histplot([0], binwidth=0.01, binrange=binrange, kde=True, stat='density', color="orange",
-             alpha=0.5, label='test (outliers)', hatch='////', edgecolor='red')
+fig, ax = plt.subplots()
+counts, bins, patches = ax.hist(fmax_ratio_target_train, bins=np.arange(binrange[0], binrange[1] + binwidth, binwidth),
+                                density=True, alpha=0.5, color='blue', label='training', zorder=0, edgecolor='black')
+# Histogram for outliers (just to show label with hatching)
+counts, bins, patches = ax.hist([0], bins=np.arange(binrange[0], binrange[1] + binwidth, binwidth),
+                                density=True, alpha=0.5, color='orange', label='test (qualified)',
+                                edgecolor='red', zorder=2)
+# Histogram for test (qualified) data
+counts, bins, patches = ax.hist(fmax_ratio_target_test, bins=np.arange(binrange[0], binrange[1] + binwidth, binwidth),
+                                density=True, alpha=0.5, color='orange', label='test (outliers)', zorder=1, edgecolor='black')
+
+
 for bar in ax.patches:
     # Calculate the midpoint of the bin
     bin_left = bar.get_x()
@@ -280,7 +334,9 @@ for bar in ax.patches:
         bar.set_hatch("////")  # Hatch pattern (e.g., "////", "xxx", "..")
         bar.set_edgecolor('red')
 plt.xlim(binrange)
-plt.xlabel("C{i} apparent ".format(i=fmax_col + 1) + "$F_{0}/F$", fontsize=20)
+# plt.xlabel("C{i} apparent ".format(i=fmax_col + 1) + "$F_{0}/F$", fontsize=20)
+# plt.xlabel("AQY at ex = 320 nm", fontsize=20)
+plt.xlabel("Reconstruction error (A.U.)")
 plt.ylabel("Density", fontsize=20)
 plt.legend(fontsize=16)
 plt.tick_params(labelsize=18)
@@ -311,8 +367,8 @@ plt.scatter(target_test_true[(fmax_ratio_target_test >= threshold_upper) | (fmax
             fmax_original_test.iloc[(fmax_ratio_target_test >= threshold_upper) | (fmax_ratio_target_test <= threshold_lower), fmax_col],
             label='test (outliers)', color='red', alpha=0.6)
 plt.xlabel(target_name, fontsize=20)
-# plt.ylabel(f'C{fmax_col + 1} Fmax', fontsize=20)
-plt.ylabel(f'Intensity \n (ex = 336 nm, em = 407 nm)', fontsize=18)
+plt.ylabel(f'C{fmax_col + 1} Fmax', fontsize=20)
+# plt.ylabel(f'Intensity \n (ex = 336 nm, em = 407 nm)', fontsize=18)
 plt.legend(
     bbox_to_anchor=[1.02, 0.37],
     # bbox_to_anchor=[0.58, 0.63],

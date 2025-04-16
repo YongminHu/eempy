@@ -930,7 +930,7 @@ class EEMDataset:
 
         Returns
         -------
-        integrations: np.ndarray
+        integrations: pd.DataFrame
         """
         integrations, _ = process_eem_stack(
             self.eem_stack, eem_regional_integration, ex_range=self.ex_range,
@@ -991,10 +991,10 @@ class EEMDataset:
         em4 = 480
         ex = 254
         if self.em_range.min() <= em1 and self.em_range.max() >= em4 and self.ex_range.min() <= ex <= self.ex_range.max():
-            numerator = self.regional_integration(ex, ex, em3, em4)
-            denominator = self.regional_integration(ex, ex, em1, em2) + numerator
+            numerator = self.regional_integration(ex, ex, em3, em4).to_numpy()
+            denominator = self.regional_integration(ex, ex, em1, em2).to_numpy() + numerator
             hix = numerator / denominator
-            return hix
+            return pd.DataFrame(hix, index=self.index, columns=['HIX'])
         else:
             raise ValueError("The ranges of excitation or emission wavelengths do not support the calculation.")
 
@@ -1039,7 +1039,7 @@ class EEMDataset:
         else:
             raise ValueError("The ranges of excitation or emission wavelengths do not support the calculation.")
 
-    def aqy(self, abs_stack, ex_range_abs):
+    def aqy(self, abs_stack, ex_range_abs, target_ex=None):
         """
         Calculate the apparent_quantum_yield (AQY).
 
@@ -1049,6 +1049,8 @@ class EEMDataset:
             absorbance spectra stack
         ex_range_abs: np.ndarray
             excitation wavelengths of absorbance spectra
+        target_ex: float or None
+            excitation wavelength for AQY. If None is passed, all excitation wavelengths will be returned.
 
         Returns
         -------
@@ -1061,9 +1063,12 @@ class EEMDataset:
             abs = abs_stack[i]
             f1 = interp1d(ex_range_abs, abs, kind='linear', bounds_error=False, fill_value='extrapolate')
             abs_interpolated = f1(self.ex_range)
-            aqy.append(np.sum(intensity, axis=1)/abs_interpolated)
+            aqy.append(np.sum(intensity, axis=1)[::-1]/abs_interpolated)
         aqy = pd.DataFrame(aqy, index=self.index, columns=[f'AQY (ex = {l} nm)' for l in list(self.ex_range)])
-        return aqy
+        if target_ex is None:
+            return aqy
+        else:
+            return aqy[f'AQY (ex = {target_ex} nm)']
 
 
     def correlation(self, variables, fit_intercept=True):

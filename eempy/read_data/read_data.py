@@ -352,7 +352,6 @@ def read_abs_dataset(folder_path, mandatory_keywords='ABS', optional_keywords=[]
             absorbance = f(ex_range_opt)
             abs_list[i] = absorbance
     abs_stack = np.array(abs_list)
-    print(abs_stack)
     if wavelength_alignment:
         return abs_stack, ex_range_opt, indexes
     else:
