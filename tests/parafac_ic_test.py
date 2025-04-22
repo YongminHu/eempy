@@ -10,29 +10,35 @@ import plotly.graph_objects as go
 # ---------------Read EEM dataset-----------------
 
 eem_dataset_path = \
-    "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_282_ex_274_em_310_mfem_7_gaussian.json"
+    "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_260_ex_274_em_310_mfem_3.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
-eem_dataset, _ = eem_dataset.filter_by_index(None, ['2024-10-17'], copy=True)
-eem_dataset_o, _ = eem_dataset.filter_by_index(['B1C1'], None, copy=True)
-eem_dataset_q, _ = eem_dataset.filter_by_index(['B1C2'], None, copy=True)
-eem_dataset_rearranged = combine_eem_datasets([eem_dataset_o, eem_dataset_q])
+eem_dataset, _ = eem_dataset.filter_by_index(None, ['2024-10-'], copy=True)
+eem_dataset_original, _ = eem_dataset.filter_by_index(['B1C1'], None, copy=True)
+eem_dataset_quenched, _ = eem_dataset.filter_by_index(['B1C2'], None, copy=True)
 
 
 # eem_dataset_path = 'C:/PhD/Fluo-detect/_data/20240313_BSA_Ecoli/synthetic_samples.json'
 # eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
-# true_components = np.array([eem_dataset.eem_stack[-5], eem_dataset.eem_stack[0]])
-# _, fmax_measured, _ = eems_fit_components(eem_dataset.eem_stack, true_components)
-# fmax_measured = pd.DataFrame(fmax_measured, index=eem_dataset.index)
-# eem_dataset_o, _ = eem_dataset.filter_by_index(['0gL'], None, copy=True)
-# eem_dataset_q, _ = eem_dataset.filter_by_index(['2_5gL'], None, copy=True)
+# eem_up = eem_dataset.eem_stack[eem_dataset.index.index('B1S12024-03-11-Ecoli_BSA_3to1+3_75gLKI-reS')]
+# eem_bot = eem_dataset.eem_stack[eem_dataset.index.index('B1S12024-03-11-Ecoli_BSA_3to1+3_75gLKISYM.')]
+# eem_new = np.concatenate([eem_up[:-8], eem_bot[-8:]], axis=0)
+# # plot_eem(eem_up, eem_dataset.ex_range, eem_dataset.em_range, vmin=0, vmax=1500)
+# # plot_eem(eem_new, eem_dataset.ex_range, eem_dataset.em_range, vmin=0, vmax=1500)
+# eem_stack_new = np.delete(eem_dataset.eem_stack,
+#                           eem_dataset.index.index('B1S12024-03-11-Ecoli_BSA_3to1+3_75gLKI-reS'),
+#                           axis=0)
+# eem_dataset.index.remove('B1S12024-03-11-Ecoli_BSA_3to1+3_75gLKI-reS')
+# replaced_idx = eem_dataset.index.index('B1S12024-03-11-Ecoli_BSA_3to1+3_75gLKISYM.')
+# eem_stack_new[replaced_idx] = eem_new
+# eem_dataset.eem_stack = eem_stack_new
 
 
 #------------nmf_prior--------------
-X1 = eem_dataset_o.eem_stack
+X1 = eem_dataset_original.eem_stack
 # X2 = eem_dataset_q.eem_stack
 # X = np.concatenate((X1, X2), axis=0)
 X = X1.reshape([X1.shape[0], -1])
-z_dict = {0: eem_dataset_o.ref["TCC"].to_numpy().reshape([eem_dataset_o.ref["TCC"].shape[0], 1])}
+z_dict = {0: eem_dataset_original.ref["TCC"].to_numpy().reshape([eem_dataset_original.ref["TCC"].shape[0], 1])}
 rank = 4
 max_iter = 500
 
@@ -58,7 +64,7 @@ for i in range(max_iter):
         UtU = U.T.dot(U)
         UtM = U.T.dot(X_reshaped)
         if mode_to_update == 0:
-            V = hals_prior_nnls(UtM, UtU, regularization_dict={1: eem_dataset_o.ref["TCC"].to_numpy()}, V=V,
+            V = hals_prior_nnls(UtM, UtU, regularization_dict={1: eem_dataset_original.ref["TCC"].to_numpy()}, V=V,
                                 l=0.75, n_iter_max=200, epsilon=1e-8)
         else:
             V = hals_nnls_normal(UtM, UtU, V)
@@ -74,8 +80,8 @@ fig2, ax2 = plt.subplots()
 # ax1.plot(eem_dataset_o.ref['TCC'], loadings[0][:int(X.shape[0]/2), 1], 'o', color='red')
 
 for i in range(rank):
-    r, _ = pearsonr(eem_dataset_o.ref['TCC'], factors[0][:, i])
-    ax1.plot(eem_dataset_o.ref['TCC'], factors[0][:, i], 'o', label=f"C{i}, r={r:2g}")
+    r, _ = pearsonr(eem_dataset_original.ref['TCC'], factors[0][:, i])
+    ax1.plot(eem_dataset_original.ref['TCC'], factors[0][:, i], 'o', label=f"C{i}, r={r:2g}")
 ax1.legend()
 fig1.show()
 # ax2.plot([1.66, 0.83, 1.245, 0.415, 0], loadings[0][:int(X.shape[0]/2), 1], 'o', color='red')
