@@ -270,31 +270,31 @@ def round_2d(num, direction):
         return math.floor(num * 100) / 100
 
 # ------------fluorescence indices-----------
-eem_dataset_path_bulk = \
-    "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_130_ex_250_em_280_mfem_5_gaussian_1.json"
-eem_dataset_bulk = read_eem_dataset_from_json(eem_dataset_path_bulk)
-eem_dataset_bulk, _ = eem_dataset_bulk.filter_by_index(None, ['M3', 'G1', 'G2', 'G3'], copy=True)
-abs_stack_bulk, ex_range_abs_bulk, _ = read_abs_dataset('C:/PhD/Fluo-detect/_data/_greywater/2024_quenching', ['ABS', 'B1C1'])
-dataset_train_bulk, _ = eem_dataset_bulk.filter_by_index(None,
-                                               [
-                                                   '2024-07-13',
-                                                   '2024-07-15',
-                                                   '2024-07-16',
-                                                   '2024-07-17',
-                                                   '2024-07-18',
-                                                   '2024-07-19',
-                                               ]
-                                               )
-dataset_test_bulk, _ = eem_dataset_bulk.filter_by_index(None,
-                                              [
-                                                  '2024-10-'
-                                              ]
-                                              )
+# eem_dataset_path_bulk = \
+#     "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_130_ex_250_em_280_mfem_5_gaussian_1.json"
+# eem_dataset_bulk = read_eem_dataset_from_json(eem_dataset_path_bulk)
+# eem_dataset_bulk, _ = eem_dataset_bulk.filter_by_index(None, ['M3', 'G1', 'G2', 'G3'], copy=True)
+# abs_stack_bulk, ex_range_abs_bulk, _ = read_abs_dataset('C:/PhD/Fluo-detect/_data/_greywater/2024_quenching', ['ABS', 'B1C1'])
+# dataset_train_bulk, _ = eem_dataset_bulk.filter_by_index(None,
+#                                                [
+#                                                    '2024-07-13',
+#                                                    '2024-07-15',
+#                                                    '2024-07-16',
+#                                                    '2024-07-17',
+#                                                    '2024-07-18',
+#                                                    '2024-07-19',
+#                                                ]
+#                                                )
+# dataset_test_bulk, _ = eem_dataset_bulk.filter_by_index(None,
+#                                               [
+#                                                   '2024-10-'
+#                                               ]
+#                                               )
 # fmax_ratio_target_train = dataset_train_bulk.aqy(abs_stack_bulk, ex_range_abs_bulk, 320).to_numpy() / 1e5
 # fmax_ratio_target_test = dataset_test_bulk.aqy(abs_stack_bulk, ex_range_abs_bulk, 320).to_numpy() / 1e5
-fmax_ratio_target_train = dataset_train_bulk.hix()
-fmax_ratio_target_test = dataset_test_bulk.hix()
-fmax_ratio_target_test_df = pd.DataFrame(fmax_ratio_target_test, index=dataset_test_original.index)
+# fmax_ratio_target_train = dataset_train_bulk.hix()
+# fmax_ratio_target_test = dataset_test_bulk.hix()
+# fmax_ratio_target_test_df = pd.DataFrame(fmax_ratio_target_test, index=dataset_test_original.index)
 
 
 # # #------------numerical indicators-------

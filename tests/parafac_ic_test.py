@@ -9,12 +9,12 @@ import plotly.graph_objects as go
 
 # ---------------Read EEM dataset-----------------
 
-eem_dataset_path = \
-    "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_260_ex_274_em_310_mfem_3.json"
-eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
-eem_dataset, _ = eem_dataset.filter_by_index(None, ['2024-10-'], copy=True)
-eem_dataset_original, _ = eem_dataset.filter_by_index(['B1C1'], None, copy=True)
-eem_dataset_quenched, _ = eem_dataset.filter_by_index(['B1C2'], None, copy=True)
+# eem_dataset_path = \
+#     "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_260_ex_274_em_310_mfem_3.json"
+# eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
+# eem_dataset, _ = eem_dataset.filter_by_index(None, ['2024-10-'], copy=True)
+# eem_dataset_original, _ = eem_dataset.filter_by_index(['B1C1'], None, copy=True)
+# eem_dataset_quenched, _ = eem_dataset.filter_by_index(['B1C2'], None, copy=True)
 
 
 # eem_dataset_path = 'C:/PhD/Fluo-detect/_data/20240313_BSA_Ecoli/synthetic_samples.json'
@@ -64,8 +64,8 @@ for i in range(max_iter):
         UtU = U.T.dot(U)
         UtM = U.T.dot(X_reshaped)
         if mode_to_update == 0:
-            V = hals_prior_nnls(UtM, UtU, regularization_dict={1: eem_dataset_original.ref["TCC"].to_numpy()}, V=V,
-                                l=0.75, n_iter_max=200, epsilon=1e-8)
+            V = hals_prior_nnls(UtM, UtU, prior_dict={1: eem_dataset_original.ref["TCC"].to_numpy()}, V=V,
+                                gamma=0.75, n_iter_max=200, epsilon=1e-8)
         else:
             V = hals_nnls_normal(UtM, UtU, V)
         factors[mode_to_update] = V.T

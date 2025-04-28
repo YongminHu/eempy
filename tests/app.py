@@ -5158,7 +5158,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
     for r in rank_list:
         nmf_r = EEMNMF(
             n_components=r, solver=solver, init=init, normalization=normalization[0] if normalization else None,
-            alpha_H=alpha_h, alpha_W=alpha_w, l1_ratio=l1_ratio
+            alpha_component=alpha_h, alpha_sample=alpha_w, l1_ratio=l1_ratio
         )
         nmf_r.fit(eem_dataset_establishment)
         nmf_fit_params_r = {}
@@ -7275,4 +7275,4 @@ def serve_layout():
 app.layout = serve_layout
 
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    app.run_server(debug=False)
