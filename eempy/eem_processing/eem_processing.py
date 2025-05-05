@@ -33,7 +33,6 @@ from tensorly.decomposition import parafac, non_negative_parafac, non_negative_p
 from tensorly.cp_tensor import cp_to_tensor, CPTensor, cp_normalize
 from tensorly.decomposition._cp import initialize_cp
 from tensorly.tenalg import unfolding_dot_khatri_rao
-from tensorly import tenalg as tla
 from tlviz.model_evaluation import core_consistency
 from tlviz.outliers import compute_leverage
 from tlviz.factor_tools import permute_cp_tensor
@@ -3804,7 +3803,7 @@ def nmf_hals_prior(
     if prior_dict_W is None:
         prior_dict_W = {}
 
-    prev_err = tl.norm(X - tla.dot(W, H))
+    prev_err = tl.norm(X - tl.dot(W, H))
     for it in range(max_iter):
         # Update H (rows) via HALS_NNLS with priors + elastic-net
         UtM_H = tl.dot(tl.transpose(W), X)
@@ -3896,7 +3895,7 @@ def cp_hals_prior(
         Convergence tolerance on reconstruction error.
     eps : float, optional
         Small constant to avoid zero division and ensure positivity.
-    init : {'random', 'svd'}, default 'random'
+    init : {'random', 'svd', 'nndsvd', 'nndsvda', 'nndsvdar'}, default 'random'
         Initialization scheme for factor matrices.
     random_state : int or None
         Random seed.
@@ -3943,12 +3942,7 @@ def cp_hals_prior(
 
     prev_error = tl.norm(X - cp_to_tensor((None, [A, B, C])))
     for iteration in range(max_iter):
-                # Update A:
-        # Mode-1 unfolding (matrix of shape I x (J*K))
-        # X1 = tl.unfold(X, mode=0)          # shape (I, J*K)
-        # Z = khatri_rao(C, B)             # shape (J*K, rank)
-        # Solve for A: UtM = X1 @ Z, UtU = (C^T C) * (B^T B)
-        # UtM = X1 @ Z                       # shape (I, rank)
+        # Update A:
         UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 0)
         UtU = (C.T @ C) * (B.T @ B)        # shape (rank, rank)
         A = hals_prior_nnls(
@@ -3965,10 +3959,6 @@ def cp_hals_prior(
         A = A.T
 
         # Update B:
-        # Mode-2 unfolding (matrix of shape J x (I*K))
-        # X2 = tl.unfold(X, mode=1)          # shape (J, I*K)
-        # Z = khatri_rao(C, A)             # shape (I*K, rank)
-        # UtM = X2 @ Z                       # shape (J, rank)
         UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 1)
         UtU = (C.T @ C) * (A.T @ A)        # shape (rank, rank)
         B = hals_prior_nnls(
@@ -3985,10 +3975,6 @@ def cp_hals_prior(
         B = B.T
 
         # Update C:
-        # Mode-3 unfolding (matrix of shape K x (I*J))
-        # X3 = tl.unfold(X, mode=2)          # shape (K, I*J)
-        # Z = khatri_rao(B, A)             # shape (I*J, rank)
-        # UtM = X3 @ Z                       # shape (K, rank)
         UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 2)
         UtU = (B.T @ B) * (A.T @ A)        # shape (rank, rank)
         C = hals_prior_nnls(

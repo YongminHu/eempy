@@ -14,7 +14,7 @@ import seaborn as sns
 eem_dataset_path = \
     "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/sample_260_ex_274_em_310_mfem_3.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
-eem_dataset, _ = eem_dataset.filter_by_index(None, ['2024-07-'], copy=True)
+eem_dataset, _ = eem_dataset.filter_by_index(None, ['2024-10-'], copy=True)
 eem_dataset_original, _ = eem_dataset.filter_by_index(['B1C1'], None, copy=True)
 eem_dataset_quenched, _ = eem_dataset.filter_by_index(['B1C2'], None, copy=True)
 
@@ -22,24 +22,39 @@ eem_dataset_quenched, _ = eem_dataset.filter_by_index(['B1C2'], None, copy=True)
 
 A, B, C = cp_hals_prior(
     tensor=eem_dataset_original.eem_stack,
-    rank=4,
+    rank=6,
     prior_dict_A={0: eem_dataset_original.ref['TCC (million #/mL)'].to_numpy()},
-    gamma_A=5e3,
-    tol=1e-9
+    gamma_A=7.51 * 1e3,
+    tol=1e-9,
+    init='nndsvda'
 )
-
-A, B = nmf_hals_prior(
-    X=eem_dataset_original.eem_stack.reshape([eem_dataset_original.eem_stack.shape[0], -1]),
-    rank=4
-)
-
 plt.plot(A[:, 0], eem_dataset_original.ref['TCC (million #/mL)'], 'o')
 plt.show()
-plot_eem(np.outer(B[:, 3], C[:, 3]),
+plot_eem(np.outer(B[:, 0], C[:, 0]),
          ex_range=eem_dataset_original.ex_range,
          em_range=eem_dataset_original.em_range,
          display=True
          )
+
+
+A, B = nmf_hals_prior(
+    X=eem_dataset_original.eem_stack.reshape([eem_dataset_original.eem_stack.shape[0], -1]),
+    rank=4,
+    prior_dict_W={0: eem_dataset_original.ref['TCC (million #/mL)'].to_numpy()},
+    gamma_W=1.5e7,
+    init='nndsvda',
+    alpha_H=1,
+    l1_ratio=0,
+)
+plt.plot(A[:, 0], eem_dataset_original.ref['TCC (million #/mL)'], 'o')
+plt.show()
+plot_eem(B[3, :].reshape(eem_dataset_original.eem_stack.shape[1:]),
+         ex_range=eem_dataset_original.ex_range,
+         em_range=eem_dataset_original.em_range,
+         display=True
+         )
+
+
 
 # -----------model training-------------
 dataset_train = eem_dataset
