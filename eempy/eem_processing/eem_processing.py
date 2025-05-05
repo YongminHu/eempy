@@ -30,7 +30,7 @@ from scipy.stats import pearsonr
 from scipy.optimize import linear_sum_assignment
 from tensorly.solvers.nnls import hals_nnls
 from tensorly.decomposition import parafac, non_negative_parafac, non_negative_parafac_hals
-from tensorly.cp_tensor import cp_to_tensor, CPTensor
+from tensorly.cp_tensor import cp_to_tensor, CPTensor, cp_normalize
 from tensorly.decomposition._cp import initialize_cp
 from tensorly.tenalg import unfolding_dot_khatri_rao
 from tensorly import tenalg as tla
@@ -3779,15 +3779,15 @@ def nmf_hals_prior(
     if init == 'random':
         W = tl.clip(rng.rand(a, rank), a_min=1e-6)
         H = tl.clip(rng.rand(rank, b), a_min=1e-6)
-    elif init == 'svd':
-        X_np = tl.to_numpy(X)
-        U, s, Vt = np.linalg.svd(X_np, full_matrices=False)
-        U_r, s_r, Vt_r = U[:, :rank], s[:rank], Vt[:rank, :]
-        W = tl.tensor(np.abs(U_r) * np.sqrt(s_r)[None, :], dtype=float)
-        H = tl.tensor(np.sqrt(s_r)[:, None] * np.abs(Vt_r), dtype=float)
-        W = tl.clip(W, a_min=1e-6)
-        H = tl.clip(H, a_min=1e-6)
-    elif init == 'nndsvd' or init == 'nndsvda' or init == 'nndsvdar':
+    # elif init == 'svd':
+    #     X_np = tl.to_numpy(X)
+    #     U, s, Vt = np.linalg.svd(X_np, full_matrices=False)
+    #     U_r, s_r, Vt_r = U[:, :rank], s[:rank], Vt[:rank, :]
+    #     W = tl.tensor(np.abs(U_r) * np.sqrt(s_r)[None, :], dtype=float)
+    #     H = tl.tensor(np.sqrt(s_r)[:, None] * np.abs(Vt_r), dtype=float)
+    #     W = tl.clip(W, a_min=1e-6)
+    #     H = tl.clip(H, a_min=1e-6)
+    elif init in ('svd', 'nndsvd', 'nndsvda', 'nndsvdar'):
         W, H = initialization_2d(X, rank=rank, method=init)
     elif init == 'normal_nmf':
         init_model = NMF(n_components=rank, init='nndsvd', random_state=0)
@@ -3845,7 +3845,181 @@ def nmf_hals_prior(
     return W, H
 
 
+def cp_hals_prior(
+    tensor,
+    rank,
+    prior_dict_A=None,
+    prior_dict_B=None,
+    prior_dict_C=None,
+    gamma_A=0,
+    gamma_B=0,
+    gamma_C=0,
+    alpha_A=0,
+    alpha_B=0,
+    alpha_C=0,
+    l1_ratio=0,
+    max_iter=200,
+    tol=1e-6,
+    eps=1e-8,
+    init='svd',
+    custom_init=None,
+    random_state=None
+):
+    """
+    Perform non-negative PARAFAC/CP decomposition of a 3-way tensor using HALS with optional priors
+    and elastic-net penalties on factor matrices A, B, C.
+
+    Decomposes `tensor` of shape (I, J, K) into factors A (I x rank), B (J x rank), C (K x rank) such that:
+        tensor ≈ [[A, B, C]]
+
+    Parameters
+    ----------
+    tensor : array-like, shape (I, J, K)
+        Input non-negative tensor.
+    rank : int
+        Number of components.
+    prior_dict_A : dict {r: v_r}, optional
+        Priors for columns of A: column r of A is penalized toward vector v_r.
+    prior_dict_B : dict {r: v_r}, optional
+        Priors for columns of B.
+    prior_dict_C : dict {r: v_r}, optional
+        Priors for columns of C.
+    gamma_A, gamma_B, gamma_C : float, optional
+        Quadratic prior weights for A, B, C.
+    alpha_A, alpha_B, alpha_C : float, optional
+        Elastic-net weights for A, B, C.
+    l1_ratio : float in [0,1], optional
+        Mix between L1 and L2 for elastic-net.
+    max_iter : int, optional
+        Maximum number of outer ALS iterations.
+    tol : float, optional
+        Convergence tolerance on reconstruction error.
+    eps : float, optional
+        Small constant to avoid zero division and ensure positivity.
+    init : {'random', 'svd'}, default 'random'
+        Initialization scheme for factor matrices.
+    random_state : int or None
+        Random seed.
+
+    Returns
+    -------
+    A : ndarray, shape (I, rank)
+    B : ndarray, shape (J, rank)
+    C : ndarray, shape (K, rank)
+    """
+    # Ensure tensor
+    X = tl.tensor(tensor, dtype=float)
+    I, J, K = X.shape
+    rng = np.random.RandomState(random_state)
+
+        # Initialize factors A, B, C
+    if init == 'random':
+        A = tl.clip(rng.rand(I, rank), a_min=eps)
+        B = tl.clip(rng.rand(J, rank), a_min=eps)
+        C = tl.clip(rng.rand(K, rank), a_min=eps)
+    elif init in ('svd', 'nndsvd', 'nndsvda', 'nndsvdar'):
+        # Use 2D initialization on each mode unfolding
+        # Mode-0 init for A
+        X1 = tl.unfold(X, mode=0)
+        W1, _ = initialization_2d(tl.to_numpy(X1), rank, method=init)
+        A = tl.tensor(np.clip(W1, a_min=eps, a_max=None), dtype=float)
+        # Mode-1 init for B
+        X2 = tl.unfold(X, mode=1)
+        W2, _ = initialization_2d(tl.to_numpy(X2), rank, method=init)
+        B = tl.tensor(np.clip(W2, a_min=eps, a_max=None), dtype=float)
+        # Mode-2 init for C
+        X3 = tl.unfold(X, mode=2)
+        W3, _ = initialization_2d(tl.to_numpy(X3), rank, method=init)
+        C = tl.tensor(np.clip(W3, a_min=eps, a_max=None), dtype=float)
+    elif init == 'custom':
+        A, B, C = custom_init
+    else:
+        raise ValueError(f"Unknown init mode: {init}")
+
+    # Default priors
+    prior_dict_A = prior_dict_A or {}
+    prior_dict_B = prior_dict_B or {}
+    prior_dict_C = prior_dict_C or {}
+
+    prev_error = tl.norm(X - cp_to_tensor((None, [A, B, C])))
+    for iteration in range(max_iter):
+                # Update A:
+        # Mode-1 unfolding (matrix of shape I x (J*K))
+        # X1 = tl.unfold(X, mode=0)          # shape (I, J*K)
+        # Z = khatri_rao(C, B)             # shape (J*K, rank)
+        # Solve for A: UtM = X1 @ Z, UtU = (C^T C) * (B^T B)
+        # UtM = X1 @ Z                       # shape (I, rank)
+        UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 0)
+        UtU = (C.T @ C) * (B.T @ B)        # shape (rank, rank)
+        A = hals_prior_nnls(
+            UtM=UtM.T,                     # shape (rank, I)
+            UtU=UtU,
+            prior_dict=prior_dict_A,
+            V=A.T,
+            gamma=gamma_A,
+            alpha=alpha_A,
+            l1_ratio=l1_ratio,
+            tol=tol,
+            eps=eps
+        )
+        A = A.T
+
+        # Update B:
+        # Mode-2 unfolding (matrix of shape J x (I*K))
+        # X2 = tl.unfold(X, mode=1)          # shape (J, I*K)
+        # Z = khatri_rao(C, A)             # shape (I*K, rank)
+        # UtM = X2 @ Z                       # shape (J, rank)
+        UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 1)
+        UtU = (C.T @ C) * (A.T @ A)        # shape (rank, rank)
+        B = hals_prior_nnls(
+            UtM=UtM.T,                     # shape (rank, J)
+            UtU=UtU,
+            prior_dict=prior_dict_B,
+            V=B.T,
+            gamma=gamma_B,
+            alpha=alpha_B,
+            l1_ratio=l1_ratio,
+            tol=tol,
+            eps=eps
+        )
+        B = B.T
+
+        # Update C:
+        # Mode-3 unfolding (matrix of shape K x (I*J))
+        # X3 = tl.unfold(X, mode=2)          # shape (K, I*J)
+        # Z = khatri_rao(B, A)             # shape (I*J, rank)
+        # UtM = X3 @ Z                       # shape (K, rank)
+        UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 2)
+        UtU = (B.T @ B) * (A.T @ A)        # shape (rank, rank)
+        C = hals_prior_nnls(
+            UtM=UtM.T,                     # shape (rank, K)
+            UtU=UtU,
+            prior_dict=prior_dict_C,
+            V=C.T,
+            gamma=gamma_C,
+            alpha=alpha_C,
+            l1_ratio=l1_ratio,
+            tol=tol,
+            eps=eps
+        )
+        C = C.T
+
+        # Normalize factors for numerical stability (optional)
+        weights, [A, B, C] = cp_normalize((None, [A, B, C]))
+
+        # Check convergence
+        reconstructed = cp_to_tensor((None, [A, B, C]))
+        err = tl.norm(X - reconstructed)
+        if abs(prev_error - err) / (prev_error + eps) < tol:
+            break
+        prev_error = err
+
+    return A, B, C
+
+
+
 def initialization_2d(M, rank, method='nndsvd'):
+
     # Step 1: Compute SVD of V
     U, S, VT = np.linalg.svd(M, full_matrices=False)  # SVD decomposition
 
@@ -3853,6 +4027,13 @@ def initialization_2d(M, rank, method='nndsvd'):
     U_r = U[:, :rank]
     S_r = S[:rank]
     VT_r = VT[:rank, :]
+
+    if method == 'svd':
+        W = np.abs(U_r) * np.sqrt(S_r)[None, :]
+        H = np.sqrt(S_r)[:, None] * np.abs(VT_r)
+        W = np.clip(W, a_min=1e-6, a_max=None)
+        H = np.clip(H, a_min=1e-6, a_max=None)
+        return W, H
 
     # Step 3: Initialize W and H
     W = np.zeros((M.shape[0], rank))
