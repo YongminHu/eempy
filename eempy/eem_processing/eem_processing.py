@@ -16,6 +16,7 @@ import warnings
 import copy
 import json
 import tensorly as tl
+import torch
 from math import sqrt
 from sklearn.metrics import mean_squared_error, explained_variance_score, r2_score, silhouette_score
 from sklearn.decomposition import PCA, NMF
