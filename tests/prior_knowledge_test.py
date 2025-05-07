@@ -14,8 +14,10 @@ import seaborn as sns
 # eem_dataset_path = \
 #     "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/nan_sample_260_ex_274_em_310_mfem_5.json"
 eem_dataset_path = \
-    "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/nan_sample_260_ex_274_em_310_mfem_5.json"
+    "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/sample_260_ex_274_em_310_mfem_3.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
+eem_dataset.median_filter(footprint=(5, 5), copy=False)
+eem_dataset.raman_scattering_removal(width=15, interpolation_method='nan', copy=False)
 eem_dataset_july, _ = eem_dataset.filter_by_index(None, ['2024-07-'], copy=True)
 eem_dataset_october, _ = eem_dataset.filter_by_index(None, ['2024-10-'], copy=True)
 eem_dataset_original, _ = eem_dataset.filter_by_index(['B1C1'], None, copy=True)
@@ -58,26 +60,23 @@ plot_eem(B[3, :].reshape(eem_dataset_original.eem_stack.shape[1:]),
 
 # -----------model training-------------
 # dataset_train, dataset_test = eem_dataset_october.splitting(2)
-dataset_train = eem_dataset_october
-dataset_test = eem_dataset_july
+dataset_train = eem_dataset_july
+dataset_test = eem_dataset_october
 sample_prior = {0: dataset_train.ref['TCC (million #/mL)']}
 params = {
     'n_components': 4,
     'init': 'nndsvda',
-    'gamma_sample': 1.75e7,
+    'gamma_sample': 1e6,
     'alpha_component': 0,
-    'l1_ratio': 0
+    'l1_ratio': 0,
+    'max_iter_als': 100,
+    'max_iter_nnls': 500
 }
 model = EEMNMF(
-    # n_components=params['rank'],
     solver='hals',
     prior_dict_sample=sample_prior,
-    # gamma_sample=params['gamma_sample'],
     normalization=None,
     sort_em=False,
-    # init=params['init'],
-    # alpha_component=params['alpha_component'],
-    # l1_ratio=params['l1_ratio'],
     **params
 )
 model.fit(dataset_train)
@@ -85,7 +84,7 @@ fmax_train = model.nmf_fmax
 components = model.components
 lr = LinearRegression(fit_intercept=True)
 mask_train = ~np.isnan(dataset_train.ref['TCC (million #/mL)'].to_numpy())
-X_train = fmax_train.iloc[mask_train, [0]].to_numpy()
+X_train = fmax_train.iloc[mask_train, [list(sample_prior.keys())[0]]].to_numpy()
 y_train = dataset_train.ref['TCC (million #/mL)'].to_numpy()[mask_train]
 lr.fit(X_train, y_train)
 y_pred_train = lr.predict(X_train)
@@ -97,7 +96,7 @@ r2_train = lr.score(X_train, y_train)
 _, fmax_test, eem_re_test = model.predict(dataset_test)
 sample_test_truth = {0: dataset_test.ref['TCC (million #/mL)']}
 mask_test = ~np.isnan(dataset_test.ref['TCC (million #/mL)'].to_numpy())
-X_test = fmax_test.iloc[mask_test, [0]].to_numpy()
+X_test = fmax_test.iloc[mask_test, [list(sample_prior.keys())[0]]].to_numpy()
 y_test = dataset_test.ref['TCC (million #/mL)'].to_numpy()[mask_test]
 y_pred_test = lr.predict(X_test)
 rmse_test = np.sqrt(mean_squared_error(y_test, y_pred_test))
@@ -106,7 +105,7 @@ r2_test = lr.score(X_test, y_test)
 
 # -----------plot components----------
 fig, ax = plt.subplots(
-    nrows=(params['rank'] - 1) // 2 + 1, ncols=2,
+    nrows=(params['n_components'] - 1) // 2 + 1, ncols=2,
 )
 plt.subplots_adjust(
     left=0,  # distance from left of figure (0 = 0%, 1 = 100%)
@@ -116,8 +115,8 @@ plt.subplots_adjust(
     wspace=0,  # width between subplots
     hspace=0  # height between subplots
 )
-for i in range(params['rank']):
-    if i < params['rank']:
+for i in range(params['n_components']):
+    if i < params['n_components']:
         f, a, im = plot_eem(
             components[i],
             ex_range=eem_dataset_original.ex_range,
@@ -150,7 +149,7 @@ for i, ((n, p), (n2, t)) in enumerate(zip(sample_prior.items(), sample_test_trut
             0.01, 0.99,
             '\n'.join(f'{k}: {v}' for k, v in info_dict.items()),
             transform=ax.transAxes,
-            fontsize=12,
+            fontsize=10,
             verticalalignment='top',
             horizontalalignment='left'
         )
@@ -193,7 +192,7 @@ plt.show()
 param_grid = {
     'n_components': [4],
     'init': ['nndsvda'],
-    'gamma_sample': [1.5e7, 1.75e7, 2e7, 2.25e7],
+    'gamma_sample': [1.3e7, 1.4e7, 1.5e7],
     'alpha_component': [0],
     'l1_ratio': [0]
 }

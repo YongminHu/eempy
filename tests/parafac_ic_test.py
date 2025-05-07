@@ -42,7 +42,7 @@ z_dict = {0: eem_dataset_original.ref["TCC"].to_numpy().reshape([eem_dataset_ori
 rank = 4
 max_iter = 500
 
-U, V = initialization_2d(X, rank=rank)
+U, V = unfolded_eem_stack_initialization(X, rank=rank)
 factors = [U, V.T]
 
 # for c in range(factors[1].shape[1]):
