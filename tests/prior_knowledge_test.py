@@ -1,5 +1,4 @@
 import matplotlib.pyplot as plt
-import numpy as np
 from scipy.stats import zscore
 
 from eempy.read_data import read_eem_dataset, read_abs_dataset, read_eem, read_eem_dataset_from_json
@@ -14,14 +13,15 @@ import seaborn as sns
 # eem_dataset_path = \
 #     "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/nan_sample_260_ex_274_em_310_mfem_5.json"
 eem_dataset_path = \
-    "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/sample_260_ex_274_em_310_mfem_3.json"
+    "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/nan_sample_260_ex_274_em_310_mfem_5.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
-eem_dataset.median_filter(footprint=(5, 5), copy=False)
-eem_dataset.raman_scattering_removal(width=15, interpolation_method='nan', copy=False)
+eem_dataset.eem_stack = np.nan_to_num(eem_dataset.eem_stack, copy=True, nan=0)
 eem_dataset_july, _ = eem_dataset.filter_by_index(None, ['2024-07-'], copy=True)
 eem_dataset_october, _ = eem_dataset.filter_by_index(None, ['2024-10-'], copy=True)
 eem_dataset_original, _ = eem_dataset.filter_by_index(['B1C1'], None, copy=True)
 eem_dataset_quenched, _ = eem_dataset.filter_by_index(['B1C2'], None, copy=True)
+idx_top = [i for i in range(len(eem_dataset_october.index)) if 'B1C1' in eem_dataset_october.index[i]]
+idx_bot = [i for i in range(len(eem_dataset_october.index)) if 'B1C2' in eem_dataset_october.index[i]]
 
 # -------------prior decomposition function test---------
 
@@ -41,36 +41,45 @@ plot_eem(np.outer(B[:, 0], C[:, 0]),
          display=True
          )
 
-A, B = nmf_hals_prior(
-    X=eem_dataset_original.eem_stack.reshape([eem_dataset_original.eem_stack.shape[0], -1]),
+A, B, beta = nmf_hals_prior_ratio(
+    X=eem_dataset_october.eem_stack.reshape([eem_dataset_october.eem_stack.shape[0], -1]),
+    idx_top=idx_top,
+    idx_bot=idx_bot,
+    lam=1e3,
     rank=4,
-    prior_dict_W={0: eem_dataset_original.ref['TCC (million #/mL)'].to_numpy()},
-    gamma_W=1.5e7,
+    # prior_dict_W={2: eem_dataset_october.ref['TCC (million #/mL)'].to_numpy()},
+    # gamma_W=1e4,
     init='nndsvda',
-    alpha_H=1,
+    alpha_H=0,
     l1_ratio=0,
 )
-plt.plot(A[:, 0], eem_dataset_original.ref['TCC (million #/mL)'], 'o')
+r = 2
+plt.plot(A[:, r], eem_dataset_october.ref['TCC (million #/mL)'], 'o')
 plt.show()
-plot_eem(B[3, :].reshape(eem_dataset_original.eem_stack.shape[1:]),
-         ex_range=eem_dataset_original.ex_range,
-         em_range=eem_dataset_original.em_range,
+plot_eem(B[r, :].reshape(eem_dataset_october.eem_stack.shape[1:]),
+         ex_range=eem_dataset_october.ex_range,
+         em_range=eem_dataset_october.em_range,
          display=True
          )
+fmax_ratio = A[idx_top] / A[idx_bot]
+fmax_ratio_z_scores = zscore(fmax_ratio[:, r])
+fmax_ratio_filtered = fmax_ratio[np.abs(fmax_ratio_z_scores) <= 3]
+plt.hist(fmax_ratio_filtered[:, r], density=True)
+plt.show()
 
 # -----------model training-------------
 # dataset_train, dataset_test = eem_dataset_october.splitting(2)
-dataset_train = eem_dataset_july
-dataset_test = eem_dataset_october
+dataset_train = eem_dataset_october
+dataset_test = eem_dataset_july
 sample_prior = {0: dataset_train.ref['TCC (million #/mL)']}
 params = {
     'n_components': 4,
     'init': 'nndsvda',
-    'gamma_sample': 1e6,
-    'alpha_component': 0,
-    'l1_ratio': 0,
-    'max_iter_als': 100,
-    'max_iter_nnls': 500
+    'gamma_sample': 2.4e6,
+    'alpha_component': 1,
+    'l1_ratio': 1,
+    'max_iter_als': 200,
+    'max_iter_nnls': 800
 }
 model = EEMNMF(
     solver='hals',
@@ -104,6 +113,7 @@ r2_test = lr.score(X_test, y_test)
 
 
 # -----------plot components----------
+plt.close()
 fig, ax = plt.subplots(
     nrows=(params['n_components'] - 1) // 2 + 1, ncols=2,
 )
@@ -180,6 +190,7 @@ fmax_ratio_target_train = fmax_ratio_train[:, rank_target]
 fmax_ratio_train_z_scores = zscore(fmax_ratio_target_train)
 fmax_ratio_target_train_filtered = fmax_ratio_target_train[np.abs(fmax_ratio_train_z_scores) <= 3]
 
+plt.close()
 fig, ax = plt.subplots()
 counts, bins, patches = ax.hist(fmax_ratio_target_train_filtered, bins=30,
                                 density=True, alpha=0.5, color='blue', label='training', zorder=0, edgecolor='black')
@@ -192,7 +203,7 @@ plt.show()
 param_grid = {
     'n_components': [4],
     'init': ['nndsvda'],
-    'gamma_sample': [1.3e7, 1.4e7, 1.5e7],
+    'gamma_sample': [2.15e7, 2.2e7, 2.25e7, 2.3e7, 2.35e7],
     'alpha_component': [0],
     'l1_ratio': [0]
 }
@@ -212,7 +223,7 @@ def get_param_combinations(param_grid):
     return [dict(zip(keys, values)) for values in values_product]
 
 param_combinations = get_param_combinations(param_grid)
-dataset_splits = dataset_train.splitting(n_split=3)
+dataset_splits = dataset_train.splitting(n_split=5)
 
 for k, p in enumerate(param_combinations):
     r2 = 0

@@ -3388,9 +3388,6 @@ def nmf_hals_prior(
     return W, H
 
 
-
-
-
 def cp_hals_prior(
         tensor,
         rank,
@@ -3570,45 +3567,43 @@ def unfolded_eem_stack_initialization(M, rank, method='nndsvd'):
         H = np.sqrt(S_r)[:, None] * np.abs(VT_r)
         W = np.clip(W, a_min=1e-6, a_max=None)
         H = np.clip(H, a_min=1e-6, a_max=None)
-        return W, H
 
-    # Step 3: Initialize W and H
-    W = np.zeros((M.shape[0], rank))
-    H = np.zeros((rank, M.shape[1]))
+    else:
+        # Step 3: Initialize W and H
+        W = np.zeros((M.shape[0], rank))
+        H = np.zeros((rank, M.shape[1]))
 
-    for k in range(rank):
-        u_k = U_r[:, k]
-        v_k = VT_r[k, :]
+        for k in range(rank):
+            u_k = U_r[:, k]
+            v_k = VT_r[k, :]
 
-        # Positive and negative parts
-        u_k_pos = np.maximum(u_k, 0)
-        u_k_neg = np.maximum(-u_k, 0)
-        v_k_pos = np.maximum(v_k, 0)
-        v_k_neg = np.maximum(-v_k, 0)
+            # Positive and negative parts
+            u_k_pos = np.maximum(u_k, 0)
+            u_k_neg = np.maximum(-u_k, 0)
+            v_k_pos = np.maximum(v_k, 0)
+            v_k_neg = np.maximum(-v_k, 0)
 
-        # Normalize
-        u_norm_pos = np.linalg.norm(u_k_pos)
-        v_norm_pos = np.linalg.norm(v_k_pos)
+            # Normalize
+            u_norm_pos = np.linalg.norm(u_k_pos)
+            v_norm_pos = np.linalg.norm(v_k_pos)
 
-        # Assign components
-        if u_norm_pos * v_norm_pos > 0:
-            W[:, k] = np.sqrt(S_r[k]) * (u_k_pos / u_norm_pos)
-            H[k, :] = np.sqrt(S_r[k]) * (v_k_pos / v_norm_pos)
-        else:
-            W[:, k] = np.sqrt(S_r[k]) * (u_k_neg / np.linalg.norm(u_k_neg))
-            H[k, :] = np.sqrt(S_r[k]) * (v_k_neg / np.linalg.norm(v_k_neg))
+            # Assign components
+            if u_norm_pos * v_norm_pos > 0:
+                W[:, k] = np.sqrt(S_r[k]) * (u_k_pos / u_norm_pos)
+                H[k, :] = np.sqrt(S_r[k]) * (v_k_pos / v_norm_pos)
+            else:
+                W[:, k] = np.sqrt(S_r[k]) * (u_k_neg / np.linalg.norm(u_k_neg))
+                H[k, :] = np.sqrt(S_r[k]) * (v_k_neg / np.linalg.norm(v_k_neg))
 
-    # Step 4: Handle zero entries
-    if method == 'nndsvd':
-        # W[W == 0] = np.random.uniform(0, 1e-4, W[W == 0].shape)
-        # H[H == 0] = np.random.uniform(0, 1e-4, H[H == 0].shape)
-        pass
-    if method == 'nndsvda':
-        W[W == 0] = np.mean(M)
-        H[H == 0] = np.mean(M)
-    if method == 'nndsvdar':
-        W[W == 0] = np.random.uniform(0, np.mean(M) / 100, W[W == 0].shape)
-        H[H == 0] = np.random.uniform(0, np.mean(M) / 100, H[H == 0].shape)
+        # Step 4: Handle zero entries
+        if method == 'nndsvd':
+            pass
+        if method == 'nndsvda':
+            W[W == 0] = np.mean(M)
+            H[H == 0] = np.mean(M)
+        if method == 'nndsvdar':
+            W[W == 0] = np.random.uniform(0, np.mean(M) / 100, W[W == 0].shape)
+            H[H == 0] = np.random.uniform(0, np.mean(M) / 100, H[H == 0].shape)
 
     return W, H
 
@@ -3645,3 +3640,427 @@ def replace_factor_with_prior(factors, prior, replaced_mode, replaced_rank="best
         return factors, replaced_rank
     else:
         return factors
+
+
+def hals_column_with_ratio(
+        Rk,
+        hk_norm2,
+        beta_k,
+        lam,
+        k,
+        prior_dict=None,
+        gamma=0.0,
+        alpha=0.0,
+        l1_ratio=0.0,
+        idx_top=None,
+        idx_bot=None,
+        eps=1e-8
+):
+    """
+    HALS‐style update for one W‐column w_k ∈ ℝ^m solving
+
+        ½||Rk - d·w_k||²
+      + (lam/2)*Σ_i (w[t_i] - β·w[b_i])²
+      + (γ/2)*Σ_i (w_i - p_k[i])²
+      + α[ℓ1||w_k||₁ + ((1-ℓ1)/2)||w_k||²]
+
+    where:
+      - d = ||h_k||²,
+      - Rk = UᵀM - Σ_{j≠k}(UᵀU)_{kj} w_j,
+      - lam = λ is the ratio penalty,
+      - γ = gamma is the prior penalty,
+      - α,ℓ1_mix = elastic-net weights,
+      - prior_dict[k] = length-m vector p_k (with NaNs where no prior),
+      - idx_top/idx_bot pair row-indices covering all rows.
+    """
+    m = Rk.shape[0]
+    d = hk_norm2
+    g = Rk.copy()
+
+    # Elastic‐net
+    l2_pen = alpha * (1 - l1_ratio)
+    l1_pen = alpha * l1_ratio
+    if l1_pen:
+        g -= l1_pen
+
+    # Prepare prior vector and mask
+    if prior_dict is None:
+        prior_dict = {}
+    has_prior = (gamma > 0 and k in prior_dict)
+    if has_prior:
+        p_k = np.asarray(prior_dict[k], dtype=float)
+        mask = np.isfinite(p_k)
+        p_clean = np.nan_to_num(p_k, nan=0.0)
+        # Add linear term once (will split per-entry below)
+        g += gamma * p_clean
+
+    w_new = np.empty_like(g)
+
+    # Off-diagonal for ratio block
+    off = -lam * beta_k
+
+    # Solve each paired (t,b)
+    for t, b in zip(idx_top, idx_bot):
+        R1, R2 = g[t], g[b]
+        # per-entry prior diag
+        prior_t = gamma if (has_prior and mask[t]) else 0.0
+        prior_b = gamma if (has_prior and mask[b]) else 0.0
+        # build local diagonals
+        a11 = d + lam + l2_pen + prior_t
+        a22 = d + lam * beta_k ** 2 + l2_pen + prior_b
+        det = a11 * a22 - off * off + eps
+
+        # compute scalar updates
+        w1 = (a22 * R1 - off * R2) / det
+        w2 = (-off * R1 + a11 * R2) / det
+
+        w_new[t] = float(max(eps, w1))
+        w_new[b] = float(max(eps, w2))
+
+    return w_new
+
+
+def update_beta(
+    W: np.ndarray,
+    idx_top,
+    idx_bot,
+    eps: float = 1e-8,
+    boundaries: tuple = (0.95, 1.4)
+) -> np.ndarray:
+    """
+    Fit beta per component so that W[idx_top, j] ≈ beta[j] * W[idx_bot, j].
+
+    Solves, for each component j,
+        min_{beta_j} ∑_i (W_top[i,j] - beta_j * W_bot[i,j])^2
+    which has the closed‐form
+        beta_j = sum_i W_top[i,j] * W_bot[i,j]  /  (sum_i W_bot[i,j]^2).
+
+    Parameters
+    ----------
+    W : np.ndarray, shape (m, r)
+        Concentration matrix with m samples and r components.
+    idx_top : sequence of ints
+        Row indices in W corresponding to the “original” samples.
+    idx_bot : sequence of ints
+        Row indices in W corresponding to the “perturbed” samples.
+        Must be the same length as idx_top.
+    eps : float, optional
+        Small constant to avoid division by zero when W_bot is nearly zero.
+    boundaries : (min_beta, max_beta), optional
+        Lower and upper bounds to clamp each estimated beta.
+
+    Returns
+    -------
+    beta : np.ndarray, shape (r,)
+        Estimated ratio for each of the r components, clamped to [min_beta, max_beta].
+    """
+    W = np.asarray(W, dtype=float)
+    idx_top = np.asarray(idx_top, dtype=int)
+    idx_bot = np.asarray(idx_bot, dtype=int)
+    if idx_top.shape != idx_bot.shape:
+        raise ValueError("`idx_top` and `idx_bot` must have the same length")
+
+    # Extract the paired rows
+    W_top = W[idx_top, :]    # shape (p, r)
+    W_bot = W[idx_bot, :]    # shape (p, r)
+
+    # Compute numerator and denominator for each component j:
+    #   numerator_j   = sum_i W_top[i,j] * W_bot[i,j]
+    #   denominator_j = sum_i W_bot[i,j]^2
+    num = np.sum(W_top * W_bot, axis=0)
+    den = np.sum(W_bot * W_bot, axis=0) + eps
+
+    beta = num / den
+
+    # Clamp into the desired interval
+    beta_min, beta_max = boundaries
+    return np.clip(beta, beta_min, beta_max)
+
+
+def nmf_hals_prior_ratio(
+        X,
+        rank,
+        idx_top,
+        idx_bot,
+        prior_dict_H=None,
+        prior_dict_W=None,
+        lam=0,
+        gamma_W=0,
+        gamma_H=0,
+        alpha_W=0,
+        alpha_H=0,
+        l1_ratio=0,
+        max_iter_als=100,
+        max_iter_nnls=500,
+        tol=1e-6,
+        eps=1e-8,
+        init='random',
+        custom_init=None,
+        random_state=None
+):
+    """
+    ALS‐NMF with three penalties:
+      - Elastic-net on H and W (alpha_H, alpha_W).
+      - Quadratic priors on H and W via prior_dict_H/prior_dict_W (gamma_H, gamma_W).
+      - Ratio penalty on W: W[idx_top] ≈ beta * W[idx_bot] (lam=gamma_W).
+
+    Parameters
+    ----------
+    X : array-like (m, n)
+        Non-negative data.
+    rank : int
+        Number of components.
+    idx_top, idx_bot : lists of int, length m/2
+        Row‐index pairs covering all samples for the **ratio** penalty.
+    prior_dict_H : dict {k: p_k}, optional
+        Priors for H rows (length n, NaN to skip).
+    prior_dict_W : dict {k: p_k}, optional
+        Priors for W columns (length m, NaN to skip).
+    lam : float
+        Ratio penalty weight.
+    gamma_W, gamma_H : float
+        Quadratic prior weights.
+    alpha_W, alpha_H : float
+        Elastic-net weights for W and H.
+    l1_ratio : float [0,1]
+        Mix parameter for elastic-net.
+    max_iter_als : int
+        Outer ALS iterations.
+    max_iter_nnls : int
+        Inner HALS iterations for H.
+    tol : float
+        Convergence tolerance.
+    eps : float
+        Small positive floor.
+    init : {'random','svd',...}, custom_init, random_state : as before.
+
+    Returns
+    -------
+    W : ndarray (m, rank)
+    H : ndarray (rank, n)
+    beta : ndarray (rank,)
+    """
+    X_t = tl.tensor(X, dtype=float)
+    m, n = X_t.shape
+    rng = np.random.RandomState(random_state)
+
+    # 1) Initialize W, H
+    if init == 'random':
+        W = np.clip(rng.rand(m, rank), eps, None)
+        H = np.clip(rng.rand(rank, n), eps, None)
+    elif init in ('svd', 'nndsvd', 'nndsvda', 'nndsvdar'):
+        W, H = unfolded_eem_stack_initialization(X, rank, init)
+    elif init == 'normal_nmf':
+        model = NMF(n_components=rank, init='nndsvd', random_state=random_state)
+        W = model.fit_transform(tl.to_numpy(X_t))
+        H = model.components_
+    elif init == 'custom':
+        W, H = custom_init
+    else:
+        raise ValueError(f"Unknown init {init}")
+
+    beta = np.ones(rank, dtype=float)
+    prev_err = np.inf
+
+    for _ in range(max_iter_als):
+        # --- Update H via HALS with priors + elastic-net ---
+        UtM_H = tl.dot(tl.transpose(W), X_t)
+        UtU_H = tl.dot(tl.transpose(W), W)
+        H = hals_prior_nnls(
+            UtM=UtM_H, UtU=UtU_H,
+            prior_dict=prior_dict_H,
+            V=H,
+            gamma=gamma_H, alpha=alpha_H,
+            l1_ratio=l1_ratio,
+            max_iter=max_iter_nnls,
+            tol=tol, eps=eps
+        )
+
+        # --- Update W via ratio-aware HALS columns ---
+        UtM_W = tl.to_numpy(tl.dot(H, tl.transpose(X_t)))  # (r, m)
+        UtU_W = tl.to_numpy(tl.dot(H, tl.transpose(H)))  # (r, r)
+        for k in range(rank):
+            Rk = UtM_W[k].copy()
+            for j in range(rank):
+                if j != k:
+                    Rk -= UtU_W[k, j] * W[:, j]
+            d = UtU_W[k, k]
+            W[:, k] = hals_column_with_ratio(
+                Rk=Rk,
+                hk_norm2=d,
+                beta_k=beta[k],
+                lam=lam,
+                k=k,
+                prior_dict=prior_dict_W,
+                gamma=gamma_W,
+                alpha=alpha_W,
+                l1_ratio=l1_ratio,
+                idx_top=idx_top,
+                idx_bot=idx_bot,
+                eps=eps
+            )
+
+        # --- Beta‐step (closed form) ---
+        beta = update_beta(W, idx_top=idx_top, idx_bot=idx_bot, eps=eps)
+
+        # --- Convergence check ---
+        err = tl.norm(X_t - tl.tensor(W) @ tl.tensor(H))
+        if abs(prev_err - err) / (prev_err + eps) < tol:
+            break
+        prev_err = err
+
+    return W, H, beta
+
+#
+# def hals_prior_nnls_torch(
+#     UtM: torch.Tensor,
+#     UtU: torch.Tensor,
+#     prior_dict: dict = None,
+#     V: torch.Tensor = None,
+#     gamma: float = 0.0,
+#     alpha: float = 0.0,
+#     l1_ratio: float = 0.0,
+#     max_iter: int = 500,
+#     tol: float = 1e-8,
+#     eps: float = 1e-8,
+# ) -> torch.Tensor:
+#     """
+#     HALS-style non-negative least squares update (PyTorch) with priors & elastic-net.
+#
+#     UtM: (r, n), UtU: (r, r), V: (r, n)
+#     prior_dict: {k: np.ndarray or torch.Tensor of length n}
+#     Returns V updated as torch.Tensor.
+#     """
+#     device = UtM.device
+#     dtype = UtM.dtype
+#     r, n = UtM.shape
+#     if prior_dict is None:
+#         prior_dict = {}
+#
+#     # initialize V if needed
+#     if V is None:
+#         V = torch.linalg.solve(UtU, UtM).clamp(min=eps)
+#         VVt = V @ V.T
+#         scale = (UtM * V).sum() / ((UtU @ VVt).sum() + eps)
+#         V = V * scale
+#
+#     l2_pen = alpha * (1 - l1_ratio)
+#     l1_pen = alpha * l1_ratio
+#     prev_delta = None
+#
+#     for _ in range(max_iter):
+#         delta = 0.0
+#         for k in range(r):
+#             ukk = UtU[k, k]
+#             if ukk < eps:
+#                 continue
+#             Rk = UtM[k] - UtU[k] @ V + ukk * V[k]
+#             num = Rk.clone()
+#             denom = torch.full((n,), ukk + l2_pen, device=device, dtype=dtype)
+#             # apply prior if present
+#             if k in prior_dict and gamma > 0:
+#                 p = prior_dict[k]
+#                 if not isinstance(p, torch.Tensor):
+#                     p = torch.tensor(p, dtype=dtype, device=device)
+#                 mask = torch.isfinite(p).float()
+#                 p = torch.nan_to_num(p, nan=0.0)
+#                 num += gamma * p
+#                 denom += gamma * mask
+#             if l1_pen != 0:
+#                 num -= l1_pen
+#             V_new = (num / (denom + eps)).clamp(min=eps)
+#             delta += torch.norm(V[k] - V_new).item()**2
+#             V[k] = V_new
+#         if prev_delta is None:
+#             prev_delta = delta
+#         elif prev_delta > 0 and delta / prev_delta < tol:
+#             break
+#         prev_delta = delta
+#     return V
+#
+#
+# def nmf_hals_prior_torch(
+#     X: np.ndarray,
+#     rank: int,
+#     prior_dict_H: dict = None,
+#     prior_dict_W: dict = None,
+#     gamma_W: float = 0.0,
+#     gamma_H: float = 0.0,
+#     alpha_W: float = 0.0,
+#     alpha_H: float = 0.0,
+#     l1_ratio: float = 0.0,
+#     max_iter_als: int = 100,
+#     max_iter_nnls: int = 500,
+#     tol: float = 1e-6,
+#     eps: float = 1e-8,
+#     init: str = 'random',
+#     random_state: int = None,
+#     device_type: str = 'cpu',
+# ) -> (np.ndarray, np.ndarray):
+#     """
+#     NMF via HALS (PyTorch backend). Inputs X and prior_dicts are numpy.
+#     Returns W, H as numpy arrays.
+#     """
+#     if device_type == 'gpu':
+#         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+#     else:
+#         device = torch.device('cpu')
+#     dtype = torch.float32
+#
+#     X_torch = torch.tensor(X, dtype=dtype, device=device)
+#     a, b = X.shape
+#     rng = np.random.RandomState(random_state)
+#
+#     # init W, H
+#     if init == 'random':
+#         W = torch.rand(a, rank, dtype=dtype, device=device).clamp(min=eps)
+#         H = torch.rand(rank, b, dtype=dtype, device=device).clamp(min=eps)
+#     else:
+#         # use unfolded_eem_stack_initialization_torch on full X
+#         W, H = unfolded_eem_stack_initialization(X, rank, method=init)
+#         W = torch.tensor(W, dtype=torch.float32)
+#         H = torch.tensor(H, dtype=torch.float32)
+#         W = W.to(device).clamp(min=eps)
+#         H = H.to(device).clamp(min=eps)
+#
+#     prior_dict_H = prior_dict_H or {}
+#     prior_dict_W = prior_dict_W or {}
+#
+#     prev_err = torch.norm(X_torch - W @ H).item()
+#     for _ in range(max_iter_als):
+#         UtM_H = W.T @ X_torch
+#         UtU_H = W.T @ W
+#         H = hals_prior_nnls_torch(
+#             UtM=UtM_H,
+#             UtU=UtU_H,
+#             prior_dict=prior_dict_H,
+#             V=H,
+#             gamma=gamma_H,
+#             alpha=alpha_H,
+#             l1_ratio=l1_ratio,
+#             max_iter=max_iter_nnls,
+#             tol=tol,
+#             eps=eps,
+#         )
+#         UtM_W = H @ X_torch.T
+#         UtU_W = H @ H.T
+#         Wt = hals_prior_nnls_torch(
+#             UtM=UtM_W,
+#             UtU=UtU_W,
+#             prior_dict=prior_dict_W,
+#             V=W.T,
+#             gamma=gamma_W,
+#             alpha=alpha_W,
+#             l1_ratio=l1_ratio,
+#             max_iter=max_iter_nnls,
+#             tol=tol,
+#             eps=eps,
+#         )
+#         W = Wt.T
+#
+#         err = torch.norm(X_torch - W @ H).item()
+#         if abs(prev_err - err) / (prev_err + eps) < tol:
+#             break
+#         prev_err = err
+#
+#     return W.cpu().numpy(), H.cpu().numpy()
