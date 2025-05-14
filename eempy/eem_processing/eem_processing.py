@@ -2431,6 +2431,12 @@ class EEMNMF:
         Strength of the prior regularization on sample loadings. Only applied to 'hals' solver.
     gamma_component: float ,default=0
         Strength of the prior regularization on component loadings. Only applied to 'hals' solver.
+    idx_top: list, optional
+        List of indices of samples serving as numerators in ratio calculation.
+    idx_bot: list, optional
+        List of indices of samples serving as denominators in ratio calculation.
+    lam: float, default=0
+        Strength of the ratio regularization on sample loadings. Only applied to 'hals' solver.
     normalization: str, {'pixel_std'}:
         The normalization of EEMs before conducting NMF. 'pixel_std' normalizes the intensities of each pixel across
         all samples by standard deviation.
@@ -2455,6 +2461,7 @@ class EEMNMF:
     def __init__(self, n_components, solver='cd', init='nndsvda', beta_loss='frobenius', alpha_sample=0,
                  alpha_component=0,
                  l1_ratio=1, prior_dict_sample=None, prior_dict_component=None, gamma_sample=0, gamma_component=0,
+                 idx_top=None, idx_bot=None, lam=0,
                  normalization='pixel_std', sort_em=True, max_iter_als=100, max_iter_nnls=500):
 
         # -----------Parameters-------------
@@ -2469,6 +2476,9 @@ class EEMNMF:
         self.prior_dict_component = prior_dict_component
         self.gamma_sample = gamma_sample
         self.gamma_component = gamma_component
+        self.idx_top = idx_top
+        self.idx_bot = idx_bot
+        self.lam = lam
         self.normalization = normalization
         self.sort_em = sort_em
         self.max_iter_als = max_iter_als
@@ -2487,6 +2497,7 @@ class EEMNMF:
         self.eem_stack_reconstructed = None
         self.ex_range = None,
         self.em_range = None
+        self.beta = None
 
     def fit(self, eem_dataset):
         if self.solver == 'cd' or self.solver == 'mu':
@@ -2528,30 +2539,62 @@ class EEMNMF:
                 factor_std = np.std(X, axis=0)
                 X = X / factor_std
                 X[np.isnan(X)] = 0
-                W, H = nmf_hals_prior(
-                    X,
-                    rank=self.n_components,
-                    prior_dict_W=self.prior_dict_sample,
-                    prior_dict_H=self.prior_dict_component,
-                    gamma_W=self.gamma_sample,
-                    gamma_H=self.gamma_component,
-                    max_iter_als=self.max_iter_als,
-                    max_iter_nnls=self.max_iter_nnls
-                )
+                if self.idx_top and self.idx_bot:
+                    W, H, beta = nmf_hals_prior_ratio(
+                        X,
+                        rank=self.n_components,
+                        prior_dict_W=self.prior_dict_sample,
+                        prior_dict_H=self.prior_dict_component,
+                        gamma_W=self.gamma_sample,
+                        gamma_H=self.gamma_component,
+                        idx_top=self.idx_top,
+                        idx_bot=self.idx_bot,
+                        lam=self.lam,
+                        max_iter_als=self.max_iter_als,
+                        max_iter_nnls=self.max_iter_nnls
+                    )
+                    self.beta = beta
+                else:
+                    W, H = nmf_hals_prior(
+                        X,
+                        rank=self.n_components,
+                        prior_dict_W=self.prior_dict_sample,
+                        prior_dict_H=self.prior_dict_component,
+                        gamma_W=self.gamma_sample,
+                        gamma_H=self.gamma_component,
+                        max_iter_als=self.max_iter_als,
+                        max_iter_nnls=self.max_iter_nnls
+                    )
                 nmf_score = W
                 components = H * factor_std
             else:
                 factor_std = None
-                W, H = nmf_hals_prior(
-                    X,
-                    rank=self.n_components,
-                    prior_dict_W=self.prior_dict_sample,
-                    prior_dict_H=self.prior_dict_component,
-                    gamma_W=self.gamma_sample,
-                    gamma_H=self.gamma_component,
-                    max_iter_als=self.max_iter_als,
-                    max_iter_nnls=self.max_iter_nnls
-                )
+                if self.idx_top and self.idx_bot:
+                    W, H, beta = nmf_hals_prior_ratio(
+                        X,
+                        rank=self.n_components,
+                        prior_dict_W=self.prior_dict_sample,
+                        prior_dict_H=self.prior_dict_component,
+                        gamma_W=self.gamma_sample,
+                        gamma_H=self.gamma_component,
+                        idx_top=self.idx_top,
+                        idx_bot=self.idx_bot,
+                        lam=self.lam,
+                        max_iter_als=self.max_iter_als,
+                        max_iter_nnls=self.max_iter_nnls
+                    )
+                    self.beta = beta
+                else:
+                    W, H = nmf_hals_prior(
+                        X,
+                        rank=self.n_components,
+                        prior_dict_W=self.prior_dict_sample,
+                        prior_dict_H=self.prior_dict_component,
+                        gamma_W=self.gamma_sample,
+                        gamma_H=self.gamma_component,
+                        max_iter_als=self.max_iter_als,
+                        max_iter_nnls=self.max_iter_nnls
+                    )
                 nmf_score = W
                 components = H
             nmf_score = pd.DataFrame(nmf_score, index=eem_dataset.index,
@@ -2667,7 +2710,7 @@ class EEMNMF:
                                       index=self.nnls_fmax.index, columns=['sample_normalized_rmse'])
         return normalized_sse
 
-    def predict(self, eem_dataset: EEMDataset, fit_intercept=False):
+    def predict(self, eem_dataset: EEMDataset, fit_intercept=False, idx_top=None, idx_bot=None):
         """
         Predict the score and Fmax of a given EEM dataset using the component fitted. This method can be applied to a
         new EEM dataset independent of the one used in NMF model establishment.
@@ -2688,8 +2731,23 @@ class EEMNMF:
         eem_stack_pred: np.ndarray (3d)
             The EEM dataset reconstructed.
         """
-        score_sample, fmax_sample, eem_stack_pred = eems_fit_components(eem_dataset.eem_stack, self.components,
-                                                                        fit_intercept=fit_intercept)
+        if self.beta is None:
+            score_sample, fmax_sample, eem_stack_pred = eems_fit_components(eem_dataset.eem_stack, self.components,
+                                                                            fit_intercept=fit_intercept)
+        else:
+            max_values = np.amax(self.components, axis=(1, 2))
+            score_sample = np.zeros([eem_dataset.eem_stack.shape[0], self.n_components])
+            score_sample_bot = solve_W(
+                X1=eem_stack_to_2d(eem_dataset.eem_stack)[idx_bot],
+                X2=eem_stack_to_2d(eem_dataset.eem_stack)[idx_top],
+                H=self.components.reshape([self.n_components, -1]),
+                beta=self.beta
+            )
+            score_sample[idx_bot] = score_sample_bot
+            score_sample[idx_top] = score_sample_bot * self.beta
+            fmax_sample = score_sample * max_values
+            eem_stack_pred = score_sample @ self.components.reshape([self.n_components, -1])
+            eem_stack_pred = eem_stack_pred.reshape(eem_dataset.eem_stack.shape)
         score_sample = pd.DataFrame(score_sample, index=eem_dataset.index, columns=self.nmf_fmax.columns)
         fmax_sample = pd.DataFrame(fmax_sample, index=eem_dataset.index, columns=self.nmf_fmax.columns)
         return score_sample, fmax_sample, eem_stack_pred
@@ -3910,6 +3968,57 @@ def nmf_hals_prior_ratio(
         prev_err = err
 
     return W, H, beta
+
+
+def solve_W(X1, H, X2=None, beta=None, reg=0.0):
+    """
+    Solve for W in the regression problem:
+        loss = ||X1 - W @ H||_F^2
+             + ||X2 - W @ diag(beta) @ H||_F^2  (optional if b is provided)
+
+    If b is None, reduces to standard regression: minimize ||C - W @ H||_F^2.  In that case D and b are ignored.
+
+    Arguments:
+        X1 (ndarray): m x n matrix.
+        X2 (ndarray, optional): m x n matrix.  Required if b is not None.
+        H (ndarray): r x n matrix.
+        beta (ndarray, optional): vector of length r.  If None, drop the second term.
+        reg (float): optional regularization (ridge) parameter.
+
+    Returns:
+        W (ndarray): m x r solution matrix.
+    """
+    # Validate shapes
+    m, n = X1.shape
+    r, n_H = H.shape
+    assert n_H == n, "H must be of shape (r, n)"
+    if beta is not None:
+        assert X2 is not None and X2.shape == (m, n), "D must match shape of C when b is provided"
+        assert beta.shape[0] == r, "b must have length r"
+
+    # Numerator and Denominator
+    if beta is None:
+        # Standard regression: only C and H
+        numerator = X1 @ H.T
+        denominator = H @ H.T
+    else:
+        B = np.diag(beta)
+        numerator = X1 @ H.T + X2 @ H.T @ B
+        HHT = H @ H.T
+        denominator = HHT + B @ HHT @ B
+
+    # Add ridge regularization if requested
+    if reg > 0:
+        denominator = denominator + reg * np.eye(r)
+
+    # Solve for W (avoid explicit inverse)
+    # Solve (denominator.T) @ X = numerator.T  => X = W.T
+    W = np.linalg.solve(denominator.T, numerator.T).T
+    return W
+
+
+def eem_stack_to_2d(eem_stack):
+    return eem_stack.reshape([eem_stack.shape[0], -1])
 
 #
 # def hals_prior_nnls_torch(
