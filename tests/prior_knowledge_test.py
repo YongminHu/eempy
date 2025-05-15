@@ -89,16 +89,17 @@ prior_dict_ref = {0: bacteria_eem.reshape(-1)}
 # dataset_train, dataset_test = eem_dataset_october.splitting(2)
 dataset_train = eem_dataset_october
 dataset_test = eem_dataset_july
-sample_prior = {0: dataset_train.ref['DOC (mg/L)']}
+indicator = 'TCC (million #/mL)'
+sample_prior = {0: dataset_train.ref[indicator]}
 params = {
     'n_components': 4,
     'init': 'ordinary_nmf',
-    'gamma_sample': 1e6,
+    'gamma_sample': 0,
     'alpha_component': 0,
     'l1_ratio': 0,
     'max_iter_als': 100,
     'max_iter_nnls': 500,
-    'lam': 0
+    'lam': 1e3
 }
 model = EEMNMF(
     solver='hals',
@@ -106,17 +107,17 @@ model = EEMNMF(
     normalization=None,
     sort_em=False,
     prior_ref_components=prior_dict_ref,
-    # idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
-    # idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
+    idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
+    idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
     **params
 )
 model.fit(dataset_train)
 fmax_train = model.nmf_fmax
 components = model.components
 lr = LinearRegression(fit_intercept=True)
-mask_train = ~np.isnan(dataset_train.ref['DOC (mg/L)'].to_numpy())
+mask_train = ~np.isnan(dataset_train.ref[indicator].to_numpy())
 X_train = fmax_train.iloc[mask_train, [list(sample_prior.keys())[0]]].to_numpy()
-y_train = dataset_train.ref['DOC (mg/L)'].to_numpy()[mask_train]
+y_train = dataset_train.ref[indicator].to_numpy()[mask_train]
 lr.fit(X_train, y_train)
 y_pred_train = lr.predict(X_train)
 rmse_train = np.sqrt(mean_squared_error(y_train, y_pred_train))
@@ -129,10 +130,10 @@ _, fmax_test, eem_re_test = model.predict(
     idx_top=[i for i in range(len(dataset_test.index)) if 'B1C1' in dataset_test.index[i]],
     idx_bot=[i for i in range(len(dataset_test.index)) if 'B1C2' in dataset_test.index[i]],
                                           )
-sample_test_truth = {0: dataset_test.ref['DOC (mg/L)']}
-mask_test = ~np.isnan(dataset_test.ref['DOC (mg/L)'].to_numpy())
+sample_test_truth = {0: dataset_test.ref[indicator]}
+mask_test = ~np.isnan(dataset_test.ref[indicator].to_numpy())
 X_test = fmax_test.iloc[mask_test, [list(sample_prior.keys())[0]]].to_numpy()
-y_test = dataset_test.ref['DOC (mg/L)'].to_numpy()[mask_test]
+y_test = dataset_test.ref[indicator].to_numpy()[mask_test]
 y_pred_test = lr.predict(X_test)
 rmse_test = np.sqrt(mean_squared_error(y_test, y_pred_test))
 r2_test = lr.score(X_test, y_test)
@@ -177,7 +178,7 @@ info_dict['r2_test'] = np.round(r2_test, decimals=3)
 info_dict['rmse_train'] = np.round(rmse_train, decimals=3)
 info_dict['rmse_test'] = np.round(rmse_test, decimals=3)
 fig, ax = plt.subplots(nrows=1, ncols=len(sample_prior))
-n_override = None
+n_override = 2
 for i, ((n, p), (n2, t)) in enumerate(zip(sample_prior.items(), sample_test_truth.items())):
     if n_override is not None:
         n = n_override

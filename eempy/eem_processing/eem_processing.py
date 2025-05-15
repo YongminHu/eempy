@@ -3951,7 +3951,6 @@ def nmf_hals_prior_ratio(
         cost_mat = cdist(queries, H, metric='euclidean')
         # run Hungarian algorithm
         query_idx, ref_idx = linear_sum_assignment(cost_mat)
-        # returns only k pairs
         prior_dict_W = {ri: prior_dict_W[qi] for qi, ri in zip(query_idx, ref_idx)}
 
     beta = np.ones(rank, dtype=float)
