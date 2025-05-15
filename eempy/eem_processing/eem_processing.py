@@ -3374,7 +3374,7 @@ def nmf_hals_prior(
         Tolerance for convergence on reconstruction error.
     eps : float, optional
         Small constant to avoid divide by zero and ensure positivity.
-    init : {'random', 'svd', 'nndsvd', 'nndsvda', 'nndsvdar', 'normal_nmf'}
+    init : {'random', 'svd', 'nndsvd', 'nndsvda', 'nndsvdar', 'ordinary_nmf'}
         Initialization mode.
     custom_init: list [W_init, H_init]
         List of factors used for custom initialization
@@ -3931,7 +3931,7 @@ def nmf_hals_prior_ratio(
         H = np.clip(rng.rand(rank, n), eps, None)
     elif init in ('svd', 'nndsvd', 'nndsvda', 'nndsvdar'):
         W, H = unfolded_eem_stack_initialization(X, rank, init)
-    elif init == 'normal_nmf':
+    elif init == 'ordinary_nmf':
         model = NMF(n_components=rank, init='nndsvd', random_state=random_state)
         W = model.fit_transform(tl.to_numpy(X_t))
         H = model.components_

@@ -105,7 +105,7 @@ model = EEMNMF(
     prior_dict_sample=sample_prior,
     normalization=None,
     sort_em=False,
-
+    prior_ref_components=prior_dict_ref,
     # idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
     # idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
     **params
@@ -177,7 +177,7 @@ info_dict['r2_test'] = np.round(r2_test, decimals=3)
 info_dict['rmse_train'] = np.round(rmse_train, decimals=3)
 info_dict['rmse_test'] = np.round(rmse_test, decimals=3)
 fig, ax = plt.subplots(nrows=1, ncols=len(sample_prior))
-n_override = 3
+n_override = None
 for i, ((n, p), (n2, t)) in enumerate(zip(sample_prior.items(), sample_test_truth.items())):
     if n_override is not None:
         n = n_override
