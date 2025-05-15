@@ -29,6 +29,7 @@ from scipy.sparse.linalg import ArpackError
 from scipy.linalg import khatri_rao
 from scipy.stats import pearsonr
 from scipy.optimize import linear_sum_assignment
+from scipy.spatial.distance import cdist
 from tensorly.solvers.nnls import hals_nnls
 from tensorly.decomposition import parafac, non_negative_parafac, non_negative_parafac_hals
 from tensorly.cp_tensor import cp_to_tensor, CPTensor, cp_normalize
@@ -770,57 +771,57 @@ def eems_decomposition_initialization(eem_stack, rank, method="nndsvd"):
         return factors_init
 
     else:
-        def NNDSVD(M):
-            # Step 1: Compute SVD of V
-            U, S, VT = np.linalg.svd(M, full_matrices=False)  # SVD decomposition
+        # def NNDSVD(M):
+        #     # Step 1: Compute SVD of V
+        #     U, S, VT = np.linalg.svd(M, full_matrices=False)  # SVD decomposition
+        #
+        #     # Step 2: Keep the top-r components
+        #     U_r = U[:, :rank]
+        #     S_r = S[:rank]
+        #     VT_r = VT[:rank, :]
+        #
+        #     # Step 3: Initialize W and H
+        #     W = np.zeros((M.shape[0], rank))
+        #     H = np.zeros((rank, M.shape[1]))
+        #
+        #     for k in range(rank):
+        #         u_k = U_r[:, k]
+        #         v_k = VT_r[k, :]
+        #
+        #         # Positive and negative parts
+        #         u_k_pos = np.maximum(u_k, 0)
+        #         u_k_neg = np.maximum(-u_k, 0)
+        #         v_k_pos = np.maximum(v_k, 0)
+        #         v_k_neg = np.maximum(-v_k, 0)
+        #
+        #         # Normalize
+        #         u_norm_pos = np.linalg.norm(u_k_pos)
+        #         v_norm_pos = np.linalg.norm(v_k_pos)
+        #
+        #         # Assign components
+        #         if u_norm_pos * v_norm_pos > 0:
+        #             W[:, k] = np.sqrt(S_r[k]) * (u_k_pos / u_norm_pos)
+        #             H[k, :] = np.sqrt(S_r[k]) * (v_k_pos / v_norm_pos)
+        #         else:
+        #             W[:, k] = np.sqrt(S_r[k]) * (u_k_neg / np.linalg.norm(u_k_neg))
+        #             H[k, :] = np.sqrt(S_r[k]) * (v_k_neg / np.linalg.norm(v_k_neg))
+        #
+        #     # Step 4: Handle zero entries
+        #     if method == 'nndsvd':
+        #         # W[W == 0] = np.random.uniform(0, 1e-4, W[W == 0].shape)
+        #         # H[H == 0] = np.random.uniform(0, 1e-4, H[H == 0].shape)
+        #         pass
+        #     if method == 'nndsvda':
+        #         W[W == 0] = np.mean(M)
+        #         H[H == 0] = np.mean(M)
+        #     if method == 'nndsvdar':
+        #         W[W == 0] = np.random.uniform(0, np.mean(M) / 100, W[W == 0].shape)
+        #         H[H == 0] = np.random.uniform(0, np.mean(M) / 100, H[H == 0].shape)
+        #     return W, H
 
-            # Step 2: Keep the top-r components
-            U_r = U[:, :rank]
-            S_r = S[:rank]
-            VT_r = VT[:rank, :]
-
-            # Step 3: Initialize W and H
-            W = np.zeros((M.shape[0], rank))
-            H = np.zeros((rank, M.shape[1]))
-
-            for k in range(rank):
-                u_k = U_r[:, k]
-                v_k = VT_r[k, :]
-
-                # Positive and negative parts
-                u_k_pos = np.maximum(u_k, 0)
-                u_k_neg = np.maximum(-u_k, 0)
-                v_k_pos = np.maximum(v_k, 0)
-                v_k_neg = np.maximum(-v_k, 0)
-
-                # Normalize
-                u_norm_pos = np.linalg.norm(u_k_pos)
-                v_norm_pos = np.linalg.norm(v_k_pos)
-
-                # Assign components
-                if u_norm_pos * v_norm_pos > 0:
-                    W[:, k] = np.sqrt(S_r[k]) * (u_k_pos / u_norm_pos)
-                    H[k, :] = np.sqrt(S_r[k]) * (v_k_pos / v_norm_pos)
-                else:
-                    W[:, k] = np.sqrt(S_r[k]) * (u_k_neg / np.linalg.norm(u_k_neg))
-                    H[k, :] = np.sqrt(S_r[k]) * (v_k_neg / np.linalg.norm(v_k_neg))
-
-            # Step 4: Handle zero entries
-            if method == 'nndsvd':
-                # W[W == 0] = np.random.uniform(0, 1e-4, W[W == 0].shape)
-                # H[H == 0] = np.random.uniform(0, 1e-4, H[H == 0].shape)
-                pass
-            if method == 'nndsvda':
-                W[W == 0] = np.mean(M)
-                H[H == 0] = np.mean(M)
-            if method == 'nndsvdar':
-                W[W == 0] = np.random.uniform(0, np.mean(M) / 100, W[W == 0].shape)
-                H[H == 0] = np.random.uniform(0, np.mean(M) / 100, H[H == 0].shape)
-            return W, H
-
-        La, _ = NNDSVD(M_a)
-        Lb, _ = NNDSVD(M_b)
-        Lc, _ = NNDSVD(M_c)
+        La, _ = unfolded_eem_stack_initialization(M_a, rank, method)
+        Lb, _ = unfolded_eem_stack_initialization(M_b, rank, method)
+        Lc, _ = unfolded_eem_stack_initialization(M_c, rank, method)
 
         return La, Lb, Lc
 
@@ -3328,7 +3329,8 @@ def nmf_hals_prior(
         eps=1e-8,
         init='random',
         custom_init=None,
-        random_state=None
+        random_state=None,
+        prior_ref_component=None,
 ):
     """
     Perform Non-negative Matrix Factorization (NMF) using the Hierarchical Alternating Least Squares (HALS) algorithm
@@ -3340,7 +3342,7 @@ def nmf_hals_prior(
 
     Parameters
     ----------
-    X : array-like, shape (a, b)
+    X : array-like, shape (n_samples, n_pixels)
         Non-negative data matrix.
     rank : int
         Factorization rank r.
@@ -3372,11 +3374,12 @@ def nmf_hals_prior(
         List of factors used for custom initialization
     random_state : int or None
         Seed for random initialization.
-
+    prior_ref_component : dict, {k: ref_component of shape (n_pixels,)}
+        Reference components to automatically reassign the keys of prior_dict_W according to the initialization.
     Returns
     -------
-    W : array-like, shape (a, r)
-    H : array-like, shape (r, b)
+    W : array-like, shape (n_samples, n_components)
+    H : array-like, shape (n_components, n_pixels)
     """
     X = tl.tensor(X, dtype=float)
     a, b = X.shape
@@ -3402,6 +3405,14 @@ def nmf_hals_prior(
         prior_dict_H = {}
     if prior_dict_W is None:
         prior_dict_W = {}
+    elif prior_ref_component is not None:
+        prior_keys = list(prior_ref_component.keys())
+        queries = np.array([prior_ref_component[k] for k in prior_keys])
+        cost_mat = cdist(queries, H, metric='euclidean')
+        # run Hungarian algorithm
+        query_idx, ref_idx = linear_sum_assignment(cost_mat)
+        # returns only k pairs
+        prior_dict_W = {ri: prior_dict_W[qi] for qi, ri in zip(query_idx, ref_idx)}
 
     prev_err = tl.norm(X - tl.dot(W, H))
     for it in range(max_iter_als):
@@ -3612,6 +3623,11 @@ def cp_hals_prior(
 
 
 def unfolded_eem_stack_initialization(M, rank, method='nndsvd'):
+    if method == 'ordinary_nmf':
+        nmf_model = NMF(n_components=rank, init='nndsvd')
+        W = nmf_model.fit_transform(M)
+        H = nmf_model.components_
+        return W, H
     # Step 1: Compute SVD of V
     U, S, VT = np.linalg.svd(M, full_matrices=False)  # SVD decomposition
 

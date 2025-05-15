@@ -25,6 +25,14 @@ idx_bot_oct = [i for i in range(len(eem_dataset_october.index)) if 'B1C2' in eem
 idx_top_jul = [i for i in range(len(eem_dataset_july.index)) if 'B1C1' in eem_dataset_july.index[i]]
 idx_bot_jul = [i for i in range(len(eem_dataset_july.index)) if 'B1C2' in eem_dataset_july.index[i]]
 
+eem_dataset_bac_path = 'C:/PhD/Fluo-detect/_data/20240313_BSA_Ecoli/synthetic_samples.json'
+eem_dataset_bac = read_eem_dataset_from_json(eem_dataset_bac_path)
+bacteria_eem = eem_dataset_bac.eem_stack[-5]
+bacteria_eem = eem_interpolation(bacteria_eem, eem_dataset_bac.ex_range, eem_dataset_bac.em_range,
+                                 eem_dataset.ex_range, eem_dataset.em_range, method='linear')
+bacteria_eem = np.nan_to_num(bacteria_eem, nan=0)
+
+
 #
 # # -------------prior decomposition function test---------
 #
@@ -83,33 +91,33 @@ idx_bot_jul = [i for i in range(len(eem_dataset_july.index)) if 'B1C2' in eem_da
 # dataset_train, dataset_test = eem_dataset_october.splitting(2)
 dataset_train = eem_dataset_october
 dataset_test = eem_dataset_july
-sample_prior = {2: dataset_train.ref['TCC (million #/mL)']}
+sample_prior = {0: dataset_train.ref['DOC (mg/L)']}
 params = {
     'n_components': 4,
-    'init': 'nndsvda',
-    'gamma_sample': 5e6,
+    'init': 'ordinary_nmf',
+    'gamma_sample': 0,
     'alpha_component': 0,
     'l1_ratio': 0,
     'max_iter_als': 100,
     'max_iter_nnls': 500,
-    'lam': 1e9
+    'lam': 0
 }
 model = EEMNMF(
     solver='hals',
     prior_dict_sample=sample_prior,
     normalization=None,
     sort_em=False,
-    # idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
-    # idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
+    idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
+    idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
     **params
 )
 model.fit(dataset_train)
 fmax_train = model.nmf_fmax
 components = model.components
 lr = LinearRegression(fit_intercept=True)
-mask_train = ~np.isnan(dataset_train.ref['TCC (million #/mL)'].to_numpy())
+mask_train = ~np.isnan(dataset_train.ref['DOC (mg/L)'].to_numpy())
 X_train = fmax_train.iloc[mask_train, [list(sample_prior.keys())[0]]].to_numpy()
-y_train = dataset_train.ref['TCC (million #/mL)'].to_numpy()[mask_train]
+y_train = dataset_train.ref['DOC (mg/L)'].to_numpy()[mask_train]
 lr.fit(X_train, y_train)
 y_pred_train = lr.predict(X_train)
 rmse_train = np.sqrt(mean_squared_error(y_train, y_pred_train))
@@ -122,10 +130,10 @@ _, fmax_test, eem_re_test = model.predict(
     idx_top=[i for i in range(len(dataset_test.index)) if 'B1C1' in dataset_test.index[i]],
     idx_bot=[i for i in range(len(dataset_test.index)) if 'B1C2' in dataset_test.index[i]],
                                           )
-sample_test_truth = {2: dataset_test.ref['TCC (million #/mL)']}
-mask_test = ~np.isnan(dataset_test.ref['TCC (million #/mL)'].to_numpy())
+sample_test_truth = {0: dataset_test.ref['DOC (mg/L)']}
+mask_test = ~np.isnan(dataset_test.ref['DOC (mg/L)'].to_numpy())
 X_test = fmax_test.iloc[mask_test, [list(sample_prior.keys())[0]]].to_numpy()
-y_test = dataset_test.ref['TCC (million #/mL)'].to_numpy()[mask_test]
+y_test = dataset_test.ref['DOC (mg/L)'].to_numpy()[mask_test]
 y_pred_test = lr.predict(X_test)
 rmse_test = np.sqrt(mean_squared_error(y_test, y_pred_test))
 r2_test = lr.score(X_test, y_test)
@@ -170,7 +178,7 @@ info_dict['r2_test'] = np.round(r2_test, decimals=3)
 info_dict['rmse_train'] = np.round(rmse_train, decimals=3)
 info_dict['rmse_test'] = np.round(rmse_test, decimals=3)
 fig, ax = plt.subplots(nrows=1, ncols=len(sample_prior))
-n_override = 0
+n_override = 3
 for i, ((n, p), (n2, t)) in enumerate(zip(sample_prior.items(), sample_test_truth.items())):
     if n_override is not None:
         n = n_override
