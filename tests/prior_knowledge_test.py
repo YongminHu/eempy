@@ -1,6 +1,4 @@
-import matplotlib.pyplot as plt
 from scipy.stats import zscore
-
 from eempy.read_data import read_eem_dataset, read_abs_dataset, read_eem, read_eem_dataset_from_json
 from eempy.eem_processing import *
 from eempy.plot import plot_eem, plot_loadings, plot_fmax
@@ -31,7 +29,7 @@ bacteria_eem = eem_dataset_bac.eem_stack[-5]
 bacteria_eem = eem_interpolation(bacteria_eem, eem_dataset_bac.ex_range, eem_dataset_bac.em_range,
                                  eem_dataset.ex_range, eem_dataset.em_range, method='linear')
 bacteria_eem = np.nan_to_num(bacteria_eem, nan=0)
-
+prior_dict_ref = {0: bacteria_eem.reshape(-1)}
 
 #
 # # -------------prior decomposition function test---------
@@ -95,7 +93,7 @@ sample_prior = {0: dataset_train.ref['DOC (mg/L)']}
 params = {
     'n_components': 4,
     'init': 'ordinary_nmf',
-    'gamma_sample': 0,
+    'gamma_sample': 1e6,
     'alpha_component': 0,
     'l1_ratio': 0,
     'max_iter_als': 100,
@@ -107,8 +105,9 @@ model = EEMNMF(
     prior_dict_sample=sample_prior,
     normalization=None,
     sort_em=False,
-    idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
-    idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
+
+    # idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
+    # idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
     **params
 )
 model.fit(dataset_train)

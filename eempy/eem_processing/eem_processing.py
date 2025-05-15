@@ -2460,8 +2460,9 @@ class EEMNMF:
     """
 
     def __init__(self, n_components, solver='cd', init='nndsvda', beta_loss='frobenius', alpha_sample=0,
-                 alpha_component=0,
-                 l1_ratio=1, prior_dict_sample=None, prior_dict_component=None, gamma_sample=0, gamma_component=0,
+                 alpha_component=0, l1_ratio=1,
+                 prior_dict_sample=None, prior_dict_component=None,
+                 gamma_sample=0, gamma_component=0, prior_ref_components=None,
                  idx_top=None, idx_bot=None, lam=0,
                  normalization='pixel_std', sort_em=True, max_iter_als=100, max_iter_nnls=500):
 
@@ -2475,6 +2476,7 @@ class EEMNMF:
         self.l1_ratio = l1_ratio
         self.prior_dict_sample = prior_dict_sample
         self.prior_dict_component = prior_dict_component
+        self.prior_ref_components = prior_ref_components
         self.gamma_sample = gamma_sample
         self.gamma_component = gamma_component
         self.idx_top = idx_top
@@ -2552,7 +2554,8 @@ class EEMNMF:
                         idx_bot=self.idx_bot,
                         lam=self.lam,
                         max_iter_als=self.max_iter_als,
-                        max_iter_nnls=self.max_iter_nnls
+                        max_iter_nnls=self.max_iter_nnls,
+                        prior_ref_components=self.prior_ref_components
                     )
                     self.beta = beta
                 else:
@@ -2564,7 +2567,8 @@ class EEMNMF:
                         gamma_W=self.gamma_sample,
                         gamma_H=self.gamma_component,
                         max_iter_als=self.max_iter_als,
-                        max_iter_nnls=self.max_iter_nnls
+                        max_iter_nnls=self.max_iter_nnls,
+                        prior_ref_components=self.prior_ref_components
                     )
                 nmf_score = W
                 components = H * factor_std
@@ -2582,7 +2586,8 @@ class EEMNMF:
                         idx_bot=self.idx_bot,
                         lam=self.lam,
                         max_iter_als=self.max_iter_als,
-                        max_iter_nnls=self.max_iter_nnls
+                        max_iter_nnls=self.max_iter_nnls,
+                        prior_ref_components=self.prior_ref_components
                     )
                     self.beta = beta
                 else:
@@ -2594,7 +2599,8 @@ class EEMNMF:
                         gamma_W=self.gamma_sample,
                         gamma_H=self.gamma_component,
                         max_iter_als=self.max_iter_als,
-                        max_iter_nnls=self.max_iter_nnls
+                        max_iter_nnls=self.max_iter_nnls,
+                        prior_ref_components=self.prior_ref_components
                     )
                 nmf_score = W
                 components = H
@@ -3330,7 +3336,7 @@ def nmf_hals_prior(
         init='random',
         custom_init=None,
         random_state=None,
-        prior_ref_component=None,
+        prior_ref_components=None,
 ):
     """
     Perform Non-negative Matrix Factorization (NMF) using the Hierarchical Alternating Least Squares (HALS) algorithm
@@ -3374,7 +3380,7 @@ def nmf_hals_prior(
         List of factors used for custom initialization
     random_state : int or None
         Seed for random initialization.
-    prior_ref_component : dict, {k: ref_component of shape (n_pixels,)}
+    prior_ref_components : dict, {k: ref_component of shape (n_pixels,)}
         Reference components to automatically reassign the keys of prior_dict_W according to the initialization.
     Returns
     -------
@@ -3391,7 +3397,7 @@ def nmf_hals_prior(
         H = tl.clip(rng.rand(rank, b), a_min=1e-6)
     elif init in ('svd', 'nndsvd', 'nndsvda', 'nndsvdar'):
         W, H = unfolded_eem_stack_initialization(X, rank=rank, method=init)
-    elif init == 'normal_nmf':
+    elif init == 'ordinary_nmf':
         init_model = NMF(n_components=rank, init='nndsvd', random_state=0)
         W = init_model.fit_transform(X)
         H = init_model.components_
@@ -3405,9 +3411,9 @@ def nmf_hals_prior(
         prior_dict_H = {}
     if prior_dict_W is None:
         prior_dict_W = {}
-    elif prior_ref_component is not None:
-        prior_keys = list(prior_ref_component.keys())
-        queries = np.array([prior_ref_component[k] for k in prior_keys])
+    elif prior_ref_components is not None:
+        prior_keys = list(prior_ref_components.keys())
+        queries = np.array([prior_ref_components[k] for k in prior_keys])
         cost_mat = cdist(queries, H, metric='euclidean')
         # run Hungarian algorithm
         query_idx, ref_idx = linear_sum_assignment(cost_mat)
@@ -3856,9 +3862,10 @@ def nmf_hals_prior_ratio(
         rank,
         idx_top,
         idx_bot,
+        lam=0,
         prior_dict_H=None,
         prior_dict_W=None,
-        lam=0,
+        prior_ref_components=None,
         gamma_W=0,
         gamma_H=0,
         alpha_W=0,
@@ -3932,6 +3939,20 @@ def nmf_hals_prior_ratio(
         W, H = custom_init
     else:
         raise ValueError(f"Unknown init {init}")
+
+    # Default empty priors
+    if prior_dict_H is None:
+        prior_dict_H = {}
+    if prior_dict_W is None:
+        prior_dict_W = {}
+    elif prior_ref_components is not None:
+        prior_keys = list(prior_ref_components.keys())
+        queries = np.array([prior_ref_components[k] for k in prior_keys])
+        cost_mat = cdist(queries, H, metric='euclidean')
+        # run Hungarian algorithm
+        query_idx, ref_idx = linear_sum_assignment(cost_mat)
+        # returns only k pairs
+        prior_dict_W = {ri: prior_dict_W[qi] for qi, ri in zip(query_idx, ref_idx)}
 
     beta = np.ones(rank, dtype=float)
     prev_err = np.inf
