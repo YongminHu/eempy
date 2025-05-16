@@ -3417,8 +3417,17 @@ def nmf_hals_prior(
         cost_mat = cdist(queries, H, metric='euclidean')
         # run Hungarian algorithm
         query_idx, ref_idx = linear_sum_assignment(cost_mat)
-        # returns only k pairs
-        prior_dict_W = {ri: prior_dict_W[qi] for qi, ri in zip(query_idx, ref_idx)}
+        H_new, W_new = np.zeros(H.shape), np.zeros(W.shape)
+        r_list_query, r_list_ref = [i for i in range(rank)], [i for i in range(rank)]
+        for qi, ri in zip(query_idx, ref_idx):
+            W_new[:, qi] = W[:, ri]
+            H_new[qi, :] = H[ri, :]
+            r_list_query.pop(qi)
+            r_list_ref.pop(ri)
+        for qi, ri in zip(r_list_query, r_list_ref):
+            W_new[:, qi] = W[:, ri]
+            H_new[qi, :] = H[ri, :]
+        W, H = W_new, H_new
 
     prev_err = tl.norm(X - tl.dot(W, H))
     for it in range(max_iter_als):
@@ -3951,7 +3960,17 @@ def nmf_hals_prior_ratio(
         cost_mat = cdist(queries, H, metric='euclidean')
         # run Hungarian algorithm
         query_idx, ref_idx = linear_sum_assignment(cost_mat)
-        prior_dict_W = {ri: prior_dict_W[qi] for qi, ri in zip(query_idx, ref_idx)}
+        H_new, W_new = np.zeros(H.shape), np.zeros(W.shape)
+        r_list_query, r_list_ref = [i for i in range(rank)], [i for i in range(rank)]
+        for qi, ri in zip(query_idx, ref_idx):
+            W_new[:, qi] = W[:, ri]
+            H_new[qi, :] = H[ri, :]
+            r_list_query.pop(qi)
+            r_list_ref.pop(ri)
+        for qi, ri in zip(r_list_query, r_list_ref):
+            W_new[:, qi] = W[:, ri]
+            H_new[qi, :] = H[ri, :]
+        W, H = W_new, H_new
 
     beta = np.ones(rank, dtype=float)
     prev_err = np.inf
