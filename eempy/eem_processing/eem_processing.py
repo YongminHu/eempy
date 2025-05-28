@@ -1704,7 +1704,7 @@ class PARAFAC:
         The number of components
     non_negativity: bool
         Whether to apply the non-negativity constraint
-    optimizer: str, {'mu', 'hals'}
+    solver: str, {'mu', 'hals'}
         Optimizer to for PARAFAC. 'mu' for multiplicative update optimizer, 'hals' for hierarchical alternating least
         square. 'hals' can only be applied together with non-negativity contraint.
     init: str or tensorly.CPTensor, {‘svd’, ‘random’, CPTensor}
@@ -1742,19 +1742,41 @@ class PARAFAC:
         Emission wavelengths.
     """
 
-    def __init__(self, n_components, non_negativity=True, optimizer='hals', init='svd', n_iter_max=100, tol=1e-06,
-                 tf_normalization=True, loadings_normalization: Optional[str] = 'sd', sort_em=True):
+    def __init__(self, n_components, non_negativity=True, solver='hals', init='svd',
+                 tf_normalization=True, loadings_normalization: Optional[str] = 'sd', sort_em=True,
+                 alpha_sample=0, alpha_ex=0, alpha_em=0, l1_ratio=1,
+                 prior_dict_sample=None, prior_dict_ex=None, prior_dict_em=None,
+                 gamma_sample=0, gamma_ex=0, gamma_em=0, prior_ref_components=None,
+                 idx_top=None, idx_bot=None, lam=0,
+                 max_iter_als=100, tol=1e-06, max_iter_nnls=500, random_state=None
+                 ):
 
         # ----------parameters--------------
         self.n_components = n_components
         self.non_negativity = non_negativity
         self.init = init
-        self.n_iter_max = n_iter_max
-        self.tol = tol
         self.tf_normalization = tf_normalization
         self.loadings_normalization = loadings_normalization
         self.sort_em = sort_em
-        self.optimizer = optimizer
+        self.solver = solver
+        self.alpha_sample = alpha_sample
+        self.alpha_ex = alpha_ex
+        self.alpha_em = alpha_em
+        self.l1_ratio = l1_ratio
+        self.prior_dict_sample = prior_dict_sample
+        self.prior_dict_ex = prior_dict_ex
+        self.prior_dict_em = prior_dict_em
+        self.gamma_sample = gamma_sample
+        self.gamma_ex = gamma_ex
+        self.gamma_em = gamma_em
+        self.prior_ref_components = prior_ref_components
+        self.idx_top = idx_top
+        self.idx_bot = idx_bot
+        self.lam = lam
+        self.max_iter_als = max_iter_als
+        self.tol = tol
+        self.max_iter_nnls = max_iter_nnls
+        self.random_state = random_state
 
         # -----------attributes---------------
         self.score = None
@@ -1767,6 +1789,7 @@ class PARAFAC:
         self.eem_stack_reconstructed = None
         self.ex_range = None
         self.em_range = None
+        self.beta = None
 
     # --------------methods------------------
     def fit(self, eem_dataset: EEMDataset):
@@ -1792,33 +1815,78 @@ class PARAFAC:
                 if np.isnan(eem_stack_tf).any():
                     mask = np.where(np.isnan(eem_stack_tf), 0, 1)
                     cptensors = parafac(eem_stack_tf, rank=self.n_components, mask=mask, init=self.init,
-                                        n_iter_max=self.n_iter_max, tol=self.tol)
+                                        n_iter_max=self.max_iter_als, tol=self.tol)
                 else:
                     cptensors = parafac(eem_stack_tf, rank=self.n_components, init=self.init,
-                                        n_iter_max=self.n_iter_max, tol=self.tol)
+                                        n_iter_max=self.max_iter_als, tol=self.tol)
+                a, b, c = cptensors[1]
             else:
                 if np.isnan(eem_stack_tf).any():
                     mask = np.where(np.isnan(eem_stack_tf), 0, 1)
-                    if self.optimizer == 'hals':
+                    if self.solver == 'hals':
                         cptensors = non_negative_parafac_hals(eem_stack_tf, rank=self.n_components, mask=mask,
                                                               init=self.init,
-                                                              n_iter_max=self.n_iter_max, tol=self.tol)
-                    elif self.optimizer == 'mu':
+                                                              n_iter_max=self.max_iter_als, tol=self.tol)
+                    elif self.solver == 'mu':
                         cptensors = non_negative_parafac(eem_stack_tf, rank=self.n_components, mask=mask,
                                                          init=self.init,
-                                                         n_iter_max=self.n_iter_max, tol=self.tol)
+                                                         n_iter_max=self.max_iter_als, tol=self.tol)
+                    a, b, c = cptensors[1]
                 else:
-                    if self.optimizer == 'hals':
-                        cptensors = non_negative_parafac_hals(eem_stack_tf, rank=self.n_components, init=self.init,
-                                                              n_iter_max=self.n_iter_max, tol=self.tol)
-                    elif self.optimizer == 'mu':
+                    if self.solver == 'hals':
+                        if self.idx_top and self.idx_bot:
+                            a, b, c, beta = cp_hals_prior_ratio(
+                                eem_stack_tf,
+                                rank=self.n_components,
+                                init=self.init,
+                                prior_dict_A=self.prior_dict_sample,
+                                prior_dict_B=self.prior_dict_ex,
+                                prior_dict_C=self.prior_dict_em,
+                                alpha_A=self.alpha_sample,
+                                alpha_B=self.alpha_ex,
+                                alpha_C=self.alpha_em,
+                                l1_ratio=self.l1_ratio,
+                                gamma_A=self.gamma_sample,
+                                gamma_B=self.gamma_ex,
+                                gamma_C=self.gamma_em,
+                                idx_top=self.idx_top,
+                                idx_bot=self.idx_bot,
+                                lam=self.lam,
+                                max_iter_als=self.max_iter_als,
+                                max_iter_nnls=self.max_iter_nnls,
+                                prior_ref_components=self.prior_ref_components,
+                                random_state=self.random_state
+                            )
+                            self.beta = beta
+                        else:
+                            a, b, c = cp_hals_prior(
+                                eem_stack_tf,
+                                rank=self.n_components,
+                                init=self.init,
+                                prior_dict_A=self.prior_dict_sample,
+                                prior_dict_B=self.prior_dict_ex,
+                                prior_dict_C=self.prior_dict_em,
+                                alpha_A=self.alpha_sample,
+                                alpha_B=self.alpha_ex,
+                                alpha_C=self.alpha_em,
+                                l1_ratio=self.l1_ratio,
+                                gamma_A=self.gamma_sample,
+                                gamma_B=self.gamma_ex,
+                                gamma_C=self.gamma_em,
+                                max_iter_als=self.max_iter_als,
+                                max_iter_nnls=self.max_iter_nnls,
+                                prior_ref_components=self.prior_ref_components,
+                                random_state=self.random_state
+                            )
+                        cptensors = [[1] * self.n_components, [a, b, c]]
+                    elif self.solver == 'mu':
                         cptensors = non_negative_parafac(eem_stack_tf, rank=self.n_components, init=self.init,
-                                                         n_iter_max=self.n_iter_max, tol=self.tol)
+                                                         n_iter_max=self.max_iter_als, tol=self.tol)
+                        a, b, c = cptensors[1]
         except ArpackError:
             print(
                 "PARAFAC failed possibly due to the presence of patches of nan values. Please consider cut or "
                 "interpolate the nan values.")
-        a, b, c = cptensors[1]
         components = np.zeros([self.n_components, b.shape[0], c.shape[0]])
         for r in range(self.n_components):
 
@@ -1899,10 +1967,10 @@ class PARAFAC:
         self.eem_stack_reconstructed = eem_stack_reconstructed
         return self
 
-    def predict(self, eem_dataset: EEMDataset, fit_intercept=False):
+    def predict(self, eem_dataset: EEMDataset, fit_intercept=False, fit_beta=False, idx_top=None, idx_bot=None):
         """
         Predict the score and Fmax of a given EEM dataset using the component fitted. This method can be applied to a
-        new EEM dataset independent of the one used in PARAFAC model fitting.
+        new EEM dataset independent of the one used in NMF model establishment.
 
         Parameters
         ----------
@@ -1910,6 +1978,12 @@ class PARAFAC:
             The EEM dataset to be predicted.
         fit_intercept: bool
             Whether to calculate the intercept.
+        fit_beta: bool
+            Whether to fit the beta parameter (the proportions between "top" and "bot" samples).
+        idx_top: list, optional
+            List of indices of samples serving as numerators in ratio calculation.
+        idx_bot: list, optional
+            List of indices of samples serving as denominators in ratio calculation.
 
         Returns
         -------
@@ -1920,9 +1994,26 @@ class PARAFAC:
         eem_stack_pred: np.ndarray (3d)
             The EEM dataset reconstructed.
         """
-        score_sample, fmax_sample, eem_stack_pred = eems_fit_components(eem_dataset.eem_stack, self.components,
-                                                                        fit_intercept=fit_intercept)
-        score_sample = pd.DataFrame(score_sample, index=eem_dataset.index, columns=self.score.columns)
+        if not fit_beta:
+            score_sample, fmax_sample, eem_stack_pred = eems_fit_components(eem_dataset.eem_stack, self.components,
+                                                                            fit_intercept=fit_intercept)
+        else:
+            assert self.beta is not None, "Parameter beta must be provided through fitting."
+            assert idx_top is not None and idx_bot is not None, "idx_top and idx_bot must be provided."
+            max_values = np.amax(self.components, axis=(1, 2))
+            score_sample = np.zeros([eem_dataset.eem_stack.shape[0], self.n_components])
+            score_sample_bot = solve_W(
+                X1=eem_stack_to_2d(eem_dataset.eem_stack)[idx_bot],
+                X2=eem_stack_to_2d(eem_dataset.eem_stack)[idx_top],
+                H=self.components.reshape([self.n_components, -1]),
+                beta=self.beta
+            )
+            score_sample[idx_bot] = score_sample_bot
+            score_sample[idx_top] = score_sample_bot * self.beta
+            fmax_sample = score_sample * max_values
+            eem_stack_pred = score_sample @ self.components.reshape([self.n_components, -1])
+            eem_stack_pred = eem_stack_pred.reshape(eem_dataset.eem_stack.shape)
+        score_sample = pd.DataFrame(score_sample, index=eem_dataset.index, columns=self.fmax.columns)
         fmax_sample = pd.DataFrame(fmax_sample, index=eem_dataset.index, columns=self.fmax.columns)
         return score_sample, fmax_sample, eem_stack_pred
 
@@ -2402,8 +2493,7 @@ class SplitValidation:
 
 class EEMNMF:
     """
-    Non-negative matrix factorization (NMF) model for EEM dataset. The model establishment is adapted from sklearn. See
-    https://scikit-learn.org/dev/modules/generated/sklearn.decomposition.NMF.html for more details.
+    Non-negative matrix factorization (NMF) model for EEM dataset.
 
     Parameters
     ----------
@@ -2463,8 +2553,8 @@ class EEMNMF:
         EEMs reconstructed by the established PARAFAC model.
     """
 
-    def __init__(self, n_components, solver='cd', init='nndsvda', beta_loss='frobenius', alpha_sample=0,
-                 alpha_component=0, l1_ratio=1,
+    def __init__(self, n_components, solver='cd', init='nndsvda', beta_loss='frobenius',
+                 alpha_sample=0, alpha_component=0, l1_ratio=1,
                  prior_dict_sample=None, prior_dict_component=None,
                  gamma_sample=0, gamma_component=0, prior_ref_components=None,
                  idx_top=None, idx_bot=None, lam=0,
@@ -3765,6 +3855,7 @@ def cp_hals_prior_ratio(
     A : ndarray, shape (I, rank)
     B : ndarray, shape (J, rank)
     C : ndarray, shape (K, rank)
+    beta: ndarray, shape (rank,)
     """
     # Ensure tensor
     X = tl.tensor(tensor, dtype=float)
@@ -3805,7 +3896,7 @@ def cp_hals_prior_ratio(
     if prior_dict_A is None:
         prior_dict_A = {}
     elif prior_ref_components is not None:
-        H = np.zeros([rank, B.shape[0]*C.shape[0]])
+        H = np.zeros([rank, B.shape[0] * C.shape[0]])
         for r in range(rank):
             component = np.array([B[:, r]]).T.dot(np.array([C[:, r]]))
             H[r, :] = component.reshape(-1)
@@ -3902,7 +3993,7 @@ def cp_hals_prior_ratio(
             break
         prev_error = err
 
-    return A, B, C
+    return A, B, C, beta
 
 
 def unfolded_eem_stack_initialization(M, rank, method='nndsvd'):
@@ -4078,11 +4169,11 @@ def hals_column_with_ratio(
 
 
 def update_beta(
-    W: np.ndarray,
-    idx_top,
-    idx_bot,
-    eps: float = 1e-8,
-    boundaries: tuple = (0.95, 1.4)
+        W: np.ndarray,
+        idx_top,
+        idx_bot,
+        eps: float = 1e-8,
+        boundaries: tuple = (0.95, 1.4)
 ) -> np.ndarray:
     """
     Fit beta per component so that W[idx_top, j] ≈ beta[j] * W[idx_bot, j].
@@ -4118,8 +4209,8 @@ def update_beta(
         raise ValueError("`idx_top` and `idx_bot` must have the same length")
 
     # Extract the paired rows
-    W_top = W[idx_top, :]    # shape (p, r)
-    W_bot = W[idx_bot, :]    # shape (p, r)
+    W_top = W[idx_top, :]  # shape (p, r)
+    W_bot = W[idx_bot, :]  # shape (p, r)
 
     # Compute numerator and denominator for each component j:
     #   numerator_j   = sum_i W_top[i,j] * W_bot[i,j]

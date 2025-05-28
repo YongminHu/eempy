@@ -3672,7 +3672,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
 
     for r in rank_list:
         parafac_r = PARAFAC(n_components=r, init=init, non_negativity=True if 'non_negative' in nn else False,
-                            tf_normalization=True if 'tf_normalization' in tf else False, optimizer=optimizer,
+                            tf_normalization=True if 'tf_normalization' in tf else False, solver=optimizer,
                             sort_em=True, loadings_normalization='maximum')
         parafac_r.fit(eem_dataset_establishment)
         parafac_fit_params_r = {}

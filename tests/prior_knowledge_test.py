@@ -39,27 +39,27 @@ prior_dict_ref = {0: bacteria_eem.reshape(-1)}
 #
 # # -------------prior decomposition function test---------
 #
-A, B, C = cp_hals_prior_ratio(
-    tensor=eem_dataset_october.eem_stack,
-    rank=5,
-    prior_dict_A={0: eem_dataset_october.ref['TCC (million #/mL)'].to_numpy()},
-    gamma_A=3e8,
-    prior_ref_components=prior_dict_ref,
-    lam=0,
-    idx_top=[i for i in range(len(eem_dataset_october.index)) if 'B1C1' in eem_dataset_october.index[i]],
-    idx_bot=[i for i in range(len(eem_dataset_october.index)) if 'B1C2' in eem_dataset_october.index[i]],
-    tol=1e-9,
-    init='ordinary_cp',
-    random_state=42
-)
-plt.plot(A[:, 0], eem_dataset_october.ref['TCC (million #/mL)'], 'o')
-plt.show()
-for r in range(A.shape[0]):
-    plot_eem(np.outer(B[:, r], C[:, r]),
-             ex_range=eem_dataset_original.ex_range,
-             em_range=eem_dataset_original.em_range,
-             display=True
-             )
+# A, B, C, beta = cp_hals_prior_ratio(
+#     tensor=eem_dataset_october.eem_stack,
+#     rank=5,
+#     prior_dict_A={0: eem_dataset_october.ref['TCC (million #/mL)'].to_numpy()},
+#     gamma_A=3e8,
+#     prior_ref_components=prior_dict_ref,
+#     lam=0,
+#     idx_top=[i for i in range(len(eem_dataset_october.index)) if 'B1C1' in eem_dataset_october.index[i]],
+#     idx_bot=[i for i in range(len(eem_dataset_october.index)) if 'B1C2' in eem_dataset_october.index[i]],
+#     tol=1e-9,
+#     init='ordinary_cp',
+#     random_state=42
+# )
+# plt.plot(A[:, 0], eem_dataset_october.ref['TCC (million #/mL)'], 'o')
+# plt.show()
+# for r in range(A.shape[0]):
+#     plot_eem(np.outer(B[:, r], C[:, r]),
+#              ex_range=eem_dataset_original.ex_range,
+#              em_range=eem_dataset_original.em_range,
+#              display=True
+#              )
 #
 # A, B, beta = nmf_hals_prior_ratio(
 #     X=eem_dataset_july.eem_stack.reshape([eem_dataset_july.eem_stack.shape[0], -1]),
@@ -111,42 +111,29 @@ dataset_train = dataset_train_splits[0]
 dataset_test = dataset_train_splits[1]
 indicator = 'TCC (million #/mL)'
 sample_prior = {0: dataset_train.ref[indicator]}
-params = {
-    'n_components': 5,
-    'init': 'ordinary_nmf',
-    'gamma_sample': 3e7,
-    'alpha_component': 0,
-    'l1_ratio': 0,
-    'max_iter_als': 100,
-    'max_iter_nnls': 800,
-    'lam': 1e9, # 1e8
-    'random_state': 42
-}
-model = EEMNMF(
-    solver='hals',
-    prior_dict_sample=sample_prior,
-    normalization=None,
-    sort_em=False,
-    prior_ref_components=prior_dict_ref,
-    idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
-    idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
-    **params
-)
-model.fit(dataset_train)
-fmax_train = model.nmf_fmax
-components = model.components
-lr = LinearRegression(fit_intercept=False)
-mask_train = ~np.isnan(dataset_train.ref[indicator].to_numpy())
-X_train = fmax_train.iloc[mask_train, [list(sample_prior.keys())[0]]].to_numpy()
-y_train = dataset_train.ref[indicator].to_numpy()[mask_train]
-lr.fit(X_train, y_train)
-y_pred_train = lr.predict(X_train)
-rmse_train = np.sqrt(mean_squared_error(y_train, y_pred_train))
-r2_train = lr.score(X_train, y_train)
-
-# model = PARAFAC(n_components=5)
+# params = {
+#     'n_components': 5,
+#     'init': 'ordinary_nmf',
+#     'gamma_sample': 3e7,
+#     'alpha_component': 0,
+#     'l1_ratio': 0,
+#     'max_iter_als': 100,
+#     'max_iter_nnls': 800,
+#     'lam': 1e9, # 1e8
+#     'random_state': 42
+# }
+# model = EEMNMF(
+#     solver='hals',
+#     prior_dict_sample=sample_prior,
+#     normalization=None,
+#     sort_em=False,
+#     prior_ref_components=prior_dict_ref,
+#     idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
+#     idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
+#     **params
+# )
 # model.fit(dataset_train)
-# fmax_train = model.fmax
+# fmax_train = model.nmf_fmax
 # components = model.components
 # lr = LinearRegression(fit_intercept=False)
 # mask_train = ~np.isnan(dataset_train.ref[indicator].to_numpy())
@@ -156,6 +143,36 @@ r2_train = lr.score(X_train, y_train)
 # y_pred_train = lr.predict(X_train)
 # rmse_train = np.sqrt(mean_squared_error(y_train, y_pred_train))
 # r2_train = lr.score(X_train, y_train)
+params = {
+    'n_components': 5,
+    'init': 'ordinary_cp',
+    'gamma_sample': 1e12,
+    'max_iter_als': 100,
+    'max_iter_nnls': 800,
+    'lam': 0, # 1e8
+    'random_state': 42
+}
+model = PARAFAC(
+        solver='hals',
+        prior_dict_sample=sample_prior,
+        tf_normalization=False,
+        sort_em=False,
+        prior_ref_components=prior_dict_ref,
+        idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
+        idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
+        **params
+)
+model.fit(dataset_train)
+fmax_train = model.fmax
+components = model.components
+lr = LinearRegression(fit_intercept=False)
+mask_train = ~np.isnan(dataset_train.ref[indicator].to_numpy())
+X_train = fmax_train.iloc[mask_train, [list(sample_prior.keys())[0]]].to_numpy()
+y_train = dataset_train.ref[indicator].to_numpy()[mask_train]
+lr.fit(X_train, y_train)
+y_pred_train = lr.predict(X_train)
+rmse_train = np.sqrt(mean_squared_error(y_train, y_pred_train))
+r2_train = lr.score(X_train, y_train)
 
 # -----------model testing-------------
 
