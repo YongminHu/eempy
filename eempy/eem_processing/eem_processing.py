@@ -3594,7 +3594,7 @@ def cp_hals_prior(
         W3, _ = unfolded_eem_stack_initialization(tl.to_numpy(X3), rank, method=init)
         C = tl.tensor(np.clip(W3, a_min=eps, a_max=None), dtype=float)
     elif init == 'ordinary_cp':
-        A, B, C = non_negative_parafac_hals(X, rank=rank)
+        A, B, C = non_negative_parafac_hals(X, rank=rank, random_state=random_state)
     elif init == 'custom':
         A, B, C = custom_init
     else:
@@ -3608,7 +3608,7 @@ def cp_hals_prior(
     if prior_dict_A is None:
         prior_dict_A = {}
     elif prior_ref_components is not None:
-        H = np.zeros([rank, B.shape[0]*C.shape[0]])
+        H = np.zeros([rank, B.shape[0] * C.shape[0]])
         for r in range(rank):
             component = np.array([B[:, r]]).T.dot(np.array([C[:, r]]))
             H[r, :] = component.reshape(-1)
@@ -3683,6 +3683,214 @@ def cp_hals_prior(
             max_iter=max_iter_nnls
         )
         C = C.T
+
+        # Normalize factors for numerical stability (optional)
+        weights, [A, B, C] = cp_normalize((None, [A, B, C]))
+
+        # Check convergence
+        reconstructed = cp_to_tensor((None, [A, B, C]))
+        err = tl.norm(X - reconstructed)
+        if abs(prev_error - err) / (prev_error + eps) < tol:
+            break
+        prev_error = err
+
+    return A, B, C
+
+
+def cp_hals_prior_ratio(
+        tensor,
+        rank,
+        prior_dict_A=None,
+        prior_dict_B=None,
+        prior_dict_C=None,
+        gamma_A=0,
+        gamma_B=0,
+        gamma_C=0,
+        prior_ref_components=None,
+        alpha_A=0,
+        alpha_B=0,
+        alpha_C=0,
+        l1_ratio=0,
+        lam=0,
+        idx_top=None,
+        idx_bot=None,
+        max_iter_als=200,
+        max_iter_nnls=500,
+        tol=1e-6,
+        eps=1e-8,
+        init='svd',
+        custom_init=None,
+        random_state=None
+):
+    """
+    Perform non-negative PARAFAC/CP decomposition of a 3-way tensor using HALS with optional priors
+    and elastic-net penalties on factor matrices A, B, C.
+
+    Decomposes `tensor` of shape (I, J, K) into factors A (I x rank), B (J x rank), C (K x rank) such that:
+        tensor ≈ [[A, B, C]]
+
+    Parameters
+    ----------
+    tensor : array-like, shape (I, J, K)
+        Input non-negative tensor.
+    rank : int
+        Number of components.
+    prior_dict_A : dict {r: v_r}, optional
+        Priors for columns of A: column r of A is penalized toward vector v_r.
+    prior_dict_B : dict {r: v_r}, optional
+        Priors for columns of B.
+    prior_dict_C : dict {r: v_r}, optional
+        Priors for columns of C.
+    gamma_A, gamma_B, gamma_C : float, optional
+        Quadratic prior weights for A, B, C.
+    alpha_A, alpha_B, alpha_C : float, optional
+        Elastic-net weights for A, B, C.
+    l1_ratio : float in [0,1], optional
+        Mix between L1 and L2 for elastic-net.
+    max_iter_als : int, optional
+        Maximum number of outer ALS iterations.
+    max_iter_nnls : int, optional
+        Maximum number of inner NNLS interations.
+    tol : float, optional
+        Convergence tolerance on reconstruction error.
+    eps : float, optional
+        Small constant to avoid zero division and ensure positivity.
+    init : {'random', 'svd', 'nndsvd', 'nndsvda', 'nndsvdar'}, default 'random'
+        Initialization scheme for factor matrices.
+    random_state : int or None
+        Random seed.
+
+    Returns
+    -------
+    A : ndarray, shape (I, rank)
+    B : ndarray, shape (J, rank)
+    C : ndarray, shape (K, rank)
+    """
+    # Ensure tensor
+    X = tl.tensor(tensor, dtype=float)
+    I, J, K = X.shape
+    rng = np.random.RandomState(random_state)
+
+    # Initialize factors A, B, C
+    if init == 'random':
+        A = tl.clip(rng.rand(I, rank), a_min=eps)
+        B = tl.clip(rng.rand(J, rank), a_min=eps)
+        C = tl.clip(rng.rand(K, rank), a_min=eps)
+    elif init in ('svd', 'nndsvd', 'nndsvda', 'nndsvdar'):
+        # Use 2D initialization on each mode unfolding
+        # Mode-0 init for A
+        X1 = tl.unfold(X, mode=0)
+        W1, _ = unfolded_eem_stack_initialization(tl.to_numpy(X1), rank, method=init)
+        A = tl.tensor(np.clip(W1, a_min=eps, a_max=None), dtype=float)
+        # Mode-1 init for B
+        X2 = tl.unfold(X, mode=1)
+        W2, _ = unfolded_eem_stack_initialization(tl.to_numpy(X2), rank, method=init)
+        B = tl.tensor(np.clip(W2, a_min=eps, a_max=None), dtype=float)
+        # Mode-2 init for C
+        X3 = tl.unfold(X, mode=2)
+        W3, _ = unfolded_eem_stack_initialization(tl.to_numpy(X3), rank, method=init)
+        C = tl.tensor(np.clip(W3, a_min=eps, a_max=None), dtype=float)
+    elif init == 'ordinary_cp':
+        A, B, C = non_negative_parafac_hals(X, rank=rank, random_state=random_state)[1]
+    elif init == 'custom':
+        A, B, C = custom_init
+    else:
+        raise ValueError(f"Unknown init mode: {init}")
+
+    # Default empty priors
+    if prior_dict_B is None:
+        prior_dict_B = {}
+    if prior_dict_C is None:
+        prior_dict_C = {}
+    if prior_dict_A is None:
+        prior_dict_A = {}
+    elif prior_ref_components is not None:
+        H = np.zeros([rank, B.shape[0]*C.shape[0]])
+        for r in range(rank):
+            component = np.array([B[:, r]]).T.dot(np.array([C[:, r]]))
+            H[r, :] = component.reshape(-1)
+        prior_keys = list(prior_ref_components.keys())
+        queries = np.array([prior_ref_components[k] for k in prior_keys])
+        cost_mat = cdist(queries, H, metric='correlation')
+        # run Hungarian algorithm
+        query_idx, ref_idx = linear_sum_assignment(cost_mat)
+        A_new, B_new, C_new = np.zeros(A.shape), np.zeros(B.shape), np.zeros(C.shape)
+        r_list_query, r_list_ref = [i for i in range(rank)], [i for i in range(rank)]
+        for qi, ri in zip(query_idx, ref_idx):
+            A_new[:, qi] = A[:, ri]
+            B_new[:, qi] = B[:, ri]
+            C_new[:, qi] = C[:, ri]
+            r_list_query.pop(qi)
+            r_list_ref.pop(ri)
+        for qi, ri in zip(r_list_query, r_list_ref):
+            A_new[:, qi] = A[:, ri]
+            B_new[:, qi] = B[:, ri]
+            C_new[:, qi] = C[:, ri]
+        A, B, C = A_new, B_new, C_new
+
+    beta = np.ones(rank, dtype=float)
+    prev_error = tl.norm(X - cp_to_tensor((None, [A, B, C])))
+    for iteration in range(max_iter_als):
+        # Update B:
+        UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 1)
+        UtU = (C.T @ C) * (A.T @ A)  # shape (rank, rank)
+        B = hals_prior_nnls(
+            UtM=UtM.T,  # shape (rank, J)
+            UtU=UtU,
+            prior_dict=prior_dict_B,
+            V=B.T,
+            gamma=gamma_B,
+            alpha=alpha_B,
+            l1_ratio=l1_ratio,
+            tol=tol,
+            eps=eps,
+            max_iter=max_iter_nnls
+        )
+        B = B.T
+
+        # Update C:
+        UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 2)
+        UtU = (B.T @ B) * (A.T @ A)  # shape (rank, rank)
+        C = hals_prior_nnls(
+            UtM=UtM.T,  # shape (rank, K)
+            UtU=UtU,
+            prior_dict=prior_dict_C,
+            V=C.T,
+            gamma=gamma_C,
+            alpha=alpha_C,
+            l1_ratio=l1_ratio,
+            tol=tol,
+            eps=eps,
+            max_iter=max_iter_nnls
+        )
+        C = C.T
+
+        # --- Update W via ratio-aware HALS columns ---
+        UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 0).T  # (r, m)
+        UtU = (C.T @ C) * (B.T @ B)  # (r, r)
+        for k in range(rank):
+            Rk = UtM[k].copy()
+            for j in range(rank):
+                if j != k:
+                    Rk -= UtU[k, j] * A[:, j]
+            d = UtU[k, k]
+            A[:, k] = hals_column_with_ratio(
+                Rk=Rk,
+                hk_norm2=d,
+                beta_k=beta[k],
+                lam=lam,
+                k=k,
+                prior_dict=prior_dict_A,
+                gamma=gamma_A,
+                alpha=alpha_A,
+                l1_ratio=l1_ratio,
+                idx_top=idx_top,
+                idx_bot=idx_bot,
+                eps=eps
+            )
+
+        # --- Beta‐step (closed form) ---
+        beta = update_beta(A, idx_top=idx_top, idx_bot=idx_bot, eps=0)
 
         # Normalize factors for numerical stability (optional)
         weights, [A, B, C] = cp_normalize((None, [A, B, C]))

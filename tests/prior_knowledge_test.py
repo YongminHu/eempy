@@ -17,8 +17,8 @@ np.random.seed(42)
 eem_dataset_path = \
     "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/sample_260_ex_274_em_310_mfem_3.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
-eem_dataset.raman_scattering_removal(width=10, interpolation_method='nan',copy=False)
-eem_dataset.eem_stack = np.nan_to_num(eem_dataset.eem_stack, copy=True, nan=0)
+# eem_dataset.raman_scattering_removal(width=10, interpolation_method='nan',copy=False)
+# eem_dataset.eem_stack = np.nan_to_num(eem_dataset.eem_stack, copy=True, nan=0)
 eem_dataset_july, _ = eem_dataset.filter_by_index(None, ['2024-07-'], copy=True)
 eem_dataset_october, _ = eem_dataset.filter_by_index(None, ['2024-10-'], copy=True)
 eem_dataset_original, _ = eem_dataset.filter_by_index(['B1C1'], None, copy=True)
@@ -39,21 +39,27 @@ prior_dict_ref = {0: bacteria_eem.reshape(-1)}
 #
 # # -------------prior decomposition function test---------
 #
-# A, B, C = cp_hals_prior(
-#     tensor=eem_dataset_original.eem_stack,
-#     rank=6,
-#     prior_dict_A={0: eem_dataset_original.ref['TCC (million #/mL)'].to_numpy()},
-#     gamma_A=7.51 * 1e3,
-#     tol=1e-9,
-#     init='nndsvda'
-# )
-# plt.plot(A[:, 0], eem_dataset_original.ref['TCC (million #/mL)'], 'o')
-# plt.show()
-# plot_eem(np.outer(B[:, 0], C[:, 0]),
-#          ex_range=eem_dataset_original.ex_range,
-#          em_range=eem_dataset_original.em_range,
-#          display=True
-#          )
+A, B, C = cp_hals_prior_ratio(
+    tensor=eem_dataset_october.eem_stack,
+    rank=5,
+    prior_dict_A={0: eem_dataset_october.ref['TCC (million #/mL)'].to_numpy()},
+    gamma_A=3e8,
+    prior_ref_components=prior_dict_ref,
+    lam=0,
+    idx_top=[i for i in range(len(eem_dataset_october.index)) if 'B1C1' in eem_dataset_october.index[i]],
+    idx_bot=[i for i in range(len(eem_dataset_october.index)) if 'B1C2' in eem_dataset_october.index[i]],
+    tol=1e-9,
+    init='ordinary_cp',
+    random_state=42
+)
+plt.plot(A[:, 0], eem_dataset_october.ref['TCC (million #/mL)'], 'o')
+plt.show()
+for r in range(A.shape[0]):
+    plot_eem(np.outer(B[:, r], C[:, r]),
+             ex_range=eem_dataset_original.ex_range,
+             em_range=eem_dataset_original.em_range,
+             display=True
+             )
 #
 # A, B, beta = nmf_hals_prior_ratio(
 #     X=eem_dataset_july.eem_stack.reshape([eem_dataset_july.eem_stack.shape[0], -1]),
