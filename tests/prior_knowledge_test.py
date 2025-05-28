@@ -1,3 +1,5 @@
+import pickle
+
 from scipy.stats import zscore
 from eempy.read_data import read_eem_dataset, read_abs_dataset, read_eem, read_eem_dataset_from_json
 from eempy.eem_processing import *
@@ -6,13 +8,16 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from itertools import product
 import seaborn as sns
 
+np.random.seed(42)
+
 # ---------------Read EEM dataset-----------------
 
 # eem_dataset_path = \
 #     "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/nan_sample_260_ex_274_em_310_mfem_5.json"
 eem_dataset_path = \
-    "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/nan_sample_260_ex_274_em_310_mfem_5.json"
+    "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/sample_260_ex_274_em_310_mfem_3.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
+eem_dataset.raman_scattering_removal(width=10, interpolation_method='nan',copy=False)
 eem_dataset.eem_stack = np.nan_to_num(eem_dataset.eem_stack, copy=True, nan=0)
 eem_dataset_july, _ = eem_dataset.filter_by_index(None, ['2024-07-'], copy=True)
 eem_dataset_october, _ = eem_dataset.filter_by_index(None, ['2024-10-'], copy=True)
@@ -87,19 +92,29 @@ prior_dict_ref = {0: bacteria_eem.reshape(-1)}
 
 # -----------model training-------------
 # dataset_train, dataset_test = eem_dataset_october.splitting(2)
-dataset_train = eem_dataset_october
-dataset_test = eem_dataset_july
+dataset_train_splits = []
+dataset_train_unquenched, _ = eem_dataset_october.filter_by_index('B1C1', None, copy=True)
+initial_sub_eem_datasets_unquenched = dataset_train_unquenched.splitting(n_split=2, random_state=42)
+dataset_train_quenched, _ = eem_dataset_october.filter_by_index('B1C2', None, copy=True)
+for subset in initial_sub_eem_datasets_unquenched:
+    pos = [dataset_train_unquenched.index.index(idx) for idx in subset.index]
+    quenched_index = [eem_dataset_quenched.index[idx] for idx in pos]
+    sub_eem_dataset_quenched, _ = eem_dataset.filter_by_index(None, quenched_index, copy=True)
+    dataset_train_splits.append(combine_eem_datasets([subset, sub_eem_dataset_quenched]))
+dataset_train = dataset_train_splits[0]
+dataset_test = dataset_train_splits[1]
 indicator = 'TCC (million #/mL)'
 sample_prior = {0: dataset_train.ref[indicator]}
 params = {
-    'n_components': 4,
+    'n_components': 5,
     'init': 'ordinary_nmf',
-    'gamma_sample': 0,
+    'gamma_sample': 3e7,
     'alpha_component': 0,
     'l1_ratio': 0,
     'max_iter_als': 100,
-    'max_iter_nnls': 500,
-    'lam': 1e3
+    'max_iter_nnls': 800,
+    'lam': 1e9, # 1e8
+    'random_state': 42
 }
 model = EEMNMF(
     solver='hals',
@@ -114,7 +129,7 @@ model = EEMNMF(
 model.fit(dataset_train)
 fmax_train = model.nmf_fmax
 components = model.components
-lr = LinearRegression(fit_intercept=True)
+lr = LinearRegression(fit_intercept=False)
 mask_train = ~np.isnan(dataset_train.ref[indicator].to_numpy())
 X_train = fmax_train.iloc[mask_train, [list(sample_prior.keys())[0]]].to_numpy()
 y_train = dataset_train.ref[indicator].to_numpy()[mask_train]
@@ -123,10 +138,24 @@ y_pred_train = lr.predict(X_train)
 rmse_train = np.sqrt(mean_squared_error(y_train, y_pred_train))
 r2_train = lr.score(X_train, y_train)
 
+# model = PARAFAC(n_components=5)
+# model.fit(dataset_train)
+# fmax_train = model.fmax
+# components = model.components
+# lr = LinearRegression(fit_intercept=False)
+# mask_train = ~np.isnan(dataset_train.ref[indicator].to_numpy())
+# X_train = fmax_train.iloc[mask_train, [list(sample_prior.keys())[0]]].to_numpy()
+# y_train = dataset_train.ref[indicator].to_numpy()[mask_train]
+# lr.fit(X_train, y_train)
+# y_pred_train = lr.predict(X_train)
+# rmse_train = np.sqrt(mean_squared_error(y_train, y_pred_train))
+# r2_train = lr.score(X_train, y_train)
+
 # -----------model testing-------------
 
 _, fmax_test, eem_re_test = model.predict(
     dataset_test,
+    fit_beta=False,
     idx_top=[i for i in range(len(dataset_test.index)) if 'B1C1' in dataset_test.index[i]],
     idx_bot=[i for i in range(len(dataset_test.index)) if 'B1C2' in dataset_test.index[i]],
                                           )
@@ -173,19 +202,38 @@ fig.show()
 
 # -----------plot Fmax vs. prior variables----------
 info_dict = params.copy()
-info_dict['r2_train'] = np.round(r2_train, decimals=3)
-info_dict['r2_test'] = np.round(r2_test, decimals=3)
-info_dict['rmse_train'] = np.round(rmse_train, decimals=3)
-info_dict['rmse_test'] = np.round(rmse_test, decimals=3)
+# info_dict['r2_train'] = np.round(r2_train, decimals=3)
+# info_dict['r2_test'] = np.round(r2_test, decimals=3)
+# info_dict['rmse_train'] = np.round(rmse_train, decimals=3)
+# info_dict['rmse_test'] = np.round(rmse_test, decimals=3)
 fig, ax = plt.subplots(nrows=1, ncols=len(sample_prior))
-n_override = 2
+n_override = 0
 for i, ((n, p), (n2, t)) in enumerate(zip(sample_prior.items(), sample_test_truth.items())):
     if n_override is not None:
         n = n_override
         n2 = n_override
     if len(sample_prior) == 1:
-        ax.plot(fmax_train.iloc[:, n], p.to_numpy(), 'o')
-        ax.plot(fmax_test.iloc[:, n], t.to_numpy(), 'o')
+        ax.plot(fmax_train.iloc[:, n], p.to_numpy(), 'o', label='training')
+        ax.plot(fmax_test.iloc[:, n], t.to_numpy(), 'o', label='testing')
+        lr_n = LinearRegression(fit_intercept=False)
+        mask_train_n = ~np.isnan(dataset_train.ref[indicator].to_numpy())
+        lr_n.fit(fmax_train.iloc[mask_train_n, [n]].to_numpy(), p.iloc[mask_train_n])
+        y_pred_train = lr.predict(fmax_train.iloc[mask_train_n, [n]].to_numpy())
+        rmse_train = np.sqrt(mean_squared_error(p.iloc[mask_train_n], y_pred_train))
+        r2_train = lr.score(fmax_train.iloc[mask_train_n, [n]], p.iloc[mask_train_n])
+        y_pred_test = lr.predict(fmax_test.iloc[:, [n]].to_numpy())
+        mask_test_n = ~np.isnan(dataset_test.ref[indicator].to_numpy())
+        rmse_test = np.sqrt(mean_squared_error(t.iloc[mask_test_n].to_numpy(), y_pred_test[mask_test_n]))
+        r2_test = lr.score(fmax_test.iloc[mask_test_n, [n]].to_numpy(), t.iloc[mask_test_n].to_numpy())
+        info_dict['r2_train'] = np.round(r2_train, decimals=3)
+        info_dict['r2_test'] = np.round(r2_test, decimals=3)
+        info_dict['rmse_train'] = np.round(rmse_train, decimals=3)
+        info_dict['rmse_test'] = np.round(rmse_test, decimals=3)
+        info_dict['fit_intercept'] = True if lr_n.fit_intercept else False
+        if lr_n.fit_intercept:
+            ax.plot([0, 10000], np.array([0, 10000])*lr_n.coef_[0]+lr_n.intercept_, '--')
+        else:
+            ax.plot([0, 10000], np.array([0, 10000]) * lr_n.coef_[0], '--')
         ax.text(
             0.01, 0.99,
             '\n'.join(f'{k}: {v}' for k, v in info_dict.items()),
@@ -194,19 +242,32 @@ for i, ((n, p), (n2, t)) in enumerate(zip(sample_prior.items(), sample_test_trut
             verticalalignment='top',
             horizontalalignment='left'
         )
-        ax.set_title(f'Fmax C{n + 1} vs. {p.name}')
-        ax.set_xlabel(f'Fmax C{n + 1}')
-        ax.set_ylabel(f'{p.name}')
+        ax.set_title(f'Fmax C{n + 1} vs. {p.name}', fontsize=18)
+        ax.set_xlabel(f'Fmax C{n + 1}', fontsize=18)
+        ax.set_ylabel(f'{p.name}', fontsize=18)
+        ax.tick_params(labelsize=16)
+        ax.set_xlim([0, max(
+            max(fmax_train.iloc[:, n].to_numpy()),
+            max(fmax_test.iloc[:, n].to_numpy())
+        )+100
+                     ])
+        ax.set_ylim([0, max(
+            max(p.to_numpy()),
+            max(t.to_numpy())
+        )+0.5
+                     ])
+        ax.legend(loc='best', bbox_to_anchor=(0.95, 0.25), fontsize=16)
     else:
         ax[i].plot(fmax_train.iloc[:, n], p.to_numpy(), 'o')
         ax[i].plot(fmax_test.iloc[:, n], t.to_numpy(), 'o')
         ax[i].set_title(f'Fmax C{n + 1} vs. {p.name}')
         ax[i].set_xlabel(f'Fmax C{n + 1}')
         ax[i].set_ylabel(f'{p.name}')
+fig.tight_layout()
 fig.show()
 
 # ------------apparent F0/F distributions-------------
-rank_target = 2
+rank_target = 0
 target_analyte = 'TCC (million #/mL)'
 target_train = dataset_train.ref[target_analyte]
 valid_indices_train = target_train.index[~target_train.isna()]
@@ -218,81 +279,149 @@ fmax_quenched_train = fmax_train[fmax_train.index.str.contains('B1C2')]
 fmax_quenched_train = fmax_quenched_train[mask_train]
 fmax_ratio_train = fmax_original_train.to_numpy() / fmax_quenched_train.to_numpy()
 fmax_ratio_target_train = fmax_ratio_train[:, rank_target]
-fmax_ratio_train_z_scores = zscore(fmax_ratio_target_train)
-fmax_ratio_target_train_filtered = fmax_ratio_target_train[np.abs(fmax_ratio_train_z_scores) <= 3]
+fmax_ratio_target_train_valid = fmax_ratio_target_train[(fmax_ratio_target_train >= 0) & (fmax_ratio_target_train <= 1e3)]
+fmax_ratio_train_z_scores = zscore(fmax_ratio_target_train_valid, nan_policy='omit')
+ratio_nan = 1 - fmax_ratio_target_train_valid.shape[0]/fmax_ratio_target_train.shape[0]
+fmax_ratio_target_train_filtered = fmax_ratio_target_train_valid[np.abs(fmax_ratio_train_z_scores) <= 3]
 
-plt.close()
 fig, ax = plt.subplots()
 counts, bins, patches = ax.hist(fmax_ratio_target_train_filtered, bins=30,
                                 density=True, alpha=0.5, color='blue', label='training', zorder=0, edgecolor='black')
+ax.set_ylabel('Density', fontsize=18)
+ax.set_xlabel(f'C{rank_target+1}'+' $F_{0}/F$', fontsize=18)
+ax.tick_params(axis='both', labelsize=16)
+ax.text(
+    0.01, 0.99,
+    f'nan_ratio: {ratio_nan:2f}',
+    transform=ax.transAxes,
+    fontsize=10,
+    verticalalignment='top',
+    horizontalalignment='left'
+)
 fig.tight_layout()
 fig.show()
 
-#
-# # ----------cross-validation & hyperparameter optimization-------
-#
-# param_grid = {
-#     'n_components': [4],
-#     'init': ['nndsvda'],
-#     'gamma_sample': [2.15e7, 2.2e7, 2.25e7, 2.3e7, 2.35e7],
-#     'alpha_component': [0],
-#     'l1_ratio': [0]
-# }
-#
-# def get_param_combinations(param_grid):
-#     """
-#     Generates all combinations of parameters from a grid.
-#
-#     Parameters:
-#         param_grid (dict): Dictionary where keys are parameter names and values are lists of possible values.
-#
-#     Returns:
-#         List of dictionaries, each representing one combination of parameters.
-#     """
-#     keys = list(param_grid.keys())
-#     values_product = product(*(param_grid[key] for key in keys))
-#     return [dict(zip(keys, values)) for values in values_product]
-#
-# param_combinations = get_param_combinations(param_grid)
-# dataset_splits = dataset_train.splitting(n_split=5)
-#
-# for k, p in enumerate(param_combinations):
-#     r2 = 0
-#     rmse = 0
-#     for i in range(len(dataset_splits)):
-#         d_train = combine_eem_datasets(dataset_splits[:i]+dataset_splits[i+1:])
-#         d_test = dataset_splits[i]
-#         sample_prior = {0: d_train.ref['TCC (million #/mL)']}
-#         model = EEMNMF(
-#             solver='hals',
-#             prior_dict_sample=sample_prior,
-#             normalization=None,
-#             sort_em=False,
-#             **p
-#         )
-#         model.fit(d_train)
-#         fmax_train = model.nmf_fmax
-#         components = model.components
-#         _, fmax_test, eem_re_test = model.predict(d_test)
-#         lr = LinearRegression(fit_intercept=False)
-#         mask_train = ~np.isnan(d_train.ref['TCC (million #/mL)'].to_numpy())
-#         X_train = fmax_train.iloc[mask_train, [0]].to_numpy()
-#         y_train = d_train.ref['TCC (million #/mL)'].to_numpy()[mask_train]
-#         lr.fit(X_train, y_train)
-#         mask_test = ~np.isnan(d_test.ref['TCC (million #/mL)'].to_numpy())
-#         X_test = fmax_test.iloc[mask_test, [0]].to_numpy()
-#         y_test = d_test.ref['TCC (million #/mL)'].to_numpy()[mask_test]
-#         r2 += lr.score(X_test, y_test) / len(dataset_splits)
-#         y_pred_test = lr.predict(X_test)
-#         rmse += np.sqrt(mean_squared_error(y_test, y_pred_test))/len(dataset_splits)
-#     param_combinations[k]['r2'] = r2
-#     param_combinations[k]['rmse'] = rmse
 
+# ----------cross-validation & hyperparameter optimization-------
+dataset_train = eem_dataset_october
+dataset_test = eem_dataset_july
+indicator = 'TCC (million #/mL)'
+param_grid = {
+    'n_components': [5, 6],
+    'init': ['ordinary_nmf'],
+    'gamma_sample': [0, 1e6, 3e6, 5e6, 1e7, 3e7, 5e7],
+    'alpha_component': [0],
+    'l1_ratio': [0],
+    'lam': [0, 1e8, 2e8, 5e8, 1e9]
+}
 
-# eem_stack = eem_dataset_original.eem_stack
-# eem_stack_2d = eem_stack.reshape([eem_stack.shape[0], -1])
-# eem_stack_2d = np.nan_to_num(eem_stack_2d, nan=0)
-# A, B = nmf_hals_prior(X=eem_stack_2d, rank=rank, prior_dict_W=sample_prior, gamma_W=1e7, init='nndsvda')
-# components = B.reshape([B.shape[0], eem_stack.shape[1], eem_stack.shape[2]])
-# plt.plot(A[:, 0], eem_dataset_original.ref['TCC (million #/mL)'].to_numpy(), 'o')
-# plt.show()
+def get_param_combinations(param_grid):
+    """
+    Generates all combinations of parameters from a grid.
+
+    Parameters:
+        param_grid (dict): Dictionary where keys are parameter names and values are lists of possible values.
+
+    Returns:
+        List of dictionaries, each representing one combination of parameters.
+    """
+    keys = list(param_grid.keys())
+    values_product = product(*(param_grid[key] for key in keys))
+    return [dict(zip(keys, values)) for values in values_product]
+
+param_combinations = get_param_combinations(param_grid)
+dataset_train_splits = []
+dataset_train_unquenched, _ = dataset_train.filter_by_index('B1C1', None, copy=True)
+initial_sub_eem_datasets_unquenched = dataset_train_unquenched.splitting(n_split=5, random_state=42)
+dataset_train_quenched, _ = dataset_train.filter_by_index('B1C2', None, copy=True)
+for subset in initial_sub_eem_datasets_unquenched:
+    pos = [dataset_train_unquenched.index.index(idx) for idx in subset.index]
+    quenched_index = [eem_dataset_quenched.index[idx] for idx in pos]
+    sub_eem_dataset_quenched, _ = eem_dataset.filter_by_index(None, quenched_index, copy=True)
+    dataset_train_splits.append(combine_eem_datasets([subset, sub_eem_dataset_quenched]))
+
+for k, p in enumerate(param_combinations):
+    r2 = 0
+    rmse = 0
+    for i in range(len(dataset_train_splits)):
+        d_train = combine_eem_datasets(dataset_train_splits[:i] + dataset_train_splits[i + 1:])
+        d_test = dataset_train_splits[i]
+        sample_prior = {1: d_train.ref['TCC (million #/mL)']}
+        model = EEMNMF(
+            solver='hals',
+            prior_dict_sample=sample_prior,
+            normalization=None,
+            sort_em=False,
+            prior_ref_components=prior_dict_ref,
+            idx_top=[i for i in range(len(d_train.index)) if 'B1C1' in d_train.index[i]],
+            idx_bot=[i for i in range(len(d_train.index)) if 'B1C2' in d_train.index[i]],
+            **p
+        )
+        model.fit(d_train)
+        fmax_train = model.nmf_fmax
+        components = model.components
+        _, fmax_test, eem_re_test = model.predict(
+            d_test,
+            idx_top=[i for i in range(len(d_test.index)) if 'B1C1' in d_test.index[i]],
+            idx_bot=[i for i in range(len(d_test.index)) if 'B1C2' in d_test.index[i]],
+        )
+        lr = LinearRegression(fit_intercept=False)
+        mask_train = ~np.isnan(d_train.ref['TCC (million #/mL)'].to_numpy())
+        X_train = fmax_train.iloc[mask_train, [1]].to_numpy()
+        y_train = d_train.ref['TCC (million #/mL)'].to_numpy()[mask_train]
+        lr.fit(X_train, y_train)
+        mask_test = ~np.isnan(d_test.ref['TCC (million #/mL)'].to_numpy())
+        X_test = fmax_test.iloc[mask_test, [1]].to_numpy()
+        y_test = d_test.ref['TCC (million #/mL)'].to_numpy()[mask_test]
+        r2 += lr.score(X_test, y_test) / len(dataset_train_splits)
+        y_pred_test = lr.predict(X_test)
+        rmse += np.sqrt(mean_squared_error(y_test, y_pred_test))/len(dataset_train_splits)
+    param_combinations[k]['r2'] = r2
+    param_combinations[k]['rmse'] = rmse
+
+# with open("C:/PhD/publication/2025_prior_knowledge/param_combinations.pkl",
+#           'wb') as file:
+#     pickle.dump(param_combinations, file)
+
+with open("C:/PhD/publication/2025_prior_knowledge/param_combinations.pkl",
+          'rb') as file:
+    param_combinations = pickle.load(file)
+
+r = 5
+gamma_sample_list, lam_list, rmse_list = [], [], []
+for combo in param_combinations:
+    if combo['n_components'] == r:
+        gamma_sample_list.append(combo['gamma_sample'])
+        lam_list.append(combo['lam'])
+        rmse_list.append(combo['rmse'])
+
+df = pd.DataFrame({
+    'gamma': gamma_sample_list,
+    'lambda': lam_list,
+    'rmse': rmse_list
+})
+
+# Pivot to create a 2D grid
+heatmap_data = df.pivot(index='lambda', columns='gamma', values='rmse')
+heatmap_array = heatmap_data.values
+
+# Plot using subplots
+fig, ax = plt.subplots(figsize=(6, 5))
+im = ax.imshow(heatmap_array, cmap='viridis', origin='lower', aspect='auto')
+
+# Set tick labels
+ax.set_xticks(np.arange(len(heatmap_data.columns)))
+ax.set_yticks(np.arange(len(heatmap_data.index)))
+ax.set_xticklabels(heatmap_data.columns)
+ax.set_yticklabels(heatmap_data.index)
+
+# Labels and title
+ax.set_xlabel('Gamma')
+ax.set_ylabel('Lambda')
+ax.set_title(f'rank={r}')
+
+# Colorbar
+cbar = fig.colorbar(im, ax=ax, label='RMSE')
+
+fig.tight_layout()
+fig.show()

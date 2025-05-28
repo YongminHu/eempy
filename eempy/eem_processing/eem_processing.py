@@ -28,7 +28,7 @@ from scipy.spatial.distance import squareform
 from scipy.sparse.linalg import ArpackError
 from scipy.linalg import khatri_rao
 from scipy.stats import pearsonr
-from scipy.optimize import linear_sum_assignment
+from scipy.optimize import linear_sum_assignment, nnls
 from scipy.spatial.distance import cdist
 from tensorly.solvers.nnls import hals_nnls
 from tensorly.decomposition import parafac, non_negative_parafac, non_negative_parafac_hals
@@ -1434,7 +1434,7 @@ class EEMDataset:
             self.em_range = em_range_new
         return eem_stack_interpolated
 
-    def splitting(self, n_split, rule: str = 'random'):
+    def splitting(self, n_split, rule: str = 'random', random_state=None):
         """
         To split the EEM dataset and form multiple sub-datasets.
 
@@ -1445,6 +1445,8 @@ class EEMDataset:
         rule: str, {'random', 'sequential'}
             If 'random' is passed, the split will be generated randomly. If 'sequential' is passed, the dataset will be
             split according to index order.
+        random_state: int, optional
+            Random seed for splitting.
 
         Returns
         -------
@@ -1454,6 +1456,8 @@ class EEMDataset:
         idx_eems = [i for i in range(self.eem_stack.shape[0])]
         subset_list = []
         if rule == 'random':
+            if random_state is not None:
+                random.seed(random_state)
             random.shuffle(idx_eems)
             idx_splits = np.array_split(idx_eems, n_split)
         elif rule == 'sequential':
@@ -2464,7 +2468,7 @@ class EEMNMF:
                  prior_dict_sample=None, prior_dict_component=None,
                  gamma_sample=0, gamma_component=0, prior_ref_components=None,
                  idx_top=None, idx_bot=None, lam=0,
-                 normalization='pixel_std', sort_em=True, max_iter_als=100, max_iter_nnls=500):
+                 normalization='pixel_std', sort_em=True, max_iter_als=100, max_iter_nnls=500, random_state=None):
 
         # -----------Parameters-------------
         self.n_components = n_components
@@ -2486,6 +2490,7 @@ class EEMNMF:
         self.sort_em = sort_em
         self.max_iter_als = max_iter_als
         self.max_iter_nnls = max_iter_nnls
+        self.random_state = random_state
 
         # -----------Attributes-------------
         self.eem_stack_unfolded = None
@@ -2514,7 +2519,8 @@ class EEMNMF:
                 beta_loss=self.beta_loss,
                 alpha_W=self.alpha_sample,
                 alpha_H=self.alpha_component,
-                l1_ratio=self.l1_ratio
+                l1_ratio=self.l1_ratio,
+                random_state=self.random_state
             )
             eem_dataset.threshold_masking(0, 0, 'smaller', copy=False)
             n_samples = eem_dataset.eem_stack.shape[0]
@@ -2548,6 +2554,9 @@ class EEMNMF:
                         rank=self.n_components,
                         prior_dict_W=self.prior_dict_sample,
                         prior_dict_H=self.prior_dict_component,
+                        alpha_W=self.alpha_sample,
+                        alpha_H=self.alpha_component,
+                        l1_ratio=self.l1_ratio,
                         gamma_W=self.gamma_sample,
                         gamma_H=self.gamma_component,
                         idx_top=self.idx_top,
@@ -2555,7 +2564,8 @@ class EEMNMF:
                         lam=self.lam,
                         max_iter_als=self.max_iter_als,
                         max_iter_nnls=self.max_iter_nnls,
-                        prior_ref_components=self.prior_ref_components
+                        prior_ref_components=self.prior_ref_components,
+                        random_state=self.random_state
                     )
                     self.beta = beta
                 else:
@@ -2564,11 +2574,15 @@ class EEMNMF:
                         rank=self.n_components,
                         prior_dict_W=self.prior_dict_sample,
                         prior_dict_H=self.prior_dict_component,
+                        alpha_W=self.alpha_sample,
+                        alpha_H=self.alpha_component,
+                        l1_ratio=self.l1_ratio,
                         gamma_W=self.gamma_sample,
                         gamma_H=self.gamma_component,
                         max_iter_als=self.max_iter_als,
                         max_iter_nnls=self.max_iter_nnls,
-                        prior_ref_components=self.prior_ref_components
+                        prior_ref_components=self.prior_ref_components,
+                        random_state=self.random_state
                     )
                 nmf_score = W
                 components = H * factor_std
@@ -2582,12 +2596,16 @@ class EEMNMF:
                         prior_dict_H=self.prior_dict_component,
                         gamma_W=self.gamma_sample,
                         gamma_H=self.gamma_component,
+                        alpha_W=self.alpha_sample,
+                        alpha_H=self.alpha_component,
+                        l1_ratio=self.l1_ratio,
                         idx_top=self.idx_top,
                         idx_bot=self.idx_bot,
                         lam=self.lam,
                         max_iter_als=self.max_iter_als,
                         max_iter_nnls=self.max_iter_nnls,
-                        prior_ref_components=self.prior_ref_components
+                        prior_ref_components=self.prior_ref_components,
+                        random_state=self.random_state
                     )
                     self.beta = beta
                 else:
@@ -2598,9 +2616,13 @@ class EEMNMF:
                         prior_dict_H=self.prior_dict_component,
                         gamma_W=self.gamma_sample,
                         gamma_H=self.gamma_component,
+                        alpha_W=self.alpha_sample,
+                        alpha_H=self.alpha_component,
+                        l1_ratio=self.l1_ratio,
                         max_iter_als=self.max_iter_als,
                         max_iter_nnls=self.max_iter_nnls,
-                        prior_ref_components=self.prior_ref_components
+                        prior_ref_components=self.prior_ref_components,
+                        random_state=self.random_state
                     )
                 nmf_score = W
                 components = H
@@ -2717,7 +2739,7 @@ class EEMNMF:
                                       index=self.nnls_fmax.index, columns=['sample_normalized_rmse'])
         return normalized_sse
 
-    def predict(self, eem_dataset: EEMDataset, fit_intercept=False, idx_top=None, idx_bot=None):
+    def predict(self, eem_dataset: EEMDataset, fit_intercept=False, fit_beta=False, idx_top=None, idx_bot=None):
         """
         Predict the score and Fmax of a given EEM dataset using the component fitted. This method can be applied to a
         new EEM dataset independent of the one used in NMF model establishment.
@@ -2728,6 +2750,12 @@ class EEMNMF:
             The EEM dataset to be predicted.
         fit_intercept: bool
             Whether to calculate the intercept.
+        fit_beta: bool
+            Whether to fit the beta parameter (the proportions between "top" and "bot" samples).
+        idx_top: list, optional
+            List of indices of samples serving as numerators in ratio calculation.
+        idx_bot: list, optional
+            List of indices of samples serving as denominators in ratio calculation.
 
         Returns
         -------
@@ -2738,10 +2766,12 @@ class EEMNMF:
         eem_stack_pred: np.ndarray (3d)
             The EEM dataset reconstructed.
         """
-        if self.beta is None:
+        if not fit_beta:
             score_sample, fmax_sample, eem_stack_pred = eems_fit_components(eem_dataset.eem_stack, self.components,
                                                                             fit_intercept=fit_intercept)
         else:
+            assert self.beta is not None, "Parameter beta must be provided through fitting."
+            assert idx_top is not None and idx_bot is not None, "idx_top and idx_bot must be provided."
             max_values = np.amax(self.components, axis=(1, 2))
             score_sample = np.zeros([eem_dataset.eem_stack.shape[0], self.n_components])
             score_sample_bot = solve_W(
@@ -3398,7 +3428,7 @@ def nmf_hals_prior(
     elif init in ('svd', 'nndsvd', 'nndsvda', 'nndsvdar'):
         W, H = unfolded_eem_stack_initialization(X, rank=rank, method=init)
     elif init == 'ordinary_nmf':
-        init_model = NMF(n_components=rank, init='nndsvd', random_state=0)
+        init_model = NMF(n_components=rank, init='nndsvd', random_state=random_state)
         W = init_model.fit_transform(X)
         H = init_model.components_
     elif init == 'custom':
@@ -3465,8 +3495,9 @@ def nmf_hals_prior(
 
         # Check convergence
         err = tl.norm(X - tl.dot(W, H))
-        if abs(prev_err - err) / (prev_err + eps) < tol:
-            break
+        if it > 0:
+            if abs(prev_err - err) / (prev_err + eps) < tol:
+                break
         prev_err = err
 
     return W, H
@@ -3481,6 +3512,7 @@ def cp_hals_prior(
         gamma_A=0,
         gamma_B=0,
         gamma_C=0,
+        prior_ref_components=None,
         alpha_A=0,
         alpha_B=0,
         alpha_C=0,
@@ -3561,15 +3593,43 @@ def cp_hals_prior(
         X3 = tl.unfold(X, mode=2)
         W3, _ = unfolded_eem_stack_initialization(tl.to_numpy(X3), rank, method=init)
         C = tl.tensor(np.clip(W3, a_min=eps, a_max=None), dtype=float)
+    elif init == 'ordinary_cp':
+        A, B, C = non_negative_parafac_hals(X, rank=rank)
     elif init == 'custom':
         A, B, C = custom_init
     else:
         raise ValueError(f"Unknown init mode: {init}")
 
-    # Default priors
-    prior_dict_A = prior_dict_A or {}
-    prior_dict_B = prior_dict_B or {}
-    prior_dict_C = prior_dict_C or {}
+    # Default empty priors
+    if prior_dict_B is None:
+        prior_dict_B = {}
+    if prior_dict_C is None:
+        prior_dict_C = {}
+    if prior_dict_A is None:
+        prior_dict_A = {}
+    elif prior_ref_components is not None:
+        H = np.zeros([rank, B.shape[0]*C.shape[0]])
+        for r in range(rank):
+            component = np.array([B[:, r]]).T.dot(np.array([C[:, r]]))
+            H[r, :] = component.reshape(-1)
+        prior_keys = list(prior_ref_components.keys())
+        queries = np.array([prior_ref_components[k] for k in prior_keys])
+        cost_mat = cdist(queries, H, metric='euclidean')
+        # run Hungarian algorithm
+        query_idx, ref_idx = linear_sum_assignment(cost_mat)
+        A_new, B_new, C_new = np.zeros(A.shape), np.zeros(B.shape), np.zeros(C.shape)
+        r_list_query, r_list_ref = [i for i in range(rank)], [i for i in range(rank)]
+        for qi, ri in zip(query_idx, ref_idx):
+            A_new[:, qi] = A[:, ri]
+            B_new[:, qi] = B[:, ri]
+            C_new[:, qi] = C[:, ri]
+            r_list_query.pop(qi)
+            r_list_ref.pop(ri)
+        for qi, ri in zip(r_list_query, r_list_ref):
+            A_new[:, qi] = A[:, ri]
+            B_new[:, qi] = B[:, ri]
+            C_new[:, qi] = C[:, ri]
+        A, B, C = A_new, B_new, C_new
 
     prev_error = tl.norm(X - cp_to_tensor((None, [A, B, C])))
     for iteration in range(max_iter_als):
@@ -3883,7 +3943,7 @@ def nmf_hals_prior_ratio(
         max_iter_als=100,
         max_iter_nnls=500,
         tol=1e-6,
-        eps=1e-8,
+        eps=0,
         init='random',
         custom_init=None,
         random_state=None
@@ -4014,7 +4074,7 @@ def nmf_hals_prior_ratio(
             )
 
         # --- Beta‐step (closed form) ---
-        beta = update_beta(W, idx_top=idx_top, idx_bot=idx_bot, eps=eps)
+        beta = update_beta(W, idx_top=idx_top, idx_bot=idx_bot, eps=0)
 
         # --- Convergence check ---
         err = tl.norm(X_t - tl.tensor(W) @ tl.tensor(H))
@@ -4025,7 +4085,7 @@ def nmf_hals_prior_ratio(
     return W, H, beta
 
 
-def solve_W(X1, H, X2=None, beta=None, reg=0.0):
+def solve_W(X1, H, X2=None, beta=None, reg=0.0, non_negativity=True):
     """
     Solve for W in the regression problem:
         loss = ||X1 - W @ H||_F^2
@@ -4039,6 +4099,7 @@ def solve_W(X1, H, X2=None, beta=None, reg=0.0):
         H (ndarray): r x n matrix.
         beta (ndarray, optional): vector of length r.  If None, drop the second term.
         reg (float): optional regularization (ridge) parameter.
+        non_negativity (bool): whether to apply non-negativity.
 
     Returns:
         W (ndarray): m x r solution matrix.
@@ -4050,6 +4111,25 @@ def solve_W(X1, H, X2=None, beta=None, reg=0.0):
     if beta is not None:
         assert X2 is not None and X2.shape == (m, n), "D must match shape of C when b is provided"
         assert beta.shape[0] == r, "b must have length r"
+
+    # Prepare design matrix and target for NNLS if needed
+    if non_negativity:
+        # Build block design and targets
+        # A: (2n x r) or (n x r) if b is None
+        A1 = H.T  # n x r
+        Y_blocks = [X1]
+        A_blocks = [A1]
+        if beta is not None:
+            A2 = (np.diag(beta) @ H).T  # n x r
+            A_blocks.append(A2)
+            Y_blocks.append(X2)
+        A = np.vstack(A_blocks)
+        # Solve row-wise
+        W = np.zeros((m, r))
+        for i in range(m):
+            y = np.hstack([Y_blocks[j][i] for j in range(len(Y_blocks))])
+            W[i], _ = nnls(A, y)
+        return W
 
     # Numerator and Denominator
     if beta is None:
