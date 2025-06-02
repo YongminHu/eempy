@@ -2642,6 +2642,7 @@ class EEMNMF:
                     W, H, beta = nmf_hals_prior_ratio(
                         X,
                         rank=self.n_components,
+                        init=self.init,
                         prior_dict_W=self.prior_dict_sample,
                         prior_dict_H=self.prior_dict_component,
                         alpha_W=self.alpha_sample,
@@ -2662,6 +2663,7 @@ class EEMNMF:
                     W, H = nmf_hals_prior(
                         X,
                         rank=self.n_components,
+                        init=self.init,
                         prior_dict_W=self.prior_dict_sample,
                         prior_dict_H=self.prior_dict_component,
                         alpha_W=self.alpha_sample,
@@ -2682,6 +2684,7 @@ class EEMNMF:
                     W, H, beta = nmf_hals_prior_ratio(
                         X,
                         rank=self.n_components,
+                        init=self.init,
                         prior_dict_W=self.prior_dict_sample,
                         prior_dict_H=self.prior_dict_component,
                         gamma_W=self.gamma_sample,
@@ -2702,6 +2705,7 @@ class EEMNMF:
                     W, H = nmf_hals_prior(
                         X,
                         rank=self.n_components,
+                        init=self.init,
                         prior_dict_W=self.prior_dict_sample,
                         prior_dict_H=self.prior_dict_component,
                         gamma_W=self.gamma_sample,
@@ -3534,7 +3538,8 @@ def nmf_hals_prior(
     elif prior_ref_components is not None:
         prior_keys = list(prior_ref_components.keys())
         queries = np.array([prior_ref_components[k] for k in prior_keys])
-        cost_mat = cdist(queries, H, metric='euclidean')
+        cost_mat = cdist(queries, H, metric='correlation')
+        print(cost_mat)
         # run Hungarian algorithm
         query_idx, ref_idx = linear_sum_assignment(cost_mat)
         H_new, W_new = np.zeros(H.shape), np.zeros(W.shape)
@@ -3704,7 +3709,7 @@ def cp_hals_prior(
             H[r, :] = component.reshape(-1)
         prior_keys = list(prior_ref_components.keys())
         queries = np.array([prior_ref_components[k] for k in prior_keys])
-        cost_mat = cdist(queries, H, metric='euclidean')
+        cost_mat = cdist(queries, H, metric='correlation')
         # run Hungarian algorithm
         query_idx, ref_idx = linear_sum_assignment(cost_mat)
         A_new, B_new, C_new = np.zeros(A.shape), np.zeros(B.shape), np.zeros(C.shape)
@@ -3806,7 +3811,7 @@ def cp_hals_prior_ratio(
         idx_bot=None,
         max_iter_als=200,
         max_iter_nnls=500,
-        tol=1e-6,
+        tol=1e-9,
         eps=1e-8,
         init='svd',
         custom_init=None,
@@ -4316,7 +4321,7 @@ def nmf_hals_prior_ratio(
     elif prior_ref_components is not None:
         prior_keys = list(prior_ref_components.keys())
         queries = np.array([prior_ref_components[k] for k in prior_keys])
-        cost_mat = cdist(queries, H, metric='euclidean')
+        cost_mat = cdist(queries, H, metric='correlation')
         # run Hungarian algorithm
         query_idx, ref_idx = linear_sum_assignment(cost_mat)
         H_new, W_new = np.zeros(H.shape), np.zeros(W.shape)
