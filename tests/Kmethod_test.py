@@ -70,11 +70,11 @@ def k_method_quenching(eem_dataset, base_model, n_clusters, minimum_dataset_size
                 kmodel = KMethod(
                     base_model=base_model,
                     n_initial_splits=max(n_clusters),
-                    error_calculation="quenching_coefficient",
+                    distance_metric="quenching_coefficient",
                     max_iter=10,
                     tol=0.005,
-                    kw_unquenched='B1C1',
-                    kw_quenched='B1C2'
+                    kw_top='B1C1',
+                    kw_bot='B1C2'
                 )
                 kmodel.calculate_consensus(mother_dataset, n_base_clusterings=n_base_clusterings,
                                            subsampling_portion=subsampling_portion)
@@ -109,11 +109,11 @@ def k_method_consensus_to_clusters_stats(eem_dataset_combinations, consensus_mat
         kmodel = KMethod(
             base_model=base_model,
             n_initial_splits=5,
-            error_calculation="quenching_coefficient",
+            distance_metric="quenching_coefficient",
             max_iter=10,
             tol=0.005,
-            kw_unquenched='B1C1',
-            kw_quenched='B1C2'
+            kw_top='B1C1',
+            kw_bot='B1C2'
         )
         dataset_0 = eem_dataset_combinations[combo_code]
         o_sample_indices = [index for index, value in enumerate(dataset_0.index) if 'B1C1' in value]
@@ -713,11 +713,11 @@ for combo_code, combo_consensus in consensus_matrices_combos.items():
     kmodel = KMethod(
         base_model=PARAFAC(n_components=4),
         n_initial_splits=5,
-        error_calculation="quenching_coefficient",
+        distance_metric="quenching_coefficient",
         max_iter=10,
         tol=0.005,
-        kw_unquenched='B1C1',
-        kw_quenched='B1C2'
+        kw_top='B1C1',
+        kw_bot='B1C2'
     )
     dataset_0 = eem_dataset_combinations[combo_code]
     o_sample_indices = [index for index, value in enumerate(dataset_0.index) if 'B1C1' in value]

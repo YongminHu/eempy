@@ -6510,7 +6510,7 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
         base_model = EEMNMF(**base_clustering_parameters)
 
     kmethod = KMethod(base_model=base_model, n_initial_splits=n_init_splits, max_iter=n_iterations, tol=tol,
-                      elimination=elimination, error_calculation="quenching_coefficient", kw_unquenched="B1C1", kw_quenched="B1C2")
+                      elimination=elimination, distance_metric="quenching_coefficient", kw_top="B1C1", kw_bot="B1C2")
     consensus_matrix, _, error_history = kmethod.calculate_consensus(eem_dataset_establishment, n_base_clusterings,
                                                                      subsampling_portion)
     consensus_matrix_tabs = dbc.Card(children=[])

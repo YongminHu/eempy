@@ -2596,6 +2596,7 @@ class EEMNMF:
         self.ex_range = None,
         self.em_range = None
         self.beta = None
+        self.objective_function_error = None,
 
     def fit(self, eem_dataset):
         if self.solver == 'cd' or self.solver == 'mu':
@@ -2931,18 +2932,18 @@ class KMethod:
         Sorted consensus matrix.
     """
 
-    def __init__(self, base_model, n_initial_splits, error_calculation="reconstruction_error", max_iter=20, tol=0.001,
-                 elimination='default', kw_unquenched=None, kw_quenched=None):
+    def __init__(self, base_model, n_initial_splits, distance_metric="reconstruction_error", max_iter=20, tol=0.001,
+                 elimination='default', kw_top=None, kw_bot=None):
 
         # -----------Parameters-------------
         self.base_model = base_model
         self.n_initial_splits = n_initial_splits
-        self.error_calculation = error_calculation
+        self.distance_metric = distance_metric
         self.max_iter = max_iter
         self.tol = tol
         self.elimination = elimination
-        self.kw_unquenched = kw_unquenched
-        self.kw_quenched = kw_quenched
+        self.kw_top = kw_top
+        self.kw_bot = kw_bot
         self.subsampling_portion = None
         self.n_runs = None
         self.consensus_conversion_power = None
@@ -3009,14 +3010,27 @@ class KMethod:
             sample_error = []
             sub_datasets = {}
             for label, m in models.items():
-                score_m, fmax_m, eem_stack_re_m = m.predict(eem_dataset)
-                if self.error_calculation == "reconstruction_error":
+                if self.distance_metric == "reconstruction_error_with_beta":
+                    idx_top = [i for i in range(len(eem_dataset.index)) if self.kw_top in eem_dataset.index[i]]
+                    idx_bot = [i for i in range(len(eem_dataset.index)) if self.kw_bot in eem_dataset.index[i]]
+                    score_m, fmax_m, eem_stack_re_m = m.predict(
+                        eem_dataset=eem_dataset,
+                        fit_beta=True,
+                        idx_bot=idx_top,
+                        idx_top=idx_bot,
+                    )
                     res = eem_dataset.eem_stack - eem_stack_re_m
                     n_pixels = m.eem_stack_train.shape[1] * m.eem_stack_train.shape[2]
                     rmse = np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels)
                     sample_error.append(rmse)
-                elif self.error_calculation == "quenching_coefficient":
-                    if not all([self.kw_unquenched, self.kw_quenched]):
+                elif self.distance_metric == "reconstruction_error":
+                    score_m, fmax_m, eem_stack_re_m = m.predict(eem_dataset)
+                    res = eem_dataset.eem_stack - eem_stack_re_m
+                    n_pixels = m.eem_stack_train.shape[1] * m.eem_stack_train.shape[2]
+                    rmse = np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels)
+                    sample_error.append(rmse)
+                elif self.distance_metric == "quenching_coefficient":
+                    if not all([self.kw_top, self.kw_bot]):
                         raise ValueError("Both kw_unquenched and kw_quenched must be passed.")
                     if type(m).__name__ == 'PARAFAC':
                         fmax_establishment = m.fmax
@@ -3024,11 +3038,11 @@ class KMethod:
                         fmax_establishment = m.nnls_fmax
                     else:
                         raise TypeError("Invalid base model type.")
-                    quenching_coef_establishment = get_quenching_coef(fmax_establishment, self.kw_unquenched,
-                                                                      self.kw_quenched)
+                    quenching_coef_establishment = get_quenching_coef(fmax_establishment, self.kw_top,
+                                                                      self.kw_bot)
                     quenching_coef_archetype = np.mean(quenching_coef_establishment, axis=0)
 
-                    quenching_coef_test = get_quenching_coef(fmax_m, self.kw_unquenched, self.kw_quenched)
+                    quenching_coef_test = get_quenching_coef(fmax_m, self.kw_top, self.kw_bot)
 
                     quenching_coef_diff = np.abs(quenching_coef_test - quenching_coef_archetype)
                     sample_error.append(np.sum(quenching_coef_diff ** 2, axis=1))
@@ -3063,13 +3077,13 @@ class KMethod:
         error_history = []
         sample_errors = []
         sub_datasets_n = {}
-        if self.error_calculation == "reconstruction_error":
+        if self.distance_metric == "reconstruction_error":
             initial_sub_eem_datasets = eem_dataset.splitting(n_split=self.n_initial_splits)
-        elif self.error_calculation == "quenching_coefficient":
+        elif self.distance_metric == "quenching_coefficient":
             initial_sub_eem_datasets = []
-            eem_dataset_unquenched, _ = eem_dataset.filter_by_index(self.kw_unquenched, None, copy=True)
+            eem_dataset_unquenched, _ = eem_dataset.filter_by_index(self.kw_top, None, copy=True)
             initial_sub_eem_datasets_unquenched = eem_dataset_unquenched.splitting(n_split=self.n_initial_splits)
-            eem_dataset_quenched, _ = eem_dataset.filter_by_index(self.kw_quenched, None, copy=True)
+            eem_dataset_quenched, _ = eem_dataset.filter_by_index(self.kw_bot, None, copy=True)
             for subset in initial_sub_eem_datasets_unquenched:
                 pos = [eem_dataset_unquenched.index.index(idx) for idx in subset.index]
                 quenched_index = [eem_dataset_quenched.index[idx] for idx in pos]
@@ -3157,16 +3171,16 @@ class KMethod:
         label_history = []
         error_history = []
 
-        if self.error_calculation == "quenching_coefficient":
-            eem_dataset_unquenched, _ = eem_dataset.filter_by_index(self.kw_unquenched, None, copy=True)
-            eem_dataset_quenched, _ = eem_dataset.filter_by_index(self.kw_quenched, None, copy=True)
+        if self.distance_metric == "quenching_coefficient":
+            eem_dataset_unquenched, _ = eem_dataset.filter_by_index(self.kw_top, None, copy=True)
+            eem_dataset_quenched, _ = eem_dataset.filter_by_index(self.kw_bot, None, copy=True)
 
         while n < n_base_clusterings:
 
             # ------Subsampling-------
-            if self.error_calculation == "reconstruction_error":
+            if self.distance_metric == "reconstruction_error":
                 eem_dataset_n, selected_indices = eem_dataset.subsampling(portion=subsampling_portion)
-            elif self.error_calculation == "quenching_coefficient":
+            elif self.distance_metric == "quenching_coefficient":
                 eem_dataset_new_uq, selected_indices_uq = eem_dataset_unquenched.subsampling(
                     portion=subsampling_portion)
                 pos = [eem_dataset_unquenched.index.index(idx) for idx in eem_dataset_new_uq.index]

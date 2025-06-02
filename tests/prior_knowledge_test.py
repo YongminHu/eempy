@@ -480,69 +480,41 @@ fig.show()
 # fig.tight_layout()
 # fig.show()
 #
-# # --------------rank-1 approximations------------
-#
-# def rank_one_approximation(A):
-#     # Perform SVD
-#     U, S, VT = np.linalg.svd(A, full_matrices=False)
-#
-#     # Best rank-one approximation (only first singular value/vector)
-#     A1 = S[0] * np.outer(U[:, 0], VT[0, :])
-#
-#     # Evaluate approximation quality using Frobenius norm
-#     frob_A = np.linalg.norm(A, 'fro')
-#     frob_A1 = np.linalg.norm(A1, 'fro')
-#     explained_ratio = (frob_A1 / frob_A) ** 2  # squared ratio of norms
-#
-#     return A1, explained_ratio
-#
-#
-# def masked_rank1(A, M, tol=1e-6, max_iter=500):
-#     """
-#     Compute rank‐1 approx of A over mask M by ALS:
-#         min_{u,v} sum_{i,j where M[i,j]} (A[i,j] - u[i]*v[j])^2.
-#
-#     Returns
-#     -------
-#     u : (m,)    factor in rows
-#     v : (n,)    factor in columns
-#     R2: float   masked explained‐variance ratio
-#     """
-#     m, n = A.shape
-#     # init u,v (e.g. SVD on the masked data with zeros filled)
-#     U, S, VT = np.linalg.svd(np.where(M, A, 0), full_matrices=False)
-#     u = np.sqrt(S[0]) * U[:,0]
-#     v = np.sqrt(S[0]) * VT[0,:]
-#
-#     prev_err = np.inf
-#     for _ in range(max_iter):
-#         # update v given u
-#         # v_j = sum_i M_ij * u_i * A_ij   /  sum_i M_ij * u_i^2
-#         num = (M * (u[:,None] * A)).sum(axis=0)
-#         den = (M * (u[:,None]**2)).sum(axis=0)
-#         v = np.where(den>0, num/den, 0)
-#
-#         # update u given v
-#         num = (M * (v[None,:] * A)).sum(axis=1)
-#         den = (M * (v[None,:]**2)).sum(axis=1)
-#         u = np.where(den>0, num/den, 0)
-#
-#         # check convergence on masked fit‐error
-#         A1 = np.outer(u, v)
-#         err = np.linalg.norm((M * (A - A1)).ravel())
-#         if abs(prev_err - err) < tol:
-#             break
-#         prev_err = err
-#
-#     # compute R² on mask
-#     SSR = np.sum((M * A1)**2)
-#     SST = np.sum((M * A)**2)
-#     R2  = SSR / SST if SST>0 else 0.0
-#
-#     return u, v, R2
-#
-# c, mask = eem_raman_scattering_removal(model.components[0], dataset_train.ex_range, dataset_train.em_range,
-#                              width=15, interpolation_method='linear', interpolation_dimension='2d')
-# u,v,R2 = masked_rank1(model.components[0], mask)
-# fig, ax, im = plot_eem(np.outer(u,v), dataset_train.ex_range, dataset_train.em_range, display=False)
-# fig.show()
+# ------------Kmethod + regulated NMF--------------
+
+dataset_train = eem_dataset
+dataset_test = eem_dataset_october
+indicator = 'TCC (million #/mL)'
+sample_prior = {0: dataset_train.ref[indicator]}
+params = {
+    'n_components': 4,
+    'init': 'ordinary_nmf',
+    'gamma_sample': 0,
+    'alpha_component': 0,
+    'alpha_sample': 0,
+    'l1_ratio': 0,
+    'max_iter_als': 100,
+    'max_iter_nnls': 800,
+    'lam': 3e6, # 1e6
+    'random_state': 42
+}
+model = EEMNMF(
+    solver='hals',
+    prior_dict_sample=sample_prior,
+    normalization=None,
+    sort_em=False,
+    prior_ref_components=prior_dict_ref,
+    idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
+    idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
+    **params
+)
+
+kmodel = KMethod(
+    base_model=model,
+    n_initial_splits=4,
+    distance_metric="reconstruction_error_with_beta",
+    max_iter=20,
+    kw_bot='B1C1',
+    kw_top='B1C2',
+)
+cluster_labels, label_history, error_history = kmodel.base_clustering(eem_dataset=eem_dataset)
