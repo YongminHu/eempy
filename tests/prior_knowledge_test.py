@@ -500,21 +500,21 @@ params = {
 }
 model = EEMNMF(
     solver='hals',
-    prior_dict_sample=sample_prior,
+    prior_dict_sample=None,
     normalization=None,
     sort_em=False,
     prior_ref_components=prior_dict_ref,
-    idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
-    idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
+    kw_top='B1C1',
+    kw_bot='B1C2',
     **params
 )
 
 kmodel = KMethod(
     base_model=model,
-    n_initial_splits=4,
+    n_initial_splits=5,
     distance_metric="reconstruction_error_with_beta",
     max_iter=20,
-    kw_bot='B1C1',
-    kw_top='B1C2',
+    kw_top='B1C1',
+    kw_bot='B1C2',
 )
 cluster_labels, label_history, error_history = kmodel.base_clustering(eem_dataset=eem_dataset)

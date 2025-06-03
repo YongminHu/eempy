@@ -2557,7 +2557,7 @@ class EEMNMF:
                  alpha_sample=0, alpha_component=0, l1_ratio=1,
                  prior_dict_sample=None, prior_dict_component=None,
                  gamma_sample=0, gamma_component=0, prior_ref_components=None,
-                 idx_top=None, idx_bot=None, lam=0,
+                 idx_top=None, idx_bot=None, kw_top=None, kw_bot=None, lam=0,
                  normalization='pixel_std', sort_em=True, max_iter_als=100, max_iter_nnls=500, random_state=None):
 
         # -----------Parameters-------------
@@ -2575,6 +2575,8 @@ class EEMNMF:
         self.gamma_component = gamma_component
         self.idx_top = idx_top
         self.idx_bot = idx_bot
+        self.kw_top = kw_top
+        self.kw_bot = kw_bot
         self.lam = lam
         self.normalization = normalization
         self.sort_em = sort_em
@@ -2599,6 +2601,12 @@ class EEMNMF:
         self.objective_function_error = None,
 
     def fit(self, eem_dataset):
+        if self.kw_top is not None and self.kw_bot is not None:
+            assert eem_dataset.index is not None
+            self.idx_top = [i for i in range(len(eem_dataset.index)) if self.kw_top in eem_dataset.index[i]]
+            self.idx_bot = [i for i in range(len(eem_dataset.index)) if self.kw_bot in eem_dataset.index[i]]
+            print(self.idx_top)
+            print(self.idx_bot)
         if self.solver == 'cd' or self.solver == 'mu':
             if self.prior_dict_sample is not None or self.prior_dict_component is not None:
                 raise ValueError("'cd' and 'mu' solver do not support prior knowledge input. Please use 'hals' solver "
@@ -3020,9 +3028,11 @@ class KMethod:
                         idx_top=idx_bot,
                     )
                     res = eem_dataset.eem_stack - eem_stack_re_m
-                    n_pixels = m.eem_stack_train.shape[1] * m.eem_stack_train.shape[2]
-                    rmse = np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels)
-                    sample_error.append(rmse)
+                    res = np.sum(res**2, axis=(1, 2))
+                    error_with_beta = np.zeros(fmax_m.shape[0])
+                    error_with_beta[idx_top] = res[idx_top] + res[idx_bot]
+                    error_with_beta[idx_bot] = res[idx_top] + res[idx_bot]
+                    sample_error.append(error_with_beta)
                 elif self.distance_metric == "reconstruction_error":
                     score_m, fmax_m, eem_stack_re_m = m.predict(eem_dataset)
                     res = eem_dataset.eem_stack - eem_stack_re_m
@@ -3079,7 +3089,7 @@ class KMethod:
         sub_datasets_n = {}
         if self.distance_metric == "reconstruction_error":
             initial_sub_eem_datasets = eem_dataset.splitting(n_split=self.n_initial_splits)
-        elif self.distance_metric == "quenching_coefficient":
+        elif self.distance_metric in ["quenching_coefficient", "reconstruction_error_with_beta"]:
             initial_sub_eem_datasets = []
             eem_dataset_unquenched, _ = eem_dataset.filter_by_index(self.kw_top, None, copy=True)
             initial_sub_eem_datasets_unquenched = eem_dataset_unquenched.splitting(n_split=self.n_initial_splits)
