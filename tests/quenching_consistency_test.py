@@ -22,7 +22,7 @@ def get_q_coef(eem_dataset, model, kw_o, kw_q, fmax_col, ref_name, standard_comp
     m = model
     m.fit(eem_dataset)
     if type(model).__name__ == 'PARAFAC':
-        fmax_tot = m.fmax
+        fmax_tot = m.nnls_fmax
     elif type(model).__name__ == 'EEMNMF':
         fmax_tot = m.nnls_fmax
     else:
@@ -165,7 +165,7 @@ kw_dict_type1 = {
 # # ----------using the full model---------
 model = PARAFAC(n_components=4)
 model.fit(eem_dataset)
-fmax = model.fmax.iloc[:, 0]
+fmax = model.nnls_fmax.iloc[:, 0]
 tcc = eem_dataset.ref['TCC'].dropna()
 doc = eem_dataset.ref['DOC'].dropna()
 fmax_original = fmax[fmax.index.str.contains('B1C1')]
@@ -183,7 +183,7 @@ for name, kw in kw_dict.items():
     model = PARAFAC(n_components=kw[2])
     eem_dataset_scenario, _ = eem_dataset.filter_by_index(kw[0], kw[1], copy=True)
     model.fit(eem_dataset_scenario)
-    fmax = model.fmax.iloc[:, 0]
+    fmax = model.nnls_fmax.iloc[:, 0]
     tcc = eem_dataset_scenario.ref['TCC'].dropna()
     doc = eem_dataset_scenario.ref['DOC'].dropna()
     fmax_original = fmax[fmax.index.str.contains('B1C1')]
@@ -735,7 +735,7 @@ for r_i in r_list:
     target_test_re = dataset_train.ref[target_name]
     valid_indices_test_re = target_test_re.index[~target_test_re.isna()]
     target_test_re = target_test_re.dropna().to_numpy()
-    fmax_test_re = model.fmax
+    fmax_test_re = model.nnls_fmax
     fmax_original_test_re = fmax_test_re[fmax_test_re.index.str.contains('B1C1')]
     mask_test_re = fmax_original_test_re.index.isin(valid_indices_test_re)
     fmax_original_test_re = fmax_original_test_re[mask_test_re]
@@ -800,7 +800,7 @@ model.fit(dataset_train)
 target_train = dataset_train.ref[target_name]
 valid_indices_train = target_train.index[~target_train.isna()]
 target_train = target_train.dropna().to_numpy()
-fmax_train = model.fmax
+fmax_train = model.nnls_fmax
 fmax_original_train = fmax_train[fmax_train.index.str.contains('B1C1')]
 mask_train = fmax_original_train.index.isin(valid_indices_train)
 fmax_original_train = fmax_original_train[mask_train]

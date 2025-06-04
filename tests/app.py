@@ -3679,7 +3679,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
         if eem_dataset_establishment.ref is not None:
             for ref_var in valid_ref:
                 x = eem_dataset_establishment.ref[ref_var]
-                parafac_var = parafac_r.fmax
+                parafac_var = parafac_r.nnls_fmax
                 stats = []
                 nan_rows = x[x.isna()].index
                 x = x.drop(nan_rows)
@@ -3696,9 +3696,9 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                     pearson_corr, pearson_p = pearsonr(x, y)
                     stats.append([f_col, slope, intercept, r_squared, pearson_corr, pearson_p])
                 parafac_fit_params_r[ref_var] = stats
-        for c_var in parafac_r.fmax.columns:
-            x = parafac_r.fmax[c_var]
-            parafac_var = parafac_r.fmax
+        for c_var in parafac_r.nnls_fmax.columns:
+            x = parafac_r.nnls_fmax[c_var]
+            parafac_var = parafac_r.nnls_fmax
             stats = []
             nan_rows = x[x.isna()].index
             x = x.drop(nan_rows)
@@ -3719,7 +3719,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
             'components': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
                            sublist in parafac_r.components.tolist()],
             'score': [parafac_r.score.columns.tolist()] + parafac_r.score.values.tolist(),
-            'Fmax': [parafac_r.fmax.columns.tolist()] + parafac_r.fmax.values.tolist(),
+            'Fmax': [parafac_r.nnls_fmax.columns.tolist()] + parafac_r.nnls_fmax.values.tolist(),
             'index': eem_dataset_establishment.index,
             'ref': [eem_dataset_establishment.ref.columns.tolist()] + eem_dataset_establishment.ref.values.tolist()
             if eem_dataset_establishment.ref is not None else None,
@@ -3917,7 +3917,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                 [
                                     dbc.Col(
                                         [
-                                            dcc.Graph(figure=plot_fmax(parafac_r.fmax,
+                                            dcc.Graph(figure=plot_fmax(parafac_r.nnls_fmax,
                                                                        display=False,
                                                                        yaxis_title='Fmax'
                                                                        ),
@@ -3933,7 +3933,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                 [
                                     dbc.Col(
                                         [
-                                            dbc.Table.from_dataframe(parafac_r.fmax,
+                                            dbc.Table.from_dataframe(parafac_r.nnls_fmax,
                                                                      bordered=True, hover=True, index=True)
                                         ]
                                     )
@@ -5205,7 +5205,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
             'components': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
                            sublist in nmf_r.components.tolist()],
             'NNLS-Fmax': [nmf_r.nnls_fmax.columns.tolist()] + nmf_r.nnls_fmax.values.tolist(),
-            'NMF-Fmax': [nmf_r.nmf_fmax.columns.tolist()] + nmf_r.nmf_fmax.values.tolist(),
+            'NMF-Fmax': [nmf_r.fmax.columns.tolist()] + nmf_r.fmax.values.tolist(),
             'index': eem_dataset_establishment.index,
             'ref': [eem_dataset_establishment.ref.columns.tolist()] + eem_dataset_establishment.ref.values.tolist()
             if eem_dataset_establishment.ref is not None else None,
@@ -5347,7 +5347,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                 [
                                     dbc.Col(
                                         [
-                                            dcc.Graph(figure=plot_fmax(nmf_r.nmf_fmax,
+                                            dcc.Graph(figure=plot_fmax(nmf_r.fmax,
                                                                        display=False
                                                                        ),
                                                       config={'autosizable': False},
@@ -5362,7 +5362,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                 [
                                     dbc.Col(
                                         [
-                                            dbc.Table.from_dataframe(nmf_r.nmf_fmax,
+                                            dbc.Table.from_dataframe(nmf_r.fmax,
                                                                      bordered=True, hover=True, index=True)
                                         ]
                                     )
@@ -6691,7 +6691,7 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
         for sub_dataset in eem_clusters.values():
             cluster_labels_combined += sub_dataset.cluster
 
-        fmax_combined = pd.concat([model.fmax for model in cluster_specific_models.values()], axis=0)
+        fmax_combined = pd.concat([model.nnls_fmax for model in cluster_specific_models.values()], axis=0)
         fmax_combined_sorted = fmax_combined.sort_index()
         cluster_labels_combined_sorted = [x for _, x in sorted(zip(fmax_combined.index, cluster_labels_combined))]
         fig_fmax = plot_fmax(table=fmax_combined_sorted, display=False, labels=cluster_labels_combined_sorted)
@@ -6700,7 +6700,7 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
         kmethod_fit_params_k = {}
 
         if base_clustering == 'parafac':
-            component_names = unified_model.fmax.columns.tolist()
+            component_names = unified_model.nnls_fmax.columns.tolist()
         elif base_clustering == 'nmf':
             component_names = unified_model.nnls_fmax.columns.tolist()
         for ref_var in valid_ref + component_names:
@@ -6715,7 +6715,7 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
                     stats = []
                     x = eem_cluster.ref[ref_var]
                     if base_clustering == 'parafac':
-                        model_var = copy.copy(cluster_specific_model.fmax)
+                        model_var = copy.copy(cluster_specific_model.nnls_fmax)
                     elif base_clustering == 'nmf':
                         model_var = copy.copy(cluster_specific_model.nnls_fmax)
                     model_var.columns = [f'Cluster {i + 1}-' + col for col in model_var.columns]
@@ -6737,8 +6737,8 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
 
                 for c_var in component_names:
                     if base_clustering == 'parafac':
-                        x = cluster_specific_model.fmax[c_var]
-                        model_var = cluster_specific_model.fmax
+                        x = cluster_specific_model.nnls_fmax[c_var]
+                        model_var = cluster_specific_model.nnls_fmax
                     elif base_clustering == 'nmf':
                         x = cluster_specific_model.nnls_fmax[c_var]
                         model_var = cluster_specific_model.nnls_fmax
@@ -6925,7 +6925,7 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
                     'components': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
                                    sublist in cluster_specific_model.components.tolist()],
                     'Fmax': [
-                                cluster_specific_model.fmax.columns.tolist()] + cluster_specific_model.fmax.values.tolist(),
+                                cluster_specific_model.nnls_fmax.columns.tolist()] + cluster_specific_model.nnls_fmax.values.tolist(),
                     'index': eem_cluster.index,
                     'ref': [eem_cluster.ref.columns.tolist()] + eem_cluster.ref.values.tolist()
                     if eem_cluster.ref is not None else None,
@@ -6938,7 +6938,7 @@ def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conv
                     'NNLS_Fmax': [
                                      cluster_specific_model.nnls_fmax.columns.tolist()] + cluster_specific_model.nnls_fmax.values.tolist(),
                     'nmf_Fmax': [
-                                    cluster_specific_model.nmf_fmax.columns.tolist()] + cluster_specific_model.nmf_fmax.values.tolist(),
+                                    cluster_specific_model.nnls_fmax.columns.tolist()] + cluster_specific_model.nnls_fmax.values.tolist(),
                     'index': eem_cluster.index,
                     'ref': [eem_cluster.ref.columns.tolist()] + eem_cluster.ref.values.tolist()
                     if eem_cluster.ref is not None else None,

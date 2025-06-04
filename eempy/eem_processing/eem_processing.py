@@ -1316,7 +1316,7 @@ class EEMDataset:
         eem_stack_normalized: np.ndarray
             The normalized EEM stack.
         weights: np.ndarray
-            The total fluorescence of each EEM.
+            The weighted total fluorescence of each EEM.
         """
         eem_stack_normalized, weights = eems_tf_normalization(self.eem_stack)
         if not copy:
@@ -1783,6 +1783,7 @@ class PARAFAC:
         self.ex_loadings = None
         self.em_loadings = None
         self.fmax = None
+        self.nnls_fmax = None
         self.components = None
         self.cptensors = None
         self.eem_stack_train = None
@@ -1889,7 +1890,6 @@ class PARAFAC:
                 "interpolate the nan values.")
         components = np.zeros([self.n_components, b.shape[0], c.shape[0]])
         for r in range(self.n_components):
-
             # when non_negativity is not applied, ensure the scores are generally positive
             if not self.non_negativity:
                 if a[:, r].sum() < 0:
@@ -1916,10 +1916,13 @@ class PARAFAC:
                 a[:, r] = a[:, r] * maxb * maxc
             component = np.array([b[:, r]]).T.dot(np.array([c[:, r]]))
             components[r, :, :] = component
-
+        if self.tf_normalization:
+            fmax = pd.DataFrame(a * tf_weights[:, np.newaxis])
+        else:
+            fmax = pd.DataFrame(a)
         a, _, _ = eems_fit_components(eem_dataset.eem_stack, components, fit_intercept=False, positive=True)
         score = pd.DataFrame(a)
-        fmax = a * components.max(axis=(1, 2))
+        nnls_fmax = a * components.max(axis=(1, 2))
         ex_loadings = pd.DataFrame(np.flipud(b), index=eem_dataset.ex_range)
         em_loadings = pd.DataFrame(c, index=eem_dataset.em_range)
         if self.sort_em:
@@ -1933,14 +1936,14 @@ class PARAFAC:
                                         for i in range(self.n_components)})
             score = pd.DataFrame({'component {r} score'.format(r=i + 1): score.iloc[:, order[i]]
                                   for i in range(self.n_components)})
-            fmax = pd.DataFrame({'component {r} fmax'.format(r=i + 1): fmax[:, order[i]]
+            nnls_fmax = pd.DataFrame({'component {r} fmax'.format(r=i + 1): nnls_fmax[:, order[i]]
                                  for i in range(self.n_components)})
         else:
             column_labels = ['component {r}'.format(r=i + 1) for i in range(self.n_components)]
             ex_loadings.columns = column_labels
             em_loadings.columns = column_labels
             score.columns = ['component {r} PARAFAC-score'.format(r=i + 1) for i in range(self.n_components)]
-            fmax = pd.DataFrame(fmax, columns=['component {r} PARAFAC-Fmax'.format(r=i + 1) for i in
+            nnls_fmax = pd.DataFrame(nnls_fmax, columns=['component {r} PARAFAC-Fmax'.format(r=i + 1) for i in
                                                range(self.n_components)])
 
         ex_loadings.index = eem_dataset.ex_range.tolist()
@@ -1949,9 +1952,11 @@ class PARAFAC:
         if eem_dataset.index:
             score.index = eem_dataset.index
             fmax.index = eem_dataset.index
+            nnls_fmax.index = eem_dataset.index
         else:
             score.index = [i + 1 for i in range(a.shape[0])]
             fmax.index = [i + 1 for i in range(a.shape[0])]
+            nnls_fmax.index = [i + 1 for i in range(a.shape[0])]
 
         eem_stack_reconstructed = np.tensordot(score.to_numpy(), components, axes=(1, 0))
 
@@ -1959,6 +1964,7 @@ class PARAFAC:
         self.ex_loadings = ex_loadings
         self.em_loadings = em_loadings
         self.fmax = fmax
+        self.nnls_fmax = nnls_fmax
         self.components = components
         self.cptensors = cptensors
         self.eem_stack_train = eem_dataset.eem_stack
@@ -2013,8 +2019,8 @@ class PARAFAC:
             fmax_sample = score_sample * max_values
             eem_stack_pred = score_sample @ self.components.reshape([self.n_components, -1])
             eem_stack_pred = eem_stack_pred.reshape(eem_dataset.eem_stack.shape)
-        score_sample = pd.DataFrame(score_sample, index=eem_dataset.index, columns=self.fmax.columns)
-        fmax_sample = pd.DataFrame(fmax_sample, index=eem_dataset.index, columns=self.fmax.columns)
+        score_sample = pd.DataFrame(score_sample, index=eem_dataset.index, columns=self.nnls_fmax.columns)
+        fmax_sample = pd.DataFrame(fmax_sample, index=eem_dataset.index, columns=self.nnls_fmax.columns)
         return score_sample, fmax_sample, eem_stack_pred
 
     def component_peak_locations(self):
@@ -2113,7 +2119,7 @@ class PARAFAC:
         res = eem_rayleigh_scattering_removal(res, ex_range=self.ex_range, em_range=self.em_range)
         n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
         rmse = pd.DataFrame(np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels),
-                            index=self.fmax.index, columns=['RMSE'])
+                            index=self.nnls_fmax.index, columns=['RMSE'])
         return rmse
 
     def sample_relative_rmse(self):
@@ -2146,7 +2152,7 @@ class PARAFAC:
         lvr = self.leverage()
         rmse = self.sample_rmse()
         normalized_rmse = self.sample_normalized_rmse()
-        summary = pd.concat([self.score, self.fmax, lvr, rmse, normalized_rmse], axis=1)
+        summary = pd.concat([self.score, self.nnls_fmax, lvr, rmse, normalized_rmse], axis=1)
         return summary
 
     def export(self, filepath, info_dict):
@@ -2306,12 +2312,12 @@ def align_components_by_loadings(models_dict: dict, ex_ref: pd.DataFrame, em_ref
         component_labels_var = [0] * len(permutation)
         for i, nc in enumerate(permutation):
             component_labels_var[nc] = component_labels_ref_extended[i]
-        model.score.columns, model.ex_loadings.columns, model.em_loadings.columns, model.fmax.columns = (
+        model.score.columns, model.ex_loadings.columns, model.em_loadings.columns, model.nnls_fmax.columns = (
                 [component_labels_var] * 4)
         model.score = model.score.iloc[:, permutation]
         model.ex_loadings = model.ex_loadings.iloc[:, permutation]
         model.em_loadings = model.em_loadings.iloc[:, permutation]
-        model.fmax = model.fmax.iloc[:, permutation]
+        model.nnls_fmax = model.nnls_fmax.iloc[:, permutation]
         model.components = model.components[permutation, :, :]
         model.cptensor = permute_cp_tensor(model.cptensors, permutation)
         models_dict_new[model_label] = model
@@ -2369,17 +2375,17 @@ def align_components_by_components(models_dict: dict, components_ref: dict, mode
             for i, nc in enumerate(permutation):
                 component_labels_var[nc] = component_labels_ref_extended[i]
         if model_type == 'parafac':
-            model.score.columns, model.ex_loadings.columns, model.em_loadings.columns, model.fmax.columns = (
+            model.score.columns, model.ex_loadings.columns, model.em_loadings.columns, model.nnls_fmax.columns = (
                     [component_labels_var] * 4)
             model.score = model.score.iloc[:, permutation]
             model.ex_loadings = model.ex_loadings.iloc[:, permutation]
             model.em_loadings = model.em_loadings.iloc[:, permutation]
-            model.fmax = model.fmax.iloc[:, permutation]
+            model.nnls_fmax = model.nnls_fmax.iloc[:, permutation]
             model.components = model.components[permutation, :, :]
             model.cptensor = permute_cp_tensor(model.cptensors, permutation)
         elif model_type == 'nmf':
-            model.nmf_fmax.columns, model.nnls_fmax.columns = ([component_labels_var] * 2)
-            model.nmf_fmax = model.nmf_fmax.iloc[:, permutation]
+            model.nnls_fmax.columns, model.nnls_fmax.columns = ([component_labels_var] * 2)
+            model.nnls_fmax = model.nnls_fmax.iloc[:, permutation]
             model.nnls_fmax = model.nnls_fmax.iloc[:, permutation]
         models_dict_new[model_label] = model
     return models_dict_new
@@ -2541,7 +2547,7 @@ class EEMNMF:
 
     Attributes
     ----------
-    nmf_fmax: pandas.DataFrame
+    fmax: pandas.DataFrame
         Fmax table calculated using the score matrix of NMF.
     nnls_fmax: pandas.DataFrame
         Fmax table calculated by fitting EEMs with NMF components using non-negative least square (NNLS).
@@ -2586,7 +2592,7 @@ class EEMNMF:
 
         # -----------Attributes-------------
         self.eem_stack_unfolded = None
-        self.nmf_fmax = None
+        self.fmax = None
         self.nnls_fmax = None
         self.components = None
         self.decomposer = None
@@ -2605,8 +2611,6 @@ class EEMNMF:
             assert eem_dataset.index is not None
             self.idx_top = [i for i in range(len(eem_dataset.index)) if self.kw_top in eem_dataset.index[i]]
             self.idx_bot = [i for i in range(len(eem_dataset.index)) if self.kw_bot in eem_dataset.index[i]]
-            print(self.idx_top)
-            print(self.idx_bot)
         if self.solver == 'cd' or self.solver == 'mu':
             if self.prior_dict_sample is not None or self.prior_dict_component is not None:
                 raise ValueError("'cd' and 'mu' solver do not support prior knowledge input. Please use 'hals' solver "
@@ -2756,7 +2760,7 @@ class EEMNMF:
                                       for i in range(self.n_components)})
             nnls_score = pd.DataFrame({'component {r} NNLS-Fmax'.format(r=i + 1): nnls_score.iloc[:, order[i]]
                                        for i in range(self.n_components)})
-        self.nmf_fmax = nmf_score
+        self.fmax = nmf_score
         self.nnls_fmax = nnls_score
         self.components = components
         self.eem_stack_unfolded = X
@@ -2888,8 +2892,8 @@ class EEMNMF:
             fmax_sample = score_sample * max_values
             eem_stack_pred = score_sample @ self.components.reshape([self.n_components, -1])
             eem_stack_pred = eem_stack_pred.reshape(eem_dataset.eem_stack.shape)
-        score_sample = pd.DataFrame(score_sample, index=eem_dataset.index, columns=self.nmf_fmax.columns)
-        fmax_sample = pd.DataFrame(fmax_sample, index=eem_dataset.index, columns=self.nmf_fmax.columns)
+        score_sample = pd.DataFrame(score_sample, index=eem_dataset.index, columns=self.fmax.columns)
+        fmax_sample = pd.DataFrame(fmax_sample, index=eem_dataset.index, columns=self.fmax.columns)
         return score_sample, fmax_sample, eem_stack_pred
 
 
@@ -3024,8 +3028,8 @@ class KMethod:
                     score_m, fmax_m, eem_stack_re_m = m.predict(
                         eem_dataset=eem_dataset,
                         fit_beta=True,
-                        idx_bot=idx_top,
-                        idx_top=idx_bot,
+                        idx_bot=idx_bot,
+                        idx_top=idx_top,
                     )
                     res = eem_dataset.eem_stack - eem_stack_re_m
                     res = np.sum(res**2, axis=(1, 2))
@@ -3043,7 +3047,7 @@ class KMethod:
                     if not all([self.kw_top, self.kw_bot]):
                         raise ValueError("Both kw_unquenched and kw_quenched must be passed.")
                     if type(m).__name__ == 'PARAFAC':
-                        fmax_establishment = m.fmax
+                        fmax_establishment = m.nnls_fmax
                     elif type(m).__name__ == 'EEMNMF':
                         fmax_establishment = m.nnls_fmax
                     else:

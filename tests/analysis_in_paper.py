@@ -205,7 +205,7 @@ model.fit(dataset_train)
 target_train = dataset_train.ref[target_name]
 valid_indices_train = target_train.index[~target_train.isna()]
 target_train = target_train.dropna().to_numpy()
-fmax_train = model.fmax
+fmax_train = model.nnls_fmax
 
 # #----
 # # peak-picking
@@ -953,7 +953,7 @@ dataset_test, _ = eem_dataset.filter_by_index(['B1C1'],
 
 model = PARAFAC(n_components=4, loadings_normalization='maximum', tf_normalization=True)
 model.fit(dataset_train)
-fmax_train = model.fmax
+fmax_train = model.nnls_fmax
 leverage_train = model.leverage()
 recon_eem_stack_train = model.eem_stack_reconstructed
 res_train = dataset_train.eem_stack - recon_eem_stack_train
@@ -1259,7 +1259,7 @@ model.fit(dataset_train)
 target_train = dataset_train.ref[target_name]
 valid_indices_train = target_train.index[~target_train.isna()]
 target_train = target_train.dropna().to_numpy()
-fmax_train = model.fmax
+fmax_train = model.nnls_fmax
 fmax_original_train = fmax_train[fmax_train.index.str.contains('B1C1')]
 mask_train = fmax_original_train.index.isin(valid_indices_train)
 fmax_original_train = fmax_original_train[mask_train]

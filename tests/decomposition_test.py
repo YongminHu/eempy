@@ -88,7 +88,7 @@ fmax_ideal_ecoli = np.array([0, 2.75, 1.375, 4.125, 5.5])/5.5*np.max(true_compon
 fmax_ideal_bsa = np.array([1.66, 0.83, 1.245, 0.415, 0])/1.66*np.max(true_components[1])
 parafac_model = PARAFAC(n_components=2, init='svd', tol=1e-09, max_iter_als=500, tf_normalization=False)
 parafac_model.fit(eem_dataset)
-fmax = parafac_model.fmax
+fmax = parafac_model.nnls_fmax
 fmax.columns = ['component 1 modelled fmax', 'component 2 modelled fmax']
 
 fmax = pd.concat([fmax, fmax_measured], axis=1)

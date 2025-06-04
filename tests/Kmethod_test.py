@@ -18,7 +18,7 @@ colors = list(TABLEAU_COLORS.values())
 # ------------Read EEM dataset-------------
 def get_eem_dataset_stats(eem_dataset, base_model):
     base_model.fit(eem_dataset)
-    fmax = base_model.fmax.iloc[:, 0]
+    fmax = base_model.nnls_fmax.iloc[:, 0]
     fmax_tcc = pd.concat([eem_dataset.ref['TCC (million #/mL)'], fmax], axis=1)
     fmax_tcc = fmax_tcc.dropna()
     fmax_doc = pd.concat([eem_dataset.ref['DOC (mg/L)'], fmax], axis=1)
@@ -297,7 +297,7 @@ sfc_pair4 = [3, 'DOC (mg/L)']
 def calculate_f0f_sfc(dataset, fmax_col, target_ref):
     model = PARAFAC(n_components=4)
     model.fit(dataset)
-    fmax = model.fmax
+    fmax = model.nnls_fmax
     target = cluster.ref[target_ref]
     valid_indices = target.index[~target.isna()]
     target = target.dropna().to_numpy()
@@ -559,12 +559,12 @@ def outlier_removal(eem_dataset, clustered_datasets, base_model, target_depth, n
                  j != i]
             )
             base_model.fit(eem_dataset_remained)
-            fmax_remained = base_model.fmax.iloc[:, 0]
+            fmax_remained = base_model.nnls_fmax.iloc[:, 0]
             fmax_original = fmax_remained[fmax_remained.index.str.contains('B1C1')]
             fmax_quenched = fmax_remained[fmax_remained.index.str.contains('B1C2')]
             fmax_ratio_remained = fmax_original.to_numpy() / fmax_quenched.to_numpy()
             base_model.fit(dataset_excluded)
-            fmax_excluded = base_model.fmax.iloc[:, 0]
+            fmax_excluded = base_model.nnls_fmax.iloc[:, 0]
             fmax_original = fmax_excluded[fmax_excluded.index.str.contains('B1C1')]
             fmax_quenched = fmax_excluded[fmax_excluded.index.str.contains('B1C2')]
             fmax_ratio_excluded = fmax_original.to_numpy() / fmax_quenched.to_numpy()
@@ -903,7 +903,7 @@ categories_kw_dict = {
 
 model = PARAFAC(n_components=4)
 model.fit(eem_dataset)
-fmax = model.fmax
+fmax = model.nnls_fmax
 fmax_original = fmax[fmax.index.str.contains('B1C1')]
 fmax_quenched = fmax[fmax.index.str.contains('B1C2')]
 fmax_ratio = fmax_original.to_numpy() / fmax_quenched.to_numpy()
@@ -1059,7 +1059,7 @@ print(pearsonr(fmax_original_target_numpy[:, 0], target))
 def outlier_removal_simple(eem_dataset_work, n_clusters, set_point, r):
     model = PARAFAC(n_components=4)
     model.fit(eem_dataset_work)
-    fmax = model.fmax
+    fmax = model.nnls_fmax
     fmax_original = fmax[fmax.index.str.contains('B1C1')]
     fmax_quenched = fmax[fmax.index.str.contains('B1C2')]
     fmax_ratio = fmax_original.to_numpy() / fmax_quenched.to_numpy()
@@ -1074,7 +1074,7 @@ def outlier_removal_simple(eem_dataset_work, n_clusters, set_point, r):
     qualified_clusters = [index for index, value in enumerate(mean_fmax_ratios) if value <= set_point]
     qualified_dataset, _ = eem_dataset_work.filter_by_cluster(qualified_clusters, copy=True)
     model.fit(qualified_dataset)
-    fmax_after = model.fmax
+    fmax_after = model.nnls_fmax
     fmax_after_original = fmax_after[fmax_after.index.str.contains('B1C1')]
     target_after = qualified_dataset.ref['TCC (million #/mL)']
     target_after = target_after.dropna().to_numpy()
