@@ -142,7 +142,7 @@ def plot_outlier_plots(model, indicator, dataset_train, dataset_test, criteria='
     truth_train = dataset_train.ref[indicator]
     truth_test = dataset_test.ref[indicator]
     if criteria == 'reconstruction_error':
-        error_train = model.sample_rmse().to_numpy()
+        error_train = model.sample_rmse().to_numpy().reshape(-1)
         res_test = dataset_test.eem_stack - eem_re_test
         n_pixels = res_test.shape[1] * res_test.shape[2]
         error_test = np.sqrt(np.sum(res_test ** 2, axis=(1, 2)) / n_pixels)
@@ -162,7 +162,7 @@ def plot_outlier_plots(model, indicator, dataset_train, dataset_test, criteria='
                                     density=True, alpha=0.5, color='blue', label='training', zorder=0,
                                     edgecolor='black')
     # Histogram for outliers (just to show label with hatching)
-    counts, bins, patches = ax.hist([0], bins=np.arange(binrange[0], binrange[1] + binwidth, binwidth),
+    counts, bins, patches = ax.hist([-100], bins=np.arange(binrange[0], binrange[1] + binwidth, binwidth),
                                     density=True, alpha=0.5, color='orange', label='test (qualified)',
                                     edgecolor='red', zorder=2)
     # Histogram for test (qualified) data
@@ -188,7 +188,7 @@ def plot_outlier_plots(model, indicator, dataset_train, dataset_test, criteria='
     plt.legend(fontsize=16)
     plt.tick_params(labelsize=18)
     plt.tight_layout()
-    plt.show()
+    fig.show()
 
 plot_outlier_plots(model=model, indicator='TCC (million #/mL)', dataset_test=dataset_test, dataset_train=dataset_train)
 
