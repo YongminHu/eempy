@@ -1917,7 +1917,6 @@ class PARAFAC:
             component = np.array([b[:, r]]).T.dot(np.array([c[:, r]]))
             components[r, :, :] = component
         if self.tf_normalization:
-            print(a)
             fmax = pd.DataFrame(a * tf_weights[:, np.newaxis])
         else:
             fmax = pd.DataFrame(a)

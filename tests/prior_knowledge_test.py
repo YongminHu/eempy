@@ -129,8 +129,6 @@ def plot_all_components(eem_dataset):
                 ax[i % 2].axis('off')  # Hides ticks, spines, etc.
     fig.show()
 
-model = PARAFAC(n_components=5, tf_normalization=False)
-model.fit(eem_dataset_october)
 #
 # # -------------prior decomposition function test---------
 #
@@ -371,7 +369,7 @@ dataset_test = eem_dataset_july
 indicator = 'TCC (million #/mL)'
 param_grid = {
     'n_components': [4, 5, 6],
-    'init': ['ordinary_nmf'],
+    'init': ['svd'],
     'gamma_sample': [0],
     'alpha_component': [0],
     'l1_ratio': [0],
@@ -422,6 +420,7 @@ for k, p in enumerate(param_combinations):
         # )
         model = PARAFAC(
             n_components=p['n_components'],
+            prior_ref_components=prior_dict_ref,
         )
         model.fit(d_train)
         fmax_train = model.fmax
