@@ -20,8 +20,8 @@ np.random.seed(42)
 eem_dataset_path = \
     "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/sample_276_ex_274_em_310_mfem_5_gaussian_rsu.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
-# eem_dataset.raman_scattering_removal(width=15, interpolation_method='nan',copy=False)
-# eem_dataset.eem_stack = np.nan_to_num(eem_dataset.eem_stack, copy=True, nan=0)
+eem_dataset.raman_scattering_removal(width=15, interpolation_method='nan', copy=False)
+eem_dataset.eem_stack = np.nan_to_num(eem_dataset.eem_stack, copy=True, nan=0)
 eem_dataset_july, _ = eem_dataset.filter_by_index(None, ['2024-07-'], copy=True)
 eem_dataset_october, _ = eem_dataset.filter_by_index(None, ['2024-10-'], copy=True)
 eem_dataset_original, _ = eem_dataset.filter_by_index(['B1C1'], None, copy=True)
@@ -34,12 +34,13 @@ idx_bot_jul = [i for i in range(len(eem_dataset_july.index)) if 'B1C2' in eem_da
 eem_dataset_bac_path = 'C:/PhD/Fluo-detect/_data/20240313_BSA_Ecoli/synthetic_samples.json'
 eem_dataset_bac = read_eem_dataset_from_json(eem_dataset_bac_path)
 bacteria_eem = eem_dataset_bac.eem_stack[-5]
-# bacteria_eem = eem_interpolation(bacteria_eem, eem_dataset_bac.ex_range, eem_dataset_bac.em_range,
-#                                  eem_dataset.ex_range, eem_dataset.em_range, method='linear')
-# bacteria_eem, _ = eem_raman_scattering_removal(bacteria_eem, eem_dataset.ex_range, eem_dataset.em_range,
-#                                             width=10, interpolation_method='nan')
-# bacteria_eem = np.nan_to_num(bacteria_eem, nan=0)
+bacteria_eem = eem_interpolation(bacteria_eem, eem_dataset_bac.ex_range, eem_dataset_bac.em_range,
+                                 eem_dataset.ex_range, eem_dataset.em_range, method='linear')
+bacteria_eem, _ = eem_raman_scattering_removal(bacteria_eem, eem_dataset.ex_range, eem_dataset.em_range,
+                                               width=10, interpolation_method='nan')
+bacteria_eem = np.nan_to_num(bacteria_eem, nan=0)
 prior_dict_ref = {0: bacteria_eem.reshape(-1)}
+
 
 def plot_all_f0f(model, eem_dataset, kw_top, kw_bot, target_analyte):
     target_train = eem_dataset.ref[target_analyte]
@@ -52,37 +53,37 @@ def plot_all_f0f(model, eem_dataset, kw_top, kw_bot, target_analyte):
     fmax_quenched = fmax_quenched[mask]
     fmax_ratio = fmax_original.to_numpy() / fmax_quenched.to_numpy()
 
-    fig, axes = plt.subplots(ncols=2, nrows=(params['n_components']+1)//2, figsize=(8, 10))
+    fig, axes = plt.subplots(ncols=2, nrows=(params['n_components'] + 1) // 2, figsize=(8, 10))
     for rank_target in range(params['n_components']):
         fmax_ratio_target = fmax_ratio[:, rank_target]
         fmax_ratio_target_valid = fmax_ratio_target[(fmax_ratio_target >= 0) & (fmax_ratio_target <= 1e3)]
         fmax_ratio_z_scores = zscore(fmax_ratio_target_valid, nan_policy='omit')
-        ratio_nan = 1 - fmax_ratio_target_valid.shape[0]/fmax_ratio_target.shape[0]
+        ratio_nan = 1 - fmax_ratio_target_valid.shape[0] / fmax_ratio_target.shape[0]
         fmax_ratio_target_filtered = fmax_ratio_target_valid[np.abs(fmax_ratio_z_scores) <= 3]
 
-        if (params['n_components']+1)//2 > 1:
+        if (params['n_components'] + 1) // 2 > 1:
             counts, bins, patches = axes[rank_target // 2, rank_target % 2].hist(fmax_ratio_target_filtered, bins=30,
                                                                                  density=True, alpha=0.5, color='blue',
                                                                                  label='training', zorder=0,
                                                                                  edgecolor='black')
-            axes[rank_target//2, rank_target % 2].set_ylabel('Density', fontsize=18)
-            axes[rank_target//2, rank_target % 2].set_xlabel(f'C{rank_target+1}'+' $F_{0}/F$', fontsize=18)
-            axes[rank_target//2, rank_target % 2].tick_params(axis='both', labelsize=16)
-            axes[rank_target//2, rank_target % 2].text(
+            axes[rank_target // 2, rank_target % 2].set_ylabel('Density', fontsize=18)
+            axes[rank_target // 2, rank_target % 2].set_xlabel(f'C{rank_target + 1}' + ' $F_{0}/F$', fontsize=18)
+            axes[rank_target // 2, rank_target % 2].tick_params(axis='both', labelsize=16)
+            axes[rank_target // 2, rank_target % 2].text(
                 0.01, 0.99,
                 f'nan_ratio: {ratio_nan:2f}',
-                transform=axes[rank_target//2, rank_target % 2].transAxes,
+                transform=axes[rank_target // 2, rank_target % 2].transAxes,
                 fontsize=10,
                 verticalalignment='top',
                 horizontalalignment='left'
             )
         else:
             counts, bins, patches = axes[rank_target % 2].hist(fmax_ratio_target_filtered, bins=30,
-                                                                                 density=True, alpha=0.5, color='blue',
-                                                                                 label='training', zorder=0,
-                                                                                 edgecolor='black')
+                                                               density=True, alpha=0.5, color='blue',
+                                                               label='training', zorder=0,
+                                                               edgecolor='black')
             axes[rank_target % 2].set_ylabel('Density', fontsize=18)
-            axes[rank_target % 2].set_xlabel(f'C{rank_target+1}'+' $F_{0}/F$', fontsize=18)
+            axes[rank_target % 2].set_xlabel(f'C{rank_target + 1}' + ' $F_{0}/F$', fontsize=18)
             axes[rank_target % 2].tick_params(axis='both', labelsize=16)
             axes[rank_target % 2].text(
                 0.01, 0.99,
@@ -129,65 +130,67 @@ def plot_all_components(eem_dataset):
                 ax[i % 2].axis('off')  # Hides ticks, spines, etc.
     fig.show()
 
-#
-# # -------------prior decomposition function test---------
-#
-# A, B, C, beta = cp_hals_prior_ratio(
-#     tensor=eem_dataset_october.eem_stack,
-#     rank=5,
-#     prior_dict_A={0: eem_dataset_october.ref['TCC (million #/mL)'].to_numpy()},
-#     gamma_A=3e8,
-#     prior_ref_components=prior_dict_ref,
-#     lam=0,
-#     idx_top=[i for i in range(len(eem_dataset_october.index)) if 'B1C1' in eem_dataset_october.index[i]],
-#     idx_bot=[i for i in range(len(eem_dataset_october.index)) if 'B1C2' in eem_dataset_october.index[i]],
-#     tol=1e-9,
-#     init='ordinary_cp',
-#     random_state=42
-# )
-# plt.plot(A[:, 0], eem_dataset_october.ref['TCC (million #/mL)'], 'o')
-# plt.show()
-# for r in range(A.shape[0]):
-#     plot_eem(np.outer(B[:, r], C[:, r]),
-#              ex_range=eem_dataset_original.ex_range,
-#              em_range=eem_dataset_original.em_range,
-#              display=True
-#              )
-#
-# A, B, beta = nmf_hals_prior_ratio(
-#     X=eem_dataset_july.eem_stack.reshape([eem_dataset_july.eem_stack.shape[0], -1]),
-#     idx_top=idx_top_jul,
-#     idx_bot=idx_bot_jul,
-#     lam=0, #2e3
-#     rank=3,
-#     prior_dict_W={2: eem_dataset_july.ref['TCC (million #/mL)'].to_numpy()},
-#     gamma_W=0,
-#     init='nndsvda',
-#     alpha_H=0,
-#     l1_ratio=0,
-# )
-# A_test = solve_W(
-#     X1=eem_stack_to_2d(eem_dataset_october.eem_stack)[idx_bot_oct],
-#     X2=eem_stack_to_2d(eem_dataset_october.eem_stack)[idx_top_oct],
-#     H=B,
-#     beta=None
-# )
-# A_test = A_test*beta
-# r = 0
-# plt.plot(A[:, r], eem_dataset_july.ref['TCC (million #/mL)'], 'o')
-# plt.plot(A_test[:, r], eem_dataset_october.ref['TCC (million #/mL)'].dropna(), 'o')
-# plt.show()
-# plot_eem(B[r, :].reshape(eem_dataset_october.eem_stack.shape[1:]),
-#          ex_range=eem_dataset_october.ex_range,
-#          em_range=eem_dataset_october.em_range,
-#          display=True
-#          )
-# fmax_ratio = A[idx_top_oct] / A[idx_bot_oct]
-# fmax_ratio_z_scores = zscore(fmax_ratio[:, r])
-# fmax_ratio_filtered = fmax_ratio[np.abs(fmax_ratio_z_scores) <= 3]
-# plt.hist(fmax_ratio_filtered[:, r], density=True)
-# plt.show()
 
+def plot_outlier_plots(model, indicator, dataset_train, dataset_test, criteria='reconstruction_error'):
+    fmax_train = model.fmax
+    _, fmax_test, eem_re_test = model.predict(
+        dataset_test,
+        fit_beta=True,
+        idx_top=[i for i in range(len(dataset_test.index)) if 'B1C1' in dataset_test.index[i]],
+        idx_bot=[i for i in range(len(dataset_test.index)) if 'B1C2' in dataset_test.index[i]],
+    )
+    truth_train = dataset_train.ref[indicator]
+    truth_test = dataset_test.ref[indicator]
+    if criteria == 'reconstruction_error':
+        error_train = model.sample_rmse().to_numpy()
+        res_test = dataset_test.eem_stack - eem_re_test
+        n_pixels = res_test.shape[1] * res_test.shape[2]
+        error_test = np.sqrt(np.sum(res_test ** 2, axis=(1, 2)) / n_pixels)
+
+    binwidth = np.max(np.concatenate([error_train, error_test])) - np.min(np.concatenate([error_train, error_test]))
+    binwidth = binwidth / 20
+    binrange = (np.min(np.concatenate([error_train, error_test]) - binwidth, axis=0),
+                np.max(np.concatenate([error_train, error_test]) + binwidth, axis=0)
+                )
+    error_train_z_scores = zscore(error_train)
+    filtered_error_train = error_train[np.abs(error_train_z_scores) <= 3]
+    threshold_upper = np.quantile(filtered_error_train, 1)
+    threshold_lower = np.quantile(filtered_error_train, 0)
+    fig, ax = plt.subplots()
+    counts, bins, patches = ax.hist(error_train,
+                                    bins=np.arange(binrange[0], binrange[1] + binwidth, binwidth),
+                                    density=True, alpha=0.5, color='blue', label='training', zorder=0,
+                                    edgecolor='black')
+    # Histogram for outliers (just to show label with hatching)
+    counts, bins, patches = ax.hist([0], bins=np.arange(binrange[0], binrange[1] + binwidth, binwidth),
+                                    density=True, alpha=0.5, color='orange', label='test (qualified)',
+                                    edgecolor='red', zorder=2)
+    # Histogram for test (qualified) data
+    counts, bins, patches = ax.hist(error_test,
+                                    bins=np.arange(binrange[0], binrange[1] + binwidth, binwidth),
+                                    density=True, alpha=0.5, color='orange', label='test (outliers)', zorder=1,
+                                    edgecolor='black')
+
+    for bar in ax.patches:
+        # Calculate the midpoint of the bin
+        bin_left = bar.get_x()
+        bin_width = bar.get_width()
+        bin_mid = bin_left + bin_width / 2
+
+        # Check if the midpoint is above the threshold
+        if (threshold_upper <= bin_mid or threshold_lower >= bin_mid) and bar.zorder == 1:
+            # Add hatch pattern and change color
+            bar.set_hatch("////")  # Hatch pattern (e.g., "////", "xxx", "..")
+            bar.set_edgecolor('red')
+    plt.xlim(binrange)
+    plt.xlabel("RMSE", fontsize=20)
+    plt.ylabel("Density", fontsize=20)
+    plt.legend(fontsize=16)
+    plt.tick_params(labelsize=18)
+    plt.tight_layout()
+    plt.show()
+
+plot_outlier_plots(model=model, indicator='TCC (million #/mL)', dataset_test=dataset_test, dataset_train=dataset_train)
 
 # -----------model training-------------
 # dataset_train, dataset_test = eem_dataset_october.splitting(2)
@@ -202,12 +205,12 @@ def plot_all_components(eem_dataset):
 #     dataset_train_splits.append(combine_eem_datasets([subset, sub_eem_dataset_quenched]))
 # dataset_train = dataset_train_splits[0]
 # dataset_test = dataset_train_splits[1]
-dataset_train = eem_dataset_october
-dataset_test = eem_dataset_july
+dataset_train = eem_dataset_july
+dataset_test = eem_dataset_october
 indicator = 'TCC (million #/mL)'
 sample_prior = {0: dataset_train.ref[indicator]}
 params = {
-    'n_components': 7,
+    'n_components': 2,
     'init': 'ordinary_nmf',
     'gamma_sample': 0,
     'alpha_component': 0,
@@ -215,48 +218,18 @@ params = {
     'l1_ratio': 0,
     'max_iter_als': 100,
     'max_iter_nnls': 800,
-    'lam': 3e6, # 1e6
+    'lam': 3e5,  # 1e6
     'random_state': 42
 }
-# model = EEMNMF(
-#     solver='hals',
-#     prior_dict_sample=sample_prior,
-#     normalization=None,
-#     sort_em=False,
-#     prior_ref_components=prior_dict_ref,
-#     idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
-#     idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
-#     **params
-# )
-# model.fit(dataset_train)
-# fmax_train = model.nmf_fmax
-# components = model.components
-# lr = LinearRegression(fit_intercept=False)
-# mask_train = ~np.isnan(dataset_train.ref[indicator].to_numpy())
-# X_train = fmax_train.iloc[mask_train, [list(sample_prior.keys())[0]]].to_numpy()
-# y_train = dataset_train.ref[indicator].to_numpy()[mask_train]
-# lr.fit(X_train, y_train)
-# y_pred_train = lr.predict(X_train)
-# rmse_train = np.sqrt(mean_squared_error(y_train, y_pred_train))
-# r2_train = lr.score(X_train, y_train)
-params = {
-    'n_components': 5,
-    'init': 'svd',
-    'gamma_sample': 0,
-    'max_iter_als': 100,
-    'max_iter_nnls': 800,
-    'lam': 0, # 1e8
-    'random_state': 42
-}
-model = PARAFAC(
-        solver='mu',
-        # prior_dict_sample=sample_prior,
-        tf_normalization=False,
-        # sort_em=False,
-        # prior_ref_components=prior_dict_ref,
-        # idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
-        # idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
-        **params
+model = EEMNMF(
+    solver='hals',
+    prior_dict_sample=sample_prior,
+    normalization=None,
+    sort_em=False,
+    prior_ref_components=prior_dict_ref,
+    idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
+    idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
+    **params
 )
 model.fit(dataset_train)
 fmax_train = model.fmax
@@ -269,6 +242,39 @@ lr.fit(X_train, y_train)
 y_pred_train = lr.predict(X_train)
 rmse_train = np.sqrt(mean_squared_error(y_train, y_pred_train))
 r2_train = lr.score(X_train, y_train)
+slope_train = lr.coef_
+intercept_train = lr.intercept_
+
+# params = {
+#     'n_components': 4,
+#     'init': 'nndsvd',
+#     'gamma_sample': 0,
+#     'max_iter_als': 100,
+#     'max_iter_nnls': 800,
+#     'lam': 1e7, # 1e8
+#     'random_state': 42
+# }
+# model = PARAFAC(
+#         solver='hals',
+#         # prior_dict_sample=sample_prior,
+#         # tf_normalization=False,
+#         # sort_em=False,
+#         prior_ref_components=prior_dict_ref,
+#         # idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
+#         # idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
+#         **params
+# )
+# model.fit(dataset_train)
+# fmax_train = model.fmax
+# components = model.components
+# lr = LinearRegression(fit_intercept=False)
+# mask_train = ~np.isnan(dataset_train.ref[indicator].to_numpy())
+# X_train = fmax_train.iloc[mask_train, [list(sample_prior.keys())[0]]].to_numpy()
+# y_train = dataset_train.ref[indicator].to_numpy()[mask_train]
+# lr.fit(X_train, y_train)
+# y_pred_train = lr.predict(X_train)
+# rmse_train = np.sqrt(mean_squared_error(y_train, y_pred_train))
+# r2_train = lr.score(X_train, y_train)
 
 
 # -----------model testing-------------
@@ -277,7 +283,7 @@ _, fmax_test, eem_re_test = model.predict(
     fit_beta=True,
     idx_top=[i for i in range(len(dataset_test.index)) if 'B1C1' in dataset_test.index[i]],
     idx_bot=[i for i in range(len(dataset_test.index)) if 'B1C2' in dataset_test.index[i]],
-                                          )
+)
 sample_test_truth = {0: dataset_test.ref[indicator]}
 mask_test = ~np.isnan(dataset_test.ref[indicator].to_numpy())
 X_test = fmax_test.iloc[mask_test, [list(sample_prior.keys())[0]]].to_numpy()
@@ -285,7 +291,6 @@ y_test = dataset_test.ref[indicator].to_numpy()[mask_test]
 y_pred_test = lr.predict(X_test)
 rmse_test = np.sqrt(mean_squared_error(y_test, y_pred_test))
 r2_test = lr.score(X_test, y_test)
-
 
 # -----------plot components----------
 
@@ -322,7 +327,7 @@ for i, ((n, p), (n2, t)) in enumerate(zip(sample_prior.items(), sample_test_trut
         info_dict['rmse_test'] = np.round(rmse_test, decimals=3)
         info_dict['fit_intercept'] = True if lr_n.fit_intercept else False
         if lr_n.fit_intercept:
-            ax.plot([0, 10000], np.array([0, 10000])*lr_n.coef_[0]+lr_n.intercept_, '--')
+            ax.plot([0, 10000], np.array([0, 10000]) * lr_n.coef_[0] + lr_n.intercept_, '--')
         else:
             ax.plot([0, 10000], np.array([0, 10000]) * lr_n.coef_[0], '--')
         ax.text(
@@ -340,12 +345,12 @@ for i, ((n, p), (n2, t)) in enumerate(zip(sample_prior.items(), sample_test_trut
         ax.set_xlim([0, max(
             max(fmax_train.iloc[:, n].to_numpy()),
             max(fmax_test.iloc[:, n].to_numpy())
-        )+100
+        ) + 100
                      ])
         ax.set_ylim([0, max(
             max(p.to_numpy()),
             max(t.to_numpy())
-        )+0.5
+        ) + 0.5
                      ])
         ax.legend(loc='best', bbox_to_anchor=(0.95, 0.25), fontsize=16)
     else:
@@ -362,19 +367,19 @@ fig.show()
 
 plot_all_f0f(model, dataset_train, 'B1C1', 'B1C2', 'TCC (million #/mL)')
 
-
 # ----------cross-validation & hyperparameter optimization-------
 dataset_train = eem_dataset_october
 dataset_test = eem_dataset_july
 indicator = 'TCC (million #/mL)'
 param_grid = {
-    'n_components': [4, 5, 6],
+    'n_components': [4],
     'init': ['svd'],
     'gamma_sample': [0],
     'alpha_component': [0],
     'l1_ratio': [0],
-    'lam': [0]
+    'lam': [1e6]
 }
+
 
 def get_param_combinations(param_grid):
     """
@@ -389,6 +394,7 @@ def get_param_combinations(param_grid):
     keys = list(param_grid.keys())
     values_product = product(*(param_grid[key] for key in keys))
     return [dict(zip(keys, values)) for values in values_product]
+
 
 param_combinations = get_param_combinations(param_grid)
 dataset_train_splits = []
@@ -408,20 +414,20 @@ for k, p in enumerate(param_combinations):
         d_train = combine_eem_datasets(dataset_train_splits[:i] + dataset_train_splits[i + 1:])
         d_test = dataset_train_splits[i]
         sample_prior = {1: d_train.ref['TCC (million #/mL)']}
-        # model = EEMNMF(
-        #     solver='hals',
-        #     prior_dict_sample=sample_prior,
-        #     normalization=None,
-        #     sort_em=False,
-        #     prior_ref_components=prior_dict_ref,
-        #     idx_top=[i for i in range(len(d_train.index)) if 'B1C1' in d_train.index[i]],
-        #     idx_bot=[i for i in range(len(d_train.index)) if 'B1C2' in d_train.index[i]],
-        #     **p
-        # )
-        model = PARAFAC(
-            n_components=p['n_components'],
+        model = EEMNMF(
+            solver='hals',
+            prior_dict_sample=sample_prior,
+            normalization=None,
+            sort_em=False,
             prior_ref_components=prior_dict_ref,
+            idx_top=[i for i in range(len(d_train.index)) if 'B1C1' in d_train.index[i]],
+            idx_bot=[i for i in range(len(d_train.index)) if 'B1C2' in d_train.index[i]],
+            **p
         )
+        # model = PARAFAC(
+        #     n_components=p['n_components'],
+        #     prior_ref_components=prior_dict_ref,
+        # )
         model.fit(d_train)
         fmax_train = model.fmax
         components = model.components
@@ -440,7 +446,7 @@ for k, p in enumerate(param_combinations):
         y_test = d_test.ref['TCC (million #/mL)'].to_numpy()[mask_test]
         r2 += lr.score(X_test, y_test) / len(dataset_train_splits)
         y_pred_test = lr.predict(X_test)
-        rmse += np.sqrt(mean_squared_error(y_test, y_pred_test))/len(dataset_train_splits)
+        rmse += np.sqrt(mean_squared_error(y_test, y_pred_test)) / len(dataset_train_splits)
     param_combinations[k]['r2'] = r2
     param_combinations[k]['rmse'] = rmse
 
@@ -493,7 +499,7 @@ for k, p in enumerate(param_combinations):
 #
 # ------------Kmethod + regulated NMF--------------
 
-dataset_train = eem_dataset_october
+dataset_train = eem_dataset
 dataset_test = eem_dataset_july
 indicator = 'TCC (million #/mL)'
 sample_prior = {0: dataset_train.ref[indicator]}
@@ -506,7 +512,7 @@ params = {
     'l1_ratio': 0,
     'max_iter_als': 100,
     'max_iter_nnls': 800,
-    'lam': 1e6, # 1e6
+    'lam': 3e5,  # 1e6
     'random_state': 42
 }
 model = EEMNMF(
@@ -531,15 +537,30 @@ kmodel = KMethod(
 cluster_labels, label_history, error_history = kmodel.base_clustering(eem_dataset=dataset_train)
 df_cluster = pd.DataFrame(cluster_labels, index=dataset_train.index)
 dataset_train.cluster = cluster_labels
-cluster_specific_models = {}
+clusters = {}
 for label in list(set(cluster_labels)):
     cluster, _ = dataset_train.filter_by_cluster(cluster_names=label)
+    clusters[label] = cluster
+
+# with open("C:/PhD/publication/2025_prior_knowledge/clusters_all.pkl",
+#           'wb') as file:
+#     pickle.dump(clusters, file)
+
+with open("C:/PhD/publication/2025_prior_knowledge/clusters_all.pkl",
+          'rb') as file:
+    clusters = pickle.load(file)
+
+cluster_specific_models = {}
+for label, cluster in clusters.items():
     model_cluster = copy.deepcopy(model)
     model_cluster.fit(cluster)
     cluster_specific_models[label] = model_cluster
     plot_all_components(model_cluster)
     plot_all_f0f(model_cluster, cluster, 'B1C1', 'B1C2', 'TCC (million #/mL)')
 
-with open("C:/PhD/publication/2025_prior_knowledge/cluster_specific_models_october.pkl",
+with open("C:/PhD/publication/2025_prior_knowledge/cluster_specific_models_all.pkl",
           'wb') as file:
     pickle.dump(cluster_specific_models, file)
+
+
+

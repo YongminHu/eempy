@@ -3565,7 +3565,7 @@ def nmf_hals_prior(
         prior_dict_H = {}
     if prior_dict_W is None:
         prior_dict_W = {}
-    elif prior_ref_components is not None:
+    if prior_ref_components is not None:
         prior_keys = list(prior_ref_components.keys())
         queries = np.array([prior_ref_components[k] for k in prior_keys])
         cost_mat = cdist(queries, H, metric='correlation')
@@ -3624,6 +3624,21 @@ def nmf_hals_prior(
             if abs(prev_err - err) / (prev_err + eps) < tol:
                 break
         prev_err = err
+
+    if prior_ref_components is not None:
+        cost_mat = cdist(queries, H, metric='correlation')
+        query_idx, ref_idx = linear_sum_assignment(cost_mat)
+        H_new, W_new = np.zeros(H.shape), np.zeros(W.shape)
+        r_list_query, r_list_ref = [i for i in range(rank)], [i for i in range(rank)]
+        for qi, ri in zip(query_idx, ref_idx):
+            W_new[:, qi] = W[:, ri]
+            H_new[qi, :] = H[ri, :]
+            r_list_query.pop(qi)
+            r_list_ref.pop(ri)
+        for qi, ri in zip(r_list_query, r_list_ref):
+            W_new[:, qi] = W[:, ri]
+            H_new[qi, :] = H[ri, :]
+        W, H = W_new, H_new
 
     return W, H
 
@@ -4348,7 +4363,7 @@ def nmf_hals_prior_ratio(
         prior_dict_H = {}
     if prior_dict_W is None:
         prior_dict_W = {}
-    elif prior_ref_components is not None:
+    if prior_ref_components is not None:
         prior_keys = list(prior_ref_components.keys())
         queries = np.array([prior_ref_components[k] for k in prior_keys])
         cost_mat = cdist(queries, H, metric='correlation')
@@ -4415,6 +4430,21 @@ def nmf_hals_prior_ratio(
         if abs(prev_err - err) / (prev_err + eps) < tol:
             break
         prev_err = err
+
+    if prior_ref_components is not None:
+        cost_mat = cdist(queries, H, metric='correlation')
+        query_idx, ref_idx = linear_sum_assignment(cost_mat)
+        H_new, W_new = np.zeros(H.shape), np.zeros(W.shape)
+        r_list_query, r_list_ref = [i for i in range(rank)], [i for i in range(rank)]
+        for qi, ri in zip(query_idx, ref_idx):
+            W_new[:, qi] = W[:, ri]
+            H_new[qi, :] = H[ri, :]
+            r_list_query.pop(qi)
+            r_list_ref.pop(ri)
+        for qi, ri in zip(r_list_query, r_list_ref):
+            W_new[:, qi] = W[:, ri]
+            H_new[qi, :] = H[ri, :]
+        W, H = W_new, H_new
 
     return W, H, beta
 
