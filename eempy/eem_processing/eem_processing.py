@@ -1743,7 +1743,7 @@ class PARAFAC:
     """
 
     def __init__(self, n_components, non_negativity=True, solver='hals', init='svd',
-                 tf_normalization=True, loadings_normalization: Optional[str] = 'sd', sort_em=True,
+                 tf_normalization=True, loadings_normalization: Optional[str] = 'maximum', sort_em=True,
                  alpha_sample=0, alpha_ex=0, alpha_em=0, l1_ratio=1,
                  prior_dict_sample=None, prior_dict_ex=None, prior_dict_em=None,
                  gamma_sample=0, gamma_ex=0, gamma_em=0, prior_ref_components=None,
@@ -1835,7 +1835,7 @@ class PARAFAC:
                     a, b, c = cptensors[1]
                 else:
                     if self.solver == 'hals':
-                        if self.idx_top and self.idx_bot:
+                        if self.idx_top is not None and self.idx_bot is not None:
                             a, b, c, beta = cp_hals_prior_ratio(
                                 eem_stack_tf,
                                 rank=self.n_components,
@@ -1917,6 +1917,7 @@ class PARAFAC:
             component = np.array([b[:, r]]).T.dot(np.array([c[:, r]]))
             components[r, :, :] = component
         if self.tf_normalization:
+            print(a)
             fmax = pd.DataFrame(a * tf_weights[:, np.newaxis])
         else:
             fmax = pd.DataFrame(a)
@@ -1935,6 +1936,8 @@ class PARAFAC:
             em_loadings = pd.DataFrame({'component {r} em loadings'.format(r=i + 1): em_loadings.iloc[:, order[i]]
                                         for i in range(self.n_components)})
             score = pd.DataFrame({'component {r} score'.format(r=i + 1): score.iloc[:, order[i]]
+                                  for i in range(self.n_components)})
+            fmax = pd.DataFrame({'component {r} score'.format(r=i + 1): fmax.iloc[:, order[i]]
                                   for i in range(self.n_components)})
             nnls_fmax = pd.DataFrame({'component {r} fmax'.format(r=i + 1): nnls_fmax[:, order[i]]
                                  for i in range(self.n_components)})
@@ -3807,8 +3810,8 @@ def cp_hals_prior(
         )
         C = C.T
 
-        # Normalize factors for numerical stability (optional)
-        weights, [A, B, C] = cp_normalize((None, [A, B, C]))
+        # # Normalize factors for numerical stability (optional)
+        # weights, [A, B, C] = cp_normalize((None, [A, B, C]))
 
         # Check convergence
         reconstructed = cp_to_tensor((None, [A, B, C]))
@@ -4016,8 +4019,8 @@ def cp_hals_prior_ratio(
         # --- Beta‐step (closed form) ---
         beta = update_beta(A, idx_top=idx_top, idx_bot=idx_bot, eps=0)
 
-        # Normalize factors for numerical stability (optional)
-        weights, [A, B, C] = cp_normalize((None, [A, B, C]))
+        # # Normalize factors for numerical stability (optional)
+        # weights, [A, B, C] = cp_normalize((None, [A, B, C]))
 
         # Check convergence
         reconstructed = cp_to_tensor((None, [A, B, C]))

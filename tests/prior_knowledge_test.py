@@ -20,8 +20,8 @@ np.random.seed(42)
 eem_dataset_path = \
     "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/sample_276_ex_274_em_310_mfem_5_gaussian_rsu.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
-eem_dataset.raman_scattering_removal(width=15, interpolation_method='nan',copy=False)
-eem_dataset.eem_stack = np.nan_to_num(eem_dataset.eem_stack, copy=True, nan=0)
+# eem_dataset.raman_scattering_removal(width=15, interpolation_method='nan',copy=False)
+# eem_dataset.eem_stack = np.nan_to_num(eem_dataset.eem_stack, copy=True, nan=0)
 eem_dataset_july, _ = eem_dataset.filter_by_index(None, ['2024-07-'], copy=True)
 eem_dataset_october, _ = eem_dataset.filter_by_index(None, ['2024-10-'], copy=True)
 eem_dataset_original, _ = eem_dataset.filter_by_index(['B1C1'], None, copy=True)
@@ -34,11 +34,11 @@ idx_bot_jul = [i for i in range(len(eem_dataset_july.index)) if 'B1C2' in eem_da
 eem_dataset_bac_path = 'C:/PhD/Fluo-detect/_data/20240313_BSA_Ecoli/synthetic_samples.json'
 eem_dataset_bac = read_eem_dataset_from_json(eem_dataset_bac_path)
 bacteria_eem = eem_dataset_bac.eem_stack[-5]
-bacteria_eem = eem_interpolation(bacteria_eem, eem_dataset_bac.ex_range, eem_dataset_bac.em_range,
-                                 eem_dataset.ex_range, eem_dataset.em_range, method='linear')
-bacteria_eem, _ = eem_raman_scattering_removal(bacteria_eem, eem_dataset.ex_range, eem_dataset.em_range,
-                                            width=10, interpolation_method='nan')
-bacteria_eem = np.nan_to_num(bacteria_eem, nan=0)
+# bacteria_eem = eem_interpolation(bacteria_eem, eem_dataset_bac.ex_range, eem_dataset_bac.em_range,
+#                                  eem_dataset.ex_range, eem_dataset.em_range, method='linear')
+# bacteria_eem, _ = eem_raman_scattering_removal(bacteria_eem, eem_dataset.ex_range, eem_dataset.em_range,
+#                                             width=10, interpolation_method='nan')
+# bacteria_eem = np.nan_to_num(bacteria_eem, nan=0)
 prior_dict_ref = {0: bacteria_eem.reshape(-1)}
 
 def plot_all_f0f(model, eem_dataset, kw_top, kw_bot, target_analyte):
@@ -128,6 +128,9 @@ def plot_all_components(eem_dataset):
                 ax[i % 2].imshow(img_array)
                 ax[i % 2].axis('off')  # Hides ticks, spines, etc.
     fig.show()
+
+model = PARAFAC(n_components=5, tf_normalization=False)
+model.fit(eem_dataset_october)
 #
 # # -------------prior decomposition function test---------
 #
@@ -201,8 +204,8 @@ def plot_all_components(eem_dataset):
 #     dataset_train_splits.append(combine_eem_datasets([subset, sub_eem_dataset_quenched]))
 # dataset_train = dataset_train_splits[0]
 # dataset_test = dataset_train_splits[1]
-dataset_train = eem_dataset
-dataset_test = eem_dataset_october
+dataset_train = eem_dataset_october
+dataset_test = eem_dataset_july
 indicator = 'TCC (million #/mL)'
 sample_prior = {0: dataset_train.ref[indicator]}
 params = {
@@ -217,49 +220,18 @@ params = {
     'lam': 3e6, # 1e6
     'random_state': 42
 }
-model = EEMNMF(
-    solver='hals',
-    prior_dict_sample=sample_prior,
-    normalization=None,
-    sort_em=False,
-    prior_ref_components=prior_dict_ref,
-    idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
-    idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
-    **params
-)
-model.fit(dataset_train)
-fmax_train = model.nmf_fmax
-components = model.components
-lr = LinearRegression(fit_intercept=False)
-mask_train = ~np.isnan(dataset_train.ref[indicator].to_numpy())
-X_train = fmax_train.iloc[mask_train, [list(sample_prior.keys())[0]]].to_numpy()
-y_train = dataset_train.ref[indicator].to_numpy()[mask_train]
-lr.fit(X_train, y_train)
-y_pred_train = lr.predict(X_train)
-rmse_train = np.sqrt(mean_squared_error(y_train, y_pred_train))
-r2_train = lr.score(X_train, y_train)
-# params = {
-#     'n_components': 5,
-#     'init': 'nndsvda',
-#     'gamma_sample': 0,
-#     'max_iter_als': 100,
-#     'max_iter_nnls': 800,
-#     'lam': 1e8, # 1e8
-#     'random_state': 42
-# }
-# model = PARAFAC(
-#         solver='hals',
-#         prior_dict_sample=sample_prior,
-#         tf_normalization=False,
-#         sort_em=False,
-#         prior_ref_components=prior_dict_ref,
-#         idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
-#         idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
-#
-#         **params
+# model = EEMNMF(
+#     solver='hals',
+#     prior_dict_sample=sample_prior,
+#     normalization=None,
+#     sort_em=False,
+#     prior_ref_components=prior_dict_ref,
+#     idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
+#     idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
+#     **params
 # )
 # model.fit(dataset_train)
-# fmax_train = model.fmax
+# fmax_train = model.nmf_fmax
 # components = model.components
 # lr = LinearRegression(fit_intercept=False)
 # mask_train = ~np.isnan(dataset_train.ref[indicator].to_numpy())
@@ -269,6 +241,36 @@ r2_train = lr.score(X_train, y_train)
 # y_pred_train = lr.predict(X_train)
 # rmse_train = np.sqrt(mean_squared_error(y_train, y_pred_train))
 # r2_train = lr.score(X_train, y_train)
+params = {
+    'n_components': 5,
+    'init': 'svd',
+    'gamma_sample': 0,
+    'max_iter_als': 100,
+    'max_iter_nnls': 800,
+    'lam': 0, # 1e8
+    'random_state': 42
+}
+model = PARAFAC(
+        solver='mu',
+        # prior_dict_sample=sample_prior,
+        tf_normalization=False,
+        # sort_em=False,
+        # prior_ref_components=prior_dict_ref,
+        # idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
+        # idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
+        **params
+)
+model.fit(dataset_train)
+fmax_train = model.fmax
+components = model.components
+lr = LinearRegression(fit_intercept=False)
+mask_train = ~np.isnan(dataset_train.ref[indicator].to_numpy())
+X_train = fmax_train.iloc[mask_train, [list(sample_prior.keys())[0]]].to_numpy()
+y_train = dataset_train.ref[indicator].to_numpy()[mask_train]
+lr.fit(X_train, y_train)
+y_pred_train = lr.predict(X_train)
+rmse_train = np.sqrt(mean_squared_error(y_train, y_pred_train))
+r2_train = lr.score(X_train, y_train)
 
 
 # -----------model testing-------------
