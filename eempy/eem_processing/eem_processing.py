@@ -2347,35 +2347,23 @@ def align_components_by_components(models_dict: dict, components_ref: dict, mode
         Dictionary of the aligned PARAFAC object.
     """
     component_labels_ref = list(components_ref.keys())
-    components_stack_ref = np.array([c for c in components_ref.values()])
+    components_stack_ref = np.array([c.flatten() for c in components_ref.values()])
     models_dict_new = {}
+
     for model_label, model in models_dict.items():
-        m_sim = component_similarity(model.components, components_stack_ref)
-        matched_index = []
-        m_sim_copy = m_sim.copy()
-        if model.components.shape[0] <= components_stack_ref.shape[0]:
-            for n_var in range(model.components.shape[0]):
-                max_index = np.argmax(m_sim.iloc[n_var, :])
-                while max_index in matched_index:
-                    m_sim_copy.iloc[n_var, max_index] = -2
-                    max_index = np.argmax(m_sim_copy.iloc[n_var, :])
-                matched_index.append(max_index)
-            component_labels_var = [component_labels_ref[i] for i in matched_index]
-            permutation = get_indices_smallest_to_largest(matched_index)
-        else:
-            for n_ref in range(components_stack_ref.shape[0]):
-                max_index = np.argmax(m_sim.iloc[:, n_ref])
-                while max_index in matched_index:
-                    m_sim_copy.iloc[max_index, n_ref] = -2
-                    max_index = np.argmax(m_sim_copy.iloc[:, n_ref])
-                matched_index.append(max_index)
-            non_ordered_index = list(set([i for i in range(model.components.shape[0])]) - set(matched_index))
-            permutation = matched_index + non_ordered_index
-            component_labels_ref_extended = component_labels_ref + ['O{i}'.format(i=i + 1) for i in
-                                                                    range(len(non_ordered_index))]
-            component_labels_var = [0] * len(permutation)
-            for i, nc in enumerate(permutation):
-                component_labels_var[nc] = component_labels_ref_extended[i]
+        comp = model.components.reshape(model.components.shape[0], -1)
+        cost_mat = cdist(comp, components_stack_ref, metric='correlation')
+
+        row_ind, col_ind = linear_sum_assignment(cost_mat)
+        permutation = list(row_ind)
+        matched_index = list(col_ind)
+
+        # Generate new labels
+        component_labels_var = [component_labels_ref[j] for j in matched_index]
+        if len(permutation) < comp.shape[0]:
+            unmatched = list(set(range(comp.shape[0])) - set(permutation))
+            component_labels_var += [f"O{i+1}" for i in range(len(unmatched))]
+            permutation += unmatched
         if model_type == 'parafac':
             model.score.columns, model.ex_loadings.columns, model.em_loadings.columns, model.nnls_fmax.columns = (
                     [component_labels_var] * 4)
@@ -2386,9 +2374,11 @@ def align_components_by_components(models_dict: dict, components_ref: dict, mode
             model.components = model.components[permutation, :, :]
             model.cptensor = permute_cp_tensor(model.cptensors, permutation)
         elif model_type == 'nmf':
-            model.nnls_fmax.columns, model.nnls_fmax.columns = ([component_labels_var] * 2)
+            model.fmax.columns, model.nnls_fmax.columns = (
+                    [component_labels_var] * 2)
+            model.fmax = model.fmax.iloc[:, permutation]
             model.nnls_fmax = model.nnls_fmax.iloc[:, permutation]
-            model.nnls_fmax = model.nnls_fmax.iloc[:, permutation]
+            model.components = model.components[permutation, :, :]
         models_dict_new[model_label] = model
     return models_dict_new
 

@@ -1,15 +1,11 @@
-import copy
 import pickle
 
-import numpy as np
-import pandas as pd
 from scipy.stats import zscore
 from eempy.read_data import read_eem_dataset, read_abs_dataset, read_eem, read_eem_dataset_from_json
 from eempy.eem_processing import *
 from eempy.plot import plot_eem, plot_loadings, plot_fmax
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from itertools import product
-import seaborn as sns
 
 np.random.seed(42)
 
@@ -278,6 +274,7 @@ model = EEMNMF(
     **params
 )
 model.fit(dataset_train)
+
 fmax_train = model.fmax
 components = model.components
 lr = LinearRegression(fit_intercept=False)
@@ -290,14 +287,14 @@ rmse_train = np.sqrt(mean_squared_error(y_train, y_pred_train))
 r2_train = lr.score(X_train, y_train)
 slope_train = lr.coef_
 intercept_train = lr.intercept_
-
+#
 # params = {
-#     'n_components': 4,
+#     'n_components': 5,
 #     'init': 'nndsvd',
 #     'gamma_sample': 0,
 #     'max_iter_als': 100,
 #     'max_iter_nnls': 800,
-#     'lam': 1e7, # 1e8
+#     'lam': 1e6, # 1e8
 #     'random_state': 42
 # }
 # model = PARAFAC(
@@ -306,8 +303,8 @@ intercept_train = lr.intercept_
 #         # tf_normalization=False,
 #         # sort_em=False,
 #         prior_ref_components=prior_dict_ref,
-#         # idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
-#         # idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
+#         idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
+#         idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
 #         **params
 # )
 # model.fit(dataset_train)
@@ -326,9 +323,9 @@ intercept_train = lr.intercept_
 # -----------model testing-------------
 _, fmax_test, eem_re_test = model.predict(
     dataset_test,
-    fit_beta=True,
-    idx_top=[i for i in range(len(dataset_test.index)) if 'B1C1' in dataset_test.index[i]],
-    idx_bot=[i for i in range(len(dataset_test.index)) if 'B1C2' in dataset_test.index[i]],
+    # fit_beta=True,
+    # idx_top=[i for i in range(len(dataset_test.index)) if 'B1C1' in dataset_test.index[i]],
+    # idx_bot=[i for i in range(len(dataset_test.index)) if 'B1C2' in dataset_test.index[i]],
 )
 
 sample_test_truth = {0: dataset_test.ref[indicator]}
