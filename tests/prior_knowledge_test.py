@@ -131,7 +131,7 @@ def plot_all_components(eem_dataset):
     fig.show()
 
 
-def plot_outlier_plots(model, indicator, dataset_train, dataset_test, criteria='reconstruction_error'):
+def plot_outlier_plots(model, indicator, estimator_rank, dataset_train, dataset_test, criteria='reconstruction_error'):
     fmax_train = model.fmax
     _, fmax_test, eem_re_test = model.predict(
         dataset_test,
@@ -139,8 +139,6 @@ def plot_outlier_plots(model, indicator, dataset_train, dataset_test, criteria='
         idx_top=[i for i in range(len(dataset_test.index)) if 'B1C1' in dataset_test.index[i]],
         idx_bot=[i for i in range(len(dataset_test.index)) if 'B1C2' in dataset_test.index[i]],
     )
-    truth_train = dataset_train.ref[indicator]
-    truth_test = dataset_test.ref[indicator]
     if criteria == 'reconstruction_error':
         error_train = model.sample_rmse().to_numpy().reshape(-1)
         res_test = dataset_test.eem_stack - eem_re_test
@@ -148,7 +146,7 @@ def plot_outlier_plots(model, indicator, dataset_train, dataset_test, criteria='
         error_test = np.sqrt(np.sum(res_test ** 2, axis=(1, 2)) / n_pixels)
 
     binwidth = np.max(np.concatenate([error_train, error_test])) - np.min(np.concatenate([error_train, error_test]))
-    binwidth = binwidth / 20
+    binwidth = binwidth / 50
     binrange = (np.min(np.concatenate([error_train, error_test]) - binwidth, axis=0),
                 np.max(np.concatenate([error_train, error_test]) + binwidth, axis=0)
                 )
@@ -156,22 +154,22 @@ def plot_outlier_plots(model, indicator, dataset_train, dataset_test, criteria='
     filtered_error_train = error_train[np.abs(error_train_z_scores) <= 3]
     threshold_upper = np.quantile(filtered_error_train, 1)
     threshold_lower = np.quantile(filtered_error_train, 0)
-    fig, ax = plt.subplots()
-    counts, bins, patches = ax.hist(error_train,
+    fig_hist, ax_hist = plt.subplots()
+    counts, bins, patches = ax_hist.hist(error_train,
                                     bins=np.arange(binrange[0], binrange[1] + binwidth, binwidth),
                                     density=True, alpha=0.5, color='blue', label='training', zorder=0,
                                     edgecolor='black')
     # Histogram for outliers (just to show label with hatching)
-    counts, bins, patches = ax.hist([-100], bins=np.arange(binrange[0], binrange[1] + binwidth, binwidth),
+    counts, bins, patches = ax_hist.hist([-100], bins=np.arange(binrange[0], binrange[1] + binwidth, binwidth),
                                     density=True, alpha=0.5, color='orange', label='test (qualified)',
                                     edgecolor='red', zorder=2)
     # Histogram for test (qualified) data
-    counts, bins, patches = ax.hist(error_test,
+    counts, bins, patches = ax_hist.hist(error_test,
                                     bins=np.arange(binrange[0], binrange[1] + binwidth, binwidth),
                                     density=True, alpha=0.5, color='orange', label='test (outliers)', zorder=1,
                                     edgecolor='black')
 
-    for bar in ax.patches:
+    for bar in ax_hist.patches:
         # Calculate the midpoint of the bin
         bin_left = bar.get_x()
         bin_width = bar.get_width()
@@ -188,9 +186,57 @@ def plot_outlier_plots(model, indicator, dataset_train, dataset_test, criteria='
     plt.legend(fontsize=16)
     plt.tick_params(labelsize=18)
     plt.tight_layout()
-    fig.show()
+    fig_hist.show()
 
-plot_outlier_plots(model=model, indicator='TCC (million #/mL)', dataset_test=dataset_test, dataset_train=dataset_train)
+    truth_train = dataset_train.ref[indicator]
+    truth_test = dataset_test.ref[indicator]
+    valid_indices_train = truth_train.index[~truth_train.isna()]
+    valid_indices_test = truth_test.index[~truth_test.isna()]
+    truth_train_valid = truth_train.loc[valid_indices_train]
+    truth_test_valid = truth_test.loc[valid_indices_test]
+    fmax_train_valid = fmax_train.loc[valid_indices_train]
+    fmax_test_valid = fmax_test.loc[valid_indices_test]
+    error_train_valid = error_train[fmax_train.index.isin(valid_indices_train)]
+    error_test_valid = error_test[fmax_test.index.isin(valid_indices_test)]
+
+    reg = LinearRegression(positive=True, fit_intercept=False)
+    reg.fit(truth_train_valid.to_numpy().reshape(-1, 1), fmax_train_valid.iloc[:, estimator_rank])
+    a = reg.coef_
+    b = reg.intercept_
+
+    fig_plot, ax_plot = plt.subplots()
+    ax_plot.plot(
+        [-1, 10],
+        a * np.array([-1, 10]) + b,
+        '--',
+        color='blue',
+        label='reg. training'
+    )
+    ax_plot.scatter(fmax_train_valid.iloc[:, estimator_rank], truth_train_valid, label='training', color='blue', alpha=0.6)
+    ax_plot.scatter(
+        fmax_test_valid.iloc[
+            (error_test_valid < threshold_upper) & (error_test_valid > threshold_lower), estimator_rank],
+        truth_test_valid[(error_test_valid < threshold_upper) & (error_test_valid > threshold_lower)],
+        label='test (qualified)', color='orange', alpha=0.6)
+    ax_plot.scatter(
+        fmax_test_valid.iloc[
+            (error_test_valid >= threshold_upper) | (error_test_valid <= threshold_lower), estimator_rank],
+        truth_test_valid[(error_test_valid >= threshold_upper) | (error_test_valid <= threshold_lower)],
+        label='test (outliers)', color='red', alpha=0.6)
+    ax_plot.set_ylabel(indicator, fontsize=20)
+    ax_plot.set_xlabel(f'C{estimator_rank + 1} Fmax', fontsize=20)
+    ax_plot.set_xlim([0, 2500])
+    ax_plot.set_ylim([0, 2.5])
+    fig_plot.legend(
+        bbox_to_anchor=[1.02, 0.37],
+        # bbox_to_anchor=[0.58, 0.63],
+        fontsize=16
+    )
+    ax_plot.tick_params(labelsize=16)
+    fig_plot.tight_layout()
+    fig_plot.show()
+
+
 
 # -----------model training-------------
 # dataset_train, dataset_test = eem_dataset_october.splitting(2)
@@ -205,12 +251,12 @@ plot_outlier_plots(model=model, indicator='TCC (million #/mL)', dataset_test=dat
 #     dataset_train_splits.append(combine_eem_datasets([subset, sub_eem_dataset_quenched]))
 # dataset_train = dataset_train_splits[0]
 # dataset_test = dataset_train_splits[1]
-dataset_train = eem_dataset_july
-dataset_test = eem_dataset_october
+dataset_train = eem_dataset_october
+dataset_test = eem_dataset_july
 indicator = 'TCC (million #/mL)'
 sample_prior = {0: dataset_train.ref[indicator]}
 params = {
-    'n_components': 2,
+    'n_components': 4,
     'init': 'ordinary_nmf',
     'gamma_sample': 0,
     'alpha_component': 0,
@@ -218,7 +264,7 @@ params = {
     'l1_ratio': 0,
     'max_iter_als': 100,
     'max_iter_nnls': 800,
-    'lam': 3e5,  # 1e6
+    'lam': 1e6,  # 1e6
     'random_state': 42
 }
 model = EEMNMF(
@@ -284,6 +330,7 @@ _, fmax_test, eem_re_test = model.predict(
     idx_top=[i for i in range(len(dataset_test.index)) if 'B1C1' in dataset_test.index[i]],
     idx_bot=[i for i in range(len(dataset_test.index)) if 'B1C2' in dataset_test.index[i]],
 )
+
 sample_test_truth = {0: dataset_test.ref[indicator]}
 mask_test = ~np.isnan(dataset_test.ref[indicator].to_numpy())
 X_test = fmax_test.iloc[mask_test, [list(sample_prior.keys())[0]]].to_numpy()
@@ -366,6 +413,14 @@ fig.show()
 
 
 plot_all_f0f(model, dataset_train, 'B1C1', 'B1C2', 'TCC (million #/mL)')
+
+
+# -----------outliers----------
+
+plot_outlier_plots(
+    model=model, estimator_rank=0, indicator='TCC (million #/mL)',
+    dataset_test=dataset_test, dataset_train=dataset_train
+)
 
 # ----------cross-validation & hyperparameter optimization-------
 dataset_train = eem_dataset_october

@@ -2644,6 +2644,7 @@ class EEMNMF:
             nmf_score = pd.DataFrame(nmf_score, index=eem_dataset.index,
                                      columns=["component {i} NMF-Fmax".format(i=i + 1) for i in
                                               range(self.n_components)])
+            eem_stack_reconstructed = nmf_score @ components
         elif self.solver == 'hals':
             eem_dataset.threshold_masking(0, 0, 'smaller', copy=False)
             n_samples = eem_dataset.eem_stack.shape[0]
@@ -2735,6 +2736,7 @@ class EEMNMF:
                     )
                 nmf_score = W
                 components = H
+            eem_stack_reconstructed = W @ H
             nmf_score = pd.DataFrame(nmf_score, index=eem_dataset.index,
                                      columns=["component {i} NMF-Fmax".format(i=i + 1) for i in
                                               range(self.n_components)])
@@ -2745,7 +2747,7 @@ class EEMNMF:
         components = components.reshape([self.n_components, eem_dataset.eem_stack.shape[1],
                                          eem_dataset.eem_stack.shape[2]])
         nmf_score = nmf_score.mul(factor_max, axis=1)
-        _, nnls_score, eem_stack_reconstructed = eems_fit_components(eem_dataset.eem_stack, components,
+        _, nnls_score, _ = eems_fit_components(eem_dataset.eem_stack, components,
                                                                      fit_intercept=False, positive=True)
         nnls_score = pd.DataFrame(nnls_score, index=eem_dataset.index,
                                   columns=["component {i} NNLS-Fmax".format(i=i + 1) for i in range(self.n_components)])
@@ -2769,7 +2771,7 @@ class EEMNMF:
         self.normalization_factor_std = factor_std
         self.normalization_factor_max = factor_max
         self.eem_stack_train = eem_dataset.eem_stack
-        self.eem_stack_reconstructed = eem_stack_reconstructed
+        self.eem_stack_reconstructed = eem_stack_reconstructed.reshape(eem_dataset.eem_stack.shape)
         self.ex_range = eem_dataset.ex_range
         self.em_range = eem_dataset.em_range
         return self
