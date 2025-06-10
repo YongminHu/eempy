@@ -426,14 +426,14 @@ dataset_test = eem_dataset_july
 indicator = 'TCC (million #/mL)'
 param_grid = {
     'n_components': [5],
-    'init': ['ordinary_cp'],
+    'init': ['ordinary_nmf'],
     'gamma_sample': [0],
     'l1_ratio': [0],
-    'lam': [0]
+    'lam': [0, 1e6]
 }
 
-model_ref = PARAFAC(
-    n_components=5,
+model_ref = EEMNMF(
+    n_components=4,
     solver='hals',
     sort_em=False,
     lam=1e6,
@@ -485,7 +485,7 @@ for k, p in enumerate(param_combinations):
         d_train = combine_eem_datasets(dataset_train_splits[:i] + dataset_train_splits[i + 1:])
         d_test = dataset_train_splits[i]
         sample_prior = {0: d_train.ref['TCC (million #/mL)']}
-        model = PARAFAC(
+        model = EEMNMF(
             solver='hals',
             prior_dict_sample=sample_prior,
             sort_em=False,
@@ -501,7 +501,6 @@ for k, p in enumerate(param_combinations):
         model.fit(d_train)
         fmax_train = model.fmax
         components = model.components
-        plot_all_components(model)
         plot_outlier_plots(
             model=model, estimator_rank=0, indicator='TCC (million #/mL)',
             dataset_test=d_test, dataset_train=d_train
@@ -526,6 +525,7 @@ for k, p in enumerate(param_combinations):
         rmse_train += np.sqrt(mean_squared_error(y_train, y_pred_train)) / len(dataset_train_splits)
         rmse_test += np.sqrt(mean_squared_error(y_test, y_pred_test)) / len(dataset_train_splits)
         model_new = align_components_by_components({1: model}, components_ref, model_type='nmf')
+        plot_all_components(model)
         for j in range(len(components_list)):
             components_list[j].append(model.components[j].reshape(-1))
     param_combinations[k]['r2_test'] = r2_test
