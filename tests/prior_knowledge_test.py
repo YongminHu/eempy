@@ -50,15 +50,15 @@ def plot_all_f0f(model, eem_dataset, kw_top, kw_bot, target_analyte):
     fmax_quenched = fmax_quenched[mask]
     fmax_ratio = fmax_original.to_numpy() / fmax_quenched.to_numpy()
 
-    fig, axes = plt.subplots(ncols=2, nrows=(params['n_components'] + 1) // 2, figsize=(8, 10))
-    for rank_target in range(params['n_components']):
+    fig, axes = plt.subplots(ncols=2, nrows=(model.n_components + 1) // 2, figsize=(8, 10))
+    for rank_target in range(model.n_components):
         fmax_ratio_target = fmax_ratio[:, rank_target]
         fmax_ratio_target_valid = fmax_ratio_target[(fmax_ratio_target >= 0) & (fmax_ratio_target <= 1e3)]
         fmax_ratio_z_scores = zscore(fmax_ratio_target_valid, nan_policy='omit')
         ratio_nan = 1 - fmax_ratio_target_valid.shape[0] / fmax_ratio_target.shape[0]
         fmax_ratio_target_filtered = fmax_ratio_target_valid[np.abs(fmax_ratio_z_scores) <= 3]
 
-        if (params['n_components'] + 1) // 2 > 1:
+        if (model.n_components + 1) // 2 > 1:
             counts, bins, patches = axes[rank_target // 2, rank_target % 2].hist(fmax_ratio_target_filtered, bins=30,
                                                                                  density=True, alpha=0.5, color='blue',
                                                                                  label='training', zorder=0,
@@ -206,15 +206,15 @@ def plot_outlier_plots(model, indicator, estimator_rank, dataset_train, dataset_
     error_train_valid = error_train[fmax_train.index.isin(valid_indices_train)]
     error_test_valid = error_test[fmax_test.index.isin(valid_indices_test)]
 
-    reg = LinearRegression(positive=True, fit_intercept=False)
+    reg = LinearRegression(positive=True, fit_intercept=True)
     reg.fit(truth_train_valid.to_numpy().reshape(-1, 1), fmax_train_valid.iloc[:, estimator_rank])
     a = reg.coef_
     b = reg.intercept_
 
     fig_plot, ax_plot = plt.subplots()
     ax_plot.plot(
-        [-1, 10],
-        a * np.array([-1, 10]) + b,
+        [-100, 10000],
+        a * np.array([-100, 10000]) + b,
         '--',
         color='blue',
         label='reg. training'
@@ -232,8 +232,8 @@ def plot_outlier_plots(model, indicator, estimator_rank, dataset_train, dataset_
         label='test (outliers)', color='red', alpha=0.6)
     ax_plot.set_ylabel(indicator, fontsize=20)
     ax_plot.set_xlabel(f'C{estimator_rank + 1} Fmax', fontsize=20)
-    ax_plot.set_xlim([0, 2500])
-    ax_plot.set_ylim([0, 2.5])
+    ax_plot.set_xlim([0, 1200])
+    ax_plot.set_ylim([0, 1.5])
     fig_plot.legend(
         bbox_to_anchor=[1.02, 0.37],
         # bbox_to_anchor=[0.58, 0.63],
@@ -439,9 +439,9 @@ indicator = 'TCC (million #/mL)'
 param_grid = {
     'n_components': [4],
     'init': ['ordinary_nmf'],
-    'gamma_sample': [5e3],
+    'gamma_sample': [0],
     'l1_ratio': [0],
-    'lam': [1e6]
+    'lam': [1e3]
 }
 
 model_ref = EEMNMF(
@@ -493,6 +493,7 @@ for subset in initial_sub_eem_datasets_unquenched:
     dataset_train_splits.append(combine_eem_datasets([subset, sub_eem_dataset_quenched]))
 
 for k, p in enumerate(param_combinations):
+    plt.close()
     r2_train, r2_test, rmse_train, rmse_test = 0, 0, 0, 0
     components_list = [[] for i in range(p['n_components'])]
     for i in range(len(dataset_train_splits)):
@@ -516,7 +517,7 @@ for k, p in enumerate(param_combinations):
         fmax_train = model.fmax
         components = model.components
         plot_outlier_plots(
-            model=model, estimator_rank=1, indicator='TCC (million #/mL)',
+            model=model, estimator_rank=0, indicator='TCC (million #/mL)',
             dataset_test=d_test, dataset_train=d_train
         )
         _, fmax_test, eem_re_test = model.predict(
@@ -524,13 +525,14 @@ for k, p in enumerate(param_combinations):
             idx_top=[i for i in range(len(d_test.index)) if 'B1C1' in d_test.index[i]],
             idx_bot=[i for i in range(len(d_test.index)) if 'B1C2' in d_test.index[i]],
         )
-        lr = LinearRegression(fit_intercept=False)
+        plot_all_f0f(model, d_train, 'B1C1', 'B1C2', 'TCC (million #/mL)')
+        lr = LinearRegression(fit_intercept=True)
         mask_train = ~np.isnan(d_train.ref['TCC (million #/mL)'].to_numpy())
-        X_train = fmax_train.iloc[mask_train, [1]].to_numpy()
+        X_train = fmax_train.iloc[mask_train, [0]].to_numpy()
         y_train = d_train.ref['TCC (million #/mL)'].to_numpy()[mask_train]
         lr.fit(X_train, y_train)
         mask_test = ~np.isnan(d_test.ref['TCC (million #/mL)'].to_numpy())
-        X_test = fmax_test.iloc[mask_test, [1]].to_numpy()
+        X_test = fmax_test.iloc[mask_test, [0]].to_numpy()
         y_test = d_test.ref['TCC (million #/mL)'].to_numpy()[mask_test]
         r2_train += lr.score(X_train, y_train) / len(dataset_train_splits)
         r2_test += lr.score(X_test, y_test) / len(dataset_train_splits)
