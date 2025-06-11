@@ -3096,6 +3096,8 @@ class KMethod:
                 pos = [eem_dataset_unquenched.index.index(idx) for idx in subset.index]
                 quenched_index = [eem_dataset_quenched.index[idx] for idx in pos]
                 sub_eem_dataset_quenched, _ = eem_dataset.filter_by_index(None, quenched_index, copy=True)
+                subset.sort_by_index()
+                sub_eem_dataset_quenched.sort_by_index()
                 initial_sub_eem_datasets.append(combine_eem_datasets([subset, sub_eem_dataset_quenched]))
 
         for i, random_m in enumerate(initial_sub_eem_datasets):

@@ -17,8 +17,8 @@ np.random.seed(42)
 eem_dataset_path = \
     "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/sample_276_ex_274_em_310_mfem_5_gaussian_rsu.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
-# eem_dataset.raman_scattering_removal(width=15, interpolation_method='nan', copy=False)
-# eem_dataset.eem_stack = np.nan_to_num(eem_dataset.eem_stack, copy=True, nan=0)
+eem_dataset.raman_scattering_removal(width=15, interpolation_method='nan', copy=False)
+eem_dataset.eem_stack = np.nan_to_num(eem_dataset.eem_stack, copy=True, nan=0)
 eem_dataset_july, _ = eem_dataset.filter_by_index(None, ['2024-07-'], copy=True)
 eem_dataset_october, _ = eem_dataset.filter_by_index(None, ['2024-10-'], copy=True)
 eem_dataset_original, _ = eem_dataset.filter_by_index(['B1C1'], None, copy=True)
@@ -33,8 +33,8 @@ eem_dataset_bac = read_eem_dataset_from_json(eem_dataset_bac_path)
 bacteria_eem = eem_dataset_bac.eem_stack[-5]
 bacteria_eem = eem_interpolation(bacteria_eem, eem_dataset_bac.ex_range, eem_dataset_bac.em_range,
                                  eem_dataset.ex_range, eem_dataset.em_range, method='linear')
-# bacteria_eem, _ = eem_raman_scattering_removal(bacteria_eem, eem_dataset.ex_range, eem_dataset.em_range,
-#                                                width=10, interpolation_method='nan')
+bacteria_eem, _ = eem_raman_scattering_removal(bacteria_eem, eem_dataset.ex_range, eem_dataset.em_range,
+                                               width=10, interpolation_method='nan')
 bacteria_eem = np.nan_to_num(bacteria_eem, nan=0)
 prior_dict_ref = {0: bacteria_eem.reshape(-1)}
 
@@ -129,7 +129,13 @@ def plot_all_components(eem_model):
 
 
 def plot_outlier_plots(model, indicator, estimator_rank, dataset_train, dataset_test, criteria='reconstruction_error'):
-    fmax_train = model.fmax
+    # fmax_train = model.fmax
+    _, fmax_train, eem_re_train = model.predict(
+        dataset_train,
+        fit_beta=True,
+        idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
+        idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
+    )
     _, fmax_test, eem_re_test = model.predict(
         dataset_test,
         fit_beta=True,
@@ -137,7 +143,11 @@ def plot_outlier_plots(model, indicator, estimator_rank, dataset_train, dataset_
         idx_bot=[i for i in range(len(dataset_test.index)) if 'B1C2' in dataset_test.index[i]],
     )
     if criteria == 'reconstruction_error':
-        error_train = model.sample_rmse().to_numpy().reshape(-1)
+        # error_train = model.sample_rmse().to_numpy().reshape(-1)
+        res_train = dataset_train.eem_stack - eem_re_train
+        n_pixels = res_train.shape[1] * res_train.shape[2]
+        error_train = np.sqrt(np.sum(res_train ** 2, axis=(1, 2)) / n_pixels)
+
         res_test = dataset_test.eem_stack - eem_re_test
         n_pixels = res_test.shape[1] * res_test.shape[2]
         error_test = np.sqrt(np.sum(res_test ** 2, axis=(1, 2)) / n_pixels)
@@ -243,8 +253,10 @@ def plot_outlier_plots(model, indicator, estimator_rank, dataset_train, dataset_
 # dataset_train_quenched, _ = eem_dataset_october.filter_by_index('B1C2', None, copy=True)
 # for subset in initial_sub_eem_datasets_unquenched:
 #     pos = [dataset_train_unquenched.index.index(idx) for idx in subset.index]
-#     quenched_index = [eem_dataset_quenched.index[idx] for idx in pos]
+#     quenched_index = [dataset_train_quenched.index[idx] for idx in pos]
 #     sub_eem_dataset_quenched, _ = eem_dataset.filter_by_index(None, quenched_index, copy=True)
+#     subset.sort_by_index()
+#     sub_eem_dataset_quenched.sort_by_index()
 #     dataset_train_splits.append(combine_eem_datasets([subset, sub_eem_dataset_quenched]))
 # dataset_train = dataset_train_splits[0]
 # dataset_test = dataset_train_splits[1]
@@ -291,7 +303,7 @@ intercept_train = lr.intercept_
 #
 # params = {
 #     'n_components': 5,
-#     'init': 'nndsvd',
+#     'init': 'nndsvda',
 #     'gamma_sample': 0,
 #     'max_iter_als': 100,
 #     'max_iter_nnls': 800,
@@ -425,11 +437,11 @@ dataset_train = eem_dataset_october
 dataset_test = eem_dataset_july
 indicator = 'TCC (million #/mL)'
 param_grid = {
-    'n_components': [5],
+    'n_components': [4],
     'init': ['ordinary_nmf'],
-    'gamma_sample': [0],
+    'gamma_sample': [5e3],
     'l1_ratio': [0],
-    'lam': [0, 1e6]
+    'lam': [1e6]
 }
 
 model_ref = EEMNMF(
@@ -470,12 +482,14 @@ def mean_pairwise_correlation(vectors):
 param_combinations = get_param_combinations(param_grid)
 dataset_train_splits = []
 dataset_train_unquenched, _ = dataset_train.filter_by_index('B1C1', None, copy=True)
-initial_sub_eem_datasets_unquenched = dataset_train_unquenched.splitting(n_split=5, random_state=42)
+initial_sub_eem_datasets_unquenched = dataset_train_unquenched.splitting(n_split=3, random_state=42)
 dataset_train_quenched, _ = dataset_train.filter_by_index('B1C2', None, copy=True)
 for subset in initial_sub_eem_datasets_unquenched:
     pos = [dataset_train_unquenched.index.index(idx) for idx in subset.index]
-    quenched_index = [eem_dataset_quenched.index[idx] for idx in pos]
+    quenched_index = [dataset_train_quenched.index[idx] for idx in pos]
     sub_eem_dataset_quenched, _ = eem_dataset.filter_by_index(None, quenched_index, copy=True)
+    subset.sort_by_index()
+    sub_eem_dataset_quenched.sort_by_index()
     dataset_train_splits.append(combine_eem_datasets([subset, sub_eem_dataset_quenched]))
 
 for k, p in enumerate(param_combinations):
@@ -502,7 +516,7 @@ for k, p in enumerate(param_combinations):
         fmax_train = model.fmax
         components = model.components
         plot_outlier_plots(
-            model=model, estimator_rank=0, indicator='TCC (million #/mL)',
+            model=model, estimator_rank=1, indicator='TCC (million #/mL)',
             dataset_test=d_test, dataset_train=d_train
         )
         _, fmax_test, eem_re_test = model.predict(
@@ -512,11 +526,11 @@ for k, p in enumerate(param_combinations):
         )
         lr = LinearRegression(fit_intercept=False)
         mask_train = ~np.isnan(d_train.ref['TCC (million #/mL)'].to_numpy())
-        X_train = fmax_train.iloc[mask_train, [0]].to_numpy()
+        X_train = fmax_train.iloc[mask_train, [1]].to_numpy()
         y_train = d_train.ref['TCC (million #/mL)'].to_numpy()[mask_train]
         lr.fit(X_train, y_train)
         mask_test = ~np.isnan(d_test.ref['TCC (million #/mL)'].to_numpy())
-        X_test = fmax_test.iloc[mask_test, [0]].to_numpy()
+        X_test = fmax_test.iloc[mask_test, [1]].to_numpy()
         y_test = d_test.ref['TCC (million #/mL)'].to_numpy()[mask_test]
         r2_train += lr.score(X_train, y_train) / len(dataset_train_splits)
         r2_test += lr.score(X_test, y_test) / len(dataset_train_splits)
@@ -524,7 +538,8 @@ for k, p in enumerate(param_combinations):
         y_pred_test = lr.predict(X_test)
         rmse_train += np.sqrt(mean_squared_error(y_train, y_pred_train)) / len(dataset_train_splits)
         rmse_test += np.sqrt(mean_squared_error(y_test, y_pred_test)) / len(dataset_train_splits)
-        model_new = align_components_by_components({1: model}, components_ref, model_type='nmf')
+        # model_new = align_components_by_components({0: model}, components_ref, model_type='nmf')
+        # model_new = model_new[0]
         plot_all_components(model)
         for j in range(len(components_list)):
             components_list[j].append(model.components[j].reshape(-1))
