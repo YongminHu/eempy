@@ -2530,6 +2530,10 @@ class EEMNMF:
         List of indices of samples serving as denominators in ratio calculation.
     lam: float, default=0
         Strength of the ratio regularization on sample loadings. Only applied to 'hals' solver.
+    r1_coef : float, optional
+        Strength of the rank-one deviation penalty on components
+    mu : float, optional
+        Strength of the nuclear-norm penalty on components.
     normalization: str, {'pixel_std'}:
         The normalization of EEMs before conducting NMF. 'pixel_std' normalizes the intensities of each pixel across
         all samples by standard deviation.
@@ -2556,6 +2560,7 @@ class EEMNMF:
                  prior_dict_sample=None, prior_dict_component=None,
                  gamma_sample=0, gamma_component=0, prior_ref_components=None,
                  idx_top=None, idx_bot=None, kw_top=None, kw_bot=None, lam=0,
+                 r1_coef=0, mu=0,
                  normalization='pixel_std', sort_em=True, max_iter_als=100, max_iter_nnls=500, random_state=None):
 
         # -----------Parameters-------------
@@ -2576,6 +2581,8 @@ class EEMNMF:
         self.kw_top = kw_top
         self.kw_bot = kw_bot
         self.lam = lam
+        self.r1_coef = r1_coef
+        self.mu = mu
         self.normalization = normalization
         self.sort_em = sort_em
         self.max_iter_als = max_iter_als
@@ -2659,6 +2666,9 @@ class EEMNMF:
                         idx_top=self.idx_top,
                         idx_bot=self.idx_bot,
                         lam=self.lam,
+                        r1_coef=self.r1_coef,
+                        mu=self.mu,
+                        component_shape=(eem_dataset.eem_stack.shape[1], eem_dataset.eem_stack.shape[2]),
                         max_iter_als=self.max_iter_als,
                         max_iter_nnls=self.max_iter_nnls,
                         prior_ref_components=self.prior_ref_components,
@@ -2677,6 +2687,9 @@ class EEMNMF:
                         l1_ratio=self.l1_ratio,
                         gamma_W=self.gamma_sample,
                         gamma_H=self.gamma_component,
+                        r1_coef=self.r1_coef,
+                        mu=self.mu,
+                        component_shape=(eem_dataset.eem_stack.shape[1], eem_dataset.eem_stack.shape[2]),
                         max_iter_als=self.max_iter_als,
                         max_iter_nnls=self.max_iter_nnls,
                         prior_ref_components=self.prior_ref_components,
@@ -2701,6 +2714,9 @@ class EEMNMF:
                         idx_top=self.idx_top,
                         idx_bot=self.idx_bot,
                         lam=self.lam,
+                        r1_coef=self.r1_coef,
+                        mu=self.mu,
+                        component_shape=(eem_dataset.eem_stack.shape[1], eem_dataset.eem_stack.shape[2]),
                         max_iter_als=self.max_iter_als,
                         max_iter_nnls=self.max_iter_nnls,
                         prior_ref_components=self.prior_ref_components,
@@ -2719,6 +2735,9 @@ class EEMNMF:
                         alpha_W=self.alpha_sample,
                         alpha_H=self.alpha_component,
                         l1_ratio=self.l1_ratio,
+                        r1_coef=self.r1_coef,
+                        mu=self.mu,
+                        component_shape=(eem_dataset.eem_stack.shape[1], eem_dataset.eem_stack.shape[2]),
                         max_iter_als=self.max_iter_als,
                         max_iter_nnls=self.max_iter_nnls,
                         prior_ref_components=self.prior_ref_components,
@@ -3475,9 +3494,9 @@ def hals_prior_nnls(
         gamma=0,
         alpha=0,
         l1_ratio=0,
-        r1_coef=0.0,            # weight of rank-one penalty
-        mu=0.0,                  # weight of nuclear-norm penalty
-        component_shape=None,       # tuple giving (b, c)
+        r1_coef=0.0,
+        mu=0.0,
+        component_shape=None,
         max_iter=500,
         tol=1e-8,
         eps=1e-8,
@@ -3528,8 +3547,8 @@ def hals_prior_nnls(
         sum_k (||M_k||_F^2 - sigma1(M_k)^2) (default 0: none).
     mu : float, optional
         Weight of the nuclear-norm penalty sum_k ||M_k||_* (default 0: none).
-    component_shape : tuple of ints (b, c), required if lambda_>0 or mu>0
-        Shape to reshape each row V[k] into M_k of size (b, c).
+    component_shape : tuple of ints (b, c), required if r1_coef>0 or mu>0
+        Shape to reshape each row V[k] into M_k.
     max_iter : int, optional
         Maximum number of HALS inner iterations (default 500).
     tol : float, optional
@@ -3606,7 +3625,7 @@ def hals_prior_nnls(
             if r1_coef > 0:
                 assert component_shape is not None
                 # reshape row → M_k
-                M_k = V[k].cpu().numpy().reshape(b, c)
+                M_k = V[k].reshape((b, c))
 
                 # top SVD (power‐method or full SVD)
                 U1, S1, V1t = np.linalg.svd(M_k, full_matrices=False)
@@ -3616,10 +3635,10 @@ def hals_prior_nnls(
 
                 # gradient of (‖M‖_F^2 - σ1^2) = 2*M - 2*σ1*u1*v1^T
                 grad_lambda = 2*M_k - 2*sigma1 * np.outer(u1, v1)
-                grad_flat   = grad_lambda.ravel()
+                grad_flat = grad_lambda.ravel()
 
                 # incorporate gradient: numerator minus λ·grad, denominator plus 2λ
-                num   = num - r1_coef * grad_flat
+                num = num - r1_coef * grad_flat
                 denom = denom + 2 * r1_coef
 
             # 2) HALS‐style nonnegative update
@@ -3632,7 +3651,7 @@ def hals_prior_nnls(
                 eta_k = 1.0 / (ukk + l2_pen + 2 * r1_coef + eps)
 
                 # reshape interim back into matrix
-                M_int = V_new.cpu().numpy().reshape(b, c)
+                M_int = V_new.reshape((b, c))
 
                 # SVD and singular‐value soft‐threshold τ = μ·η
                 U, S, Vt = np.linalg.svd(M_int, full_matrices=False)
@@ -3665,6 +3684,9 @@ def nmf_hals_prior(
         alpha_W=0,
         alpha_H=0,
         l1_ratio=0,
+        r1_coef=0.0,
+        mu=0.0,
+        component_shape=None,
         max_iter_als=100,
         max_iter_nnls=500,
         tol=1e-6,
@@ -3702,6 +3724,13 @@ def nmf_hals_prior(
         ElasticNet regularization weight for H.
     l1_ratio: float between 0 and 1
         ElasticNet regularization mixing parameter
+    r1_coef : float, optional
+        Weight of the rank-one deviation penalty
+        sum_k (||M_k||_F^2 - sigma1(M_k)^2).
+    mu : float, optional
+        Weight of the nuclear-norm penalty sum_k ||M_k||_*.
+    component_shape : tuple of ints (b, c), required if r1_coef>0 or mu>0
+        Shape to reshape each row V[k] into M_k.
     max_iter_als : int
         Maximum number of outer ALS iterations.
     max_iter_nnls : int
@@ -3779,6 +3808,9 @@ def nmf_hals_prior(
             gamma=gamma_H,
             alpha=alpha_H,
             l1_ratio=l1_ratio,
+            r1_coef=r1_coef,
+            mu=mu,
+            component_shape=component_shape,
             tol=tol,
             eps=eps,
             max_iter=max_iter_nnls,
@@ -4579,6 +4611,7 @@ def nmf_hals_prior_ratio(
             V=H,
             gamma=gamma_H, alpha=alpha_H,
             l1_ratio=l1_ratio,
+            r1_coef=r1_coef, mu=mu, component_shape=component_shape,
             max_iter=max_iter_nnls,
             tol=tol, eps=eps
         )
