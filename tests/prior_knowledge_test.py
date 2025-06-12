@@ -439,7 +439,7 @@ indicator = 'TCC (million #/mL)'
 param_grid = {
     'n_components': [4],
     'init': ['ordinary_nmf'],
-    'gamma_sample': [5e3],
+    'gamma_sample': [1e4],
     'l1_ratio': [0],
     'lam': [1e6]
 }

@@ -3356,6 +3356,117 @@ class KMethod:
         return best_model_label, score_all, fmax_all, sample_error
 
 
+# def hals_prior_nnls(
+#         UtM,
+#         UtU,
+#         prior_dict=None,
+#         V=None,
+#         gamma=0,
+#         alpha=0,
+#         l1_ratio=0,
+#         max_iter=500,
+#         tol=1e-8,
+#         eps=1e-8,
+# ):
+#     """
+#     HALS-style non-negative least squares update for V in an NMF step,
+#     with optional quadratic priors and elastic-net penalties on rows of V.
+#
+#     Solves: min_{V>=0} 0.5||M - U V||_F^2
+#                          + sum_k (gamma/2)||V_k - p_k||^2
+#                          + alpha*(l1_ratio*||V||_1 + 0.5*(1-l1_ratio)*||V||_F^2)
+#     via alternating updates on each row V[k].
+#
+#     Parameters
+#     ----------
+#     UtM : array (r, n)
+#         Precomputed U^T @ M.
+#     UtU : array (r, r)
+#         Precomputed U^T @ U.
+#     prior_dict : dict {k: p_k}, optional
+#         Priors for row k of V (p_k shape matches V[k, :]).
+#     V : array (r, n), optional
+#         Initial guess for V. If None, solves UtU V = UtM and clips.
+#     gamma : float, optional
+#         Quadratic prior weight (default 0 => no prior).
+#     alpha : float, optional
+#         Overall regularization weight for elastic-net penalty (default 0).
+#     l1_ratio : float in [0,1], optional
+#         The mix of L1 vs L2 in elastic-net (0 => pure L2, 1 => pure L1).
+#     max_iter : int, optional
+#         Maximum number of inner HALS iterations.
+#     tol : float, optional
+#         Convergence tolerance on row-wise updates.
+#     eps : float, optional
+#         Small constant to avoid divide by zero and ensure positivity.
+#
+#     Returns
+#     -------
+#     V : array (r, n)
+#     """
+#     r, n = tl.shape(UtM)
+#     if prior_dict is None:
+#         prior_dict = {}
+#
+#     # Initialize V
+#     if V is None:
+#         V_np = np.linalg.solve(np.asarray(UtU), np.asarray(UtM))
+#         V = tl.tensor(np.clip(V_np, a_min=eps, a_max=None), dtype=float)
+#         VVt = tl.dot(V, tl.transpose(V))
+#         scale = tl.sum(UtM * V) / (tl.sum(UtU * VVt) + eps)
+#         V = V * scale
+#
+#     # Precompute elastic-net constants
+#     l2_pen = alpha * (1 - l1_ratio)
+#     l1_pen = alpha * l1_ratio
+#     prev_delta = None
+#
+#     for it in range(max_iter):
+#         delta = 0.0
+#         for k in range(r):
+#             ukk = UtU[k, k]
+#             if ukk < eps:
+#                 continue
+#
+#             # Residual: UtM[k] - sum_{j!=k} UtU[k,j] * V[j]
+#             Rk = UtM[k] - tl.dot(UtU[k], V) + ukk * V[k]
+#
+#             # Elastic-net base numerator/denominator
+#             num = copy.copy(Rk)
+#             # Highest-level denominator shape (vector) handles prior per-index
+#             denom = np.full((n,), ukk + l2_pen, dtype=float)
+#
+#             # Quadratic prior if present and gamma > 0, ignoring NaNs
+#             if k in prior_dict and gamma > 0:
+#                 p_arr = np.asarray(prior_dict[k], dtype=float)
+#                 mask = np.isfinite(p_arr).astype(float)
+#                 mask_tl = tl.tensor(mask, dtype=float)
+#                 p_tl = tl.tensor(np.nan_to_num(p_arr, nan=0.0), dtype=float)
+#                 # apply prior on valid indices
+#                 num = num + gamma * p_tl
+#                 denom = denom + gamma * mask_tl
+#
+#             # apply L1 penalty (constant shift)
+#             if l1_pen != 0:
+#                 num = num - l1_pen
+#
+#             # compute update and enforce non-negativity
+#             V_new = tl.clip(num / (denom + eps), a_min=eps)
+#
+#             # track change
+#             delta += tl.norm(V[k] - V_new) ** 2
+#             V[k] = V_new
+#
+#         # convergence check
+#         if prev_delta is None:
+#             prev_delta = delta
+#         elif prev_delta > 0 and delta / prev_delta < tol:
+#             break
+#         prev_delta = delta
+#
+#     return V
+
+
 def hals_prior_nnls(
         UtM,
         UtU,
@@ -3364,51 +3475,92 @@ def hals_prior_nnls(
         gamma=0,
         alpha=0,
         l1_ratio=0,
+        r1_coef=0.0,            # weight of rank-one penalty
+        mu=0.0,                  # weight of nuclear-norm penalty
+        component_shape=None,       # tuple giving (b, c)
         max_iter=500,
         tol=1e-8,
         eps=1e-8,
 ):
     """
-    HALS-style non-negative least squares update for V in an NMF step,
-    with optional quadratic priors and elastic-net penalties on rows of V.
+    HALS-style nonnegative least-squares update for V in an NMF step, with
+    optional quadratic priors, elastic-net penalties, a rank-one deviation
+    penalty, and a nuclear-norm penalty on each component.
 
-    Solves: min_{V>=0} 0.5||M - U V||_F^2
-                         + sum_k (gamma/2)||V_k - p_k||^2
-                         + alpha*(l1_ratio*||V||_1 + 0.5*(1-l1_ratio)*||V||_F^2)
-    via alternating updates on each row V[k].
+    Solves for nonnegative V:
+        min_{V >= 0} 0.5 * ||M - U V||_F^2
+                       + (gamma/2) * sum_k ||V[k] - p_k||_F^2
+                       + alpha * (l1_ratio * ||V||_1 + 0.5 * (1 - l1_ratio) * ||V||_F^2)
+                       + r1_coef * sum_k (||M_k||_F^2 - sigma1(M_k)^2)
+                       + mu * sum_k ||M_k||_*
+
+    where:
+      - U ∈ ℝ^{m×r}, M ∈ ℝ^{m×n}, V ∈ ℝ^{r×n}
+      - M_k ∈ ℝ^{b×c} is row k of V reshaped to comp_shape = (b, c)
+      - sigma1(M_k) is the leading singular value of M_k
+
+    Updates are performed by alternating over rows k=0…r−1:
+      1. HALS residual update with elastic-net and quadratic prior.
+      2. Gradient-style correction for the rank-one deviation penalty.
+      3. Proximal (soft-thresholding) update for the nuclear-norm penalty.
+      4. Nonnegativity enforced by clipping to [eps, ∞).
 
     Parameters
     ----------
-    UtM : array (r, n)
+    UtM : array_like, shape (r, n)
         Precomputed U^T @ M.
-    UtU : array (r, r)
+    UtU : array_like, shape (r, r)
         Precomputed U^T @ U.
-    prior_dict : dict {k: p_k}, optional
-        Priors for row k of V (p_k shape matches V[k, :]).
-    V : array (r, n), optional
-        Initial guess for V. If None, solves UtU V = UtM and clips.
+    prior_dict : dict, optional
+        Mapping k → p_k array for quadratic priors on row V[k], same length n.
+        If provided and gamma > 0, adds (gamma/2)*||V[k] - p_k||^2 penalty.
+    V : array_like, shape (r, n), optional
+        Initial guess for V; if None, a nonnegative least-squares solution
+        of UtU V = UtM is used (then scaled and clipped).
     gamma : float, optional
-        Quadratic prior weight (default 0 => no prior).
+        Weight of quadratic prior term (default 0: no prior).
     alpha : float, optional
-        Overall regularization weight for elastic-net penalty (default 0).
+        Overall weight for elastic-net penalty (default 0: no elastic-net).
     l1_ratio : float in [0,1], optional
-        The mix of L1 vs L2 in elastic-net (0 => pure L2, 1 => pure L1).
+        Mix between L1 and L2 in elastic-net (1 → pure L1, 0 → pure L2).
+    r1_coef : float, optional
+        Weight of the rank-one deviation penalty
+        sum_k (||M_k||_F^2 - sigma1(M_k)^2) (default 0: none).
+    mu : float, optional
+        Weight of the nuclear-norm penalty sum_k ||M_k||_* (default 0: none).
+    component_shape : tuple of ints (b, c), required if lambda_>0 or mu>0
+        Shape to reshape each row V[k] into M_k of size (b, c).
     max_iter : int, optional
-        Maximum number of inner HALS iterations.
+        Maximum number of HALS inner iterations (default 500).
     tol : float, optional
-        Convergence tolerance on row-wise updates.
+        Relative tolerance for convergence of row-wise updates (default 1e-8).
     eps : float, optional
-        Small constant to avoid divide by zero and ensure positivity.
+        Small constant to avoid division by zero and enforce positivity (default 1e-8).
 
     Returns
     -------
-    V : array (r, n)
+    V : ndarray, shape (r, n)
+        Updated nonnegative component matrix.
+
+    Notes
+    -----
+    - The rank-one deviation penalty uses a “frozen” gradient that considers singular vectors as constants:
+      ∇(||M_k||_F^2 - σ1^2) = 2 M_k - 2 σ1 u1 v1^T.
+    - The nuclear-norm proximal step applies singular-value soft-thresholding:
+      Prox_{τ||·||_*}(Y) = U diag(max(σ - τ, 0)) V^T.
+
+    References
+    ---------
+    [1] Cai, Jian-Feng, Emmanuel J. Candès, and Zuowei Shen.
+        "A singular value thresholding algorithm for matrix completion."
+        SIAM Journal on optimization 20.4 (2010): 1956-1982.
     """
     r, n = tl.shape(UtM)
+    b, c = component_shape
     if prior_dict is None:
         prior_dict = {}
 
-    # Initialize V
+    # Initialize V as before...
     if V is None:
         V_np = np.linalg.solve(np.asarray(UtU), np.asarray(UtM))
         V = tl.tensor(np.clip(V_np, a_min=eps, a_max=None), dtype=float)
@@ -3423,49 +3575,85 @@ def hals_prior_nnls(
 
     for it in range(max_iter):
         delta = 0.0
+
         for k in range(r):
             ukk = UtU[k, k]
             if ukk < eps:
                 continue
 
-            # Residual: UtM[k] - sum_{j!=k} UtU[k,j] * V[j]
+            # Standard HALS residual
             Rk = UtM[k] - tl.dot(UtU[k], V) + ukk * V[k]
 
-            # Elastic-net base numerator/denominator
-            num = copy.copy(Rk)
-            # Highest-level denominator shape (vector) handles prior per-index
+            # Base numerator/denominator (elastic-net + priors)
+            num   = copy.copy(Rk)
             denom = np.full((n,), ukk + l2_pen, dtype=float)
 
-            # Quadratic prior if present and gamma > 0, ignoring NaNs
+            # Quadratic prior
             if k in prior_dict and gamma > 0:
                 p_arr = np.asarray(prior_dict[k], dtype=float)
-                mask = np.isfinite(p_arr).astype(float)
+                mask  = np.isfinite(p_arr).astype(float)
                 mask_tl = tl.tensor(mask, dtype=float)
-                p_tl = tl.tensor(np.nan_to_num(p_arr, nan=0.0), dtype=float)
-                # apply prior on valid indices
-                num = num + gamma * p_tl
-                denom = denom + gamma * mask_tl
+                p_tl    = tl.tensor(np.nan_to_num(p_arr, nan=0.0), dtype=float)
+                num   += gamma * p_tl
+                denom += gamma * mask_tl
 
-            # apply L1 penalty (constant shift)
+            # L1 shift
             if l1_pen != 0:
-                num = num - l1_pen
+                num -= l1_pen
 
-            # compute update and enforce non-negativity
+            # ─────────────────────────────────────────────
+            # 1) Rank-one deviation penalty (gradient step)
+            if r1_coef > 0:
+                assert component_shape is not None
+                # reshape row → M_k
+                M_k = V[k].cpu().numpy().reshape(b, c)
+
+                # top SVD (power‐method or full SVD)
+                U1, S1, V1t = np.linalg.svd(M_k, full_matrices=False)
+                sigma1 = S1[0]
+                u1 = U1[:, 0]
+                v1 = V1t.T[:, 0]
+
+                # gradient of (‖M‖_F^2 - σ1^2) = 2*M - 2*σ1*u1*v1^T
+                grad_lambda = 2*M_k - 2*sigma1 * np.outer(u1, v1)
+                grad_flat   = grad_lambda.ravel()
+
+                # incorporate gradient: numerator minus λ·grad, denominator plus 2λ
+                num   = num - r1_coef * grad_flat
+                denom = denom + 2 * r1_coef
+
+            # 2) HALS‐style nonnegative update
             V_new = tl.clip(num / (denom + eps), a_min=eps)
 
-            # track change
+            # ─────────────────────────────────────────────
+            # 3) Nuclear‐norm proximal step (soft‐thresholding)
+            if mu > 0:
+                # step‐size scalar η = 1/(ukk + l2_pen + 2λ)  (approx)
+                eta_k = 1.0 / (ukk + l2_pen + 2 * r1_coef + eps)
+
+                # reshape interim back into matrix
+                M_int = V_new.cpu().numpy().reshape(b, c)
+
+                # SVD and singular‐value soft‐threshold τ = μ·η
+                U, S, Vt = np.linalg.svd(M_int, full_matrices=False)
+                tau = mu * eta_k
+                S_thresh = np.maximum(S - tau, 0.0)
+
+                # reconstruct and flatten
+                M_prox = (U * S_thresh) @ Vt
+                V_new = tl.tensor(np.clip(M_prox.ravel(), a_min=eps, a_max=None),
+                                  dtype=float)
+
+            # track change & write back
             delta += tl.norm(V[k] - V_new) ** 2
             V[k] = V_new
 
         # convergence check
-        if prev_delta is None:
-            prev_delta = delta
-        elif prev_delta > 0 and delta / prev_delta < tol:
+        if prev_delta is not None and prev_delta > 0 and delta / prev_delta < tol:
             break
         prev_delta = delta
 
     return V
-
 
 def nmf_hals_prior(
         X,
@@ -4283,6 +4471,9 @@ def nmf_hals_prior_ratio(
         alpha_W=0,
         alpha_H=0,
         l1_ratio=0,
+        r1_coef=0,
+        mu=0,
+        component_shape=None,
         max_iter_als=100,
         max_iter_nnls=500,
         tol=1e-6,
