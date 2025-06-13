@@ -5,6 +5,7 @@ Useful functions for EEM processing
 
 import numpy as np
 import itertools
+import scipy.sparse as sp
 from scipy.spatial.distance import euclidean
 from datetime import datetime, timedelta
 
@@ -115,3 +116,24 @@ def num_string_to_list(input_string):
         # Handle invalid input (e.g., non-numeric characters)
         return None
 
+
+def second_difference_matrix(n):
+    """n×n discrete 2nd-difference (Neumann) matrix."""
+    e = np.ones(n)
+    L = sp.diags([e, -2*e, e], offsets=[-1, 0, 1], shape=(n,n))
+    L = L.tolil()
+    # one-sided at boundaries
+    L[0,0], L[0,1] = 1, -1
+    L[-1,-1], L[-1,-2] = 1, -1
+    return L.tocsr()
+
+
+def apply_2D_laplacian(h_k, L_ex, L_em, b, c):
+    """
+    Apply (L_ex ⊗ I + I ⊗ L_em) to vector h_k of length b*c.
+    """
+    hk_arr = np.asarray(h_k)
+    Hmat = hk_arr.reshape(b, c)
+    term_ex = L_ex.dot(Hmat)
+    term_em = Hmat.dot(L_em.T)
+    return (term_ex + term_em).ravel()

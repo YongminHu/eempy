@@ -1,5 +1,7 @@
 import pickle
+import cvxpy as cp
 
+import matplotlib.pyplot as plt
 from scipy.stats import zscore
 from eempy.read_data import read_eem_dataset, read_abs_dataset, read_eem, read_eem_dataset_from_json
 from eempy.eem_processing import *
@@ -15,9 +17,9 @@ np.random.seed(42)
 # eem_dataset_path = \
 #     "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/nan_sample_260_ex_274_em_310_mfem_5.json"
 eem_dataset_path = \
-    "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/sample_276_ex_274_em_310_mfem_5_gaussian_rsu.json"
+    "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/sample_276_ex_274_em_310_mfem_5_gaussian_rsu_rs_interpolated.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
-eem_dataset.raman_scattering_removal(width=15, interpolation_method='linear', copy=False)
+# eem_dataset.raman_scattering_removal(width=15, interpolation_method='linear', copy=False)
 # eem_dataset.eem_stack = np.nan_to_num(eem_dataset.eem_stack, copy=True, nan=0)
 eem_dataset_july, _ = eem_dataset.filter_by_index(None, ['2024-07-'], copy=True)
 eem_dataset_october, _ = eem_dataset.filter_by_index(None, ['2024-10-'], copy=True)
@@ -247,21 +249,21 @@ def plot_outlier_plots(model, indicator, estimator_rank, dataset_train, dataset_
 
 # -----------model training-------------
 # dataset_train, dataset_test = eem_dataset_october.splitting(2)
-# dataset_train_splits = []
-# dataset_train_unquenched, _ = eem_dataset_october.filter_by_index('B1C1', None, copy=True)
-# initial_sub_eem_datasets_unquenched = dataset_train_unquenched.splitting(n_split=2, random_state=42)
-# dataset_train_quenched, _ = eem_dataset_october.filter_by_index('B1C2', None, copy=True)
-# for subset in initial_sub_eem_datasets_unquenched:
-#     pos = [dataset_train_unquenched.index.index(idx) for idx in subset.index]
-#     quenched_index = [dataset_train_quenched.index[idx] for idx in pos]
-#     sub_eem_dataset_quenched, _ = eem_dataset.filter_by_index(None, quenched_index, copy=True)
-#     subset.sort_by_index()
-#     sub_eem_dataset_quenched.sort_by_index()
-#     dataset_train_splits.append(combine_eem_datasets([subset, sub_eem_dataset_quenched]))
-# dataset_train = dataset_train_splits[0]
-# dataset_test = dataset_train_splits[1]
-dataset_train = eem_dataset_october
-dataset_test = eem_dataset_july
+dataset_train_splits = []
+dataset_train_unquenched, _ = eem_dataset_october.filter_by_index('B1C1', None, copy=True)
+initial_sub_eem_datasets_unquenched = dataset_train_unquenched.splitting(n_split=2, random_state=42)
+dataset_train_quenched, _ = eem_dataset_october.filter_by_index('B1C2', None, copy=True)
+for subset in initial_sub_eem_datasets_unquenched:
+    pos = [dataset_train_unquenched.index.index(idx) for idx in subset.index]
+    quenched_index = [dataset_train_quenched.index[idx] for idx in pos]
+    sub_eem_dataset_quenched, _ = eem_dataset.filter_by_index(None, quenched_index, copy=True)
+    subset.sort_by_index()
+    sub_eem_dataset_quenched.sort_by_index()
+    dataset_train_splits.append(combine_eem_datasets([subset, sub_eem_dataset_quenched]))
+dataset_train = dataset_train_splits[0]
+dataset_test = dataset_train_splits[1]
+# dataset_train = eem_dataset_october
+# dataset_test = eem_dataset_july
 indicator = 'TCC (million #/mL)'
 sample_prior = {0: dataset_train.ref[indicator]}
 params = {
@@ -272,10 +274,11 @@ params = {
     'alpha_sample': 0,
     'l1_ratio': 0,
     'max_iter_als': 100,
-    'max_iter_nnls': 500,
+    'max_iter_nnls': 800,
     'lam': 0,  # 1e6
-    'r1_coef': 1e9,
-    'mu': 0,
+    # 'r1_coef': 0,
+    # 'mu': 0,
+    # 'omega': 10,
     'random_state': 42
 }
 model = EEMNMF(
@@ -664,3 +667,50 @@ with open("C:/PhD/publication/2025_prior_knowledge/cluster_specific_models_all.p
 
 
 
+
+# ------------
+def rank_one_approximation(matrix):
+    """
+    Computes the rank-one approximation of a given matrix using SVD.
+
+    Parameters:
+    matrix (np.ndarray): Input 2D array (matrix).
+
+    Returns:
+    tuple: A tuple containing:
+        - rank_one_matrix (np.ndarray): The rank-one approximation.
+        - u1 (np.ndarray): The left singular vector (column vector).
+        - v1 (np.ndarray): The right singular vector (row vector).
+    """
+    # Ensure input is a numpy array
+    A = np.array(matrix, dtype=float)
+    U, S, VT = np.linalg.svd(A, full_matrices=False)
+    sigma1 = S[0]
+    u1 = U[:, 0]
+    v1 = VT[0, :]
+    rank_one_matrix = sigma1 * np.outer(u1, v1)
+    return rank_one_matrix, u1 * np.sqrt(sigma1), v1 * np.sqrt(sigma1)
+
+m_r1, u1_r1, v1_r1 = rank_one_approximation(model.components[-1])
+plot_eem(m_r1, ex_range=eem_dataset.ex_range, em_range=eem_dataset.em_range)
+
+def low_rank_approx_nuclear_norm(A, epsilon=1e-2):
+    """
+    Computes a low-rank approximation of a matrix A by minimizing its nuclear norm.
+    Parameters:
+        A (np.ndarray): Input matrix.
+        epsilon (float): Allowed deviation (Frobenius norm) from A.
+    Returns:
+        X_opt (np.ndarray): Low-rank approximation of A.
+    """
+    m, n = A.shape
+    X = cp.Variable((m, n))
+
+    # Minimize nuclear norm with approximation constraint
+    objective = cp.Minimize(cp.normNuc(X))
+    constraints = [cp.norm(X - A, 'fro') <= epsilon]
+
+    prob = cp.Problem(objective, constraints)
+    prob.solve(solver=cp.SCS)
+
+    return X.value  # The denoised, low-rank matrix
