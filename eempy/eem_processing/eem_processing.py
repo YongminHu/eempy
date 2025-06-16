@@ -3421,571 +3421,6 @@ def hals_prior_nnls(
     return V
 
 
-#
-# def hals_prior_nnls(
-#         UtM,
-#         UtU,
-#         prior_dict=None,
-#         V=None,
-#         gamma=0,
-#         alpha=0,
-#         l1_ratio=0,
-#         r1_coef=0.0,
-#         mu=0.0,
-#         component_shape=None,
-#         max_iter=500,
-#         tol=1e-8,
-#         eps=1e-8,
-# ):
-#     """
-#     HALS-style nonnegative least-squares update for V in an NMF step, with
-#     optional quadratic priors, elastic-net penalties, a rank-one deviation
-#     penalty, and a nuclear-norm penalty on each component.
-#
-#     Solves for nonnegative V:
-#         min_{V >= 0} 0.5 * ||M - U V||_F^2
-#                        + (gamma/2) * sum_k ||V[k] - p_k||_F^2
-#                        + alpha * (l1_ratio * ||V||_1 + 0.5 * (1 - l1_ratio) * ||V||_F^2)
-#                        + r1_coef * sum_k (||M_k||_F^2 - sigma1(M_k)^2)
-#                        + mu * sum_k ||M_k||_*
-#
-#     where:
-#       - U ∈ ℝ^{m×r}, M ∈ ℝ^{m×n}, V ∈ ℝ^{r×n}
-#       - M_k ∈ ℝ^{b×c} is row k of V reshaped to comp_shape = (b, c)
-#       - sigma1(M_k) is the leading singular value of M_k
-#
-#     Updates are performed by alternating over rows k=0…r−1:
-#       1. HALS residual update with elastic-net and quadratic prior.
-#       2. Gradient-style correction for the rank-one deviation penalty.
-#       3. Proximal (soft-thresholding) update for the nuclear-norm penalty.
-#       4. Nonnegativity enforced by clipping to [eps, ∞).
-#
-#     Parameters
-#     ----------
-#     UtM : array_like, shape (r, n)
-#         Precomputed U^T @ M.
-#     UtU : array_like, shape (r, r)
-#         Precomputed U^T @ U.
-#     prior_dict : dict, optional
-#         Mapping k → p_k array for quadratic priors on row V[k], same length n.
-#         If provided and gamma > 0, adds (gamma/2)*||V[k] - p_k||^2 penalty.
-#     V : array_like, shape (r, n), optional
-#         Initial guess for V; if None, a nonnegative least-squares solution
-#         of UtU V = UtM is used (then scaled and clipped).
-#     gamma : float, optional
-#         Weight of quadratic prior term (default 0: no prior).
-#     alpha : float, optional
-#         Overall weight for elastic-net penalty (default 0: no elastic-net).
-#     l1_ratio : float in [0,1], optional
-#         Mix between L1 and L2 in elastic-net (1 → pure L1, 0 → pure L2).
-#     r1_coef : float, optional
-#         Weight of the rank-one deviation penalty
-#         sum_k (||M_k||_F^2 - sigma1(M_k)^2) (default 0: none).
-#     mu : float, optional
-#         Weight of the nuclear-norm penalty sum_k ||M_k||_* (default 0: none).
-#     component_shape : tuple of ints (b, c), required if r1_coef>0 or mu>0
-#         Shape to reshape each row V[k] into M_k.
-#     max_iter : int, optional
-#         Maximum number of HALS inner iterations (default 500).
-#     tol : float, optional
-#         Relative tolerance for convergence of row-wise updates (default 1e-8).
-#     eps : float, optional
-#         Small constant to avoid division by zero and enforce positivity (default 1e-8).
-#
-#     Returns
-#     -------
-#     V : ndarray, shape (r, n)
-#         Updated nonnegative component matrix.
-#
-#     Notes
-#     -----
-#     - The rank-one deviation penalty uses a “frozen” gradient that considers singular vectors as constants:
-#       ∇(||M_k||_F^2 - σ1^2) = 2 M_k - 2 σ1 u1 v1^T.
-#     - The nuclear-norm proximal step applies singular-value soft-thresholding:
-#       Prox_{τ||·||_*}(Y) = U diag(max(σ - τ, 0)) V^T.
-#
-#     References
-#     ---------
-#     [1] Cai, Jian-Feng, Emmanuel J. Candès, and Zuowei Shen.
-#         "A singular value thresholding algorithm for matrix completion."
-#         SIAM Journal on optimization 20.4 (2010): 1956-1982.
-#     """
-#     r, n = tl.shape(UtM)
-#     b, c = component_shape
-#     if prior_dict is None:
-#         prior_dict = {}
-#
-#     # Initialize V as before...
-#     if V is None:
-#         V_np = np.linalg.solve(np.asarray(UtU), np.asarray(UtM))
-#         V = tl.tensor(np.clip(V_np, a_min=eps, a_max=None), dtype=float)
-#         VVt = tl.dot(V, tl.transpose(V))
-#         scale = tl.sum(UtM * V) / (tl.sum(UtU * VVt) + eps)
-#         V = V * scale
-#
-#     # Precompute elastic-net constants
-#     l2_pen = alpha * (1 - l1_ratio)
-#     l1_pen = alpha * l1_ratio
-#     prev_delta = None
-#
-#     for it in range(max_iter):
-#         delta = 0.0
-#
-#         for k in range(r):
-#             ukk = UtU[k, k]
-#             if ukk < eps:
-#                 continue
-#
-#             # Standard HALS residual
-#             Rk = UtM[k] - tl.dot(UtU[k], V) + ukk * V[k]
-#
-#             # Base numerator/denominator (elastic-net + priors)
-#             num   = copy.copy(Rk)
-#             denom = np.full((n,), ukk + l2_pen, dtype=float)
-#
-#             # Quadratic prior
-#             if k in prior_dict and gamma > 0:
-#                 p_arr = np.asarray(prior_dict[k], dtype=float)
-#                 mask  = np.isfinite(p_arr).astype(float)
-#                 mask_tl = tl.tensor(mask, dtype=float)
-#                 p_tl    = tl.tensor(np.nan_to_num(p_arr, nan=0.0), dtype=float)
-#                 num   += gamma * p_tl
-#                 denom += gamma * mask_tl
-#
-#             # L1 shift
-#             if l1_pen != 0:
-#                 num -= l1_pen
-#
-#             # # ─────────────────────────────────────────────
-#             # # 1) Rank-one deviation penalty (gradient step)
-#             # if r1_coef > 0:
-#             #     assert component_shape is not None
-#             #     # reshape row → M_k
-#             #     M_k = V[k].reshape((b, c))
-#             #
-#             #     # top SVD (power‐method or full SVD)
-#             #     U1, S1, V1t = np.linalg.svd(M_k, full_matrices=False)
-#             #     sigma1 = S1[0]
-#             #     u1 = U1[:, 0]
-#             #     v1 = V1t.T[:, 0]
-#             #
-#             #     # gradient of (‖M‖_F^2 - σ1^2) = 2*M - 2*σ1*u1*v1^T
-#             #     grad_lambda = 2*M_k - 2*sigma1 * np.outer(u1, v1)
-#             #     grad_flat = grad_lambda.ravel()
-#             #
-#             #     # incorporate gradient: numerator minus λ·grad, denominator plus 2λ
-#             #     num = num - r1_coef * grad_flat
-#             #     denom = denom + 2 * r1_coef
-#             #
-#             # 2) HALS‐style nonnegative update
-#             V_new = tl.clip(num / (denom + eps), a_min=eps)
-#             #
-#             # # ─────────────────────────────────────────────
-#             # # 3) Nuclear‐norm proximal step (soft‐thresholding)
-#             # if mu > 0:
-#             #     # step‐size scalar η = 1/(ukk + l2_pen + 2λ)  (approx)
-#             #     eta_k = 1.0 / (ukk + l2_pen + 2 * r1_coef + eps)
-#             #
-#             #     # reshape interim back into matrix
-#             #     M_int = V_new.reshape((b, c))
-#             #
-#             #     # SVD and singular‐value soft‐threshold τ = μ·η
-#             #     U, S, Vt = np.linalg.svd(M_int, full_matrices=False)
-#             #     tau = mu * eta_k
-#             #     S_thresh = np.maximum(S - tau, 0.0)
-#             #
-#             #     # reconstruct and flatten
-#             #     M_prox = (U * S_thresh) @ Vt
-#             #     V_new = tl.tensor(np.clip(M_prox.ravel(), a_min=eps, a_max=None),
-#             #                       dtype=float)
-#
-#             # track change & write back
-#             delta += tl.norm(V[k] - V_new) ** 2
-#             V[k] = V_new
-#
-#         # convergence check
-#         if prev_delta is not None and prev_delta > 0 and delta / prev_delta < tol:
-#             break
-#         prev_delta = delta
-#
-#     return V
-
-# def nmf_hals_prior(
-#         X,
-#         rank,
-#         prior_dict_H=None,
-#         prior_dict_W=None,
-#         gamma_W=0,
-#         gamma_H=0,
-#         alpha_W=0,
-#         alpha_H=0,
-#         l1_ratio=0,
-#         # r1_coef=0.0,
-#         # mu=0.0,
-#         omega=0,
-#         component_shape=None,
-#         max_iter_als=100,
-#         max_iter_nnls=500,
-#         tol=1e-6,
-#         eps=1e-8,
-#         init='random',
-#         custom_init=None,
-#         random_state=None,
-#         prior_ref_components=None,
-# ):
-#     """
-#     Perform Non-negative Matrix Factorization (NMF) using the Hierarchical Alternating Least Squares (HALS) algorithm
-#     with optional prior guidance and elastic-net regularization.
-#
-#     This function factorizes a non-negative matrix X into the product of two non-negative matrices W and H such that:
-#         X ≈ W @ H
-#     where W has shape (n_samples, rank), and H has shape (rank, n_features).
-#
-#     Parameters
-#     ----------
-#     X : array-like, shape (n_samples, n_pixels)
-#         Non-negative data matrix.
-#     rank : int
-#         Factorization rank r.
-#     prior_dict_H : dict {k: p_k}
-#         Priors for rows of H (zero-based indices), each p_k of shape (b,).
-#     prior_dict_W : dict {k: p_k}
-#         Priors for rows of W^T (i.e., columns of W), each p_k of shape (a,).
-#     gamma_W : float
-#         Prior regularization weight for W.
-#     gamma_H : float
-#         Prior regularization weight for H.
-#     alpha_W: float
-#         ElasticNet regularization weight for W.
-#     alpha_W: float
-#         ElasticNet regularization weight for H.
-#     l1_ratio: float between 0 and 1
-#         ElasticNet regularization mixing parameter
-#     r1_coef : float, optional
-#         Weight of the rank-one deviation penalty
-#         sum_k (||M_k||_F^2 - sigma1(M_k)^2).
-#     mu : float, optional
-#         Weight of the nuclear-norm penalty sum_k ||M_k||_*.
-#     component_shape : tuple of ints (b, c), required if r1_coef>0 or mu>0
-#         Shape to reshape each row V[k] into M_k.
-#     max_iter_als : int
-#         Maximum number of outer ALS iterations.
-#     max_iter_nnls : int
-#         Maximum number of inner NNLS interations.
-#     tol : float
-#         Tolerance for convergence on reconstruction error.
-#     eps : float, optional
-#         Small constant to avoid divide by zero and ensure positivity.
-#     init : {'random', 'svd', 'nndsvd', 'nndsvda', 'nndsvdar', 'ordinary_nmf'}
-#         Initialization mode.
-#     custom_init: list [W_init, H_init]
-#         List of factors used for custom initialization
-#     random_state : int or None
-#         Seed for random initialization.
-#     prior_ref_components : dict, {k: ref_component of shape (n_pixels,)}
-#         Reference components to automatically reassign the keys of prior_dict_W according to the initialization.
-#     Returns
-#     -------
-#     W : array-like, shape (n_samples, n_components)
-#     H : array-like, shape (n_components, n_pixels)
-#     """
-#     X = tl.tensor(X, dtype=float)
-#     a, b = X.shape
-#     rng = np.random.RandomState(random_state)
-#
-#     # Initialize W and H
-#     if init == 'random':
-#         W = tl.clip(rng.rand(a, rank), a_min=1e-6)
-#         H = tl.clip(rng.rand(rank, b), a_min=1e-6)
-#     elif init in ('svd', 'nndsvd', 'nndsvda', 'nndsvdar'):
-#         W, H = unfolded_eem_stack_initialization(X, rank=rank, method=init)
-#     elif init == 'ordinary_nmf':
-#         init_model = NMF(n_components=rank, init='nndsvd', random_state=random_state)
-#         W = init_model.fit_transform(X)
-#         H = init_model.components_
-#     elif init == 'custom':
-#         W, H = custom_init
-#     else:
-#         raise ValueError(f"Unknown init mode: {init}")
-#
-#     # Default empty priors
-#     if prior_dict_H is None:
-#         prior_dict_H = {}
-#     if prior_dict_W is None:
-#         prior_dict_W = {}
-#     if prior_ref_components is not None:
-#         prior_keys = list(prior_ref_components.keys())
-#         queries = np.array([prior_ref_components[k] for k in prior_keys])
-#         cost_mat = cdist(queries, H, metric='correlation')
-#         # run Hungarian algorithm
-#         query_idx, ref_idx = linear_sum_assignment(cost_mat)
-#         H_new, W_new = np.zeros(H.shape), np.zeros(W.shape)
-#         r_list_query, r_list_ref = [i for i in range(rank)], [i for i in range(rank)]
-#         for qi, ri in zip(query_idx, ref_idx):
-#             W_new[:, qi] = W[:, ri]
-#             H_new[qi, :] = H[ri, :]
-#             r_list_query.pop(qi)
-#             r_list_ref.pop(ri)
-#         for qi, ri in zip(r_list_query, r_list_ref):
-#             W_new[:, qi] = W[:, ri]
-#             H_new[qi, :] = H[ri, :]
-#         W, H = W_new, H_new
-#
-#     prev_err = tl.norm(X - tl.dot(W, H))
-#     for it in range(max_iter_als):
-#         # Update H (rows) via HALS_NNLS with priors + elastic-net
-#         UtM_H = tl.dot(tl.transpose(W), X)
-#         UtU_H = tl.dot(tl.transpose(W), W)
-#         H = hals_prior_nnls(
-#             UtM=UtM_H,
-#             UtU=UtU_H,
-#             prior_dict=prior_dict_H,
-#             V=H,
-#             gamma=gamma_H,
-#             alpha=alpha_H,
-#             l1_ratio=l1_ratio,
-#             omega=omega,
-#             component_shape=component_shape,
-#             tol=tol,
-#             eps=eps,
-#             max_iter=max_iter_nnls,
-#         )
-#         # Update W (columns) via HALS on W^T
-#         UtM_W = tl.dot(H, tl.transpose(X))
-#         UtU_W = tl.dot(H, tl.transpose(H))
-#         Wt = hals_prior_nnls(
-#             UtM=UtM_W,
-#             UtU=UtU_W,
-#             prior_dict=prior_dict_W,
-#             V=tl.transpose(W),
-#             gamma=gamma_W,
-#             alpha=alpha_W,
-#             l1_ratio=l1_ratio,
-#             tol=tol,
-#             eps=eps,
-#             max_iter=max_iter_nnls,
-#         )
-#         W = tl.transpose(Wt)
-#
-#         # Check convergence
-#         err = tl.norm(X - tl.dot(W, H))
-#         if it > 0:
-#             if abs(prev_err - err) / (prev_err + eps) < tol:
-#                 break
-#         prev_err = err
-#
-#     if prior_ref_components is not None:
-#         cost_mat = cdist(queries, H, metric='correlation')
-#         query_idx, ref_idx = linear_sum_assignment(cost_mat)
-#         H_new, W_new = np.zeros(H.shape), np.zeros(W.shape)
-#         r_list_query, r_list_ref = [i for i in range(rank)], [i for i in range(rank)]
-#         for qi, ri in zip(query_idx, ref_idx):
-#             W_new[:, qi] = W[:, ri]
-#             H_new[qi, :] = H[ri, :]
-#             r_list_query.pop(qi)
-#             r_list_ref.pop(ri)
-#         for qi, ri in zip(r_list_query, r_list_ref):
-#             W_new[:, qi] = W[:, ri]
-#             H_new[qi, :] = H[ri, :]
-#         W, H = W_new, H_new
-#
-#     return W, H
-
-#
-# def cp_hals_prior(
-#         tensor,
-#         rank,
-#         prior_dict_A=None,
-#         prior_dict_B=None,
-#         prior_dict_C=None,
-#         gamma_A=0,
-#         gamma_B=0,
-#         gamma_C=0,
-#         prior_ref_components=None,
-#         alpha_A=0,
-#         alpha_B=0,
-#         alpha_C=0,
-#         l1_ratio=0,
-#         max_iter_als=200,
-#         max_iter_nnls=500,
-#         tol=1e-6,
-#         eps=1e-8,
-#         init='svd',
-#         custom_init=None,
-#         random_state=None
-# ):
-#     """
-#     Perform non-negative PARAFAC/CP decomposition of a 3-way tensor using HALS with optional priors
-#     and elastic-net penalties on factor matrices A, B, C.
-#
-#     Decomposes `tensor` of shape (I, J, K) into factors A (I x rank), B (J x rank), C (K x rank) such that:
-#         tensor ≈ [[A, B, C]]
-#
-#     Parameters
-#     ----------
-#     tensor : array-like, shape (I, J, K)
-#         Input non-negative tensor.
-#     rank : int
-#         Number of components.
-#     prior_dict_A : dict {r: v_r}, optional
-#         Priors for columns of A: column r of A is penalized toward vector v_r.
-#     prior_dict_B : dict {r: v_r}, optional
-#         Priors for columns of B.
-#     prior_dict_C : dict {r: v_r}, optional
-#         Priors for columns of C.
-#     gamma_A, gamma_B, gamma_C : float, optional
-#         Quadratic prior weights for A, B, C.
-#     alpha_A, alpha_B, alpha_C : float, optional
-#         Elastic-net weights for A, B, C.
-#     l1_ratio : float in [0,1], optional
-#         Mix between L1 and L2 for elastic-net.
-#     max_iter_als : int, optional
-#         Maximum number of outer ALS iterations.
-#     max_iter_nnls : int, optional
-#         Maximum number of inner NNLS interations.
-#     tol : float, optional
-#         Convergence tolerance on reconstruction error.
-#     eps : float, optional
-#         Small constant to avoid zero division and ensure positivity.
-#     init : {'random', 'svd', 'nndsvd', 'nndsvda', 'nndsvdar'}, default 'random'
-#         Initialization scheme for factor matrices.
-#     random_state : int or None
-#         Random seed.
-#
-#     Returns
-#     -------
-#     A : ndarray, shape (I, rank)
-#     B : ndarray, shape (J, rank)
-#     C : ndarray, shape (K, rank)
-#     """
-#     # Ensure tensor
-#     X = tl.tensor(tensor, dtype=float)
-#     I, J, K = X.shape
-#     rng = np.random.RandomState(random_state)
-#
-#     # Initialize factors A, B, C
-#     if init == 'random':
-#         A = tl.clip(rng.rand(I, rank), a_min=eps)
-#         B = tl.clip(rng.rand(J, rank), a_min=eps)
-#         C = tl.clip(rng.rand(K, rank), a_min=eps)
-#     elif init in ('svd', 'nndsvd', 'nndsvda', 'nndsvdar'):
-#         # Use 2D initialization on each mode unfolding
-#         # Mode-0 init for A
-#         X1 = tl.unfold(X, mode=0)
-#         W1, _ = unfolded_eem_stack_initialization(tl.to_numpy(X1), rank, method=init)
-#         A = tl.tensor(np.clip(W1, a_min=eps, a_max=None), dtype=float)
-#         # Mode-1 init for B
-#         X2 = tl.unfold(X, mode=1)
-#         W2, _ = unfolded_eem_stack_initialization(tl.to_numpy(X2), rank, method=init)
-#         B = tl.tensor(np.clip(W2, a_min=eps, a_max=None), dtype=float)
-#         # Mode-2 init for C
-#         X3 = tl.unfold(X, mode=2)
-#         W3, _ = unfolded_eem_stack_initialization(tl.to_numpy(X3), rank, method=init)
-#         C = tl.tensor(np.clip(W3, a_min=eps, a_max=None), dtype=float)
-#     elif init == 'ordinary_cp':
-#         A, B, C = non_negative_parafac_hals(X, rank=rank, random_state=random_state)
-#     elif init == 'custom':
-#         A, B, C = custom_init
-#     else:
-#         raise ValueError(f"Unknown init mode: {init}")
-#
-#     # Default empty priors
-#     if prior_dict_B is None:
-#         prior_dict_B = {}
-#     if prior_dict_C is None:
-#         prior_dict_C = {}
-#     if prior_dict_A is None:
-#         prior_dict_A = {}
-#     elif prior_ref_components is not None:
-#         H = np.zeros([rank, B.shape[0] * C.shape[0]])
-#         for r in range(rank):
-#             component = np.array([B[:, r]]).T.dot(np.array([C[:, r]]))
-#             H[r, :] = component.reshape(-1)
-#         prior_keys = list(prior_ref_components.keys())
-#         queries = np.array([prior_ref_components[k] for k in prior_keys])
-#         cost_mat = cdist(queries, H, metric='correlation')
-#         # run Hungarian algorithm
-#         query_idx, ref_idx = linear_sum_assignment(cost_mat)
-#         A_new, B_new, C_new = np.zeros(A.shape), np.zeros(B.shape), np.zeros(C.shape)
-#         r_list_query, r_list_ref = [i for i in range(rank)], [i for i in range(rank)]
-#         for qi, ri in zip(query_idx, ref_idx):
-#             A_new[:, qi] = A[:, ri]
-#             B_new[:, qi] = B[:, ri]
-#             C_new[:, qi] = C[:, ri]
-#             r_list_query.pop(qi)
-#             r_list_ref.pop(ri)
-#         for qi, ri in zip(r_list_query, r_list_ref):
-#             A_new[:, qi] = A[:, ri]
-#             B_new[:, qi] = B[:, ri]
-#             C_new[:, qi] = C[:, ri]
-#         A, B, C = A_new, B_new, C_new
-#
-#     prev_error = tl.norm(X - cp_to_tensor((None, [A, B, C])))
-#     for iteration in range(max_iter_als):
-#         # Update A:
-#         UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 0)
-#         UtU = (C.T @ C) * (B.T @ B)  # shape (rank, rank)
-#         A = hals_prior_nnls(
-#             UtM=UtM.T,  # shape (rank, I)
-#             UtU=UtU,
-#             prior_dict=prior_dict_A,
-#             V=A.T,
-#             gamma=gamma_A,
-#             alpha=alpha_A,
-#             l1_ratio=l1_ratio,
-#             tol=tol,
-#             eps=eps,
-#             max_iter=max_iter_nnls
-#         )
-#         A = A.T
-#
-#         # Update B:
-#         UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 1)
-#         UtU = (C.T @ C) * (A.T @ A)  # shape (rank, rank)
-#         B = hals_prior_nnls(
-#             UtM=UtM.T,  # shape (rank, J)
-#             UtU=UtU,
-#             prior_dict=prior_dict_B,
-#             V=B.T,
-#             gamma=gamma_B,
-#             alpha=alpha_B,
-#             l1_ratio=l1_ratio,
-#             tol=tol,
-#             eps=eps,
-#             max_iter=max_iter_nnls
-#         )
-#         B = B.T
-#
-#         # Update C:
-#         UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 2)
-#         UtU = (B.T @ B) * (A.T @ A)  # shape (rank, rank)
-#         C = hals_prior_nnls(
-#             UtM=UtM.T,  # shape (rank, K)
-#             UtU=UtU,
-#             prior_dict=prior_dict_C,
-#             V=C.T,
-#             gamma=gamma_C,
-#             alpha=alpha_C,
-#             l1_ratio=l1_ratio,
-#             tol=tol,
-#             eps=eps,
-#             max_iter=max_iter_nnls
-#         )
-#         C = C.T
-#
-#         # # Normalize factors for numerical stability (optional)
-#         # weights, [A, B, C] = cp_normalize((None, [A, B, C]))
-#
-#         # Check convergence
-#         reconstructed = cp_to_tensor((None, [A, B, C]))
-#         err = tl.norm(X - reconstructed)
-#         if abs(prev_error - err) / (prev_error + eps) < tol:
-#             break
-#         prev_error = err
-#
-#     return A, B, C
-
-
 def cp_hals_prior(
         tensor,
         rank,
@@ -4448,16 +3883,26 @@ def nmf_hals_prior(
         rank,
         prior_dict_H=None,
         prior_dict_W=None,
+        prior_dict_A=None,
+        prior_dict_B=None,
+        prior_dict_C=None,
         prior_ref_components=None,
         gamma_W=0,
         gamma_H=0,
+        gamma_A=0,
+        gamma_B=0,
+        gamma_C=0,
         alpha_W=0,
         alpha_H=0,
+        alpha_A=0,
+        alpha_B=0,
+        alpha_C=0,
         l1_ratio=0,
         idx_top=None,
         idx_bot=None,
         lam=0,
         fit_rank_one=False,
+        component_shape=None,
         max_iter_als=100,
         max_iter_nnls=500,
         tol=1e-6,
@@ -4478,13 +3923,19 @@ def nmf_hals_prior(
         Non-negative data.
     rank : int
         Number of components.
-    prior_dict_H : dict {k: p_k}, optional
-        Priors for H rows (length n, NaN to skip).
     prior_dict_W : dict {k: p_k}, optional
-        Priors for W columns (length m, NaN to skip).
-    gamma_W, gamma_H : float
+        Priors for W columns (length m, NaN values are allowed).
+    prior_dict_H : dict {k: p_k}, optional
+        Priors for H rows (length n, NaN values are allowed).
+    prior_dict_A : dict {k: p_k}, optional
+        Priors for A columns (length m, NaN values are allowed).
+    prior_dict_B : dict {k: p_k}, optional
+        Priors for B columns (length n, NaN values are skip).
+    prior_dict_C : dict {k: p_k}, optional
+        Priors for C columns (length n, NaN values are skip).
+    gamma_W, gamma_H, gamma_A, gamma_B, gamma_C : float
         Quadratic prior weights.
-    alpha_W, alpha_H : float
+    alpha_W, alpha_H, alpha_A, alpha_B, alpha_C : float
         Elastic-net weights for W and H.
     l1_ratio : float [0,1]
         Mix parameter for elastic-net.
@@ -4494,6 +3945,8 @@ def nmf_hals_prior(
         Ratio penalty weight.
     fit_rank_one : dict {k: bool}, optional,
         If True, fit the k-th component as rank-1 matrix.
+    component_shape : tuple (n_ex, n_em), optional,
+        Shape of the components. Mandatory if fit_rank_one is not False.
     max_iter_als : int
         Outer ALS iterations.
     max_iter_nnls : int
@@ -4530,10 +3983,11 @@ def nmf_hals_prior(
         raise ValueError(f"Unknown init {init}")
 
     # Default empty priors
-    if prior_dict_H is None:
-        prior_dict_H = {}
-    if prior_dict_W is None:
-        prior_dict_W = {}
+    prior_dict_W = {} if prior_dict_W is None else prior_dict_W
+    prior_dict_H = {} if prior_dict_H is None else prior_dict_H
+    prior_dict_A = {} if prior_dict_A is None else prior_dict_A
+    prior_dict_B = {} if prior_dict_B is None else prior_dict_B
+    prior_dict_C = {} if prior_dict_C is None else prior_dict_C
     if prior_ref_components is not None:
         prior_keys = list(prior_ref_components.keys())
         queries = np.array([prior_ref_components[k] for k in prior_keys])
@@ -4566,13 +4020,13 @@ def nmf_hals_prior(
             else:
                 r_cp.append(k)
 
-    def inner_update_nmf(X0, W0, H0, beta0):
+    def inner_update_nmf(X0, W0, H0, beta0, prior_dict_W0, prior_dict_H0):
         UtM_H = tl.dot(tl.transpose(W0), X0)
         UtU_H = tl.dot(tl.transpose(W0), W0)
         H0 = hals_prior_nnls(
             UtM=UtM_H,
             UtU=UtU_H,
-            prior_dict=prior_dict_H,
+            prior_dict=prior_dict_H0,
             V=H0,
             gamma=gamma_H,
             alpha=alpha_H,
@@ -4581,7 +4035,6 @@ def nmf_hals_prior(
             tol=tol,
             eps=eps
         )
-
         if lam > 0 and idx_bot is not None and idx_top is not None:
             # --- Update W via ratio-aware HALS columns ---
             UtM_W = tl.to_numpy(tl.dot(H0, tl.transpose(X0)))  # (r, m)
@@ -4595,10 +4048,10 @@ def nmf_hals_prior(
                 W0[:, k] = hals_column_with_ratio(
                     Rk=Rk,
                     hk_norm2=d,
-                    beta_k=beta[k],
+                    beta_k=beta0[k],
                     lam=lam,
                     k=k,
-                    prior_dict=prior_dict_W,
+                    prior_dict=prior_dict_W0,
                     gamma=gamma_W,
                     alpha=alpha_W,
                     l1_ratio=l1_ratio,
@@ -4606,10 +4059,8 @@ def nmf_hals_prior(
                     idx_bot=idx_bot,
                     eps=eps
                 )
-
             # --- Beta‐step (closed form) ---
             beta0 = update_beta(W0, idx_top=idx_top, idx_bot=idx_bot, eps=0)
-
         else:
             # Update W (columns) via HALS on W^T
             UtM_W = tl.dot(H0, tl.transpose(X0))
@@ -4627,46 +4078,63 @@ def nmf_hals_prior(
                 max_iter=max_iter_nnls,
             )
             W0 = tl.transpose(W0t)
+        return W0, H0, beta0 if lam > 0 and idx_top is not None and idx_bot is not None else None
 
+    def inner_update_cp(M, A0, B0, C0, beta0, prior_dict_A0, prior_dict_B0, prior_dict_C0):
 
-
-    for n in range(max_iter_als):
-        
-        # --- Update H via HALS with priors + elastic-net ---
-        UtM_H = tl.dot(tl.transpose(W), X)
-        UtU_H = tl.dot(tl.transpose(W), W)
-        H = hals_prior_nnls(
-            UtM=UtM_H,
-            UtU=UtU_H,
-            prior_dict=prior_dict_H,
-            V=H,
-            gamma=gamma_H,
-            alpha=alpha_H,
+        # Update B:
+        UtM = unfolding_dot_khatri_rao(M, (None, [A0, B0, C0]), 1).T
+        UtU = (C0.T @ C0) * (A0.T @ A0)
+        B = hals_prior_nnls(
+            UtM=UtM,
+            UtU=UtU,
+            prior_dict=prior_dict_B0,
+            V=B0.T,
+            gamma=gamma_B,
+            alpha=alpha_B,
             l1_ratio=l1_ratio,
-            max_iter=max_iter_nnls,
             tol=tol,
-            eps=eps
+            eps=eps,
+            max_iter=max_iter_nnls
         )
+        B = B.T
 
-        if lam > 0 and idx_bot is not None and idx_top is not None:
+        # Update C:
+        UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 2).T
+        UtU = (B.T @ B) * (A.T @ A)  # shape (rank, rank)
+        C = hals_prior_nnls(
+            UtM=UtM,
+            UtU=UtU,
+            prior_dict=prior_dict_C,
+            V=C.T,
+            gamma=gamma_C,
+            alpha=alpha_C,
+            l1_ratio=l1_ratio,
+            tol=tol,
+            eps=eps,
+            max_iter=max_iter_nnls
+        )
+        C = C.T
+
+        if lam>0 and idx_top is not None and idx_bot is not None:
             # --- Update W via ratio-aware HALS columns ---
-            UtM_W = tl.to_numpy(tl.dot(H, tl.transpose(X)))  # (r, m)
-            UtU_W = tl.to_numpy(tl.dot(H, tl.transpose(H)))  # (r, r)
+            UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 0).T
+            UtU = (C.T @ C) * (B.T @ B)
             for k in range(rank):
-                Rk = UtM_W[k].copy()
+                Rk = UtM[k].copy()
                 for j in range(rank):
                     if j != k:
-                        Rk -= UtU_W[k, j] * W[:, j]
-                d = UtU_W[k, k]
-                W[:, k] = hals_column_with_ratio(
+                        Rk -= UtU[k, j] * A[:, j]
+                d = UtU[k, k]
+                A[:, k] = hals_column_with_ratio(
                     Rk=Rk,
                     hk_norm2=d,
                     beta_k=beta[k],
                     lam=lam,
                     k=k,
-                    prior_dict=prior_dict_W,
-                    gamma=gamma_W,
-                    alpha=alpha_W,
+                    prior_dict=prior_dict_A,
+                    gamma=gamma_A,
+                    alpha=alpha_A,
                     l1_ratio=l1_ratio,
                     idx_top=idx_top,
                     idx_bot=idx_bot,
@@ -4674,25 +4142,37 @@ def nmf_hals_prior(
                 )
 
             # --- Beta‐step (closed form) ---
-            beta = update_beta(W, idx_top=idx_top, idx_bot=idx_bot, eps=0)
+            beta = update_beta(A, idx_top=idx_top, idx_bot=idx_bot, eps=0)
 
         else:
-            # Update W (columns) via HALS on W^T
-            UtM_W = tl.dot(H, tl.transpose(X))
-            UtU_W = tl.dot(H, tl.transpose(H))
-            Wt = hals_prior_nnls(
-                UtM=UtM_W,
-                UtU=UtU_W,
-                prior_dict=prior_dict_W,
-                V=tl.transpose(W),
-                gamma=gamma_W,
-                alpha=alpha_W,
+            # Update A:
+            UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 0).T
+            UtU = (C.T @ C) * (B.T @ B)
+            A = hals_prior_nnls(
+                UtM=UtM,
+                UtU=UtU,
+                prior_dict=prior_dict_A,
+                V=A.T,
+                gamma=gamma_A,
+                alpha=alpha_A,
                 l1_ratio=l1_ratio,
                 tol=tol,
                 eps=eps,
-                max_iter=max_iter_nnls,
+                max_iter=max_iter_nnls
             )
-            W = tl.transpose(Wt)
+            A = A.T
+
+        # # Check convergence
+        # reconstructed = cp_to_tensor((None, [A, B, C]))
+        # err = tl.norm(X - reconstructed)
+        # if abs(prev_error - err) / (prev_error + eps) < tol:
+        #     break
+        # prev_error = err
+
+
+    for n in range(max_iter_als):
+
+        W, H, beta = inner_update_nmf(X, W, H, beta)
 
         # --- Convergence check ---
         err = tl.norm(X - tl.tensor(W) @ tl.tensor(H))
