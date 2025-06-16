@@ -4020,7 +4020,16 @@ def nmf_hals_prior(
             else:
                 r_cp.append(k)
 
-    def inner_update_nmf(X0, W0, H0, beta0, prior_dict_W0, prior_dict_H0):
+    if r_cp and r_nmf:
+        B = np.zeros((component_shape[0], len(r_cp)))
+        C = np.zeros((component_shape[1], len(r_cp)))
+        for i, r in enumerate(r_cp):
+            U_r, S_r, VT_r = np.linalg.svd(H[r, :].reshape(component_shape), full_matrices=False)
+            sigma_r = S_r[0]
+            B[:, i] = U_r[:, 0] * np.sqrt(sigma_r)
+            C[:, i] = VT_r[0, :] * np.sqrt(sigma_r)
+
+    def one_step_nmf(X0, W0, H0, beta0, prior_dict_W0, prior_dict_H0):
         UtM_H = tl.dot(tl.transpose(W0), X0)
         UtU_H = tl.dot(tl.transpose(W0), W0)
         H0 = hals_prior_nnls(
@@ -4068,7 +4077,7 @@ def nmf_hals_prior(
             W0t = hals_prior_nnls(
                 UtM=UtM_W,
                 UtU=UtU_W,
-                prior_dict=prior_dict_W,
+                prior_dict=prior_dict_W0,
                 V=tl.transpose(W0),
                 gamma=gamma_W,
                 alpha=alpha_W,
@@ -4080,12 +4089,12 @@ def nmf_hals_prior(
             W0 = tl.transpose(W0t)
         return W0, H0, beta0 if lam > 0 and idx_top is not None and idx_bot is not None else None
 
-    def inner_update_cp(M, A0, B0, C0, beta0, prior_dict_A0, prior_dict_B0, prior_dict_C0):
+    def one_step_cp(M, A0, B0, C0, beta0, prior_dict_A0, prior_dict_B0, prior_dict_C0):
 
         # Update B:
         UtM = unfolding_dot_khatri_rao(M, (None, [A0, B0, C0]), 1).T
         UtU = (C0.T @ C0) * (A0.T @ A0)
-        B = hals_prior_nnls(
+        B0 = hals_prior_nnls(
             UtM=UtM,
             UtU=UtU,
             prior_dict=prior_dict_B0,
@@ -4097,16 +4106,16 @@ def nmf_hals_prior(
             eps=eps,
             max_iter=max_iter_nnls
         )
-        B = B.T
+        B0 = B0.T
 
         # Update C:
-        UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 2).T
-        UtU = (B.T @ B) * (A.T @ A)  # shape (rank, rank)
-        C = hals_prior_nnls(
+        UtM = unfolding_dot_khatri_rao(M, (None, [A0, B0, C0]), 2).T
+        UtU = (B0.T @ B0) * (A0.T @ A0)  # shape (rank, rank)
+        C0 = hals_prior_nnls(
             UtM=UtM,
             UtU=UtU,
-            prior_dict=prior_dict_C,
-            V=C.T,
+            prior_dict=prior_dict_C0,
+            V=C0.T,
             gamma=gamma_C,
             alpha=alpha_C,
             l1_ratio=l1_ratio,
@@ -4114,25 +4123,25 @@ def nmf_hals_prior(
             eps=eps,
             max_iter=max_iter_nnls
         )
-        C = C.T
+        C0 = C0.T
 
         if lam>0 and idx_top is not None and idx_bot is not None:
             # --- Update W via ratio-aware HALS columns ---
-            UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 0).T
-            UtU = (C.T @ C) * (B.T @ B)
+            UtM = unfolding_dot_khatri_rao(M, (None, [A0, B0, C0]), 0).T
+            UtU = (C0.T @ C0) * (B0.T @ B0)
             for k in range(rank):
                 Rk = UtM[k].copy()
                 for j in range(rank):
                     if j != k:
-                        Rk -= UtU[k, j] * A[:, j]
+                        Rk -= UtU[k, j] * A0[:, j]
                 d = UtU[k, k]
-                A[:, k] = hals_column_with_ratio(
+                A0[:, k] = hals_column_with_ratio(
                     Rk=Rk,
                     hk_norm2=d,
-                    beta_k=beta[k],
+                    beta_k=beta0[k],
                     lam=lam,
                     k=k,
-                    prior_dict=prior_dict_A,
+                    prior_dict=prior_dict_A0,
                     gamma=gamma_A,
                     alpha=alpha_A,
                     l1_ratio=l1_ratio,
@@ -4142,17 +4151,17 @@ def nmf_hals_prior(
                 )
 
             # --- Beta‐step (closed form) ---
-            beta = update_beta(A, idx_top=idx_top, idx_bot=idx_bot, eps=0)
+            beta0 = update_beta(A0, idx_top=idx_top, idx_bot=idx_bot, eps=0)
 
         else:
             # Update A:
-            UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 0).T
-            UtU = (C.T @ C) * (B.T @ B)
-            A = hals_prior_nnls(
+            UtM = unfolding_dot_khatri_rao(M, (None, [A0, B0, C0]), 0).T
+            UtU = (C0.T @ C0) * (B0.T @ B0)
+            A0 = hals_prior_nnls(
                 UtM=UtM,
                 UtU=UtU,
-                prior_dict=prior_dict_A,
-                V=A.T,
+                prior_dict=prior_dict_A0,
+                V=A0.T,
                 gamma=gamma_A,
                 alpha=alpha_A,
                 l1_ratio=l1_ratio,
@@ -4160,7 +4169,9 @@ def nmf_hals_prior(
                 eps=eps,
                 max_iter=max_iter_nnls
             )
-            A = A.T
+            A0 = A0.T
+
+        return A0, B0, C0, beta0 if lam > 0 and idx_top is not None and idx_bot is not None else None
 
         # # Check convergence
         # reconstructed = cp_to_tensor((None, [A, B, C]))
@@ -4169,10 +4180,22 @@ def nmf_hals_prior(
         #     break
         # prev_error = err
 
-
     for n in range(max_iter_als):
 
-        W, H, beta = inner_update_nmf(X, W, H, beta)
+        if r_cp and r_nmf:
+            W_nmf = W[:, r_nmf]
+            H_nmf = H[r_nmf, :]
+            A_cp = W[:, r_cp]
+            B_cp = B
+            C_cp = C
+            X_nmf = X - cp_to_tensor((None, [A_cp, B_cp, C_cp]))
+            beta_nmf = beta[r_nmf] if beta is not None else None
+            W_nmf, H_nmf, beta_nmf = one_step_nmf(X_nmf, W_nmf, H_nmf, beta_nmf)
+            X_cp = X - W_nmf @ H_nmf
+            beta_cp = beta[r_cp] if beta is not None else None
+            A_cp, B_cp, C_cp, beta_cp = one_step_cp(X_cp, A_cp, B_cp, C_cp, beta_cp,
+
+        W, H, beta = one_step_nmf(X, W, H, beta)
 
         # --- Convergence check ---
         err = tl.norm(X - tl.tensor(W) @ tl.tensor(H))
