@@ -4020,9 +4020,9 @@ def nmf_hals_prior(
     if fit_rank_one:
         for k in range(rank):
             if fit_rank_one.get(k, False):
-                r_nmf.append(k)
-            else:
                 r_cp.append(k)
+            else:
+                r_nmf.append(k)
 
     if r_cp:
         prior_dict_W_nmf, prior_dict_H_nmf, prior_dict_A_cp, prior_dict_B_cp, prior_dict_C_cp = {}, {}, {}, {}, {}
@@ -4198,8 +4198,16 @@ def nmf_hals_prior(
 
         return A0, B0, C0, beta0 if lam > 0 and idx_top is not None and idx_bot is not None else None
 
-    for n in range(max_iter_als):
+    for n_iter in range(max_iter_als):
 
+        if np.isnan(W).any() or np.isnan(H).any() or np.isnan(A).any() or np.isnan(B).any() or np.isnan(C).any():
+            print('n_iter:', n_iter)
+            print("NaN in W:", np.isnan(W).any())
+            print("NaN in H:", np.isnan(H).any())
+            print("NaN in A:", np.isnan(A).any())
+            print("NaN in B:", np.isnan(B).any())
+            print("NaN in C:", np.isnan(C).any())
+            raise ValueError("NaN detected in W, H, A, B, or C during NMF iterations.")
         if r_cp and r_nmf:
             X_nmf = X - cp_to_tensor((None, [A, B, C])).reshape((m, -1))
             W, H, beta_nmf = one_step_nmf(X_nmf, W, H, beta_nmf, prior_dict_W_nmf, prior_dict_H_nmf)
@@ -4213,38 +4221,41 @@ def nmf_hals_prior(
             W, H, beta = one_step_nmf(X, W, H, beta, prior_dict_W, prior_dict_H)
             err = tl.norm(X - W @ H)
         # --- Convergence check ---
-        if n > 0 and abs(prev_err - err) / (prev_err + eps) < tol:
+        if n_iter > 0 and abs(prev_err - err) / (prev_err + eps) < tol:
             break
         prev_err = err
 
     if r_cp:
-        H_final = np.zeros((rank, n), dtype=float)
+        W_final, H_final = np.zeros((m, rank), dtype=float), np.zeros((rank, n), dtype=float)
         for i, r in enumerate(r_cp):
             component_r = np.outer(B[:, i], C[:, i])
             H_final[r, :] = component_r.reshape(-1)
         for i, r in enumerate(r_nmf):
-            H_final[r, :] = H[r, :]
-        H = H_final
+            H_final[r, :] = H[i, :]
+        W_final[:, r_cp] = A
         if r_nmf:
+            W_final[:, r_nmf] = W
             beta = np.zeros(rank, dtype=float)
             beta[r_cp] = beta_cp
             beta[r_nmf] = beta_nmf
+        H = H_final
+        W = W_final
 
-    if prior_ref_components is not None:
-        cost_mat = cdist(queries, H, metric='correlation')
-        # print(cost_mat)
-        query_idx, ref_idx = linear_sum_assignment(cost_mat)
-        H_new, W_new = np.zeros(H.shape), np.zeros(W.shape)
-        r_list_query, r_list_ref = [i for i in range(rank)], [i for i in range(rank)]
-        for qi, ri in zip(query_idx, ref_idx):
-            W_new[:, qi] = W[:, ri]
-            H_new[qi, :] = H[ri, :]
-            r_list_query.pop(qi)
-            r_list_ref.pop(ri)
-        for qi, ri in zip(r_list_query, r_list_ref):
-            W_new[:, qi] = W[:, ri]
-            H_new[qi, :] = H[ri, :]
-        W, H = W_new, H_new
+    # if prior_ref_components is not None:
+    #     cost_mat = cdist(queries, H, metric='correlation')
+    #     # print(cost_mat)
+    #     query_idx, ref_idx = linear_sum_assignment(cost_mat)
+    #     H_new, W_new = np.zeros(H.shape), np.zeros(W.shape)
+    #     r_list_query, r_list_ref = [i for i in range(rank)], [i for i in range(rank)]
+    #     for qi, ri in zip(query_idx, ref_idx):
+    #         W_new[:, qi] = W[:, ri]
+    #         H_new[qi, :] = H[ri, :]
+    #         r_list_query.pop(qi)
+    #         r_list_ref.pop(ri)
+    #     for qi, ri in zip(r_list_query, r_list_ref):
+    #         W_new[:, qi] = W[:, ri]
+    #         H_new[qi, :] = H[ri, :]
+    #     W, H = W_new, H_new
 
     return W, H, beta
 

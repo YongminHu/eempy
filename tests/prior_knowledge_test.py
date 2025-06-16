@@ -278,7 +278,7 @@ params = {
     'max_iter_nnls': 800,
     'lam': 0,  # 1e6
     'random_state': 42,
-    'fit_rank_one': {0: True, 3: True}
+    'fit_rank_one': {0: True, 1: True, 2: True, 3: True}
 }
 model = EEMNMF(
     solver='hals',
