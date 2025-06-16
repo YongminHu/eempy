@@ -1,7 +1,6 @@
 import pickle
-import cvxpy as cp
-
 import matplotlib.pyplot as plt
+from scipy.signal import savgol_filter
 from scipy.stats import zscore
 from eempy.read_data import read_eem_dataset, read_abs_dataset, read_eem, read_eem_dataset_from_json
 from eempy.eem_processing import *
@@ -17,10 +16,10 @@ np.random.seed(42)
 # eem_dataset_path = \
 #     "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/nan_sample_260_ex_274_em_310_mfem_5.json"
 eem_dataset_path = \
-    "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/sample_276_ex_274_em_310_mfem_5_gaussian_rsu_rs_interpolated.json"
+    "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/sample_276_ex_274_em_310_mfem_5_gaussian_rsu.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
-# eem_dataset.raman_scattering_removal(width=15, interpolation_method='linear', copy=False)
-# eem_dataset.eem_stack = np.nan_to_num(eem_dataset.eem_stack, copy=True, nan=0)
+eem_dataset.raman_scattering_removal(width=15, interpolation_method='nan', copy=False)
+eem_dataset.eem_stack = np.nan_to_num(eem_dataset.eem_stack, copy=True, nan=0)
 eem_dataset_july, _ = eem_dataset.filter_by_index(None, ['2024-07-'], copy=True)
 eem_dataset_october, _ = eem_dataset.filter_by_index(None, ['2024-10-'], copy=True)
 eem_dataset_original, _ = eem_dataset.filter_by_index(['B1C1'], None, copy=True)
@@ -35,8 +34,8 @@ eem_dataset_bac = read_eem_dataset_from_json(eem_dataset_bac_path)
 bacteria_eem = eem_dataset_bac.eem_stack[-5]
 bacteria_eem = eem_interpolation(bacteria_eem, eem_dataset_bac.ex_range, eem_dataset_bac.em_range,
                                  eem_dataset.ex_range, eem_dataset.em_range, method='linear')
-# bacteria_eem, _ = eem_raman_scattering_removal(bacteria_eem, eem_dataset.ex_range, eem_dataset.em_range,
-#                                                width=10, interpolation_method='nan')
+bacteria_eem, _ = eem_raman_scattering_removal(bacteria_eem, eem_dataset.ex_range, eem_dataset.em_range,
+                                               width=10, interpolation_method='nan')
 bacteria_eem = np.nan_to_num(bacteria_eem, nan=0)
 prior_dict_ref = {0: bacteria_eem.reshape(-1)}
 
@@ -270,25 +269,24 @@ params = {
     'n_components': 4,
     'init': 'ordinary_nmf',
     'gamma_sample': 0,
+    'gamma_component': 0,
     'alpha_component': 0,
     'alpha_sample': 0,
     'l1_ratio': 0,
     'max_iter_als': 100,
     'max_iter_nnls': 800,
     'lam': 0,  # 1e6
-    # 'r1_coef': 0,
-    # 'mu': 0,
-    # 'omega': 10,
     'random_state': 42
 }
 model = EEMNMF(
     solver='hals',
     prior_dict_sample=sample_prior,
+    prior_dict_component=prior_dict_ref,
     normalization=None,
     sort_em=False,
     prior_ref_components=prior_dict_ref,
-    idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
-    idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
+    # idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
+    # idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
     **params
 )
 model.fit(dataset_train)
@@ -669,48 +667,91 @@ with open("C:/PhD/publication/2025_prior_knowledge/cluster_specific_models_all.p
 
 
 # ------------
-def rank_one_approximation(matrix):
+
+# def remove_islands(map2d, thresh_pct=0.1, connectivity=1):
+#     """
+#     Remove all disconnected islands in a 2D map except the largest component around the global maximum.
+#
+#     Parameters
+#     ----------
+#     map2d : 2D numpy array
+#         Input map (e.g., reshaped component).
+#     thresh_pct : float
+#         Fraction of the max value at which to threshold (e.g., 0.1 for 10%).
+#     connectivity : int
+#         Connectivity for labeling (1 for 4-connect, 2 for 8-connect).
+#
+#     Returns
+#     -------
+#     cleaned : 2D numpy array
+#         The same shape as map2d, with only the largest connected region above threshold kept.
+#     """
+#     from scipy.ndimage import label
+#     # threshold
+#     T = thresh_pct * np.nanmax(map2d)
+#     mask = map2d >= T
+#     # label connected components
+#     labeled, num = label(mask, structure=np.ones((3,3)) if connectivity==2 else None)
+#     # find global max location
+#     max_idx = np.nanargmax(map2d)
+#     i0, j0 = np.unravel_index(max_idx, map2d.shape)
+#     main_label = labeled[i0, j0]
+#     # build cleaned map
+#     cleaned = np.zeros_like(map2d)
+#     if main_label > 0:
+#         cleaned[labeled == main_label] = map2d[labeled == main_label]
+#     return cleaned, num
+
+
+def rank_one_approx(X):
     """
-    Computes the rank-one approximation of a given matrix using SVD.
+    Computes a smoothed, non-negative rank-one approximation using SVD, with sign correction.
 
     Parameters:
-    matrix (np.ndarray): Input 2D array (matrix).
+    A (np.ndarray): Input matrix.
+    window_length (int): Smoothing window (must be odd and <= vector length).
+    polyorder (int): Polynomial order for Savitzky-Golay filter.
 
     Returns:
-    tuple: A tuple containing:
-        - rank_one_matrix (np.ndarray): The rank-one approximation.
-        - u1 (np.ndarray): The left singular vector (column vector).
-        - v1 (np.ndarray): The right singular vector (row vector).
+    approx (np.ndarray): Rank-one approximation.
+    u_final (np.ndarray): Smoothed, non-negative left factor.
+    v_final (np.ndarray): Smoothed, non-negative right factor.
     """
-    # Ensure input is a numpy array
-    A = np.array(matrix, dtype=float)
-    U, S, VT = np.linalg.svd(A, full_matrices=False)
-    sigma1 = S[0]
-    u1 = U[:, 0]
-    v1 = VT[0, :]
-    rank_one_matrix = sigma1 * np.outer(u1, v1)
-    return rank_one_matrix, u1 * np.sqrt(sigma1), v1 * np.sqrt(sigma1)
+    U, S, VT = np.linalg.svd(X, full_matrices=False)
+    sigma1, sigma2 = S[0], S[1]
+    u1, u2 = U[:, 0] * np.sqrt(sigma1), U[:, 1] * np.sqrt(sigma2)
+    v1, v2 = VT[0, :] * np.sqrt(sigma1), VT[1, :] * np.sqrt(sigma2)
 
-m_r1, u1_r1, v1_r1 = rank_one_approximation(model.components[-1])
-plot_eem(m_r1, ex_range=eem_dataset.ex_range, em_range=eem_dataset.em_range)
+    # Flip sign so that dominant peaks of singular vectors are positive
+    if u1[np.argmax(np.abs(u1))] < 0:
+        u1 = -u1
+        v1 = -v1
+    if u2[np.argmax(np.abs(u2))] < 0:
+        u2 = -u2
+        v2 = -v2
+    u1 = np.clip(u1, 0, None)  # Ensure non-negativity
+    u2 = np.clip(u2, 0, None)  # Ensure non-negativity
+    v1 = np.clip(v1, 0, None)  # Ensure non-negativity
+    v2 = np.clip(v2, 0, None)  # Ensure non-negativity
+    approx_r1 = np.outer(u1, v1)
+    approx_r2 = np.outer(u2, v2)
+    score = pearsonr(X.flatten(), approx_r1.flatten())[0]
 
-def low_rank_approx_nuclear_norm(A, epsilon=1e-2):
-    """
-    Computes a low-rank approximation of a matrix A by minimizing its nuclear norm.
-    Parameters:
-        A (np.ndarray): Input matrix.
-        epsilon (float): Allowed deviation (Frobenius norm) from A.
-    Returns:
-        X_opt (np.ndarray): Low-rank approximation of A.
-    """
-    m, n = A.shape
-    X = cp.Variable((m, n))
+    return [approx_r1, approx_r2], [u1, u2], [v1, v2], score
 
-    # Minimize nuclear norm with approximation constraint
-    objective = cp.Minimize(cp.normNuc(X))
-    constraints = [cp.norm(X - A, 'fro') <= epsilon]
+# m_r1, u1_r1, v1_r1, score = rank_one_approx_smooth_nonneg(model.components[2], window_length=5)
+# print(score)
+# plot_eem(m_r1, ex_range=eem_dataset.ex_range, em_range=eem_dataset.em_range)
+# plt.plot(v1_r1)
 
-    prob = cp.Problem(objective, constraints)
-    prob.solve(solver=cp.SCS)
-
-    return X.value  # The denoised, low-rank matrix
+component_interpolated, _ = eem_raman_scattering_removal(model.components[3], eem_dataset.ex_range, eem_dataset.em_range,width=15)
+component_interpolated = eem_median_filter(component_interpolated, footprint=(5, 5))
+# plt.close()
+# fig, ax, im = plot_eem(component_interpolated, ex_range=eem_dataset.ex_range, em_range=eem_dataset.em_range)
+# plt.close()
+# component_cleaned, num = remove_islands(component_interpolated, thresh_pct=0.4, connectivity=2)
+# fig, ax, im = plot_eem(component_cleaned, ex_range=eem_dataset.ex_range, em_range=eem_dataset.em_range)
+components_approximated, u1s, v1s, score = rank_one_approx(component_interpolated)
+plt.close()
+fig, ax, im = plot_eem(components_approximated[0], ex_range=eem_dataset.ex_range, em_range=eem_dataset.em_range)
+print(score)
