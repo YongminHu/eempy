@@ -269,8 +269,9 @@ sample_prior = {0: dataset_train.ref[indicator]}
 params = {
     'n_components': 4,
     'init': 'ordinary_nmf',
-    'gamma_sample': 0,
-    'gamma_component': 0,
+    'gamma_W': 0,
+    'gamma_H': 0,
+    'gamma_A': 0,
     'alpha_component': 0,
     'alpha_sample': 0,
     'l1_ratio': 0,
@@ -278,17 +279,17 @@ params = {
     'max_iter_nnls': 800,
     'lam': 0,  # 1e6
     'random_state': 42,
-    'fit_rank_one': {0: True, 1: True, 2: True, 3: True}
+    'fit_rank_one': {0: True, 3: True}
 }
 model = EEMNMF(
     solver='hals',
-    prior_dict_sample=sample_prior,
-    prior_dict_component=prior_dict_ref,
+    prior_dict_A=sample_prior,
+    # prior_dict_H=prior_dict_ref,
     normalization=None,
     sort_em=False,
     prior_ref_components=prior_dict_ref,
-    # idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
-    # idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
+    idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
+    idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
     **params
 )
 model.fit(dataset_train)
@@ -341,9 +342,9 @@ intercept_train = lr.intercept_
 # -----------model testing-------------
 _, fmax_test, eem_re_test = model.predict(
     dataset_test,
-    # fit_beta=True,
-    # idx_top=[i for i in range(len(dataset_test.index)) if 'B1C1' in dataset_test.index[i]],
-    # idx_bot=[i for i in range(len(dataset_test.index)) if 'B1C2' in dataset_test.index[i]],
+    fit_beta=False,
+    idx_top=[i for i in range(len(dataset_test.index)) if 'B1C1' in dataset_test.index[i]],
+    idx_bot=[i for i in range(len(dataset_test.index)) if 'B1C2' in dataset_test.index[i]],
 )
 
 sample_test_truth = {0: dataset_test.ref[indicator]}
@@ -506,7 +507,7 @@ for k, p in enumerate(param_combinations):
         sample_prior = {0: d_train.ref['TCC (million #/mL)']}
         model = EEMNMF(
             solver='hals',
-            prior_dict_sample=sample_prior,
+            prior_dict_W=sample_prior,
             sort_em=False,
             prior_ref_components=prior_dict_ref,
             idx_top=[i for i in range(len(d_train.index)) if 'B1C1' in d_train.index[i]],
@@ -621,7 +622,7 @@ params = {
 }
 model = EEMNMF(
     solver='hals',
-    prior_dict_sample=None,
+    prior_dict_W=None,
     normalization=None,
     sort_em=False,
     prior_ref_components=prior_dict_ref,

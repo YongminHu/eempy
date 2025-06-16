@@ -2500,17 +2500,17 @@ class EEMNMF:
             - 0.0 corresponds to pure L2 penalty,
             - 1.0 to pure L1,
             - values in between correspond to elastic-net.
-    prior_dict_sample: dict, optional
+    prior_dict_W: dict, optional
         A dictionary mapping component indices (int) to prior vectors (1D array of length n_features) for regularizing
         sample loadings. The k-th loading of sample loadings will be penalized to be close to prior_dict_sample[k] if
         present. Only applied to 'hals' solver.
-    prior_dict_component: dict, optional
+    prior_dict_H: dict, optional
         A dictionary mapping component indices (int) to prior vectors (1D array of length n_samples) for regularizing
         component loadings. The k-th loading of components loadings will be penalized to be close to
         prior_dict_component[k] if present. Only applied to 'hals' solver.
-    gamma_sample: float, default=0
+    gamma_W: float, default=0
         Strength of the prior regularization on sample loadings. Only applied to 'hals' solver.
-    gamma_component: float ,default=0
+    gamma_H: float ,default=0
         Strength of the prior regularization on component loadings. Only applied to 'hals' solver.
     idx_top: list, optional
         List of indices of samples serving as numerators in ratio calculation.
@@ -2545,8 +2545,8 @@ class EEMNMF:
 
     def __init__(self, n_components, solver='cd', init='nndsvda', beta_loss='frobenius',
                  alpha_sample=0, alpha_component=0, l1_ratio=1,
-                 prior_dict_sample=None, prior_dict_component=None,
-                 gamma_sample=0, gamma_component=0, prior_ref_components=None,
+                 prior_dict_W=None, prior_dict_H=None, prior_dict_A=None, prior_dict_B=None, prior_dict_C=None,
+                 gamma_W=0, gamma_H=0, gamma_A=0, gamma_B=0, gamma_C=0, prior_ref_components=None,
                  idx_top=None, idx_bot=None, kw_top=None, kw_bot=None, lam=0,
                  fit_rank_one=False,
                  normalization='pixel_std', sort_em=True, max_iter_als=100, max_iter_nnls=500, random_state=None):
@@ -2559,11 +2559,17 @@ class EEMNMF:
         self.alpha_sample = alpha_sample
         self.alpha_component = alpha_component
         self.l1_ratio = l1_ratio
-        self.prior_dict_sample = prior_dict_sample
-        self.prior_dict_component = prior_dict_component
+        self.prior_dict_W = prior_dict_W
+        self.prior_dict_H = prior_dict_H
+        self.prior_dict_A = prior_dict_A
+        self.prior_dict_B = prior_dict_B
+        self.prior_dict_C = prior_dict_C
         self.prior_ref_components = prior_ref_components
-        self.gamma_sample = gamma_sample
-        self.gamma_component = gamma_component
+        self.gamma_W = gamma_W
+        self.gamma_H = gamma_H
+        self.gamma_A = gamma_A
+        self.gamma_B = gamma_B
+        self.gamma_C = gamma_C
         self.idx_top = idx_top
         self.idx_bot = idx_bot
         self.kw_top = kw_top
@@ -2598,7 +2604,7 @@ class EEMNMF:
             self.idx_top = [i for i in range(len(eem_dataset.index)) if self.kw_top in eem_dataset.index[i]]
             self.idx_bot = [i for i in range(len(eem_dataset.index)) if self.kw_bot in eem_dataset.index[i]]
         if self.solver == 'cd' or self.solver == 'mu':
-            if self.prior_dict_sample is not None or self.prior_dict_component is not None:
+            if self.prior_dict_W is not None or self.prior_dict_H is not None:
                 raise ValueError("'cd' and 'mu' solver do not support prior knowledge input. Please use 'hals' solver "
                                  "instead")
             decomposer = NMF(
@@ -2642,18 +2648,24 @@ class EEMNMF:
                     X,
                     rank=self.n_components,
                     init=self.init,
-                    prior_dict_W=self.prior_dict_sample,
-                    prior_dict_H=self.prior_dict_component,
+                    prior_dict_W=self.prior_dict_W,
+                    prior_dict_H=self.prior_dict_H,
+                    prior_dict_A=self.prior_dict_A,
+                    prior_dict_B=self.prior_dict_B,
+                    prior_dict_C=self.prior_dict_C,
                     alpha_W=self.alpha_sample,
                     alpha_H=self.alpha_component,
                     l1_ratio=self.l1_ratio,
-                    gamma_W=self.gamma_sample,
-                    gamma_H=self.gamma_component,
+                    gamma_W=self.gamma_W,
+                    gamma_H=self.gamma_H,
+                    gamma_A=self.gamma_A,
+                    gamma_B=self.gamma_B,
+                    gamma_C=self.gamma_C,
                     idx_top=self.idx_top,
                     idx_bot=self.idx_bot,
                     lam=self.lam,
                     fit_rank_one=self.fit_rank_one,
-                    component_shape=eem_dataset.eem_stack.shape[1:],
+                    component_shape=[eem_dataset.eem_stack.shape[1], eem_dataset.eem_stack.shape[2]],
                     max_iter_als=self.max_iter_als,
                     max_iter_nnls=self.max_iter_nnls,
                     prior_ref_components=self.prior_ref_components,
@@ -2668,10 +2680,16 @@ class EEMNMF:
                     X,
                     rank=self.n_components,
                     init=self.init,
-                    prior_dict_W=self.prior_dict_sample,
-                    prior_dict_H=self.prior_dict_component,
-                    gamma_W=self.gamma_sample,
-                    gamma_H=self.gamma_component,
+                    prior_dict_W=self.prior_dict_W,
+                    prior_dict_H=self.prior_dict_H,
+                    prior_dict_A=self.prior_dict_A,
+                    prior_dict_B=self.prior_dict_B,
+                    prior_dict_C=self.prior_dict_C,
+                    gamma_W=self.gamma_W,
+                    gamma_H=self.gamma_H,
+                    gamma_A=self.gamma_A,
+                    gamma_B=self.gamma_B,
+                    gamma_C=self.gamma_C,
                     alpha_W=self.alpha_sample,
                     alpha_H=self.alpha_component,
                     l1_ratio=self.l1_ratio,
@@ -3332,7 +3350,7 @@ def hals_prior_nnls(
         eps=1e-8,
 ):
     """
-    HALS-style non-negative least squares update for V in an NMF step,
+    HALS-style non-negative the least squares update for V in an NMF step,
     with optional quadratic priors and elastic-net penalties on rows of V.
 
     Solves: min_{V>=0} 0.5||M - U V||_F^2
@@ -3393,6 +3411,7 @@ def hals_prior_nnls(
 
             # HALS residual excluding component k
             Rk = UtM[k] - tl.dot(UtU[k], V) + ukk * V[k]
+
 
             # Base numerator/denominator including L2
             num = copy.copy(Rk)
@@ -3910,7 +3929,7 @@ def nmf_hals_prior(
         max_iter_als=100,
         max_iter_nnls=500,
         tol=1e-6,
-        eps=0,
+        eps=1e-8,
         init='random',
         custom_init=None,
         random_state=None
@@ -4031,16 +4050,25 @@ def nmf_hals_prior(
         C = np.zeros((component_shape[1], len(r_cp)))
         for i, r in enumerate(r_cp):
             U_r, S_r, VT_r = np.linalg.svd(H[r, :].reshape(component_shape), full_matrices=False)
-            sigma_r = S_r[0]
+            sigma1 = S_r[0]
+            u1 = U_r[:, 0] * np.sqrt(sigma1)
+            v1 = VT_r[0, :] * np.sqrt(sigma1)
+            # Flip sign so that dominant peaks of singular vectors are positive
+            if u1[np.argmax(np.abs(u1))] < 0:
+                u1 = -u1
+                v1 = -v1
+            u1 = np.clip(u1, 0, None)  # Ensure non-negativity
+            v1 = np.clip(v1, 0, None)  # Ensure non-negativity
             A[:, i] = W[:, r]
-            B[:, i] = U_r[:, 0] * np.sqrt(sigma_r)
-            C[:, i] = VT_r[0, :] * np.sqrt(sigma_r)
+            B[:, i] = u1
+            C[:, i] = v1
             if prior_dict_A is not None and r in prior_dict_A:
                 prior_dict_A_cp[i] = prior_dict_A[r]
             if prior_dict_B is not None and r in prior_dict_B:
                 prior_dict_B_cp[i] = prior_dict_B[r]
             if prior_dict_C is not None and r in prior_dict_C:
                 prior_dict_C_cp[i] = prior_dict_C[r]
+
         if r_nmf:
             for j, r in enumerate(r_nmf):
                 if prior_dict_W is not None and r in prior_dict_W:
@@ -4051,7 +4079,6 @@ def nmf_hals_prior(
             beta_nmf = np.ones(len(r_nmf), dtype=float) if beta is not None else None
             W = W[:, r_nmf]
             H = H[r_nmf, :]
-
 
     def one_step_nmf(X0, W0, H0, beta0, prior_dict_W0, prior_dict_H0):
         UtM_H = tl.dot(tl.transpose(W0), X0)
@@ -4072,9 +4099,9 @@ def nmf_hals_prior(
             # --- Update W via ratio-aware HALS columns ---
             UtM_W = tl.to_numpy(tl.dot(H0, tl.transpose(X0)))  # (r, m)
             UtU_W = tl.to_numpy(tl.dot(H0, tl.transpose(H0)))  # (r, r)
-            for k in range(rank):
+            for k in range(W0.shape[1]):
                 Rk = UtM_W[k].copy()
-                for j in range(rank):
+                for j in range(W0.shape[1]):
                     if j != k:
                         Rk -= UtU_W[k, j] * W0[:, j]
                 d = UtU_W[k, k]
@@ -4154,9 +4181,9 @@ def nmf_hals_prior(
             # --- Update W via ratio-aware HALS columns ---
             UtM = unfolding_dot_khatri_rao(M, (None, [A0, B0, C0]), 0).T
             UtU = (C0.T @ C0) * (B0.T @ B0)
-            for k in range(rank):
+            for k in range(A0.shape[1]):
                 Rk = UtM[k].copy()
-                for j in range(rank):
+                for j in range(A0.shape[1]):
                     if j != k:
                         Rk -= UtU[k, j] * A0[:, j]
                 d = UtU[k, k]
@@ -4199,15 +4226,6 @@ def nmf_hals_prior(
         return A0, B0, C0, beta0 if lam > 0 and idx_top is not None and idx_bot is not None else None
 
     for n_iter in range(max_iter_als):
-
-        if np.isnan(W).any() or np.isnan(H).any() or np.isnan(A).any() or np.isnan(B).any() or np.isnan(C).any():
-            print('n_iter:', n_iter)
-            print("NaN in W:", np.isnan(W).any())
-            print("NaN in H:", np.isnan(H).any())
-            print("NaN in A:", np.isnan(A).any())
-            print("NaN in B:", np.isnan(B).any())
-            print("NaN in C:", np.isnan(C).any())
-            raise ValueError("NaN detected in W, H, A, B, or C during NMF iterations.")
         if r_cp and r_nmf:
             X_nmf = X - cp_to_tensor((None, [A, B, C])).reshape((m, -1))
             W, H, beta_nmf = one_step_nmf(X_nmf, W, H, beta_nmf, prior_dict_W_nmf, prior_dict_H_nmf)
