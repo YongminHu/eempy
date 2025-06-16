@@ -2652,6 +2652,8 @@ class EEMNMF:
                     idx_top=self.idx_top,
                     idx_bot=self.idx_bot,
                     lam=self.lam,
+                    fit_rank_one=self.fit_rank_one,
+                    component_shape=eem_dataset.eem_stack.shape[1:],
                     max_iter_als=self.max_iter_als,
                     max_iter_nnls=self.max_iter_nnls,
                     prior_ref_components=self.prior_ref_components,
@@ -2676,6 +2678,8 @@ class EEMNMF:
                     idx_top=self.idx_top,
                     idx_bot=self.idx_bot,
                     lam=self.lam,
+                    fit_rank_one=self.fit_rank_one,
+                    component_shape=eem_dataset.eem_stack.shape[1:],
                     max_iter_als=self.max_iter_als,
                     max_iter_nnls=self.max_iter_nnls,
                     prior_ref_components=self.prior_ref_components,
@@ -4020,14 +4024,34 @@ def nmf_hals_prior(
             else:
                 r_cp.append(k)
 
-    if r_cp and r_nmf:
+    if r_cp:
+        prior_dict_W_nmf, prior_dict_H_nmf, prior_dict_A_cp, prior_dict_B_cp, prior_dict_C_cp = {}, {}, {}, {}, {}
+        A = np.zeros((m, len(r_cp)))
         B = np.zeros((component_shape[0], len(r_cp)))
         C = np.zeros((component_shape[1], len(r_cp)))
         for i, r in enumerate(r_cp):
             U_r, S_r, VT_r = np.linalg.svd(H[r, :].reshape(component_shape), full_matrices=False)
             sigma_r = S_r[0]
+            A[:, i] = W[:, r]
             B[:, i] = U_r[:, 0] * np.sqrt(sigma_r)
             C[:, i] = VT_r[0, :] * np.sqrt(sigma_r)
+            if prior_dict_A is not None and r in prior_dict_A:
+                prior_dict_A_cp[i] = prior_dict_A[r]
+            if prior_dict_B is not None and r in prior_dict_B:
+                prior_dict_B_cp[i] = prior_dict_B[r]
+            if prior_dict_C is not None and r in prior_dict_C:
+                prior_dict_C_cp[i] = prior_dict_C[r]
+        if r_nmf:
+            for j, r in enumerate(r_nmf):
+                if prior_dict_W is not None and r in prior_dict_W:
+                    prior_dict_W_nmf[j] = prior_dict_W[r]
+                if prior_dict_H is not None and r in prior_dict_H:
+                    prior_dict_H_nmf[j] = prior_dict_H[r]
+            beta_cp = np.ones(len(r_cp), dtype=float) if beta is not None else None
+            beta_nmf = np.ones(len(r_nmf), dtype=float) if beta is not None else None
+            W = W[:, r_nmf]
+            H = H[r_nmf, :]
+
 
     def one_step_nmf(X0, W0, H0, beta0, prior_dict_W0, prior_dict_H0):
         UtM_H = tl.dot(tl.transpose(W0), X0)
@@ -4089,8 +4113,9 @@ def nmf_hals_prior(
             W0 = tl.transpose(W0t)
         return W0, H0, beta0 if lam > 0 and idx_top is not None and idx_bot is not None else None
 
-    def one_step_cp(M, A0, B0, C0, beta0, prior_dict_A0, prior_dict_B0, prior_dict_C0):
+    def one_step_cp(X0, A0, B0, C0, beta0, prior_dict_A0, prior_dict_B0, prior_dict_C0):
 
+        M = X0.reshape((m, component_shape[0], component_shape[1]))
         # Update B:
         UtM = unfolding_dot_khatri_rao(M, (None, [A0, B0, C0]), 1).T
         UtU = (C0.T @ C0) * (A0.T @ A0)
@@ -4173,35 +4198,37 @@ def nmf_hals_prior(
 
         return A0, B0, C0, beta0 if lam > 0 and idx_top is not None and idx_bot is not None else None
 
-        # # Check convergence
-        # reconstructed = cp_to_tensor((None, [A, B, C]))
-        # err = tl.norm(X - reconstructed)
-        # if abs(prev_error - err) / (prev_error + eps) < tol:
-        #     break
-        # prev_error = err
-
     for n in range(max_iter_als):
 
         if r_cp and r_nmf:
-            W_nmf = W[:, r_nmf]
-            H_nmf = H[r_nmf, :]
-            A_cp = W[:, r_cp]
-            B_cp = B
-            C_cp = C
-            X_nmf = X - cp_to_tensor((None, [A_cp, B_cp, C_cp]))
-            beta_nmf = beta[r_nmf] if beta is not None else None
-            W_nmf, H_nmf, beta_nmf = one_step_nmf(X_nmf, W_nmf, H_nmf, beta_nmf)
-            X_cp = X - W_nmf @ H_nmf
-            beta_cp = beta[r_cp] if beta is not None else None
-            A_cp, B_cp, C_cp, beta_cp = one_step_cp(X_cp, A_cp, B_cp, C_cp, beta_cp,
-
-        W, H, beta = one_step_nmf(X, W, H, beta)
-
+            X_nmf = X - cp_to_tensor((None, [A, B, C])).reshape((m, -1))
+            W, H, beta_nmf = one_step_nmf(X_nmf, W, H, beta_nmf, prior_dict_W_nmf, prior_dict_H_nmf)
+            X_cp = X - W @ H
+            A, B, C, beta_cp = one_step_cp(X_cp, A, B, C, beta_cp, prior_dict_A_cp, prior_dict_B_cp, prior_dict_C_cp)
+            err = tl.norm(X - W @ H - cp_to_tensor((None, [A, B, C])).reshape((m, -1)))
+        elif r_cp and not r_nmf:
+            A, B, C, beta = one_step_cp(X, A, B, C, beta, prior_dict_A_cp, prior_dict_B_cp, prior_dict_C_cp)
+            err = tl.norm(X - cp_to_tensor((None, [A, B, C])).reshape((m, -1)))
+        else:
+            W, H, beta = one_step_nmf(X, W, H, beta, prior_dict_W, prior_dict_H)
+            err = tl.norm(X - W @ H)
         # --- Convergence check ---
-        err = tl.norm(X - tl.tensor(W) @ tl.tensor(H))
         if n > 0 and abs(prev_err - err) / (prev_err + eps) < tol:
             break
         prev_err = err
+
+    if r_cp:
+        H_final = np.zeros((rank, n), dtype=float)
+        for i, r in enumerate(r_cp):
+            component_r = np.outer(B[:, i], C[:, i])
+            H_final[r, :] = component_r.reshape(-1)
+        for i, r in enumerate(r_nmf):
+            H_final[r, :] = H[r, :]
+        H = H_final
+        if r_nmf:
+            beta = np.zeros(rank, dtype=float)
+            beta[r_cp] = beta_cp
+            beta[r_nmf] = beta_nmf
 
     if prior_ref_components is not None:
         cost_mat = cdist(queries, H, metric='correlation')

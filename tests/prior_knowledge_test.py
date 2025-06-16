@@ -16,10 +16,11 @@ np.random.seed(42)
 # eem_dataset_path = \
 #     "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/nan_sample_260_ex_274_em_310_mfem_5.json"
 eem_dataset_path = \
-    "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/sample_276_ex_274_em_310_mfem_5_gaussian_rsu.json"
+    "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/sample_276_ex_274_em_310_mfem_5_gaussian_rsu_rs_interpolated.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
-eem_dataset.raman_scattering_removal(width=15, interpolation_method='nan', copy=False)
-eem_dataset.eem_stack = np.nan_to_num(eem_dataset.eem_stack, copy=True, nan=0)
+eem_dataset.median_filter(footprint=(5, 5), copy=False)
+# eem_dataset.raman_scattering_removal(width=15, interpolation_method='nan', copy=False)
+# eem_dataset.eem_stack = np.nan_to_num(eem_dataset.eem_stack, copy=True, nan=0)
 eem_dataset_july, _ = eem_dataset.filter_by_index(None, ['2024-07-'], copy=True)
 eem_dataset_october, _ = eem_dataset.filter_by_index(None, ['2024-10-'], copy=True)
 eem_dataset_original, _ = eem_dataset.filter_by_index(['B1C1'], None, copy=True)
@@ -34,8 +35,8 @@ eem_dataset_bac = read_eem_dataset_from_json(eem_dataset_bac_path)
 bacteria_eem = eem_dataset_bac.eem_stack[-5]
 bacteria_eem = eem_interpolation(bacteria_eem, eem_dataset_bac.ex_range, eem_dataset_bac.em_range,
                                  eem_dataset.ex_range, eem_dataset.em_range, method='linear')
-bacteria_eem, _ = eem_raman_scattering_removal(bacteria_eem, eem_dataset.ex_range, eem_dataset.em_range,
-                                               width=10, interpolation_method='nan')
+# bacteria_eem, _ = eem_raman_scattering_removal(bacteria_eem, eem_dataset.ex_range, eem_dataset.em_range,
+#                                                width=10, interpolation_method='nan')
 bacteria_eem = np.nan_to_num(bacteria_eem, nan=0)
 prior_dict_ref = {0: bacteria_eem.reshape(-1)}
 
@@ -276,7 +277,8 @@ params = {
     'max_iter_als': 100,
     'max_iter_nnls': 800,
     'lam': 0,  # 1e6
-    'random_state': 42
+    'random_state': 42,
+    'fit_rank_one': {0: True, 3: True}
 }
 model = EEMNMF(
     solver='hals',
