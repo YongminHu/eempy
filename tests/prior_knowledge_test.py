@@ -96,6 +96,57 @@ def plot_all_f0f(model, eem_dataset, kw_top, kw_bot, target_analyte):
     fig.tight_layout()
     fig.show()
 
+
+def plot_fmax_vs_truth(fmax_train, fmax_test, truth_train, truth_test, n, info_dict):
+    fig, ax = plt.subplots(nrows=1, ncols=len(sample_prior))
+    ax.plot(fmax_train.iloc[:, n], truth_train.to_numpy(), 'o', label='training')
+    ax.plot(fmax_test.iloc[:, n], truth_test.to_numpy(), 'o', label='testing')
+    lr_n = LinearRegression(fit_intercept=True)
+    mask_train_n = ~np.isnan(truth_train.to_numpy())
+    lr_n.fit(fmax_train.iloc[mask_train_n, [n]].to_numpy(), truth_train.iloc[mask_train_n])
+    y_pred_train = lr.predict(fmax_train.iloc[mask_train_n, [n]].to_numpy())
+    rmse_train = np.sqrt(mean_squared_error(truth_train.iloc[mask_train_n], y_pred_train))
+    r2_train = r2_score(truth_train.iloc[mask_train_n], y_pred_train)
+    y_pred_test = lr.predict(fmax_test.iloc[:, [n]].to_numpy())
+    mask_test_n = ~np.isnan(truth_test.to_numpy())
+    rmse_test = np.sqrt(mean_squared_error(truth_test.iloc[mask_test_n].to_numpy(), y_pred_test[mask_test_n]))
+    r2_test = r2_score(truth_test.iloc[mask_test_n], y_pred_test[mask_test_n])
+    info_dict['r2_train'] = np.round(r2_train, decimals=3)
+    info_dict['r2_test'] = np.round(r2_test, decimals=3)
+    info_dict['rmse_train'] = np.round(rmse_train, decimals=3)
+    info_dict['rmse_test'] = np.round(rmse_test, decimals=3)
+    info_dict['fit_intercept'] = True if lr_n.fit_intercept else False
+    if lr_n.fit_intercept:
+        ax.plot([0, 10000], np.array([0, 10000]) * lr_n.coef_[0] + lr_n.intercept_, '--')
+    else:
+        ax.plot([0, 10000], np.array([0, 10000]) * lr_n.coef_[0], '--')
+    ax.text(
+        0.01, 0.99,
+        '\n'.join(f'{k}: {v}' for k, v in info_dict.items()),
+        transform=ax.transAxes,
+        fontsize=10,
+        verticalalignment='top',
+        horizontalalignment='left'
+    )
+    ax.set_title(f'Fmax C{n + 1} vs. {truth_train.name}', fontsize=18)
+    ax.set_xlabel(f'Fmax C{n + 1}', fontsize=18)
+    ax.set_ylabel(f'{truth_train.name}', fontsize=18)
+    ax.tick_params(labelsize=16)
+    ax.set_xlim([0, max(
+        max(fmax_train.iloc[:, n].to_numpy()),
+        max(fmax_test.iloc[:, n].to_numpy())
+    ) + 100
+                 ])
+    ax.set_ylim([0, max(
+        max(truth_train.to_numpy()),
+        max(truth_test.to_numpy())
+    ) + 0.5
+                 ])
+    ax.legend(loc='best', bbox_to_anchor=(0.95, 0.25), fontsize=16)
+    fig.tight_layout()
+    fig.show()
+
+
 def plot_all_components(eem_model):
     fig, ax = plt.subplots(
         nrows=(eem_model.n_components + 1) // 2, ncols=2,
@@ -166,18 +217,18 @@ def plot_outlier_plots(model, indicator, estimator_rank, dataset_train, dataset_
     threshold_lower = np.quantile(filtered_error_train, 0)
     fig_hist, ax_hist = plt.subplots()
     counts, bins, patches = ax_hist.hist(error_train,
-                                    bins=np.arange(binrange[0], binrange[1] + binwidth, binwidth),
-                                    density=True, alpha=0.5, color='blue', label='training', zorder=0,
-                                    edgecolor='black')
+                                         bins=np.arange(binrange[0], binrange[1] + binwidth, binwidth),
+                                         density=True, alpha=0.5, color='blue', label='training', zorder=0,
+                                         edgecolor='black')
     # Histogram for outliers (just to show label with hatching)
     counts, bins, patches = ax_hist.hist([-100], bins=np.arange(binrange[0], binrange[1] + binwidth, binwidth),
-                                    density=True, alpha=0.5, color='orange', label='test (qualified)',
-                                    edgecolor='red', zorder=2)
+                                         density=True, alpha=0.5, color='orange', label='test (qualified)',
+                                         edgecolor='red', zorder=2)
     # Histogram for test (qualified) data
     counts, bins, patches = ax_hist.hist(error_test,
-                                    bins=np.arange(binrange[0], binrange[1] + binwidth, binwidth),
-                                    density=True, alpha=0.5, color='orange', label='test (outliers)', zorder=1,
-                                    edgecolor='black')
+                                         bins=np.arange(binrange[0], binrange[1] + binwidth, binwidth),
+                                         density=True, alpha=0.5, color='orange', label='test (outliers)', zorder=1,
+                                         edgecolor='black')
 
     for bar in ax_hist.patches:
         # Calculate the midpoint of the bin
@@ -222,7 +273,8 @@ def plot_outlier_plots(model, indicator, estimator_rank, dataset_train, dataset_
         color='blue',
         label='reg. training'
     )
-    ax_plot.scatter(fmax_train_valid.iloc[:, estimator_rank], truth_train_valid, label='training', color='blue', alpha=0.6)
+    ax_plot.scatter(fmax_train_valid.iloc[:, estimator_rank], truth_train_valid, label='training', color='blue',
+                    alpha=0.6)
     ax_plot.scatter(
         fmax_test_valid.iloc[
             (error_test_valid < threshold_upper) & (error_test_valid > threshold_lower), estimator_rank],
@@ -247,7 +299,6 @@ def plot_outlier_plots(model, indicator, estimator_rank, dataset_train, dataset_
     fig_plot.show()
 
 
-
 # -----------model training-------------
 # dataset_train, dataset_test = eem_dataset_october.splitting(2)
 dataset_train_splits = []
@@ -268,8 +319,8 @@ dataset_test = dataset_train_splits[1]
 indicator = 'TCC (million #/mL)'
 sample_prior = {0: dataset_train.ref[indicator]}
 params = {
-    'n_components': 4,
-    'init': 'nndsvd',
+    'n_components': 5,
+    'init': 'ordinary_nmf',
     'gamma_W': 0,
     'gamma_H': 0,
     'gamma_A': 0,
@@ -278,20 +329,21 @@ params = {
     'l1_ratio': 0,
     'max_iter_als': 100,
     'max_iter_nnls': 800,
-    'lam': 5e5,  # 1e6
+    'lam': 0,  # 1e6
     'random_state': 42,
     'fit_rank_one': {
         0: True,
-        # 1: True,
-        # 2: True,
-        # 3: True,
-        # 4: True
+        1: True,
+        2: True,
+        3: True,
+        4: True,
+        5: True,
     },
 }
 model = EEMNMF(
     solver='hals',
     prior_dict_A=sample_prior,
-    prior_dict_H=prior_dict_ref,
+    prior_dict_H=None,
     normalization=None,
     sort_em=False,
     prior_ref_components=prior_dict_ref,
@@ -303,7 +355,7 @@ model.fit(dataset_train)
 
 fmax_train = model.fmax
 components = model.components
-lr = LinearRegression(fit_intercept=False)
+lr = LinearRegression(fit_intercept=True)
 mask_train = ~np.isnan(dataset_train.ref[indicator].to_numpy())
 X_train = fmax_train.iloc[mask_train, [list(sample_prior.keys())[0]]].to_numpy()
 y_train = dataset_train.ref[indicator].to_numpy()[mask_train]
@@ -349,7 +401,7 @@ intercept_train = lr.intercept_
 # -----------model testing-------------
 _, fmax_test, eem_re_test = model.predict(
     dataset_test,
-    fit_beta=True,
+    fit_beta=False,
     idx_top=[i for i in range(len(dataset_test.index)) if 'B1C1' in dataset_test.index[i]],
     idx_bot=[i for i in range(len(dataset_test.index)) if 'B1C2' in dataset_test.index[i]],
 )
@@ -367,78 +419,15 @@ r2_test = lr.score(X_test, y_test)
 plot_all_components(model)
 
 # -----------plot Fmax vs. prior variables----------
-info_dict = params.copy()
-# info_dict['r2_train'] = np.round(r2_train, decimals=3)
-# info_dict['r2_test'] = np.round(r2_test, decimals=3)
-# info_dict['rmse_train'] = np.round(rmse_train, decimals=3)
-# info_dict['rmse_test'] = np.round(rmse_test, decimals=3)
-fig, ax = plt.subplots(nrows=1, ncols=len(sample_prior))
-n_override = 0
-for i, ((n, p), (n2, t)) in enumerate(zip(sample_prior.items(), sample_test_truth.items())):
-    if n_override is not None:
-        n = n_override
-        n2 = n_override
-    if len(sample_prior) == 1:
-        ax.plot(fmax_train.iloc[:, n], p.to_numpy(), 'o', label='training')
-        ax.plot(fmax_test.iloc[:, n], t.to_numpy(), 'o', label='testing')
-        lr_n = LinearRegression(fit_intercept=False)
-        mask_train_n = ~np.isnan(dataset_train.ref[indicator].to_numpy())
-        lr_n.fit(fmax_train.iloc[mask_train_n, [n]].to_numpy(), p.iloc[mask_train_n])
-        y_pred_train = lr.predict(fmax_train.iloc[mask_train_n, [n]].to_numpy())
-        rmse_train = np.sqrt(mean_squared_error(p.iloc[mask_train_n], y_pred_train))
-        # r2_train = lr.score(fmax_train.iloc[mask_train_n, [n]], p.iloc[mask_train_n])
-        r2_train = r2_score(p.iloc[mask_train_n], y_pred_train)
-        y_pred_test = lr.predict(fmax_test.iloc[:, [n]].to_numpy())
-        mask_test_n = ~np.isnan(dataset_test.ref[indicator].to_numpy())
-        rmse_test = np.sqrt(mean_squared_error(t.iloc[mask_test_n].to_numpy(), y_pred_test[mask_test_n]))
-        # r2_test = lr.score(fmax_test.iloc[mask_test_n, [n]], t.iloc[mask_test_n])
-        r2_test = r2_score(t.iloc[mask_test_n], y_pred_test[mask_test_n])
-        info_dict['r2_train'] = np.round(r2_train, decimals=3)
-        info_dict['r2_test'] = np.round(r2_test, decimals=3)
-        info_dict['rmse_train'] = np.round(rmse_train, decimals=3)
-        info_dict['rmse_test'] = np.round(rmse_test, decimals=3)
-        info_dict['fit_intercept'] = True if lr_n.fit_intercept else False
-        if lr_n.fit_intercept:
-            ax.plot([0, 10000], np.array([0, 10000]) * lr_n.coef_[0] + lr_n.intercept_, '--')
-        else:
-            ax.plot([0, 10000], np.array([0, 10000]) * lr_n.coef_[0], '--')
-        ax.text(
-            0.01, 0.99,
-            '\n'.join(f'{k}: {v}' for k, v in info_dict.items()),
-            transform=ax.transAxes,
-            fontsize=10,
-            verticalalignment='top',
-            horizontalalignment='left'
-        )
-        ax.set_title(f'Fmax C{n + 1} vs. {p.name}', fontsize=18)
-        ax.set_xlabel(f'Fmax C{n + 1}', fontsize=18)
-        ax.set_ylabel(f'{p.name}', fontsize=18)
-        ax.tick_params(labelsize=16)
-        ax.set_xlim([0, max(
-            max(fmax_train.iloc[:, n].to_numpy()),
-            max(fmax_test.iloc[:, n].to_numpy())
-        ) + 100
-                     ])
-        ax.set_ylim([0, max(
-            max(p.to_numpy()),
-            max(t.to_numpy())
-        ) + 0.5
-                     ])
-        ax.legend(loc='best', bbox_to_anchor=(0.95, 0.25), fontsize=16)
-    else:
-        ax[i].plot(fmax_train.iloc[:, n], p.to_numpy(), 'o')
-        ax[i].plot(fmax_test.iloc[:, n], t.to_numpy(), 'o')
-        ax[i].set_title(f'Fmax C{n + 1} vs. {p.name}')
-        ax[i].set_xlabel(f'Fmax C{n + 1}')
-        ax[i].set_ylabel(f'{p.name}')
-fig.tight_layout()
-fig.show()
+
+plot_fmax_vs_truth(fmax_train=fmax_train, fmax_test=fmax_test,
+                   truth_train=dataset_train.ref[indicator], truth_test=dataset_test.ref[indicator],
+                   n=0, info_dict=params)
 
 # ------------apparent F0/F distributions-------------
 
 
 plot_all_f0f(model, dataset_train, 'B1C1', 'B1C2', 'TCC (million #/mL)')
-
 
 # -----------outliers----------
 
@@ -471,6 +460,7 @@ model_ref = EEMNMF(
 model_ref.fit(dataset_train)
 components_ref = {model_ref.fmax.columns[i]: model_ref.components[i] for i in range(model_ref.n_components)}
 
+
 def get_param_combinations(param_grid):
     """
     Generates all combinations of parameters from a grid.
@@ -493,6 +483,7 @@ def mean_pairwise_correlation(vectors):
         for i, j in combinations(range(n), 2)
     ]
     return np.mean(corrs)
+
 
 param_combinations = get_param_combinations(param_grid)
 dataset_train_splits = []
@@ -675,95 +666,78 @@ with open("C:/PhD/publication/2025_prior_knowledge/cluster_specific_models_all.p
           'wb') as file:
     pickle.dump(cluster_specific_models, file)
 
-
-
-
 # ------------
 
-# def remove_islands(map2d, thresh_pct=0.1, connectivity=1):
-#     """
-#     Remove all disconnected islands in a 2D map except the largest component around the global maximum.
-#
-#     Parameters
-#     ----------
-#     map2d : 2D numpy array
-#         Input map (e.g., reshaped component).
-#     thresh_pct : float
-#         Fraction of the max value at which to threshold (e.g., 0.1 for 10%).
-#     connectivity : int
-#         Connectivity for labeling (1 for 4-connect, 2 for 8-connect).
-#
-#     Returns
-#     -------
-#     cleaned : 2D numpy array
-#         The same shape as map2d, with only the largest connected region above threshold kept.
-#     """
-#     from scipy.ndimage import label
-#     # threshold
-#     T = thresh_pct * np.nanmax(map2d)
-#     mask = map2d >= T
-#     # label connected components
-#     labeled, num = label(mask, structure=np.ones((3,3)) if connectivity==2 else None)
-#     # find global max location
-#     max_idx = np.nanargmax(map2d)
-#     i0, j0 = np.unravel_index(max_idx, map2d.shape)
-#     main_label = labeled[i0, j0]
-#     # build cleaned map
-#     cleaned = np.zeros_like(map2d)
-#     if main_label > 0:
-#         cleaned[labeled == main_label] = map2d[labeled == main_label]
-#     return cleaned, num
+dataset_train_splits = []
+dataset_train_unquenched, _ = eem_dataset_october.filter_by_index('B1C1', None, copy=True)
+initial_sub_eem_datasets_unquenched = dataset_train_unquenched.splitting(n_split=2, random_state=42)
+dataset_train_quenched, _ = eem_dataset_october.filter_by_index('B1C2', None, copy=True)
+for subset in initial_sub_eem_datasets_unquenched:
+    pos = [dataset_train_unquenched.index.index(idx) for idx in subset.index]
+    quenched_index = [dataset_train_quenched.index[idx] for idx in pos]
+    sub_eem_dataset_quenched, _ = eem_dataset.filter_by_index(None, quenched_index, copy=True)
+    subset.sort_by_index()
+    sub_eem_dataset_quenched.sort_by_index()
+    dataset_train_splits.append(combine_eem_datasets([subset, sub_eem_dataset_quenched]))
+dataset_train = dataset_train_splits[0]
+dataset_test = dataset_train_splits[1]
+# dataset_train = eem_dataset_october
+# dataset_test = eem_dataset_july
+indicator = 'TCC (million #/mL)'
+sample_prior = {0: dataset_train.ref[indicator]}
+params = {
+    'n_components': 4,
+    'init': 'ordinary_nmf',
+    'gamma_H': 0,
+    'alpha_component': 0,
+    'alpha_sample': 0,
+    'l1_ratio': 0,
+    'max_iter_als': 100,
+    'max_iter_nnls': 800,
+    'lam': 8e5,  # 1e6
+    'random_state': 42,
+}
 
 
-def rank_one_approx(X):
-    """
-    Computes a smoothed, non-negative rank-one approximation using SVD, with sign correction.
+def auto_nmf(model: EEMNMF, dataset_train, dataset_test, gamma_H=1e5):
+    approx_components = {}
+    for r in range(model.n_components):
+        model.fit_rank_one = {r: True}
+        model.fit(dataset_train)
+        approx_components[r] = model.components[r].reshape(-1)
+    model.fit_rank_one = False
+    model.gamma_H = gamma_H
+    model.prior_dict_H = approx_components
+    model.fit(dataset_train)
+    plot_all_components(model)
+    fmax_train = model.fmax
+    _, fmax_test, _ = model.predict(
+        dataset_test,
+        fit_beta=True if model.lam > 0 else False,
+        idx_top=[i for i in range(len(dataset_test.index)) if 'B1C1' in dataset_test.index[i]],
+        idx_bot=[i for i in range(len(dataset_test.index)) if 'B1C2' in dataset_test.index[i]],
+    )
+    plot_fmax_vs_truth(fmax_train=fmax_train, fmax_test=fmax_test,
+                       truth_train=dataset_train.ref['TCC (million #/mL)'],
+                       truth_test=dataset_test.ref['TCC (million #/mL)'],
+                       n=0, info_dict={})
+    plot_all_f0f(model, dataset_train, 'B1C1', 'B1C2', 'TCC (million #/mL)')
+    return model, approx_components
 
-    Parameters:
-    A (np.ndarray): Input matrix.
-    window_length (int): Smoothing window (must be odd and <= vector length).
-    polyorder (int): Polynomial order for Savitzky-Golay filter.
 
-    Returns:
-    approx (np.ndarray): Rank-one approximation.
-    u_final (np.ndarray): Smoothed, non-negative left factor.
-    v_final (np.ndarray): Smoothed, non-negative right factor.
-    """
-    U, S, VT = np.linalg.svd(X, full_matrices=False)
-    sigma1, sigma2 = S[0], S[1]
-    u1, u2 = U[:, 0] * np.sqrt(sigma1), U[:, 1] * np.sqrt(sigma2)
-    v1, v2 = VT[0, :] * np.sqrt(sigma1), VT[1, :] * np.sqrt(sigma2)
-
-    # Flip sign so that dominant peaks of singular vectors are positive
-    if u1[np.argmax(np.abs(u1))] < 0:
-        u1 = -u1
-        v1 = -v1
-    if u2[np.argmax(np.abs(u2))] < 0:
-        u2 = -u2
-        v2 = -v2
-    u1 = np.clip(u1, 0, None)  # Ensure non-negativity
-    u2 = np.clip(u2, 0, None)  # Ensure non-negativity
-    v1 = np.clip(v1, 0, None)  # Ensure non-negativity
-    v2 = np.clip(v2, 0, None)  # Ensure non-negativity
-    approx_r1 = np.outer(u1, v1)
-    approx_r2 = np.outer(u2, v2)
-    score = pearsonr(X.flatten(), approx_r1.flatten())[0]
-
-    return [approx_r1, approx_r2], [u1, u2], [v1, v2], score
-
-# m_r1, u1_r1, v1_r1, score = rank_one_approx_smooth_nonneg(model.components[2], window_length=5)
-# print(score)
-# plot_eem(m_r1, ex_range=eem_dataset.ex_range, em_range=eem_dataset.em_range)
-# plt.plot(v1_r1)
-
-component_interpolated, _ = eem_raman_scattering_removal(model.components[3], eem_dataset.ex_range, eem_dataset.em_range,width=15)
-component_interpolated = eem_median_filter(component_interpolated, footprint=(5, 5))
-# plt.close()
-# fig, ax, im = plot_eem(component_interpolated, ex_range=eem_dataset.ex_range, em_range=eem_dataset.em_range)
-# plt.close()
-# component_cleaned, num = remove_islands(component_interpolated, thresh_pct=0.4, connectivity=2)
-# fig, ax, im = plot_eem(component_cleaned, ex_range=eem_dataset.ex_range, em_range=eem_dataset.em_range)
-components_approximated, u1s, v1s, score = rank_one_approx(component_interpolated)
-plt.close()
-fig, ax, im = plot_eem(components_approximated[0], ex_range=eem_dataset.ex_range, em_range=eem_dataset.em_range)
-print(score)
+model = EEMNMF(
+    solver='hals',
+    prior_dict_W=None,
+    normalization=None,
+    sort_em=False,
+    prior_ref_components=prior_dict_ref,
+    kw_top='B1C1',
+    kw_bot='B1C2',
+    **params
+)
+model_opt, approx_components = auto_nmf(
+    model=model,
+    dataset_train=dataset_train,
+    dataset_test=dataset_test,
+    gamma_H=1e5
+)
