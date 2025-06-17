@@ -3409,30 +3409,23 @@ def hals_prior_nnls(
             if ukk < eps:
                 continue
 
+            if np.isnan(V).any():
+                raise ValueError(f"Input V contains NaN values at iteration {it}, component {k}.")
+
             # HALS residual excluding component k
             Rk = UtM[k] - tl.dot(UtU[k], V) + ukk * V[k]
-
-            if np.isnan(Rk).any():
-                print("iteration: ", it)
-                raise ValueError(f"Rk contains NaN values.")
 
             # Base numerator/denominator including L2
             num = copy.copy(Rk)
             denom = ukk + l2_pen  # scalar
 
-            if np.isnan(num).any():
-                print("iteration: ", it)
-                raise ValueError(f"Numerator for component {k} contains NaN values.")
-            if np.isnan(denom).any():
-                print("iteration: ", it)
-                raise ValueError(f"Denominator for component {k} contains NaN values.")
-
             # Quadratic prior
             if k in prior_dict and gamma > 0:
                 p_arr = np.asarray(prior_dict[k], dtype=float)
                 mask = np.isfinite(p_arr).astype(float)
-                num += gamma * mask * p_arr
-                denom += gamma * mask  # adds vector where prior exists
+                p_clean = np.nan_to_num(p_arr, nan=0.0)  # turn NaNs into 0
+                num += gamma * mask * p_clean  # now only adds where mask==1
+                denom += gamma * mask  # safe scalar additions
 
             # L1 shift
             if l1_pen != 0:
@@ -3441,7 +3434,8 @@ def hals_prior_nnls(
             # Update and ensure non-negativity
             h_new = num / (denom + eps)
             V_new = tl.tensor(np.clip(h_new, a_min=eps, a_max=None), dtype=float)
-
+            if np.isnan(V_new).any():
+                raise ValueError(f"Input V_new contains NaN values at iteration {it}, component {k}.")
             # Track change
             delta += tl.norm(V[k] - V_new) ** 2
             V[k] = V_new
@@ -4132,7 +4126,7 @@ def nmf_hals_prior(
                     eps=eps
                 )
             # --- Beta‐step (closed form) ---
-            beta0 = update_beta(W0, idx_top=idx_top, idx_bot=idx_bot, eps=0)
+            beta0 = update_beta(W0, idx_top=idx_top, idx_bot=idx_bot, eps=eps)
         else:
             # Update W (columns) via HALS on W^T
             UtM_W = tl.dot(H0, tl.transpose(X0))
@@ -4216,7 +4210,7 @@ def nmf_hals_prior(
                 )
 
             # --- Beta‐step (closed form) ---
-            beta0 = update_beta(A0, idx_top=idx_top, idx_bot=idx_bot, eps=0)
+            beta0 = update_beta(A0, idx_top=idx_top, idx_bot=idx_bot, eps=eps)
 
         else:
             # Update A:
@@ -4251,12 +4245,12 @@ def nmf_hals_prior(
         else:
             W, H, beta = one_step_nmf(X, W, H, beta, prior_dict_W, prior_dict_H)
             err = tl.norm(X - W @ H)
-            # if np.isnan(W).any():
-            #     print("n_iter: ", n_iter)
-            #     raise ValueError("W contains NaN values")
-            # if np.isnan(H).any():
-            #     print("n_iter: ", n_iter)
-            #     raise ValueError("H contains NaN values")
+            if np.isnan(W).any():
+                print("n_iter: ", n_iter)
+                raise ValueError("W contains NaN values")
+            if np.isnan(H).any():
+                print("n_iter: ", n_iter)
+                raise ValueError("H contains NaN values")
         # --- Convergence check ---
         if n_iter > 0 and abs(prev_err - err) / (prev_err + eps) < tol:
             break
