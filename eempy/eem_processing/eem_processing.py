@@ -3412,10 +3412,20 @@ def hals_prior_nnls(
             # HALS residual excluding component k
             Rk = UtM[k] - tl.dot(UtU[k], V) + ukk * V[k]
 
+            if np.isnan(Rk).any():
+                print("iteration: ", it)
+                raise ValueError(f"Rk contains NaN values.")
 
             # Base numerator/denominator including L2
             num = copy.copy(Rk)
             denom = ukk + l2_pen  # scalar
+
+            if np.isnan(num).any():
+                print("iteration: ", it)
+                raise ValueError(f"Numerator for component {k} contains NaN values.")
+            if np.isnan(denom).any():
+                print("iteration: ", it)
+                raise ValueError(f"Denominator for component {k} contains NaN values.")
 
             # Quadratic prior
             if k in prior_dict and gamma > 0:
@@ -4006,11 +4016,6 @@ def nmf_hals_prior(
         raise ValueError(f"Unknown init {init}")
 
     # Default empty priors
-    prior_dict_W = {} if prior_dict_W is None else prior_dict_W
-    prior_dict_H = {} if prior_dict_H is None else prior_dict_H
-    prior_dict_A = {} if prior_dict_A is None else prior_dict_A
-    prior_dict_B = {} if prior_dict_B is None else prior_dict_B
-    prior_dict_C = {} if prior_dict_C is None else prior_dict_C
     if prior_ref_components is not None:
         prior_keys = list(prior_ref_components.keys())
         queries = np.array([prior_ref_components[k] for k in prior_keys])
@@ -4042,6 +4047,12 @@ def nmf_hals_prior(
                 r_cp.append(k)
             else:
                 r_nmf.append(k)
+
+    prior_dict_W = {} if prior_dict_W is None else prior_dict_W
+    prior_dict_H = {} if prior_dict_H is None else prior_dict_H
+    prior_dict_A = {} if prior_dict_A is None else prior_dict_A
+    prior_dict_B = {} if prior_dict_B is None else prior_dict_B
+    prior_dict_C = {} if prior_dict_C is None else prior_dict_C
 
     if r_cp:
         prior_dict_W_nmf, prior_dict_H_nmf, prior_dict_A_cp, prior_dict_B_cp, prior_dict_C_cp = {}, {}, {}, {}, {}
@@ -4095,6 +4106,7 @@ def nmf_hals_prior(
             tol=tol,
             eps=eps
         )
+
         if lam > 0 and idx_bot is not None and idx_top is not None:
             # --- Update W via ratio-aware HALS columns ---
             UtM_W = tl.to_numpy(tl.dot(H0, tl.transpose(X0)))  # (r, m)
@@ -4129,7 +4141,7 @@ def nmf_hals_prior(
                 UtM=UtM_W,
                 UtU=UtU_W,
                 prior_dict=prior_dict_W0,
-                V=tl.transpose(W0),
+                V=W0.T,
                 gamma=gamma_W,
                 alpha=alpha_W,
                 l1_ratio=l1_ratio,
@@ -4138,6 +4150,7 @@ def nmf_hals_prior(
                 max_iter=max_iter_nnls,
             )
             W0 = tl.transpose(W0t)
+
         return W0, H0, beta0 if lam > 0 and idx_top is not None and idx_bot is not None else None
 
     def one_step_cp(X0, A0, B0, C0, beta0, prior_dict_A0, prior_dict_B0, prior_dict_C0):
@@ -4238,6 +4251,12 @@ def nmf_hals_prior(
         else:
             W, H, beta = one_step_nmf(X, W, H, beta, prior_dict_W, prior_dict_H)
             err = tl.norm(X - W @ H)
+            # if np.isnan(W).any():
+            #     print("n_iter: ", n_iter)
+            #     raise ValueError("W contains NaN values")
+            # if np.isnan(H).any():
+            #     print("n_iter: ", n_iter)
+            #     raise ValueError("H contains NaN values")
         # --- Convergence check ---
         if n_iter > 0 and abs(prev_err - err) / (prev_err + eps) < tol:
             break

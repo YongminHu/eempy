@@ -279,17 +279,23 @@ params = {
     'max_iter_nnls': 800,
     'lam': 0,  # 1e6
     'random_state': 42,
-    'fit_rank_one': {0: True, 3: True}
+    'fit_rank_one': {
+        # 0: True,
+        # 1: True,
+        # 2: True,
+        # 3: True,
+        # 4: True
+    },
 }
 model = EEMNMF(
     solver='hals',
-    prior_dict_A=sample_prior,
+    prior_dict_W=sample_prior,
     # prior_dict_H=prior_dict_ref,
     normalization=None,
     sort_em=False,
     prior_ref_components=prior_dict_ref,
-    idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
-    idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
+    # idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
+    # idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
     **params
 )
 model.fit(dataset_train)
