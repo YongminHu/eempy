@@ -8,6 +8,7 @@ from eempy.plot import plot_eem, plot_loadings, plot_fmax
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from itertools import product
 from itertools import combinations
+from sklearn.metrics import r2_score
 
 np.random.seed(42)
 
@@ -268,8 +269,8 @@ indicator = 'TCC (million #/mL)'
 sample_prior = {0: dataset_train.ref[indicator]}
 params = {
     'n_components': 4,
-    'init': 'ordinary_nmf',
-    'gamma_W': 1e4,
+    'init': 'nndsvd',
+    'gamma_W': 0,
     'gamma_H': 0,
     'gamma_A': 0,
     'alpha_component': 0,
@@ -277,25 +278,25 @@ params = {
     'l1_ratio': 0,
     'max_iter_als': 100,
     'max_iter_nnls': 800,
-    'lam': 3e5,  # 1e6
+    'lam': 5e5,  # 1e6
     'random_state': 42,
     'fit_rank_one': {
         0: True,
         # 1: True,
-        2: True,
-        3: True,
+        # 2: True,
+        # 3: True,
         # 4: True
     },
 }
 model = EEMNMF(
     solver='hals',
-    prior_dict_W=sample_prior,
+    prior_dict_A=sample_prior,
     prior_dict_H=prior_dict_ref,
     normalization=None,
     sort_em=False,
     prior_ref_components=prior_dict_ref,
-    # idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
-    # idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
+    idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
+    idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
     **params
 )
 model.fit(dataset_train)
@@ -348,7 +349,7 @@ intercept_train = lr.intercept_
 # -----------model testing-------------
 _, fmax_test, eem_re_test = model.predict(
     dataset_test,
-    fit_beta=False,
+    fit_beta=True,
     idx_top=[i for i in range(len(dataset_test.index)) if 'B1C1' in dataset_test.index[i]],
     idx_bot=[i for i in range(len(dataset_test.index)) if 'B1C2' in dataset_test.index[i]],
 )
@@ -385,11 +386,13 @@ for i, ((n, p), (n2, t)) in enumerate(zip(sample_prior.items(), sample_test_trut
         lr_n.fit(fmax_train.iloc[mask_train_n, [n]].to_numpy(), p.iloc[mask_train_n])
         y_pred_train = lr.predict(fmax_train.iloc[mask_train_n, [n]].to_numpy())
         rmse_train = np.sqrt(mean_squared_error(p.iloc[mask_train_n], y_pred_train))
-        r2_train = lr.score(fmax_train.iloc[mask_train_n, [n]], p.iloc[mask_train_n])
+        # r2_train = lr.score(fmax_train.iloc[mask_train_n, [n]], p.iloc[mask_train_n])
+        r2_train = r2_score(p.iloc[mask_train_n], y_pred_train)
         y_pred_test = lr.predict(fmax_test.iloc[:, [n]].to_numpy())
         mask_test_n = ~np.isnan(dataset_test.ref[indicator].to_numpy())
         rmse_test = np.sqrt(mean_squared_error(t.iloc[mask_test_n].to_numpy(), y_pred_test[mask_test_n]))
-        r2_test = lr.score(fmax_test.iloc[mask_test_n, [n]].to_numpy(), t.iloc[mask_test_n].to_numpy())
+        # r2_test = lr.score(fmax_test.iloc[mask_test_n, [n]], t.iloc[mask_test_n])
+        r2_test = r2_score(t.iloc[mask_test_n], y_pred_test[mask_test_n])
         info_dict['r2_train'] = np.round(r2_train, decimals=3)
         info_dict['r2_test'] = np.round(r2_test, decimals=3)
         info_dict['rmse_train'] = np.round(rmse_train, decimals=3)

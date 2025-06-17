@@ -3434,8 +3434,6 @@ def hals_prior_nnls(
             # Update and ensure non-negativity
             h_new = num / (denom + eps)
             V_new = tl.tensor(np.clip(h_new, a_min=eps, a_max=None), dtype=float)
-            if np.isnan(V_new).any():
-                raise ValueError(f"Input V_new contains NaN values at iteration {it}, component {k}.")
             # Track change
             delta += tl.norm(V[k] - V_new) ** 2
             V[k] = V_new
