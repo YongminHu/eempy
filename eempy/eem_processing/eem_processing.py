@@ -1925,16 +1925,16 @@ class PARAFAC:
             score = pd.DataFrame({'component {r} score'.format(r=i + 1): score.iloc[:, order[i]]
                                   for i in range(self.n_components)})
             fmax = pd.DataFrame({'component {r} score'.format(r=i + 1): fmax.iloc[:, order[i]]
-                                  for i in range(self.n_components)})
-            nnls_fmax = pd.DataFrame({'component {r} fmax'.format(r=i + 1): nnls_fmax[:, order[i]]
                                  for i in range(self.n_components)})
+            nnls_fmax = pd.DataFrame({'component {r} fmax'.format(r=i + 1): nnls_fmax[:, order[i]]
+                                      for i in range(self.n_components)})
         else:
             column_labels = ['component {r}'.format(r=i + 1) for i in range(self.n_components)]
             ex_loadings.columns = column_labels
             em_loadings.columns = column_labels
             score.columns = ['component {r} PARAFAC-score'.format(r=i + 1) for i in range(self.n_components)]
             nnls_fmax = pd.DataFrame(nnls_fmax, columns=['component {r} PARAFAC-Fmax'.format(r=i + 1) for i in
-                                               range(self.n_components)])
+                                                         range(self.n_components)])
 
         ex_loadings.index = eem_dataset.ex_range.tolist()
         em_loadings.index = eem_dataset.em_range.tolist()
@@ -2316,7 +2316,7 @@ def align_components_by_loadings(models_dict: dict, ex_ref: pd.DataFrame, em_ref
 
 def align_components_by_components(models_dict: dict, components_ref: dict, model_type='parafac'):
     """
-    Align the components of PARAFAC or NMF models according to given reference ex/em loadings so that similar components
+    Align the components of PARAFAC or NMF models according to given reference components so that similar components
     are labelled by the same name.
 
     Parameters
@@ -2350,7 +2350,7 @@ def align_components_by_components(models_dict: dict, components_ref: dict, mode
         component_labels_var = [component_labels_ref[j] for j in matched_index]
         if len(permutation) < comp.shape[0]:
             unmatched = list(set(range(comp.shape[0])) - set(permutation))
-            component_labels_var += [f"O{i+1}" for i in range(len(unmatched))]
+            component_labels_var += [f"O{i + 1}" for i in range(len(unmatched))]
             permutation += unmatched
         if model_type == 'parafac':
             model.score.columns, model.ex_loadings.columns, model.em_loadings.columns, model.nnls_fmax.columns = (
@@ -2377,8 +2377,8 @@ class SplitValidation:
 
     Parameters
     ----------
-    rank: int
-        Number of components in PARAFAC.
+    base_model: PARAFAC or EEMNMF
+        The base PARAFAC or NMF model to be used for validation.
     n_split: int
         Number of splits.
     combination_size: int or str, {int, 'half'}
@@ -2387,10 +2387,8 @@ class SplitValidation:
     rule: str, {'random', 'sequential'}
         Whether to split the EEM dataset randomly. If 'sequential' is passed, the dataset will be split according
         to index order.
-    non_negativity: bool
-        Whether to apply non-negativity constraint in PARAFAC.
-    tf_normalization: bool
-        Whether to normalize the EEM by total fluorescence in PARAFAC.
+    random_state: int, optional
+        Random seed for reproducibility. Only used if `rule` is 'random'.
 
     Attributes
     -----------
@@ -2400,44 +2398,44 @@ class SplitValidation:
         Dictionary of PARAFAC models established on sub-datasets.
     """
 
-    def __init__(self, rank, n_split=4, combination_size='half', rule='random', similarity_metric='TCC',
-                 non_negativity=True, tf_normalization=True):
+    def __init__(self, base_model, n_split=4, combination_size='half', rule='random', similarity_metric='TCC',
+                 random_state=None):
         # ---------------Parameters-------------------
-        self.rank = rank
+        self.base_model = base_model
         self.n_split = n_split
         self.combination_size = combination_size
         self.rule = rule
         self.similarity_metric = similarity_metric
-        self.non_negativity = non_negativity
-        self.tf_normalization = tf_normalization
+        self.random_state = random_state
 
         # ----------------Attributes------------------
         self.eem_subsets = None
         self.subset_specific_models = None
 
     def fit(self, eem_dataset: EEMDataset):
-        split_set = eem_dataset.splitting(n_split=self.n_split, rule=self.rule)
+        split_set = eem_dataset.splitting(n_split=self.n_split, rule=self.rule, random_state=self.random_state)
         if self.combination_size == 'half':
             cs = int(self.n_split) / 2
         else:
             cs = int(self.combination_size)
         elements = list(itertools.combinations([i for i in range(self.n_split)], int(cs)))
         codes = list(itertools.combinations(list(string.ascii_uppercase)[0:self.n_split], int(cs)))
-        model_complete = PARAFAC(n_components=self.rank, non_negativity=self.non_negativity,
-                                 tf_normalization=self.tf_normalization)
+        model_complete = copy.deepcopy(self.base_model)
         model_complete.fit(eem_dataset=eem_dataset)
         sims_ex, sims_em, models, subsets = ({}, {}, {}, {})
 
         for e, c in zip(elements, codes):
             label = ''.join(c)
             subdataset = combine_eem_datasets([split_set[i] for i in e])
-            model_subdataset = PARAFAC(n_components=self.rank, non_negativity=self.non_negativity,
-                                       tf_normalization=self.tf_normalization)
+            model_subdataset = copy.deepcopy(self.base_model)
             model_subdataset.fit(subdataset)
-
             models[label] = model_subdataset
             subsets[label] = subdataset
-        models = align_components_by_loadings(models, model_complete.ex_loadings, model_complete.em_loadings)
+        models = align_components_by_components(
+            models,
+            {f'C{i + 1}': model_complete.components[i] for i in range(model_complete.n_components)},
+            model_type='parafac' if isinstance(self.base_model, PARAFAC) else 'nmf'
+        )
         self.eem_subsets = subsets
         self.subset_specific_models = models
         return self
@@ -2718,7 +2716,7 @@ class EEMNMF:
                                          eem_dataset.eem_stack.shape[2]])
         nmf_score = nmf_score.mul(factor_max, axis=1)
         _, nnls_score, _ = eems_fit_components(eem_dataset.eem_stack, components,
-                                                                     fit_intercept=False, positive=True)
+                                               fit_intercept=False, positive=True)
         nnls_score = pd.DataFrame(nnls_score, index=eem_dataset.index,
                                   columns=["component {i} NNLS-Fmax".format(i=i + 1) for i in range(self.n_components)])
         if self.sort_em:
@@ -3007,7 +3005,7 @@ class KMethod:
                         idx_top=idx_top,
                     )
                     res = eem_dataset.eem_stack - eem_stack_re_m
-                    res = np.sum(res**2, axis=(1, 2))
+                    res = np.sum(res ** 2, axis=(1, 2))
                     error_with_beta = np.zeros(fmax_m.shape[0])
                     error_with_beta[idx_top] = res[idx_top] + res[idx_bot]
                     error_with_beta[idx_bot] = res[idx_top] + res[idx_bot]
@@ -3578,7 +3576,7 @@ def cp_hals_prior(
             C_new[:, qi] = C[:, ri]
         A, B, C = A_new, B_new, C_new
 
-    if lam>0 and idx_top is not None and idx_bot is not None:
+    if lam > 0 and idx_top is not None and idx_bot is not None:
         beta = np.ones(rank, dtype=float)
     else:
         beta = None
@@ -3618,7 +3616,7 @@ def cp_hals_prior(
         )
         C = C.T
 
-        if lam>0 and idx_top is not None and idx_bot is not None:
+        if lam > 0 and idx_top is not None and idx_bot is not None:
             # --- Update W via ratio-aware HALS columns ---
             UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 0).T
             UtU = (C.T @ C) * (B.T @ B)
@@ -4182,7 +4180,7 @@ def nmf_hals_prior(
         )
         C0 = C0.T
 
-        if lam>0 and idx_top is not None and idx_bot is not None:
+        if lam > 0 and idx_top is not None and idx_bot is not None:
             # --- Update W via ratio-aware HALS columns ---
             UtM = unfolding_dot_khatri_rao(M, (None, [A0, B0, C0]), 0).T
             UtU = (C0.T @ C0) * (B0.T @ B0)

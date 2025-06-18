@@ -4056,9 +4056,12 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
             )
 
         if 'split_half' in validations:
-            split_validation = SplitValidation(rank=r,
-                                               non_negativity=True if 'non_negative' in nn else False,
-                                               tf_normalization=True if 'tf_normalization' in tf else False)
+            model_sv = PARAFAC(
+                n_components=r,
+                non_negativity=True if 'non_negative' in nn else False,
+                tf_normalization=True if 'tf_normalization' in tf else False,
+                               )
+            split_validation = SplitValidation(base_model=model_sv)
             split_validation.fit(eem_dataset_establishment)
             subset_specific_models = split_validation.subset_specific_models
             similarities_ex, similarities_em = split_validation.compare()
