@@ -2321,7 +2321,7 @@ def align_components_by_loadings(models_dict: dict, ex_ref: pd.DataFrame, em_ref
     return models_dict_new
 
 
-def align_components_by_components(models_dict: dict, components_ref: dict, model_type='parafac'):
+def align_components_by_components(models_dict: dict, components_ref: dict):
     """
     Align the components of PARAFAC or NMF models according to given reference components so that similar components
     are labelled by the same name.
@@ -2333,8 +2333,6 @@ def align_components_by_components(models_dict: dict, components_ref: dict, mode
     components_ref: dict
         Dictionary where each item is a reference component. The keys are the component labels, the values are the
         components (np.ndarray).
-    model_type: str, {'parafac', 'nmf'}
-        The type of model.
 
     Returns
     -------
@@ -2374,7 +2372,7 @@ def align_components_by_components(models_dict: dict, components_ref: dict, mode
         #     unmatched = list(set(range(comp.shape[0])) - set(permutation))
         #     component_labels_var += [f"O{i + 1}" for i in range(len(unmatched))]
         #     permutation += unmatched
-        if model_type == 'parafac':
+        if isinstance(model, PARAFAC):
             model.score.columns, model.ex_loadings.columns, model.em_loadings.columns, model.nnls_fmax.columns = (
                     [component_labels_var] * 4)
             model.score = model.score.iloc[:, permutation]
@@ -2384,7 +2382,7 @@ def align_components_by_components(models_dict: dict, components_ref: dict, mode
             model.components = model.components[permutation, :, :]
             model.cptensor = permute_cp_tensor(model.cptensors, permutation)
             model.beta = model.beta[permutation] if model.beta is not None else None
-        elif model_type == 'nmf':
+        elif isinstance(model, EEMNMF):
             model.fmax.columns, model.nnls_fmax.columns = (
                     [component_labels_var] * 2)
             model.fmax = model.fmax.iloc[:, permutation]

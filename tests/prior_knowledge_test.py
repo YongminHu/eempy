@@ -1,5 +1,7 @@
 import copy
 import pickle
+
+import hdbscan
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
 from scipy.stats import zscore
@@ -10,6 +12,8 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from itertools import product
 from itertools import combinations
 from sklearn.metrics import r2_score
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import DBSCAN
 
 np.random.seed(42)
 
@@ -21,6 +25,7 @@ eem_dataset_path = \
     "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/sample_276_ex_274_em_310_mfem_5_gaussian_rsu_rs_interpolated.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
 eem_dataset.median_filter(footprint=(5, 5), copy=False)
+eem_dataset.cutting(ex_min=274, ex_max=500, em_min=312, em_max=500, copy=False)
 # eem_dataset.raman_scattering_removal(width=15, interpolation_method='nan', copy=False)
 # eem_dataset.eem_stack = np.nan_to_num(eem_dataset.eem_stack, copy=True, nan=0)
 eem_dataset_july, _ = eem_dataset.filter_by_index(None, ['2024-07-'], copy=True)
@@ -46,7 +51,7 @@ with open('C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/approx_components.
     approx_components = pickle.load(file)
 
 
-def plot_all_f0f(model, eem_dataset, kw_top, kw_bot, target_analyte):
+def plot_all_f0f(model, eem_dataset, kw_top, kw_bot, target_analyte, eps=0.01):
     target_train = eem_dataset.ref[target_analyte]
     valid_indices_train = target_train.index[~target_train.isna()]
     fmax = model.fmax
@@ -99,7 +104,13 @@ def plot_all_f0f(model, eem_dataset, kw_top, kw_bot, target_analyte):
             )
     fig.tight_layout()
     fig.show()
-
+    # clustering = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, min_samples=None)
+    clustering = DBSCAN(eps=eps, min_samples=int(fmax_ratio.shape[0]/3))
+    outlier_labels = clustering.fit_predict(fmax_ratio)
+    qualifier_indices = list(fmax_original.index[outlier_labels != -1]) + list(fmax_quenched.index[outlier_labels != -1])
+    outliers_indices = list(fmax_original.index[outlier_labels == -1]) + list(fmax_quenched.index[outlier_labels == -1])
+    eem_dataset_cleaned, _ = eem_dataset.filter_by_index(mandatory_keywords=None, optional_keywords=qualifier_indices)
+    return eem_dataset_cleaned, outliers_indices
 
 def plot_fmax_vs_truth(fmax_train, fmax_test, truth_train, truth_test, n, info_dict):
     info_dict_copy = copy.deepcopy(info_dict)
@@ -308,7 +319,7 @@ def plot_outlier_plots(model, indicator, estimator_rank, dataset_train, dataset_
 # dataset_train, dataset_test = eem_dataset_october.splitting(2)
 dataset_train_splits = []
 dataset_train_unquenched, _ = eem_dataset_october.filter_by_index('B1C1', None, copy=True)
-initial_sub_eem_datasets_unquenched = dataset_train_unquenched.splitting(n_split=3, random_state=42)
+initial_sub_eem_datasets_unquenched = dataset_train_unquenched.splitting(n_split=2, random_state=42)
 dataset_train_quenched, _ = eem_dataset_october.filter_by_index('B1C2', None, copy=True)
 for subset in initial_sub_eem_datasets_unquenched:
     pos = [dataset_train_unquenched.index.index(idx) for idx in subset.index]
@@ -317,14 +328,14 @@ for subset in initial_sub_eem_datasets_unquenched:
     subset.sort_by_index()
     sub_eem_dataset_quenched.sort_by_index()
     dataset_train_splits.append(combine_eem_datasets([subset, sub_eem_dataset_quenched]))
-dataset_train = dataset_train_splits[0]
-dataset_test = dataset_train_splits[2]
+dataset_train = dataset_train_splits[1]
+dataset_test = dataset_train_splits[0]
 # dataset_train = eem_dataset_october
 # dataset_test = eem_dataset_july
 indicator = 'TCC (million #/mL)'
 sample_prior = {0: dataset_train.ref[indicator]}
 params = {
-    'n_components': 5,
+    'n_components': 4,
     'init': 'svd',
     # 'gamma_W': 0,
     # 'gamma_H': 0,
@@ -334,7 +345,7 @@ params = {
     # 'l1_ratio': 0,
     'max_iter_als': 100,
     'max_iter_nnls': 800,
-    'lam': 3e4,  # 1e6
+    'lam': 0,  # 1e6
     # 'random_state': 42,
     # 'fit_rank_one': {
     #     0: True,
@@ -407,7 +418,7 @@ intercept_train = lr.intercept_
 # -----------model testing-------------
 _, fmax_test, eem_re_test = model.predict(
     dataset_test,
-    fit_beta=True,
+    fit_beta=True if model.lam>0 and model.idx_bot is not None and model.idx_top is not None else None,
     idx_top=[i for i in range(len(dataset_test.index)) if 'B1C1' in dataset_test.index[i]],
     idx_bot=[i for i in range(len(dataset_test.index)) if 'B1C2' in dataset_test.index[i]],
 )
@@ -433,7 +444,10 @@ plot_fmax_vs_truth(fmax_train=fmax_train, fmax_test=fmax_test,
 # ------------apparent F0/F distributions-------------
 
 
-plot_all_f0f(model, dataset_train, 'B1C1', 'B1C2', 'TCC (million #/mL)')
+eem_dataset_cleaned, outlier_indices = plot_all_f0f(
+    model, dataset_train, 'B1C1', 'B1C2', 'TCC (million #/mL)',
+    eps=0.02
+)
 
 # -----------outliers----------
 
@@ -447,8 +461,8 @@ dataset_train = eem_dataset_october
 dataset_test = eem_dataset_july
 indicator = 'TCC (million #/mL)'
 
-model_ref = PARAFAC(
-    n_components=5,
+model_ref = EEMNMF(
+    n_components=4,
     solver='hals',
     sort_em=False,
     lam=0,
@@ -461,12 +475,15 @@ model_ref.fit(dataset_train)
 components_ref = {model_ref.fmax.columns[i]: model_ref.components[i] for i in range(model_ref.n_components)}
 
 param_grid = {
-    'n_components': [5],
-    'init': ['svd'],
+    'n_components': [4],
+    'init': ['ordinary_nmf'],
     # 'gamma_W': [0],
     # 'gamma_H': [0],
     # 'l1_ratio': [0],
     'lam': [0],
+    'fit_rank_one':[
+        {0: True, 2: True, 3: True}
+    ]
 }
 
 def get_param_combinations(param_grid):
@@ -519,7 +536,7 @@ for k, p in enumerate(param_combinations):
         d_train = combine_eem_datasets(a)
         d_test = combine_eem_datasets(b)
         sample_prior = {0: d_train.ref['TCC (million #/mL)']}
-        model = PARAFAC(
+        model = EEMNMF(
             solver='hals',
             # prior_dict_W=sample_prior,
             # prior_dict_H=approx_components,
@@ -564,7 +581,7 @@ for k, p in enumerate(param_combinations):
         y_pred_test = lr.predict(X_test)
         rmse_train += np.sqrt(mean_squared_error(y_train, y_pred_train)) / len(splits)
         rmse_test += np.sqrt(mean_squared_error(y_test, y_pred_test)) / len(splits)
-        model_dict = align_components_by_components({0: model}, components_ref, model_type='parafac')
+        model_dict = align_components_by_components({0: model}, components_ref)
         model = model_dict[0]
         plt.close()
         plot_all_components(model)
