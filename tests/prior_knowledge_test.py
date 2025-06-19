@@ -1,3 +1,4 @@
+import copy
 import pickle
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
@@ -41,8 +42,9 @@ bacteria_eem = eem_interpolation(bacteria_eem, eem_dataset_bac.ex_range, eem_dat
 bacteria_eem = np.nan_to_num(bacteria_eem, nan=0)
 prior_dict_ref = {0: bacteria_eem.reshape(-1)}
 
-with open('C:/PhD/publication/2025_prior_knowledge/approx_components.pkl', 'rb') as file:
+with open('C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/approx_components.pkl', 'rb') as file:
     approx_components = pickle.load(file)
+
 
 def plot_all_f0f(model, eem_dataset, kw_top, kw_bot, target_analyte):
     target_train = eem_dataset.ref[target_analyte]
@@ -55,15 +57,15 @@ def plot_all_f0f(model, eem_dataset, kw_top, kw_bot, target_analyte):
     fmax_quenched = fmax_quenched[mask]
     fmax_ratio = fmax_original.to_numpy() / fmax_quenched.to_numpy()
 
-    fig, axes = plt.subplots(ncols=2, nrows=(params['n_components'] + 1) // 2, figsize=(8, 10))
-    for rank_target in range(params['n_components']):
+    fig, axes = plt.subplots(ncols=2, nrows=(model.n_components + 1) // 2, figsize=(8, 10))
+    for rank_target in range(model.n_components):
         fmax_ratio_target = fmax_ratio[:, rank_target]
         fmax_ratio_target_valid = fmax_ratio_target[(fmax_ratio_target >= 0) & (fmax_ratio_target <= 1e3)]
         fmax_ratio_z_scores = zscore(fmax_ratio_target_valid, nan_policy='omit')
         ratio_nan = 1 - fmax_ratio_target_valid.shape[0] / fmax_ratio_target.shape[0]
         fmax_ratio_target_filtered = fmax_ratio_target_valid[np.abs(fmax_ratio_z_scores) <= 3]
 
-        if (params['n_components'] + 1) // 2 > 1:
+        if (model.n_components + 1) // 2 > 1:
             counts, bins, patches = axes[rank_target // 2, rank_target % 2].hist(fmax_ratio_target_filtered, bins=30,
                                                                                  density=True, alpha=0.5, color='blue',
                                                                                  label='training', zorder=0,
@@ -100,6 +102,7 @@ def plot_all_f0f(model, eem_dataset, kw_top, kw_bot, target_analyte):
 
 
 def plot_fmax_vs_truth(fmax_train, fmax_test, truth_train, truth_test, n, info_dict):
+    info_dict_copy = copy.deepcopy(info_dict)
     fig, ax = plt.subplots(nrows=1, ncols=len(sample_prior))
     ax.plot(fmax_train.iloc[:, n], truth_train.to_numpy(), 'o', label='training')
     ax.plot(fmax_test.iloc[:, n], truth_test.to_numpy(), 'o', label='testing')
@@ -113,18 +116,18 @@ def plot_fmax_vs_truth(fmax_train, fmax_test, truth_train, truth_test, n, info_d
     mask_test_n = ~np.isnan(truth_test.to_numpy())
     rmse_test = np.sqrt(mean_squared_error(truth_test.iloc[mask_test_n].to_numpy(), y_pred_test[mask_test_n]))
     r2_test = r2_score(truth_test.iloc[mask_test_n], y_pred_test[mask_test_n])
-    info_dict['r2_train'] = np.round(r2_train, decimals=3)
-    info_dict['r2_test'] = np.round(r2_test, decimals=3)
-    info_dict['rmse_train'] = np.round(rmse_train, decimals=3)
-    info_dict['rmse_test'] = np.round(rmse_test, decimals=3)
-    info_dict['fit_intercept'] = True if lr_n.fit_intercept else False
+    info_dict_copy['r2_train'] = np.round(r2_train, decimals=3)
+    info_dict_copy['r2_test'] = np.round(r2_test, decimals=3)
+    info_dict_copy['rmse_train'] = np.round(rmse_train, decimals=3)
+    info_dict_copy['rmse_test'] = np.round(rmse_test, decimals=3)
+    info_dict_copy['fit_intercept'] = True if lr_n.fit_intercept else False
     if lr_n.fit_intercept:
         ax.plot([0, 10000], np.array([0, 10000]) * lr_n.coef_[0] + lr_n.intercept_, '--')
     else:
         ax.plot([0, 10000], np.array([0, 10000]) * lr_n.coef_[0], '--')
     ax.text(
         0.01, 0.99,
-        '\n'.join(f'{k}: {v}' for k, v in info_dict.items()),
+        '\n'.join(f'{k}: {v}' for k, v in info_dict_copy.items()),
         transform=ax.transAxes,
         fontsize=10,
         verticalalignment='top',
@@ -321,18 +324,18 @@ dataset_test = dataset_train_splits[2]
 indicator = 'TCC (million #/mL)'
 sample_prior = {0: dataset_train.ref[indicator]}
 params = {
-    'n_components': 4,
-    'init': 'ordinary_nmf',
-    'gamma_W': 0,
-    'gamma_H': 0,
-    'gamma_A': 0,
-    'alpha_component': 0,
-    'alpha_sample': 0,
-    'l1_ratio': 0,
+    'n_components': 5,
+    'init': 'svd',
+    # 'gamma_W': 0,
+    # 'gamma_H': 0,
+    # 'gamma_A': 0,
+    # 'alpha_component': 0,
+    # 'alpha_sample': 0,
+    # 'l1_ratio': 0,
     'max_iter_als': 100,
     'max_iter_nnls': 800,
     'lam': 3e4,  # 1e6
-    'random_state': 42,
+    # 'random_state': 42,
     # 'fit_rank_one': {
     #     0: True,
     #     1: True,
@@ -343,11 +346,11 @@ params = {
     # },
 }
 
-model = EEMNMF(
+model = PARAFAC(
     solver='hals',
-    prior_dict_W=sample_prior,
-    prior_dict_H=approx_components,
-    normalization=None,
+    # prior_dict_W=sample_prior,
+    # prior_dict_H=approx_components,
+    # normalization=None,
     sort_em=False,
     prior_ref_components=prior_dict_ref,
     idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
@@ -404,7 +407,7 @@ intercept_train = lr.intercept_
 # -----------model testing-------------
 _, fmax_test, eem_re_test = model.predict(
     dataset_test,
-    fit_beta= True,
+    fit_beta=True,
     idx_top=[i for i in range(len(dataset_test.index)) if 'B1C1' in dataset_test.index[i]],
     idx_bot=[i for i in range(len(dataset_test.index)) if 'B1C2' in dataset_test.index[i]],
 )
@@ -443,39 +446,30 @@ plot_outlier_plots(
 dataset_train = eem_dataset_october
 dataset_test = eem_dataset_july
 indicator = 'TCC (million #/mL)'
-param_grid = {
-    'n_components': [4],
-    'init': ['ordinary_nmf'],
-    'gamma_W': [0],
-    'gamma_H': [0, 1, 2, 3],
-    'l1_ratio': [0],
-    'lam': [0, 3e4]
-}
 
-model_ref = EEMNMF(
-    n_components=4,
+model_ref = PARAFAC(
+    n_components=5,
     solver='hals',
     sort_em=False,
-    lam=1e5,
+    lam=0,
     prior_ref_components=prior_dict_ref,
-    prior_dict_H=approx_components,
+    # prior_dict_H=approx_components,
     idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
     idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
 )
 model_ref.fit(dataset_train)
 components_ref = {model_ref.fmax.columns[i]: model_ref.components[i] for i in range(model_ref.n_components)}
 
+param_grid = {
+    'n_components': [5],
+    'init': ['svd'],
+    # 'gamma_W': [0],
+    # 'gamma_H': [0],
+    # 'l1_ratio': [0],
+    'lam': [0],
+}
 
 def get_param_combinations(param_grid):
-    """
-    Generates all combinations of parameters from a grid.
-
-    Parameters:
-        param_grid (dict): Dictionary where keys are parameter names and values are lists of possible values.
-
-    Returns:
-        List of dictionaries, each representing one combination of parameters.
-    """
     keys = list(param_grid.keys())
     values_product = product(*(param_grid[key] for key in keys))
     return [dict(zip(keys, values)) for values in values_product]
@@ -490,10 +484,23 @@ def mean_pairwise_correlation(vectors):
     return np.mean(corrs)
 
 
+def all_split_half_combinations(lst):
+    n = len(lst) // 2
+    indices = range(len(lst))
+    result = []
+
+    for comb_indices in itertools.combinations(indices, n):
+        group1 = [lst[i] for i in comb_indices]
+        group2 = [lst[i] for i in indices if i not in comb_indices]
+        result.append((group1, group2))
+
+    return result
+
+
 param_combinations = get_param_combinations(param_grid)
 dataset_train_splits = []
 dataset_train_unquenched, _ = dataset_train.filter_by_index('B1C1', None, copy=True)
-initial_sub_eem_datasets_unquenched = dataset_train_unquenched.splitting(n_split=3, random_state=42)
+initial_sub_eem_datasets_unquenched = dataset_train_unquenched.splitting(n_split=4, random_state=42)
 dataset_train_quenched, _ = dataset_train.filter_by_index('B1C2', None, copy=True)
 for subset in initial_sub_eem_datasets_unquenched:
     pos = [dataset_train_unquenched.index.index(idx) for idx in subset.index]
@@ -503,37 +510,43 @@ for subset in initial_sub_eem_datasets_unquenched:
     sub_eem_dataset_quenched.sort_by_index()
     dataset_train_splits.append(combine_eem_datasets([subset, sub_eem_dataset_quenched]))
 
+splits = all_split_half_combinations(dataset_train_splits)
+
 for k, p in enumerate(param_combinations):
     r2_train, r2_test, rmse_train, rmse_test = 0, 0, 0, 0
     components_list = [[] for i in range(p['n_components'])]
-    for i in range(len(dataset_train_splits)):
-        d_train = combine_eem_datasets(dataset_train_splits[:i] + dataset_train_splits[i + 1:])
-        d_test = dataset_train_splits[i]
+    for a, b in splits:
+        d_train = combine_eem_datasets(a)
+        d_test = combine_eem_datasets(b)
         sample_prior = {0: d_train.ref['TCC (million #/mL)']}
-        model = EEMNMF(
+        model = PARAFAC(
             solver='hals',
-            prior_dict_W=sample_prior,
-            prior_dict_H=approx_components,
+            # prior_dict_W=sample_prior,
+            # prior_dict_H=approx_components,
             sort_em=False,
             prior_ref_components=prior_dict_ref,
             idx_top=[i for i in range(len(d_train.index)) if 'B1C1' in d_train.index[i]],
             idx_bot=[i for i in range(len(d_train.index)) if 'B1C2' in d_train.index[i]],
+            # fit_rank_one={
+            #                     0: True,
+            #                     1: True,
+            #                     2: True,
+            #                     3: True,
+            #                     4: True,
+            #                     5: True,
+            #              },
             **p
         )
-        # model = PARAFAC(
-        #     n_components=p['n_components'],
-        #     prior_ref_components=prior_dict_ref,
-        # )
         model.fit(d_train)
         fmax_train = model.fmax
         components = model.components
-        plot_outlier_plots(
-            model=model, estimator_rank=0, indicator='TCC (million #/mL)',
-            dataset_test=d_test, dataset_train=d_train
-        )
+        # plot_outlier_plots(
+        #     model=model, estimator_rank=0, indicator='TCC (million #/mL)',
+        #     dataset_test=d_test, dataset_train=d_train
+        # )
         _, fmax_test, eem_re_test = model.predict(
             d_test,
-            fit_beta=True if model.lam>0 else False,
+            fit_beta=True if model.lam > 0 and model.idx_bot is not None and model.idx_top is not None else False,
             idx_top=[i for i in range(len(d_test.index)) if 'B1C1' in d_test.index[i]],
             idx_bot=[i for i in range(len(d_test.index)) if 'B1C2' in d_test.index[i]],
         )
@@ -545,15 +558,20 @@ for k, p in enumerate(param_combinations):
         mask_test = ~np.isnan(d_test.ref['TCC (million #/mL)'].to_numpy())
         X_test = fmax_test.iloc[mask_test, [0]].to_numpy()
         y_test = d_test.ref['TCC (million #/mL)'].to_numpy()[mask_test]
-        r2_train += lr.score(X_train, y_train) / len(dataset_train_splits)
-        r2_test += lr.score(X_test, y_test) / len(dataset_train_splits)
+        r2_train += lr.score(X_train, y_train) / len(splits)
+        r2_test += lr.score(X_test, y_test) / len(splits)
         y_pred_train = lr.predict(X_train)
         y_pred_test = lr.predict(X_test)
-        rmse_train += np.sqrt(mean_squared_error(y_train, y_pred_train)) / len(dataset_train_splits)
-        rmse_test += np.sqrt(mean_squared_error(y_test, y_pred_test)) / len(dataset_train_splits)
-        # model_new = align_components_by_components({0: model}, components_ref, model_type='nmf')
-        # model_new = model_new[0]
+        rmse_train += np.sqrt(mean_squared_error(y_train, y_pred_train)) / len(splits)
+        rmse_test += np.sqrt(mean_squared_error(y_test, y_pred_test)) / len(splits)
+        model_dict = align_components_by_components({0: model}, components_ref, model_type='parafac')
+        model = model_dict[0]
+        plt.close()
         plot_all_components(model)
+        plot_fmax_vs_truth(fmax_train=fmax_train, fmax_test=fmax_test,
+                           truth_train=d_train.ref[indicator], truth_test=d_test.ref[indicator],
+                           n=0, info_dict=p)
+        plot_all_f0f(model, d_train, 'B1C1', 'B1C2', 'TCC (million #/mL)')
         for j in range(len(components_list)):
             components_list[j].append(model.components[j].reshape(-1))
     param_combinations[k]['r2_train'] = r2_train
@@ -711,7 +729,7 @@ def auto_nmf(model: EEMNMF, dataset_train, dataset_test, gamma_H=1e5):
     for r in range(model.n_components):
         model.fit_rank_one = {r: True}
         model.fit(dataset_train)
-        if r!=1:
+        if r != 1:
             approx_components[r] = model.components[r].reshape(-1)
     model.fit_rank_one = False
     model.gamma_H = gamma_H

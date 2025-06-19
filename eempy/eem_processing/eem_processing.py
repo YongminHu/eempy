@@ -1751,8 +1751,8 @@ class PARAFAC:
         Emission wavelengths.
     """
 
-    def __init__(self, n_components, non_negativity=True, solver='hals', init='svd',
-                 tf_normalization=True, loadings_normalization: Optional[str] = 'maximum', sort_em=True,
+    def __init__(self, n_components, non_negativity=True, solver='hals', init='svd', custom_init=None,
+                 tf_normalization=False, loadings_normalization: Optional[str] = 'maximum', sort_em=True,
                  alpha_sample=0, alpha_ex=0, alpha_em=0, l1_ratio=1,
                  prior_dict_sample=None, prior_dict_ex=None, prior_dict_em=None,
                  gamma_sample=0, gamma_ex=0, gamma_em=0, prior_ref_components=None,
@@ -1764,6 +1764,7 @@ class PARAFAC:
         self.n_components = n_components
         self.non_negativity = non_negativity
         self.init = init
+        self.custom_init = custom_init
         self.tf_normalization = tf_normalization
         self.loadings_normalization = loadings_normalization
         self.sort_em = sort_em
@@ -1817,6 +1818,8 @@ class PARAFAC:
             The established PARAFAC model
         """
         if self.tf_normalization:
+            if self.lam>0 and self.idx_bot is not None and self.idx_top is not None:
+                Warning("Applying tf_normalization together with ratio regularization (lam>0) will lead to unreasonable results")
             eem_stack_tf, tf_weights = eem_dataset.tf_normalization(copy=True)
         else:
             eem_stack_tf = eem_dataset.eem_stack.copy()
@@ -1848,6 +1851,7 @@ class PARAFAC:
                             eem_stack_tf,
                             rank=self.n_components,
                             init=self.init,
+                            custom_init=self.custom_init,
                             prior_dict_A=self.prior_dict_sample,
                             prior_dict_B=self.prior_dict_ex,
                             prior_dict_C=self.prior_dict_em,
@@ -1867,7 +1871,7 @@ class PARAFAC:
                             random_state=self.random_state
                         )
                         self.beta = beta
-                        cptensors = [[1] * self.n_components, [a, b, c]]
+                        cptensors = tl.cp_tensor.CPTensor((np.ones(self.n_components), [a, b, c]))
                     elif self.solver == 'mu':
                         cptensors = non_negative_parafac(eem_stack_tf, rank=self.n_components, init=self.init,
                                                          n_iter_max=self.max_iter_als, tol=self.tol)
@@ -1906,6 +1910,7 @@ class PARAFAC:
             components[r, :, :] = component
         if self.tf_normalization:
             fmax = pd.DataFrame(a * tf_weights[:, np.newaxis])
+            self.beta = update_beta(fmax.to_numpy(), self.idx_top, self.idx_bot)
         else:
             fmax = pd.DataFrame(a)
         a, _, _ = eems_fit_components(eem_dataset.eem_stack, components, fit_intercept=False, positive=True)
@@ -1928,6 +1933,7 @@ class PARAFAC:
                                  for i in range(self.n_components)})
             nnls_fmax = pd.DataFrame({'component {r} fmax'.format(r=i + 1): nnls_fmax[:, order[i]]
                                       for i in range(self.n_components)})
+            self.beta = self.beta[order] if self.beta is not None else None
         else:
             column_labels = ['component {r}'.format(r=i + 1) for i in range(self.n_components)]
             ex_loadings.columns = column_labels
@@ -2310,6 +2316,7 @@ def align_components_by_loadings(models_dict: dict, ex_ref: pd.DataFrame, em_ref
         model.nnls_fmax = model.nnls_fmax.iloc[:, permutation]
         model.components = model.components[permutation, :, :]
         model.cptensor = permute_cp_tensor(model.cptensors, permutation)
+        model.beta = model.beta[permutation] if model.beta is not None else None
         models_dict_new[model_label] = model
     return models_dict_new
 
@@ -2335,23 +2342,38 @@ def align_components_by_components(models_dict: dict, components_ref: dict, mode
         Dictionary of the aligned PARAFAC object.
     """
     component_labels_ref = list(components_ref.keys())
-    components_stack_ref = np.array([c.flatten() for c in components_ref.values()])
+    components_stack_ref = np.array([c.reshape(-1) for c in components_ref.values()])
     models_dict_new = {}
 
     for model_label, model in models_dict.items():
-        comp = model.components.reshape(model.components.shape[0], -1)
-        cost_mat = cdist(comp, components_stack_ref, metric='correlation')
+        comp = model.components.reshape([model.n_components, -1])
+        cost_mat = cdist(components_stack_ref, comp, metric='correlation')
 
         row_ind, col_ind = linear_sum_assignment(cost_mat)
-        permutation = list(row_ind)
-        matched_index = list(col_ind)
+        # permutation = list(row_ind)
+        # matched_index = list(col_ind)
 
-        # Generate new labels
-        component_labels_var = [component_labels_ref[j] for j in matched_index]
-        if len(permutation) < comp.shape[0]:
-            unmatched = list(set(range(comp.shape[0])) - set(permutation))
-            component_labels_var += [f"O{i + 1}" for i in range(len(unmatched))]
-            permutation += unmatched
+        pairs = [(i, j) for i, j in zip(row_ind, col_ind) if i < cost_mat.shape[0]]
+        sorted_pairs = sorted(pairs, key=lambda x: x[0])
+        row_ind, col_ind = zip(*sorted_pairs)
+        col_ind = list(col_ind)
+        non_ordered_index = list(set([i for i in range(cost_mat.shape[1])]) - set(col_ind))
+        permutation = col_ind + non_ordered_index
+        if non_ordered_index:
+            component_labels_ref_extended = component_labels_ref + ['O{i}'.format(i=i + 1) for i in
+                                                                    range(len(non_ordered_index))]
+        else:
+            component_labels_ref_extended = component_labels_ref
+        component_labels_var = [0] * len(permutation)
+        for i, nc in enumerate(permutation):
+            component_labels_var[nc] = component_labels_ref_extended[i]
+        #
+        # # Generate new labels
+        # component_labels_var = [component_labels_ref[j] for j in matched_index]
+        # if len(permutation) < comp.shape[0]:
+        #     unmatched = list(set(range(comp.shape[0])) - set(permutation))
+        #     component_labels_var += [f"O{i + 1}" for i in range(len(unmatched))]
+        #     permutation += unmatched
         if model_type == 'parafac':
             model.score.columns, model.ex_loadings.columns, model.em_loadings.columns, model.nnls_fmax.columns = (
                     [component_labels_var] * 4)
@@ -2361,12 +2383,14 @@ def align_components_by_components(models_dict: dict, components_ref: dict, mode
             model.nnls_fmax = model.nnls_fmax.iloc[:, permutation]
             model.components = model.components[permutation, :, :]
             model.cptensor = permute_cp_tensor(model.cptensors, permutation)
+            model.beta = model.beta[permutation] if model.beta is not None else None
         elif model_type == 'nmf':
             model.fmax.columns, model.nnls_fmax.columns = (
                     [component_labels_var] * 2)
             model.fmax = model.fmax.iloc[:, permutation]
             model.nnls_fmax = model.nnls_fmax.iloc[:, permutation]
             model.components = model.components[permutation, :, :]
+            model.beta = model.beta[permutation] if model.beta is not None else None
         models_dict_new[model_label] = model
     return models_dict_new
 
@@ -2732,6 +2756,7 @@ class EEMNMF:
                                       for i in range(self.n_components)})
             nnls_score = pd.DataFrame({'component {r} NNLS-Fmax'.format(r=i + 1): nnls_score.iloc[:, order[i]]
                                        for i in range(self.n_components)})
+            self.beta = self.beta[order] if self.beta is not None else None
         self.fmax = nmf_score
         self.nnls_fmax = nnls_score
         self.components = components
@@ -3642,7 +3667,7 @@ def cp_hals_prior(
                 )
 
             # --- Beta‐step (closed form) ---
-            beta = update_beta(A, idx_top=idx_top, idx_bot=idx_bot, eps=0)
+            beta = update_beta(A, idx_top=idx_top, idx_bot=idx_bot, eps=eps)
 
         else:
             # Update A:
@@ -3668,6 +3693,30 @@ def cp_hals_prior(
         if abs(prev_error - err) / (prev_error + eps) < tol:
             break
         prev_error = err
+
+    if prior_ref_components is not None:
+        H = np.zeros([rank, B.shape[0] * C.shape[0]])
+        for r in range(rank):
+            component = np.array([B[:, r]]).T.dot(np.array([C[:, r]]))
+            H[r, :] = component.reshape(-1)
+        prior_keys = list(prior_ref_components.keys())
+        queries = np.array([prior_ref_components[k] for k in prior_keys])
+        cost_mat = cdist(queries, H, metric='correlation')
+        # run Hungarian algorithm
+        query_idx, ref_idx = linear_sum_assignment(cost_mat)
+        A_new, B_new, C_new = np.zeros(A.shape), np.zeros(B.shape), np.zeros(C.shape)
+        r_list_query, r_list_ref = [i for i in range(rank)], [i for i in range(rank)]
+        for qi, ri in zip(query_idx, ref_idx):
+            A_new[:, qi] = A[:, ri]
+            B_new[:, qi] = B[:, ri]
+            C_new[:, qi] = C[:, ri]
+            r_list_query.pop(qi)
+            r_list_ref.pop(ri)
+        for qi, ri in zip(r_list_query, r_list_ref):
+            A_new[:, qi] = A[:, ri]
+            B_new[:, qi] = B[:, ri]
+            C_new[:, qi] = C[:, ri]
+        A, B, C = A_new, B_new, C_new
 
     return A, B, C, beta
 
@@ -3848,7 +3897,7 @@ def update_beta(
         W: np.ndarray,
         idx_top,
         idx_bot,
-        eps: float = 1e-8,
+        eps: float = 0,
         boundaries: tuple = (0.95, 1.4)
 ) -> np.ndarray:
     """
@@ -4268,21 +4317,21 @@ def nmf_hals_prior(
         H = H_final
         W = W_final
 
-    # if prior_ref_components is not None:
-    #     cost_mat = cdist(queries, H, metric='correlation')
-    #     # print(cost_mat)
-    #     query_idx, ref_idx = linear_sum_assignment(cost_mat)
-    #     H_new, W_new = np.zeros(H.shape), np.zeros(W.shape)
-    #     r_list_query, r_list_ref = [i for i in range(rank)], [i for i in range(rank)]
-    #     for qi, ri in zip(query_idx, ref_idx):
-    #         W_new[:, qi] = W[:, ri]
-    #         H_new[qi, :] = H[ri, :]
-    #         r_list_query.pop(qi)
-    #         r_list_ref.pop(ri)
-    #     for qi, ri in zip(r_list_query, r_list_ref):
-    #         W_new[:, qi] = W[:, ri]
-    #         H_new[qi, :] = H[ri, :]
-    #     W, H = W_new, H_new
+    if prior_ref_components is not None:
+        cost_mat = cdist(queries, H, metric='correlation')
+        # print(cost_mat)
+        query_idx, ref_idx = linear_sum_assignment(cost_mat)
+        H_new, W_new = np.zeros(H.shape), np.zeros(W.shape)
+        r_list_query, r_list_ref = [i for i in range(rank)], [i for i in range(rank)]
+        for qi, ri in zip(query_idx, ref_idx):
+            W_new[:, qi] = W[:, ri]
+            H_new[qi, :] = H[ri, :]
+            r_list_query.pop(qi)
+            r_list_ref.pop(ri)
+        for qi, ri in zip(r_list_query, r_list_ref):
+            W_new[:, qi] = W[:, ri]
+            H_new[qi, :] = H[ri, :]
+        W, H = W_new, H_new
 
     return W, H, beta
 
