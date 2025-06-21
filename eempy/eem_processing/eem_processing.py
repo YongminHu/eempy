@@ -2569,7 +2569,7 @@ class EEMNMF:
                  gamma_W=0, gamma_H=0, gamma_A=0, gamma_B=0, gamma_C=0, prior_ref_components=None,
                  idx_top=None, idx_bot=None, kw_top=None, kw_bot=None, lam=0,
                  fit_rank_one=False,
-                 normalization='pixel_std', sort_em=True, max_iter_als=100, max_iter_nnls=500, random_state=None):
+                 normalization=None, sort_em=True, max_iter_als=100, max_iter_nnls=500, random_state=42):
 
         # -----------Parameters-------------
         self.n_components = n_components
@@ -2651,10 +2651,10 @@ class EEMNMF:
                 factor_std = None
                 nmf_score = decomposer.fit_transform(X)
                 components = decomposer.components_
+            eem_stack_reconstructed = nmf_score @ components
             nmf_score = pd.DataFrame(nmf_score, index=eem_dataset.index,
                                      columns=["component {i} NMF-Fmax".format(i=i + 1) for i in
                                               range(self.n_components)])
-            eem_stack_reconstructed = nmf_score @ components
         elif self.solver == 'hals':
             eem_dataset.threshold_masking(0, 0, 'smaller', copy=False)
             n_samples = eem_dataset.eem_stack.shape[0]
@@ -3584,15 +3584,16 @@ def cp_hals_prior(
         queries = np.array([prior_ref_components[k] for k in prior_keys])
         cost_mat = cdist(queries, H, metric='correlation')
         # run Hungarian algorithm
-        query_idx, ref_idx = linear_sum_assignment(cost_mat)
+        query_idx, h_idx = linear_sum_assignment(cost_mat)
+        query_idx = [prior_keys[i] for i in query_idx]
         A_new, B_new, C_new = np.zeros(A.shape), np.zeros(B.shape), np.zeros(C.shape)
         r_list_query, r_list_ref = [i for i in range(rank)], [i for i in range(rank)]
-        for qi, ri in zip(query_idx, ref_idx):
+        for qi, ri in zip(query_idx, h_idx):
             A_new[:, qi] = A[:, ri]
             B_new[:, qi] = B[:, ri]
             C_new[:, qi] = C[:, ri]
-            r_list_query.pop(qi)
-            r_list_ref.pop(ri)
+            r_list_query.remove(qi)
+            r_list_ref.remove(ri)
         for qi, ri in zip(r_list_query, r_list_ref):
             A_new[:, qi] = A[:, ri]
             B_new[:, qi] = B[:, ri]
@@ -3701,15 +3702,16 @@ def cp_hals_prior(
         queries = np.array([prior_ref_components[k] for k in prior_keys])
         cost_mat = cdist(queries, H, metric='correlation')
         # run Hungarian algorithm
-        query_idx, ref_idx = linear_sum_assignment(cost_mat)
+        query_idx, h_idx = linear_sum_assignment(cost_mat)
+        query_idx = [prior_keys[i] for i in query_idx]
         A_new, B_new, C_new = np.zeros(A.shape), np.zeros(B.shape), np.zeros(C.shape)
         r_list_query, r_list_ref = [i for i in range(rank)], [i for i in range(rank)]
-        for qi, ri in zip(query_idx, ref_idx):
+        for qi, ri in zip(query_idx, h_idx):
             A_new[:, qi] = A[:, ri]
             B_new[:, qi] = B[:, ri]
             C_new[:, qi] = C[:, ri]
-            r_list_query.pop(qi)
-            r_list_ref.pop(ri)
+            r_list_query.remove(qi)
+            r_list_ref.remove(ri)
         for qi, ri in zip(r_list_query, r_list_ref):
             A_new[:, qi] = A[:, ri]
             B_new[:, qi] = B[:, ri]
@@ -4016,7 +4018,7 @@ def nmf_hals_prior(
     fit_rank_one : dict {k: bool}, optional,
         If True, fit the k-th component as rank-1 matrix.
     component_shape : tuple (n_ex, n_em), optional,
-        Shape of the components. Mandatory if fit_rank_one is not False.
+        Shape of the components. Mandatory if fit_rank_one is not False or init is 'ordinary_cp'.
     max_iter_als : int
         Outer ALS iterations.
     max_iter_nnls : int
@@ -4033,7 +4035,7 @@ def nmf_hals_prior(
     H : ndarray (rank, n)
     beta : ndarray (rank,)
     """
-    X = tl.tensor(X, dtype=float)
+
     m, n = X.shape
     rng = np.random.RandomState(random_state)
 
@@ -4044,9 +4046,18 @@ def nmf_hals_prior(
     elif init in ('svd', 'nndsvd', 'nndsvda', 'nndsvdar'):
         W, H = unfolded_eem_stack_initialization(X, rank, init)
     elif init == 'ordinary_nmf':
-        model = NMF(n_components=rank, init='nndsvd', random_state=random_state)
-        W = model.fit_transform(tl.to_numpy(X))
+        model = NMF(n_components=rank, init='nndsvda', random_state=random_state, max_iter=1000)
+        W = model.fit_transform(X)
         H = model.components_
+    elif init == 'ordinary_cp':
+        _, factors_init = non_negative_parafac_hals(
+            X.reshape([m, component_shape[0], component_shape[1]]),
+            rank=rank,
+            random_state=random_state
+        )
+        W = factors_init[0]
+        H = khatri_rao(factors_init[1], factors_init[2]).T
+        # H = np.array([np.outer(factors_init[1][:, r], factors_init[2][:, r]).flatten() for r in range(rank)])
     elif init == 'custom':
         W, H = custom_init
     else:
@@ -4058,14 +4069,15 @@ def nmf_hals_prior(
         queries = np.array([prior_ref_components[k] for k in prior_keys])
         cost_mat = cdist(queries, H, metric='correlation')
         # run Hungarian algorithm
-        query_idx, ref_idx = linear_sum_assignment(cost_mat)
+        query_idx, h_idx = linear_sum_assignment(cost_mat)
+        query_idx = [prior_keys[i] for i in query_idx]
         H_new, W_new = np.zeros(H.shape), np.zeros(W.shape)
         r_list_query, r_list_ref = [i for i in range(rank)], [i for i in range(rank)]
-        for qi, ri in zip(query_idx, ref_idx):
+        for qi, ri in zip(query_idx, h_idx):
             W_new[:, qi] = W[:, ri]
             H_new[qi, :] = H[ri, :]
-            r_list_query.pop(qi)
-            r_list_ref.pop(ri)
+            r_list_query.remove(qi)
+            r_list_ref.remove(ri)
         for qi, ri in zip(r_list_query, r_list_ref):
             W_new[:, qi] = W[:, ri]
             H_new[qi, :] = H[ri, :]
@@ -4316,16 +4328,19 @@ def nmf_hals_prior(
         W = W_final
 
     if prior_ref_components is not None:
+        prior_keys = list(prior_ref_components.keys())
+        queries = np.array([prior_ref_components[k] for k in prior_keys])
         cost_mat = cdist(queries, H, metric='correlation')
-        # print(cost_mat)
-        query_idx, ref_idx = linear_sum_assignment(cost_mat)
+        # run Hungarian algorithm
+        query_idx, h_idx = linear_sum_assignment(cost_mat)
+        query_idx = [prior_keys[i] for i in query_idx]
         H_new, W_new = np.zeros(H.shape), np.zeros(W.shape)
         r_list_query, r_list_ref = [i for i in range(rank)], [i for i in range(rank)]
-        for qi, ri in zip(query_idx, ref_idx):
+        for qi, ri in zip(query_idx, h_idx):
             W_new[:, qi] = W[:, ri]
             H_new[qi, :] = H[ri, :]
-            r_list_query.pop(qi)
-            r_list_ref.pop(ri)
+            r_list_query.remove(qi)
+            r_list_ref.remove(ri)
         for qi, ri in zip(r_list_query, r_list_ref):
             W_new[:, qi] = W[:, ri]
             H_new[qi, :] = H[ri, :]

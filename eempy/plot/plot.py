@@ -188,6 +188,136 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
         return fig
 
 
+def plot_eem_stack(
+    eem_stack: np.ndarray,
+    ex_range: np.ndarray,
+    em_range: np.ndarray,
+    titles: list,
+    n_cols: int = 2,
+    auto_intensity_range: bool = True,
+    scale_type: str = 'linear',  # 'linear' or 'log'
+    vmin: float = None,
+    vmax: float = None,
+    cmap: str = 'jet',
+    figure_size: tuple = (12, 8),
+    axis_label_font_size: int = 12,
+    axis_ticks_font_size: int = 10,
+    cbar: bool = True,
+    cbar_fraction: float = 0.02,
+    fix_aspect_ratio: bool = True,
+    rotate: bool = False,
+    suptitle: str = None,
+    suptitle_font_size: int = 16
+) -> tuple:
+    """
+    Plot a stack of EEMs in a grid of subplots.
+
+    Parameters
+    ----------
+    eem_stack : np.ndarray (3D)
+        Stack of EEMs, shape (n_samples, n_ex, n_em).
+    ex_range : np.ndarray (1D)
+        Excitation wavelengths.
+    em_range : np.ndarray (1D)
+        Emission wavelengths.
+    titles : list of str
+        List of subplot titles, length must equal number of EEMs.
+    n_cols : int
+        Number of columns in the subplot grid.
+    auto_intensity_range : bool
+        If True, use matplotlib's autoscale for intensities.
+    scale_type : str
+        'linear' or 'log' scale for color mapping.
+    vmin, vmax : float
+        Min and max intensities if auto_intensity_range is False.
+    cmap : str
+        Matplotlib colormap.
+    figure_size : tuple
+        Size of the entire figure.
+    axis_label_font_size, axis_ticks_font_size : int
+        Font sizes for labels and ticks.
+    cbar : bool
+        Whether to show a colorbar for each subplot.
+    cbar_fraction : float
+        Fraction size of colorbar.
+    fix_aspect_ratio : bool
+        If True, force aspect ratio to 1.
+    rotate : bool
+        If True, swap axes so x=excitation and y=emission.
+    suptitle : str
+        Overall figure title.
+    suptitle_font_size : int
+        Font size for overall title.
+
+    Returns
+    -------
+    fig : plt.Figure
+    axes : np.ndarray of Axes
+    ims : list of AxesImage
+    """
+    n_plots = eem_stack.shape[0]
+    if len(titles) != n_plots:
+        raise ValueError("Length of titles must match number of EEMs in stack.")
+
+    n_rows = math.ceil(n_plots / n_cols)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=figure_size, squeeze=False)
+    axes = axes.flatten()
+    ims = []
+
+    # Validate vmin/vmax
+    if not auto_intensity_range and (vmin is None or vmax is None):
+        raise ValueError("vmin and vmax must be provided when auto_intensity_range is False.")
+
+    for i in range(n_plots):
+        ax = axes[i]
+        intensity = eem_stack[i]
+
+        # Norm for log scale
+        norm = LogNorm(vmin=vmin, vmax=vmax) if (scale_type == 'log' and not auto_intensity_range) else None
+
+        # Data orientation
+        if not rotate:
+            # direct EEM: x=em, y=ex
+            plot_data = intensity
+            extent = (em_range.min(), em_range.max(), ex_range.min(), ex_range.max())
+        else:
+            # rotate: x=ex, y=em with flip so matches orientation
+            plot_data = np.flipud(np.fliplr(intensity.T))
+            extent = (ex_range.min(), ex_range.max(), em_range.min(), em_range.max())
+
+        im = ax.imshow(
+            plot_data,
+            cmap=cmap,
+            extent=extent,
+            origin='upper',
+            vmin=None if auto_intensity_range else vmin,
+            vmax=None if auto_intensity_range else vmax,
+            norm=norm,
+            aspect=1 if fix_aspect_ratio else 'auto'
+        )
+        ims.append(im)
+
+        ax.set_title(titles[i], fontsize=axis_label_font_size)
+        ax.set_xlabel('Emission wavelength [nm]' if not rotate else 'Excitation wavelength [nm]', fontsize=axis_label_font_size)
+        ax.set_ylabel('Excitation wavelength [nm]' if not rotate else 'Emission wavelength [nm]', fontsize=axis_label_font_size)
+        ax.tick_params(labelsize=axis_ticks_font_size)
+
+        if cbar:
+            fig.colorbar(im, ax=ax, fraction=cbar_fraction)
+
+    # Turn off unused subplots
+    for j in range(n_plots, len(axes)):
+        axes[j].axis('off')
+
+    if suptitle:
+        fig.suptitle(suptitle, fontsize=suptitle_font_size)
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96] if suptitle else None)
+    plt.show()
+
+    return fig, axes, ims
+
+
 def plot_abs(absorbance, ex_range, xmax=0.1, ex_range_display=(200, 800), plot_tool='matplotlib', display=True,
              figure_size=(6.5, 2)):
     """
