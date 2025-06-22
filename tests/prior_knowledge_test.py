@@ -1,6 +1,8 @@
 import copy
 import pickle
 
+import numpy as np
+import pandas as pd
 from scipy.stats import zscore
 from eempy.read_data import read_eem_dataset, read_abs_dataset, read_eem, read_eem_dataset_from_json
 from eempy.eem_processing import *
@@ -69,8 +71,10 @@ def plot_all_f0f(model, eem_dataset, kw_top, kw_bot, target_analyte, eps=0.01, p
             fmax_ratio_target_filtered = fmax_ratio_target_valid[np.abs(fmax_ratio_z_scores) <= zscore_threshold]
 
             if (model.n_components + 1) // 2 > 1:
-                counts, bins, patches = axes[rank_target // 2, rank_target % 2].hist(fmax_ratio_target_filtered, bins=30,
-                                                                                     density=True, alpha=0.5, color='blue',
+                counts, bins, patches = axes[rank_target // 2, rank_target % 2].hist(fmax_ratio_target_filtered,
+                                                                                     bins=30,
+                                                                                     density=True, alpha=0.5,
+                                                                                     color='blue',
                                                                                      label='training', zorder=0,
                                                                                      edgecolor='black')
                 axes[rank_target // 2, rank_target % 2].set_ylabel('Density', fontsize=18)
@@ -164,7 +168,8 @@ def plot_fmax_vs_truth(fmax_train, fmax_test, truth_train, truth_test, n, info_d
 
 
 def plot_all_components(eem_model):
-    plot_eem_stack(eem_model.components, eem_model.ex_range, eem_model.em_range, titles=[f'C{i+1}' for i in range(eem_model.n_components)],)
+    plot_eem_stack(eem_model.components, eem_model.ex_range, eem_model.em_range,
+                   titles=[f'C{i + 1}' for i in range(eem_model.n_components)], )
 
 
 def plot_outlier_plots(model, indicator, estimator_rank, dataset_train, dataset_test, criteria='reconstruction_error'):
@@ -305,27 +310,27 @@ indicator = 'TCC (million #/mL)'
 sample_prior = {0: dataset_train.ref[indicator]}
 params = {
     'n_components': 4,
-    'init': 'ordinary_nmf',
+    'init': 'ordinary_cp',
     # 'gamma_W': 0,
-    'prior_dict_H': {k: approx_components[k] for k in [0, 1, 2]},
-    'gamma_H': 1e5,
+    # 'prior_dict_H': {k: approx_components[k] for k in [0, 2]},
+    # 'gamma_H': 1e5,
     # 'gamma_A': 0,
     # 'alpha_component': 0,
     # 'alpha_sample': 0,
     # 'l1_ratio': 0,
-    'max_iter_als': 100,
-    'max_iter_nnls': 800,
+    'max_iter_als': 500,
+    'max_iter_nnls': 500,
     'lam': 0,  # 1e6
     'random_state': 42,
-    # 'fit_rank_one':
-    #     {
-    #         # 0: True,
-    #         1: True,
-    #         2: True,
-    #         # 3: True,
-    #         # 4: True,
-    #         # 5: True,
-    #     },
+    'fit_rank_one':
+        {
+            0: True,
+            1: True,
+            # 2: True,
+            3: True,
+            # 4: True,
+            # 5: True,
+        },
 }
 
 # _, factors_init = non_negative_parafac_hals(
@@ -419,11 +424,10 @@ plot_fmax_vs_truth(fmax_train=fmax_train, fmax_test=fmax_test,
                    truth_train=dataset_train.ref[indicator], truth_test=dataset_test.ref[indicator],
                    n=0, info_dict=params)
 
-
 # ------------apparent F0/F distributions-------------
 
 
-eem_dataset_cleaned, outlier_indices = plot_all_f0f(
+fmax_ratio_train, eem_dataset_cleaned, outlier_indices = plot_all_f0f(
     model, dataset_train, 'B1C1', 'B1C2', 'TCC (million #/mL)',
     eps=0.02
 )
@@ -455,50 +459,50 @@ indicator = 'TCC (million #/mL)'
 
 param_grid = {
     'n_components': [4],
-    'init': ['ordinary_nmf'],
+    'init': ['ordinary_cp'],
     'gamma_W': [0],
     'gamma_A': [0],
-    'gamma_H': [2e4, 1e5, 5e5],
+    'gamma_H': [0],
     'prior_dict_H': [
         None,
-        {k: approx_components[k] for k in [0]},
-        {k: approx_components[k] for k in [1]},
-        {k: approx_components[k] for k in [2]},
-        {k: approx_components[k] for k in [3]},
-        {k: approx_components[k] for k in [0, 1]},
-        {k: approx_components[k] for k in [0, 2]},
-        {k: approx_components[k] for k in [0, 3]},
-        {k: approx_components[k] for k in [1, 2]},
-        {k: approx_components[k] for k in [1, 3]},
-        {k: approx_components[k] for k in [2, 3]},
-        {k: approx_components[k] for k in [0, 1, 2]},
-        {k: approx_components[k] for k in [0, 1, 3]},
-        {k: approx_components[k] for k in [0, 2, 3]},
-        {k: approx_components[k] for k in [1, 2, 3]},
-        {k: approx_components[k] for k in [0, 1, 2, 3]},
+        # {k: approx_components[k] for k in [0]},
+        # {k: approx_components[k] for k in [1]},
+        # {k: approx_components[k] for k in [2]},
+        # {k: approx_components[k] for k in [3]},
+        # {k: approx_components[k] for k in [0, 1]},
+        # {k: approx_components[k] for k in [0, 2]},
+        # {k: approx_components[k] for k in [0, 3]},
+        # {k: approx_components[k] for k in [1, 2]},
+        # {k: approx_components[k] for k in [1, 3]},
+        # {k: approx_components[k] for k in [2, 3]},
+        # {k: approx_components[k] for k in [0, 1, 2]},
+        # {k: approx_components[k] for k in [0, 1, 3]},
+        # {k: approx_components[k] for k in [0, 2, 3]},
+        # {k: approx_components[k] for k in [1, 2, 3]},
+        # {k: approx_components[k] for k in [0, 1, 2, 3]},
     ],
     # 'l1_ratio': [0],
     'lam': [0],
-    'max_iter_als': [100],
+    'max_iter_als': [500],
     'max_iter_nnls': [800],
-    # 'fit_rank_one': [
-    #     False,
-    #     {0: True,},
-    #     {1: True,},
-    #     {2: True,},
-    #     {3: True,},
-    #     {0: True, 1: True,},
-    #     {0: True, 2: True,},
-    #     {0: True, 3: True,},
-    #     {1: True, 2: True,},
-    #     {1: True, 3: True,},
-    #     {2: True, 3: True,},
-    #     {0: True, 1: True, 2: True,},
-    #     {0: True, 1: True, 3: True,},
-    #     {0: True, 2: True, 3: True,},
-    #     {1: True, 2: True, 3: True,},
-    #     {0: True, 1: True, 2: True, 3: True,},
-    # ]
+    'fit_rank_one': [
+        # False,
+        # {0: True,},
+        # {1: True,},
+        # {2: True,},
+        # {3: True,},
+        # {0: True, 1: True,},
+        # {0: True, 2: True,},
+        # {0: True, 3: True,},
+        # {1: True, 2: True,},
+        # {1: True, 3: True,},
+        # {2: True, 3: True,},
+        {0: True, 1: True, 2: True,},
+        {0: True, 1: True, 3: True,},
+        {0: True, 2: True, 3: True,},
+        {1: True, 2: True, 3: True,},
+        {0: True, 1: True, 2: True, 3: True,},
+    ]
 }
 
 
@@ -533,7 +537,7 @@ def all_split_half_combinations(lst):
 param_combinations = get_param_combinations(param_grid)
 dataset_train_splits = []
 dataset_train_unquenched, _ = dataset_train.filter_by_index('B1C1', None, copy=True)
-initial_sub_eem_datasets_unquenched = dataset_train_unquenched.splitting(n_split=4, random_state=42)
+initial_sub_eem_datasets_unquenched = dataset_train_unquenched.splitting(n_split=1, random_state=42)
 dataset_train_quenched, _ = dataset_train.filter_by_index('B1C2', None, copy=True)
 for subset in initial_sub_eem_datasets_unquenched:
     pos = [dataset_train_unquenched.index.index(idx) for idx in subset.index]
@@ -602,7 +606,7 @@ for k, p in enumerate(param_combinations):
         # plot_fmax_vs_truth(fmax_train=fmax_train, fmax_test=fmax_test,
         #                    truth_train=d_train.ref[indicator], truth_test=d_test.ref[indicator],
         #                    n=0, info_dict=p)
-        fmax_ratio, _,  _ = plot_all_f0f(model, d_train, 'B1C1', 'B1C2', 'TCC (million #/mL)', plot=False)
+        fmax_ratio, _, _ = plot_all_f0f(model, d_train, 'B1C1', 'B1C2', 'TCC (million #/mL)', plot=False)
         for rr in range(len(components_list)):
             components_list[rr].append(model.components[rr].reshape(-1))
             fmax_ratio_list[rr].append(fmax_ratio[:, rr])
@@ -611,20 +615,66 @@ for k, p in enumerate(param_combinations):
     param_combinations[k]['r2_test'] = r2_test
     param_combinations[k]['rmse_test'] = rmse_test
     for z in range(len(components_list)):
-        param_combinations[k][f'C{z+1} similarities'] = mean_pairwise_correlation(components_list[z])
+        param_combinations[k][f'C{z + 1} similarities'] = mean_pairwise_correlation(components_list[z])
     for z in range(len(components_list)):
-        param_combinations[k][f'C{z+1} fmax ratios ANOVA F'] = f_oneway(*fmax_ratio_list[z])[0]
+        param_combinations[k][f'C{z + 1} fmax ratios ANOVA F'] = f_oneway(*fmax_ratio_list[z])[0]
     for z in range(len(components_list)):
-        param_combinations[k][f'C{z+1} fmax ratios ANOVA p'] = f_oneway(*fmax_ratio_list[z])[1]
+        param_combinations[k][f'C{z + 1} fmax ratios ANOVA p'] = f_oneway(*fmax_ratio_list[z])[1]
     for z in range(len(components_list)):
-        param_combinations[k][f'C{z+1} fmax ratios H-test H'] = kruskal(*fmax_ratio_list[z])[0]
+        param_combinations[k][f'C{z + 1} fmax ratios H-test H'] = kruskal(*fmax_ratio_list[z])[0]
     for z in range(len(components_list)):
-        param_combinations[k][f'C{z+1} fmax ratios H-test p'] = kruskal(*fmax_ratio_list[z])[1]
+        param_combinations[k][f'C{z + 1} fmax ratios H-test p'] = kruskal(*fmax_ratio_list[z])[1]
     for z in range(len(components_list)):
-        param_combinations[k][f'C{z+1} fmax ratios mean variance'] = np.mean([np.var(group, ddof=1) for group in fmax_ratio_list[z]])
+        param_combinations[k][f'C{z + 1} fmax ratios mean variance'] = np.mean(
+            [np.var(group, ddof=1) for group in fmax_ratio_list[z]])
     components_lists_all.append(components_list)
 
 param_combinations_df = pd.DataFrame(param_combinations)
+
+n_is_outlier_train_all = []
+n_is_outlier_test_all = []
+for k, p in enumerate(param_combinations):
+    n_is_outlier_train = pd.Series(np.zeros(len(dataset_train.index)), index=dataset_train.index, dtype=int)
+    n_is_outlier_test = pd.Series(np.zeros(len(dataset_train.index)), index=dataset_train.index, dtype=int)
+    for j, (a, b) in enumerate(splits):
+        d_train = combine_eem_datasets(a)
+        d_test = combine_eem_datasets(b)
+        components = np.array([components_lists_all[k][r][j].reshape(d_train.eem_stack.shape[1:]) for r in range(p['n_components'])])
+        plot_eem_stack(components, d_train.ex_range, d_train.em_range, titles=[f'C{i + 1}' for i in range(p['n_components'])])
+    #     _, _, eem_re_train = eems_fit_components(d_train.eem_stack,
+    #                                              components,
+    #                                              fit_intercept=False)
+    #     _, _, eem_re_test = eems_fit_components(d_test.eem_stack,
+    #                                             components,
+    #                                             fit_intercept=False)
+    #
+    #     res_train = d_train.eem_stack - eem_re_train
+    #     n_pixels = res_train.shape[1] * res_train.shape[2]
+    #     error_train = np.sqrt(np.sum(res_train ** 2, axis=(1, 2)) / n_pixels)
+    #     outlier_indices_train = np.where(zscore(error_train) > 2)[0]
+    #     outlier_indices_train = np.array([d_train.index[i] for i in outlier_indices_train])
+    #     n_is_outlier_train.loc[outlier_indices_train] += 1
+    #
+    #     res_test = d_test.eem_stack - eem_re_test
+    #     n_pixels = res_test.shape[1] * res_test.shape[2]
+    #     error_test = np.sqrt(np.sum(res_test ** 2, axis=(1, 2)) / n_pixels)
+    #     outlier_indices_test = np.where(zscore(error_test) > 2)[0]
+    #     outlier_indices_test = np.array([d_test.index[i] for i in outlier_indices_test])
+    #     n_is_outlier_test.loc[outlier_indices_test] += 1
+    #
+    # n_is_outlier_train_all.append(n_is_outlier_train)
+    # n_is_outlier_test_all.append(n_is_outlier_test)
+
+n_is_outlier_train_df = pd.concat(n_is_outlier_train_all, axis=1)
+n_is_outlier_test_df = pd.concat(n_is_outlier_test_all, axis=1)
+samples_to_remove = n_is_outlier_train_df.index[n_is_outlier_train_df.sum(axis=1) >= 72].to_list()
+outlier_unquenched = [i for i, idx in enumerate(dataset_train_unquenched.index) if idx in samples_to_remove]
+outlier_quenched = [i for i, idx in enumerate(dataset_train_quenched.index) if idx in samples_to_remove]
+number_outliers = list(set(outlier_quenched + outlier_unquenched))
+qualified_indices = [idx for i, idx in enumerate(dataset_train_unquenched.index) if i not in number_outliers] + \
+                     [idx for i, idx in enumerate(dataset_train_quenched.index) if i not in number_outliers]
+eem_dataset_october_cleaned, _ = dataset_train.filter_by_index(None, qualified_indices, copy=True)
+
 
 # with open("C:/PhD/publication/2025_prior_knowledge/param_combinations.pkl",
 #           'wb') as file:
@@ -637,6 +687,12 @@ param_combinations_df = pd.DataFrame(param_combinations)
 # with open("C:/PhD/publication/2025_prior_knowledge/param_combinations.pkl",
 #           'rb') as file:
 #     param_combinations_df = pickle.load(file)
+#
+# with open("C:/PhD/publication/2025_prior_knowledge/components_lists_all.pkl",
+#           'rb') as file:
+#     components_lists_all = pickle.load(file)
+
+
 #
 # r = 5
 # gamma_sample_list, lam_list, rmse_list = [], [], []
@@ -817,8 +873,11 @@ model_opt, approx_components = auto_nmf(
     gamma_H=0
 )
 
-approx_components_np = np.array([approx_components[i].reshape([dataset_train.eem_stack.shape[1], dataset_train.eem_stack.shape[2]]) for i in range(model_opt.n_components)])
-plot_eem_stack(approx_components_np, model_opt.ex_range, model_opt.em_range, titles=[f'C{i + 1}' for i in range(model_opt.n_components)],)
+approx_components_np = np.array(
+    [approx_components[i].reshape([dataset_train.eem_stack.shape[1], dataset_train.eem_stack.shape[2]]) for i in
+     range(model_opt.n_components)])
+plot_eem_stack(approx_components_np, model_opt.ex_range, model_opt.em_range,
+               titles=[f'C{i + 1}' for i in range(model_opt.n_components)], )
 #
 # with open("C:/PhD/publication/2025_prior_knowledge/approx_components.pkl",
 #           'wb') as file:
