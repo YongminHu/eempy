@@ -730,7 +730,7 @@ target_name = 'DOC'
 hist_fmax_ratio = plt.figure()
 for r_i in r_list:
     model = PARAFAC(n_components=r_i, init='svd', non_negativity=True,
-                    tf_normalization=True, sort_em=True, loadings_normalization='maximum')
+                    tf_normalization=True, sort_components_by_em=True, loadings_normalization='maximum')
     model.fit(dataset_train)
     target_test_re = dataset_train.ref[target_name]
     valid_indices_test_re = target_test_re.index[~target_test_re.isna()]
@@ -795,7 +795,7 @@ n_outliers = 40
 fmax_col = 2
 target_name = 'DOC'
 model = PARAFAC(n_components=r, init='svd', non_negativity=True,
-                tf_normalization=True, sort_em=True, loadings_normalization='maximum')
+                tf_normalization=True, sort_components_by_em=True, loadings_normalization='maximum')
 model.fit(dataset_train)
 target_train = dataset_train.ref[target_name]
 valid_indices_train = target_train.index[~target_train.isna()]

@@ -190,7 +190,7 @@ n_outliers = 40
 fmax_col = 2
 target_name = 'DOC (mg/L)'
 model = PARAFAC(n_components=r, init='svd', non_negativity=True,
-                tf_normalization=True, sort_em=True, loadings_normalization='maximum')
+                tf_normalization=True, sort_components_by_em=True, loadings_normalization='maximum')
 model.fit(dataset_train)
 
 # # # export model
@@ -1253,7 +1253,7 @@ n_outliers = 40
 fmax_col = [0, 1, 2, 3]
 target_name = 'DOC (mg/L)'
 model = PARAFAC(n_components=r, init='svd', non_negativity=True,
-                tf_normalization=True, sort_em=True, loadings_normalization='maximum')
+                tf_normalization=True, sort_components_by_em=True, loadings_normalization='maximum')
 model.fit(dataset_train)
 
 target_train = dataset_train.ref[target_name]

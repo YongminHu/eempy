@@ -1723,7 +1723,7 @@ class PARAFAC:
     loadings_normalization: str or None, {'sd', 'maximum', None}
         Type of normalization applied to loadings. if 'sd' is passed, the standard deviation will be normalized
         to 1. If 'maximum' is passed, the maximum will be normalized to 1. The scores will be adjusted accordingly.
-    sort_em: bool
+    sort_components_by_em: bool
         Whether to sort components by emission peak position from lowest to highest. If False is passed, the
         components will be sorted by the contribution to the total variance.
 
@@ -1752,7 +1752,7 @@ class PARAFAC:
     """
 
     def __init__(self, n_components, non_negativity=True, solver='hals', init='svd', custom_init=None,
-                 tf_normalization=False, loadings_normalization: Optional[str] = 'maximum', sort_em=True,
+                 tf_normalization=False, loadings_normalization: Optional[str] = 'maximum', sort_components_by_em=True,
                  alpha_sample=0, alpha_ex=0, alpha_em=0, l1_ratio=1,
                  prior_dict_sample=None, prior_dict_ex=None, prior_dict_em=None,
                  gamma_sample=0, gamma_ex=0, gamma_em=0, prior_ref_components=None,
@@ -1767,7 +1767,7 @@ class PARAFAC:
         self.custom_init = custom_init
         self.tf_normalization = tf_normalization
         self.loadings_normalization = loadings_normalization
-        self.sort_em = sort_em
+        self.sort_components_by_em = sort_components_by_em
         self.solver = solver
         self.alpha_sample = alpha_sample
         self.alpha_ex = alpha_ex
@@ -1918,7 +1918,7 @@ class PARAFAC:
         nnls_fmax = a * components.max(axis=(1, 2))
         ex_loadings = pd.DataFrame(np.flipud(b), index=eem_dataset.ex_range)
         em_loadings = pd.DataFrame(c, index=eem_dataset.em_range)
-        if self.sort_em:
+        if self.sort_components_by_em:
             em_peaks = [c for c in em_loadings.idxmax()]
             peak_rank = list(enumerate(stats.rankdata(em_peaks)))
             order = [i[0] for i in sorted(peak_rank, key=lambda x: x[1])]
@@ -2545,7 +2545,7 @@ class EEMNMF:
     normalization: str, {'pixel_std'}:
         The normalization of EEMs before conducting NMF. 'pixel_std' normalizes the intensities of each pixel across
         all samples by standard deviation.
-    sort_em: bool,
+    sort_components_by_em: bool,
         Whether to sort components by emission peak position from lowest to highest. If False is passed, the
         components will be sorted by the contribution to the total variance.
 
@@ -2569,7 +2569,7 @@ class EEMNMF:
                  gamma_W=0, gamma_H=0, gamma_A=0, gamma_B=0, gamma_C=0, prior_ref_components=None,
                  idx_top=None, idx_bot=None, kw_top=None, kw_bot=None, lam=0,
                  fit_rank_one=False,
-                 normalization=None, sort_em=True, max_iter_als=100, max_iter_nnls=500, random_state=42):
+                 normalization=None, sort_components_by_em=True, max_iter_als=100, max_iter_nnls=500, random_state=42):
 
         # -----------Parameters-------------
         self.n_components = n_components
@@ -2597,7 +2597,7 @@ class EEMNMF:
         self.lam = lam
         self.fit_rank_one = fit_rank_one
         self.normalization = normalization
-        self.sort_em = sort_em
+        self.sort_components_by_em = sort_components_by_em
         self.max_iter_als = max_iter_als
         self.max_iter_nnls = max_iter_nnls
         self.random_state = random_state
@@ -2741,7 +2741,7 @@ class EEMNMF:
                                                fit_intercept=False, positive=True)
         nnls_score = pd.DataFrame(nnls_score, index=eem_dataset.index,
                                   columns=["component {i} NNLS-Fmax".format(i=i + 1) for i in range(self.n_components)])
-        if self.sort_em:
+        if self.sort_components_by_em:
             em_peaks = []
             for i in range(self.n_components):
                 flat_max_index = components[i].argmax()
@@ -3975,7 +3975,7 @@ def nmf_hals_prior(
         lam=0,
         fit_rank_one=False,
         component_shape=None,
-        max_iter_als=100,
+        max_iter_als=500,
         max_iter_nnls=500,
         tol=1e-6,
         eps=1e-8,
@@ -4067,7 +4067,7 @@ def nmf_hals_prior(
     if prior_ref_components is not None:
         prior_keys = list(prior_ref_components.keys())
         queries = np.array([prior_ref_components[k] for k in prior_keys])
-        cost_mat = cdist(queries, H, metric='correlation')
+        cost_mat = cdist(queries, H, metric='cosine')
         # run Hungarian algorithm
         query_idx, h_idx = linear_sum_assignment(cost_mat)
         query_idx = [prior_keys[i] for i in query_idx]
@@ -4330,7 +4330,7 @@ def nmf_hals_prior(
     if prior_ref_components is not None:
         prior_keys = list(prior_ref_components.keys())
         queries = np.array([prior_ref_components[k] for k in prior_keys])
-        cost_mat = cdist(queries, H, metric='correlation')
+        cost_mat = cdist(queries, H, metric='cosine')
         # run Hungarian algorithm
         query_idx, h_idx = linear_sum_assignment(cost_mat)
         query_idx = [prior_keys[i] for i in query_idx]

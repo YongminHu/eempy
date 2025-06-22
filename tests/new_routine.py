@@ -1,6 +1,7 @@
 import copy
 import pickle
 
+import numpy as np
 import pandas as pd
 from scipy.stats import zscore
 from eempy.read_data import read_eem_dataset, read_abs_dataset, read_eem, read_eem_dataset_from_json
@@ -172,41 +173,75 @@ def plot_all_components(eem_model):
                    titles=[f'C{i + 1}' for i in range(eem_model.n_components)])
 
 
+
+def get_param_combinations(param_grid):
+    keys = list(param_grid.keys())
+    values_product = product(*(param_grid[key] for key in keys))
+    return [dict(zip(keys, values)) for values in values_product]
+
+
+def mean_pairwise_correlation(vectors):
+    n = len(vectors)
+    corrs = [
+        abs(pearsonr(vectors[i], vectors[j])[0])
+        for i, j in combinations(range(n), 2)
+    ]
+    return np.mean(corrs)
+
+
+def all_split_half_combinations(lst):
+    n = len(lst) // 2
+    indices = range(len(lst))
+    result = []
+
+    for comb_indices in itertools.combinations(indices, n):
+        group1 = [lst[i] for i in comb_indices]
+        group2 = [lst[i] for i in indices if i not in comb_indices]
+        result.append((group1, group2))
+
+    return result
+
 # -------------------Step 1: Detection of Components Sensitive to Rank-One Constraints-------------------
 dataset_train = eem_dataset_october
 n_components = 4
-model_parafac = EEMNMF(
+model_standard = EEMNMF(
     n_components=n_components,
-    fit_rank_one={r: True for r in range(n_components)},
+    # fit_rank_one={r: True for r in range(n_components)},
     max_iter_nnls=500,
     max_iter_als=1000,
-    init='ordinary_cp',
+    init='ordinary_nmf',
     random_state=42,
     solver='hals',
     normalization=None,
+    sort_components_by_em=False,
     prior_ref_components=approx_components
 )
-model_parafac.fit(eem_dataset=dataset_train)
+model_standard.fit(eem_dataset=dataset_train)
+model_standard_components_dict = {r: model_standard.components[r].reshape(-1) for r in range(n_components)}
 cosine_sim_all = [{} for i in range(n_components)]
-plot_all_components(model_parafac)
+plot_all_components(model_standard)
 
 for r in range(n_components):
-    fit_rank_one = {r: True for r in [i for i in range(n_components) if i != r]}
+    # fit_rank_one = {r: True for r in [i for i in range(n_components) if i != r]}
+    fit_rank_one = {r: True}
     model = EEMNMF(
         n_components=n_components,
         fit_rank_one=fit_rank_one,
         max_iter_nnls=500,
         max_iter_als=1000,
-        init='ordinary_cp',
+        init='ordinary_nmf',
         random_state=42,
         solver='hals',
         normalization=None,
-        prior_ref_components=approx_components,
+        sort_components_by_em=False,
+        prior_ref_components=model_standard_components_dict,
     )
     model.fit(eem_dataset=dataset_train)
     for k in range(n_components):
         cosine_sim = cosine_similarity(model.components[k].flatten().reshape(1, -1),
-                                       model_parafac.components[k].flatten().reshape(1, -1))[0, 0]
+                                       model_standard.components[k].flatten().reshape(1, -1))[0, 0]
+        correlation_sim = np.corrcoef(model.components[k].flatten(),
+                                      model_standard.components[k].flatten())[0, 1]
         cosine_sim_all[r][k] = cosine_sim
     plot_all_components(model)
 
@@ -245,7 +280,7 @@ param_grid = {
     # 'l1_ratio': [0],
     'lam': [0],
     'max_iter_als': [500],
-    'max_iter_nnls': [800],
+    'max_iter_nnls': [1000],
     'fit_rank_one': [
         # False,
         # {0: True,},
@@ -259,46 +294,17 @@ param_grid = {
         # {1: True, 3: True,},
         # {2: True, 3: True,},
         {0: True, 1: True, 2: True,},
-        {0: True, 1: True, 3: True,},
-        {0: True, 2: True, 3: True,},
-        {1: True, 2: True, 3: True,},
-        {0: True, 1: True, 2: True, 3: True,},
+        # {0: True, 1: True, 3: True,},
+        # {0: True, 2: True, 3: True,},
+        # {1: True, 2: True, 3: True,},
+        # {0: True, 1: True, 2: True, 3: True,},
     ]
 }
-
-
-def get_param_combinations(param_grid):
-    keys = list(param_grid.keys())
-    values_product = product(*(param_grid[key] for key in keys))
-    return [dict(zip(keys, values)) for values in values_product]
-
-
-def mean_pairwise_correlation(vectors):
-    n = len(vectors)
-    corrs = [
-        abs(pearsonr(vectors[i], vectors[j])[0])
-        for i, j in combinations(range(n), 2)
-    ]
-    return np.mean(corrs)
-
-
-def all_split_half_combinations(lst):
-    n = len(lst) // 2
-    indices = range(len(lst))
-    result = []
-
-    for comb_indices in itertools.combinations(indices, n):
-        group1 = [lst[i] for i in comb_indices]
-        group2 = [lst[i] for i in indices if i not in comb_indices]
-        result.append((group1, group2))
-
-    return result
-
 
 param_combinations = get_param_combinations(param_grid)
 dataset_train_splits = []
 dataset_train_unquenched, _ = dataset_train.filter_by_index('B1C1', None, copy=True)
-initial_sub_eem_datasets_unquenched = dataset_train_unquenched.splitting(n_split=1, random_state=42)
+initial_sub_eem_datasets_unquenched = dataset_train_unquenched.splitting(n_split=6, random_state=42)
 dataset_train_quenched, _ = dataset_train.filter_by_index('B1C2', None, copy=True)
 for subset in initial_sub_eem_datasets_unquenched:
     pos = [dataset_train_unquenched.index.index(idx) for idx in subset.index]
@@ -324,7 +330,7 @@ for k, p in enumerate(param_combinations):
             random_state=42,
             # prior_dict_W=sample_prior,
             # prior_dict_H=approx_components,
-            sort_em=False,
+            sort_components_by_em=False,
             prior_ref_components=approx_components,
             idx_top=[i for i in range(len(d_train.index)) if 'B1C1' in d_train.index[i]],
             idx_bot=[i for i in range(len(d_train.index)) if 'B1C2' in d_train.index[i]],
