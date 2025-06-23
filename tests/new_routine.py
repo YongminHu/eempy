@@ -398,6 +398,14 @@ for k, p in enumerate(param_combinations):
 
 param_combinations_df = pd.DataFrame(param_combinations)
 
+with open("C:/PhD/publication/2025_prior_knowledge/param_combinations.pkl",
+          'wb') as file:
+    pickle.dump(param_combinations_df, file)
+
+with open("C:/PhD/publication/2025_prior_knowledge/components_lists_all.pkl",
+          'wb') as file:
+    pickle.dump(components_lists_all, file)
+
 n_is_outlier_train_all = []
 n_is_outlier_test_all = []
 for k, p in enumerate(param_combinations):
@@ -408,29 +416,29 @@ for k, p in enumerate(param_combinations):
         d_test = combine_eem_datasets(b)
         components = np.array([components_lists_all[k][r][j].reshape(d_train.eem_stack.shape[1:]) for r in range(p['n_components'])])
         plot_eem_stack(components, d_train.ex_range, d_train.em_range, titles=[f'C{i + 1}' for i in range(p['n_components'])])
-        _, _, eem_re_train = eems_fit_components(d_train.eem_stack,
-                                                 components,
-                                                 fit_intercept=False)
-        _, _, eem_re_test = eems_fit_components(d_test.eem_stack,
-                                                components,
-                                                fit_intercept=False)
-
-        res_train = d_train.eem_stack - eem_re_train
-        n_pixels = res_train.shape[1] * res_train.shape[2]
-        error_train = np.sqrt(np.sum(res_train ** 2, axis=(1, 2)) / n_pixels)
-        outlier_indices_train = np.where(zscore(error_train) > 2)[0]
-        outlier_indices_train = np.array([d_train.index[i] for i in outlier_indices_train])
-        n_is_outlier_train.loc[outlier_indices_train] += 1
-
-        res_test = d_test.eem_stack - eem_re_test
-        n_pixels = res_test.shape[1] * res_test.shape[2]
-        error_test = np.sqrt(np.sum(res_test ** 2, axis=(1, 2)) / n_pixels)
-        outlier_indices_test = np.where(zscore(error_test) > 2)[0]
-        outlier_indices_test = np.array([d_test.index[i] for i in outlier_indices_test])
-        n_is_outlier_test.loc[outlier_indices_test] += 1
-
-    n_is_outlier_train_all.append(n_is_outlier_train)
-    n_is_outlier_test_all.append(n_is_outlier_test)
+    #     _, _, eem_re_train = eems_fit_components(d_train.eem_stack,
+    #                                              components,
+    #                                              fit_intercept=False)
+    #     _, _, eem_re_test = eems_fit_components(d_test.eem_stack,
+    #                                             components,
+    #                                             fit_intercept=False)
+    #
+    #     res_train = d_train.eem_stack - eem_re_train
+    #     n_pixels = res_train.shape[1] * res_train.shape[2]
+    #     error_train = np.sqrt(np.sum(res_train ** 2, axis=(1, 2)) / n_pixels)
+    #     outlier_indices_train = np.where(zscore(error_train) > 2)[0]
+    #     outlier_indices_train = np.array([d_train.index[i] for i in outlier_indices_train])
+    #     n_is_outlier_train.loc[outlier_indices_train] += 1
+    #
+    #     res_test = d_test.eem_stack - eem_re_test
+    #     n_pixels = res_test.shape[1] * res_test.shape[2]
+    #     error_test = np.sqrt(np.sum(res_test ** 2, axis=(1, 2)) / n_pixels)
+    #     outlier_indices_test = np.where(zscore(error_test) > 2)[0]
+    #     outlier_indices_test = np.array([d_test.index[i] for i in outlier_indices_test])
+    #     n_is_outlier_test.loc[outlier_indices_test] += 1
+    #
+    # n_is_outlier_train_all.append(n_is_outlier_train)
+    # n_is_outlier_test_all.append(n_is_outlier_test)
 
 n_is_outlier_train_df = pd.concat(n_is_outlier_train_all, axis=1)
 n_is_outlier_test_df = pd.concat(n_is_outlier_test_all, axis=1)
@@ -443,13 +451,7 @@ qualified_indices = [idx for i, idx in enumerate(dataset_train_unquenched.index)
 eem_dataset_october_cleaned, _ = dataset_train.filter_by_index(None, qualified_indices, copy=True)
 
 
-# with open("C:/PhD/publication/2025_prior_knowledge/param_combinations.pkl",
-#           'wb') as file:
-#     pickle.dump(param_combinations_df, file)
-#
-# with open("C:/PhD/publication/2025_prior_knowledge/components_lists_all.pkl",
-#           'wb') as file:
-#     pickle.dump(components_lists_all, file)
+
 #
 # with open("C:/PhD/publication/2025_prior_knowledge/param_combinations.pkl",
 #           'rb') as file:
