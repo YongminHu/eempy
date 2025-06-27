@@ -163,12 +163,13 @@ dataset_divisions = {
 
 dataset_train, _ = eem_dataset.filter_by_index(None,
                                                [
-                                                   '2024-07-13',
-                                                   '2024-07-15',
-                                                   '2024-07-16',
-                                                   '2024-07-17',
-                                                   '2024-07-18',
-                                                   '2024-07-19',
+                                                   # '2024-07-13',
+                                                   # '2024-07-15',
+                                                   # '2024-07-16',
+                                                   # '2024-07-17',
+                                                   # '2024-07-18',
+                                                   # '2024-07-19',
+                                                   '2024'
                                                ]
                                                )
 dataset_train_original, _ = dataset_train.filter_by_index(['B1C1'], None)
@@ -192,6 +193,7 @@ target_name = 'DOC (mg/L)'
 model = PARAFAC(n_components=r, init='svd', non_negativity=True,
                 tf_normalization=True, sort_components_by_em=True, loadings_normalization='maximum')
 model.fit(dataset_train)
+plot_loadings({0:model},)
 
 # # # export model
 # info_dict = {

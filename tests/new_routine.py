@@ -206,10 +206,10 @@ dataset_train = eem_dataset_october
 n_components = 4
 model_standard = EEMNMF(
     n_components=n_components,
-    # fit_rank_one={r: True for r in range(n_components)},
+    fit_rank_one={r: True for r in range(n_components)},
     max_iter_nnls=500,
     max_iter_als=1000,
-    init='ordinary_nmf',
+    init='ordinary_cp',
     random_state=42,
     solver='hals',
     normalization=None,
@@ -218,15 +218,16 @@ model_standard = EEMNMF(
 )
 model_standard.fit(eem_dataset=dataset_train)
 model_standard_components_dict = {r: model_standard.components[r].reshape(-1) for r in range(n_components)}
-cosine_sim_all = [{} for i in range(n_components)]
+correlation_sim_all = [{} for i in range(n_components)]
 plot_all_components(model_standard)
 
 for r in range(n_components):
     # fit_rank_one = {r: True for r in [i for i in range(n_components) if i != r]}
-    fit_rank_one = {r: True}
+    # fit_rank_one = {r: True}
+    prior_dict_H = {k: model_standard.components[k].reshape(-1) for k in range(n_components) if k != r}
     model = EEMNMF(
         n_components=n_components,
-        fit_rank_one=fit_rank_one,
+        fit_rank_one=False,
         max_iter_nnls=500,
         max_iter_als=1000,
         init='ordinary_nmf',
@@ -235,17 +236,19 @@ for r in range(n_components):
         normalization=None,
         sort_components_by_em=False,
         prior_ref_components=model_standard_components_dict,
+        prior_dict_H=prior_dict_H,
+        gamma_H=1e5,
     )
     model.fit(eem_dataset=dataset_train)
     for k in range(n_components):
-        cosine_sim = cosine_similarity(model.components[k].flatten().reshape(1, -1),
-                                       model_standard.components[k].flatten().reshape(1, -1))[0, 0]
+        # cosine_sim = cosine_similarity(model.components[k].flatten().reshape(1, -1),
+        #                                model_standard.components[k].flatten().reshape(1, -1))[0, 0]
         correlation_sim = np.corrcoef(model.components[k].flatten(),
                                       model_standard.components[k].flatten())[0, 1]
-        cosine_sim_all[r][k] = cosine_sim
+        correlation_sim_all[r][k] = correlation_sim
     plot_all_components(model)
 
-cosine_sim_all_df = pd.DataFrame(cosine_sim_all)
+correlation_sim_all_df = pd.DataFrame(correlation_sim_all)
 
 # -------------------Step 2: Detection of Outlier Samples with High Reconstruction Error-------------------
 
@@ -258,7 +261,7 @@ param_grid = {
     'init': ['ordinary_cp'],
     'gamma_W': [0],
     'gamma_A': [0],
-    'gamma_H': [0],
+    'gamma_H': [3e4],
     'prior_dict_H': [
         None,
         # {k: approx_components[k] for k in [0]},
@@ -271,7 +274,7 @@ param_grid = {
         # {k: approx_components[k] for k in [1, 2]},
         # {k: approx_components[k] for k in [1, 3]},
         # {k: approx_components[k] for k in [2, 3]},
-        # {k: approx_components[k] for k in [0, 1, 2]},
+        {k: approx_components[k] for k in [0, 1, 2]},
         # {k: approx_components[k] for k in [0, 1, 3]},
         # {k: approx_components[k] for k in [0, 2, 3]},
         # {k: approx_components[k] for k in [1, 2, 3]},
@@ -282,7 +285,7 @@ param_grid = {
     'max_iter_als': [500],
     'max_iter_nnls': [1000],
     'fit_rank_one': [
-        # False,
+        False,
         # {0: True,},
         # {1: True,},
         # {2: True,},
@@ -293,7 +296,7 @@ param_grid = {
         # {1: True, 2: True,},
         # {1: True, 3: True,},
         # {2: True, 3: True,},
-        {0: True, 1: True, 2: True,},
+        # {0: True, 1: True, 2: True,},
         # {0: True, 1: True, 3: True,},
         # {0: True, 2: True, 3: True,},
         # {1: True, 2: True, 3: True,},
@@ -331,7 +334,7 @@ for k, p in enumerate(param_combinations):
             # prior_dict_W=sample_prior,
             # prior_dict_H=approx_components,
             sort_components_by_em=False,
-            prior_ref_components=approx_components,
+            prior_ref_components=model_standard_components_dict,
             idx_top=[i for i in range(len(d_train.index)) if 'B1C1' in d_train.index[i]],
             idx_bot=[i for i in range(len(d_train.index)) if 'B1C2' in d_train.index[i]],
             normalization=None,
@@ -406,6 +409,15 @@ with open("C:/PhD/publication/2025_prior_knowledge/components_lists_all.pkl",
           'wb') as file:
     pickle.dump(components_lists_all, file)
 
+
+# with open("C:/PhD/publication/2025_prior_knowledge/param_combinations.pkl",
+#           'rb') as file:
+#     param_combinations_df = pickle.load(file)
+#
+# with open("C:/PhD/publication/2025_prior_knowledge/components_lists_all.pkl",
+#           'rb') as file:
+#     components_lists_all = pickle.load(file)
+
 n_is_outlier_train_all = []
 n_is_outlier_test_all = []
 for k, p in enumerate(param_combinations):
@@ -450,16 +462,6 @@ qualified_indices = [idx for i, idx in enumerate(dataset_train_unquenched.index)
                      [idx for i, idx in enumerate(dataset_train_quenched.index) if i not in number_outliers]
 eem_dataset_october_cleaned, _ = dataset_train.filter_by_index(None, qualified_indices, copy=True)
 
-
-
-#
-# with open("C:/PhD/publication/2025_prior_knowledge/param_combinations.pkl",
-#           'rb') as file:
-#     param_combinations_df = pickle.load(file)
-#
-# with open("C:/PhD/publication/2025_prior_knowledge/components_lists_all.pkl",
-#           'rb') as file:
-#     components_lists_all = pickle.load(file)
 
 # -------------------Step 3: Optimize hyperparameters with Split-half Cross-Validation-------------------
 

@@ -3187,7 +3187,7 @@ card_parafac_param = dbc.Card(
                             ),
                             dbc.Row([
                                 dbc.Col(
-                                    dbc.Label("Optimizer"), width={'size': 1}
+                                    dbc.Label("Solver"), width={'size': 1}
                                 ),
                                 dbc.Col(
                                     dcc.Dropdown(
@@ -3195,7 +3195,7 @@ card_parafac_param = dbc.Card(
                                             {'label': 'Multiplicative update', 'value': 'mu'},
                                             {'label': 'Hierarchical ALS', 'value': 'hals'},
                                         ],
-                                        id='parafac-optimizer', value='mu'),
+                                        id='parafac-solver', value='hals'),
                                     width={'size': 2}
                                 ),
                                 dbc.Col(
@@ -3595,7 +3595,7 @@ page_parafac = html.Div([
         State('parafac-init-method', 'value'),
         State('parafac-nn-checkbox', 'value'),
         State('parafac-tf-checkbox', 'value'),
-        State('parafac-optimizer', 'value'),
+        State('parafac-solver', 'value'),
         State('parafac-validations', 'value'),
         State('eem-dataset', 'data')
     ]
@@ -3739,7 +3739,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                     dbc.Col(
                                         [
                                             dcc.Graph(figure=plot_loadings({f'{r}-component': parafac_r},
-                                                                           plot_tool='plotly', n_cols=3,
+                                                                           plot_tool='plotly', n_cols=4,
                                                                            display=False),
                                                       config={'autosizable': False}
                                                       )
@@ -3788,11 +3788,11 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                 [
                                     dbc.Col(
                                         dcc.Graph(
-                                            figure=plot_eem(parafac_r.components[3 * i],
+                                            figure=plot_eem(parafac_r.components[4 * i],
                                                             ex_range=parafac_r.ex_range,
                                                             em_range=parafac_r.em_range,
                                                             vmin=0 if np.min(
-                                                                parafac_r.components[3 * i]) > -1e-3 else None,
+                                                                parafac_r.components[4 * i]) > -1e-3 else None,
                                                             vmax=None,
                                                             auto_intensity_range=False,
                                                             plot_tool='plotly',
@@ -3801,10 +3801,10 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                                             axis_label_font_size=14,
                                                             cbar_font_size=12,
                                                             title_font_size=16,
-                                                            title=f'C{3 * i + 1}',
+                                                            title=f'C{4 * i + 1}',
                                                             fix_aspect_ratio=True if 'aspect_one' in eem_graph_options else False,
                                                             rotate=True if 'rotate' in eem_graph_options else False,
-                                                            ) if 3 * i + 1 <= r else go.Figure(
+                                                            ) if 4 * i + 1 <= r else go.Figure(
                                                 layout={'width': 400, 'height': 300}),
                                             style={'width': '500', 'height': '500'}
                                         ),

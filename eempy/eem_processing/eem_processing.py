@@ -1828,10 +1828,12 @@ class PARAFAC:
                 if np.isnan(eem_stack_tf).any():
                     mask = np.where(np.isnan(eem_stack_tf), 0, 1)
                     cptensors = parafac(eem_stack_tf, rank=self.n_components, mask=mask, init=self.init,
-                                        n_iter_max=self.max_iter_als, tol=self.tol)
+                                        n_iter_max=self.max_iter_als,
+                                        tol=self.tol)
                 else:
                     cptensors = parafac(eem_stack_tf, rank=self.n_components, init=self.init,
-                                        n_iter_max=self.max_iter_als, tol=self.tol)
+                                        n_iter_max=self.max_iter_als,
+                                        tol=self.tol)
                 a, b, c = cptensors[1]
             else:
                 if np.isnan(eem_stack_tf).any():
@@ -1839,11 +1841,13 @@ class PARAFAC:
                     if self.solver == 'hals':
                         cptensors = non_negative_parafac_hals(eem_stack_tf, rank=self.n_components, mask=mask,
                                                               init=self.init,
-                                                              n_iter_max=self.max_iter_als, tol=self.tol)
+                                                              n_iter_max=self.max_iter_als,
+                                                              tol=self.tol)
                     elif self.solver == 'mu':
                         cptensors = non_negative_parafac(eem_stack_tf, rank=self.n_components, mask=mask,
                                                          init=self.init,
-                                                         n_iter_max=self.max_iter_als, tol=self.tol)
+                                                         n_iter_max=self.max_iter_als,
+                                                         tol=self.tol)
                     a, b, c = cptensors[1]
                 else:
                     if self.solver == 'hals':
@@ -1910,7 +1914,7 @@ class PARAFAC:
             components[r, :, :] = component
         if self.tf_normalization:
             fmax = pd.DataFrame(a * tf_weights[:, np.newaxis])
-            self.beta = update_beta(fmax.to_numpy(), self.idx_top, self.idx_bot)
+            self.beta = update_beta(fmax.to_numpy(), self.idx_top, self.idx_bot) if self.beta is not None else None
         else:
             fmax = pd.DataFrame(a)
         a, _, _ = eems_fit_components(eem_dataset.eem_stack, components, fit_intercept=False, positive=True)
@@ -4067,7 +4071,7 @@ def nmf_hals_prior(
     if prior_ref_components is not None:
         prior_keys = list(prior_ref_components.keys())
         queries = np.array([prior_ref_components[k] for k in prior_keys])
-        cost_mat = cdist(queries, H, metric='cosine')
+        cost_mat = cdist(queries, H, metric='correlation')
         # run Hungarian algorithm
         query_idx, h_idx = linear_sum_assignment(cost_mat)
         query_idx = [prior_keys[i] for i in query_idx]
@@ -4330,7 +4334,7 @@ def nmf_hals_prior(
     if prior_ref_components is not None:
         prior_keys = list(prior_ref_components.keys())
         queries = np.array([prior_ref_components[k] for k in prior_keys])
-        cost_mat = cdist(queries, H, metric='cosine')
+        cost_mat = cdist(queries, H, metric='correlation')
         # run Hungarian algorithm
         query_idx, h_idx = linear_sum_assignment(cost_mat)
         query_idx = [prior_keys[i] for i in query_idx]

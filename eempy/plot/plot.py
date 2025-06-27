@@ -531,8 +531,8 @@ def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()
         fig = make_subplots(rows=n_rows, cols=n_cols, shared_xaxes=False, shared_yaxes=True,
                             subplot_titles=set(component_labels_dict.values()) if component_labels_dict
                             else [f'C{i + 1}' for i in range(n_tot_components)],
-                            horizontal_spacing=0.2 - 0.008 * n_cols,
-                            vertical_spacing=0.2)
+                            horizontal_spacing=0.15 - 0.008 * n_cols,
+                            vertical_spacing=0.25)
 
         for k, (model_name, model) in enumerate(parafac_models_dict.items()):
             for i in range(model.n_components):
