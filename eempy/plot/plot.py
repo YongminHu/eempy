@@ -192,7 +192,7 @@ def plot_eem_stack(
     eem_stack: np.ndarray,
     ex_range: np.ndarray,
     em_range: np.ndarray,
-    titles: list,
+    titles: list = None,
     n_cols: int = 2,
     auto_intensity_range: bool = True,
     scale_type: str = 'linear',  # 'linear' or 'log'
@@ -297,7 +297,8 @@ def plot_eem_stack(
         )
         ims.append(im)
 
-        ax.set_title(titles[i], fontsize=axis_label_font_size)
+        if titles:
+            ax.set_title(titles[i], fontsize=axis_label_font_size)
         ax.set_xlabel('Emission wavelength [nm]' if not rotate else 'Excitation wavelength [nm]', fontsize=axis_label_font_size)
         ax.set_ylabel('Excitation wavelength [nm]' if not rotate else 'Emission wavelength [nm]', fontsize=axis_label_font_size)
         ax.tick_params(labelsize=axis_ticks_font_size)
@@ -611,6 +612,41 @@ def plot_fmax(table, component_labels=None, display=True, yaxis_title='Fmax', la
         fig.show()
 
     return fig
+
+
+def plot_error(error, bins='auto', display=True):
+    series = error.iloc[:, 0]
+
+    bin_edges = np.histogram_bin_edges(series, bins=bins)
+    bin_indices = pd.cut(series, bins=bin_edges, include_lowest=True)
+
+    hover_texts = bin_indices.groupby(bin_indices).apply(lambda x: '<br>'.join(map(str, x.index)))
+
+    # Count values per bin
+    bin_counts = bin_indices.value_counts().sort_index()
+
+    # Midpoints for x-axis
+    bin_midpoints = [(interval.left + interval.right) / 2 for interval in bin_counts.index]
+
+    # Build plot
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=bin_midpoints,
+        y=bin_counts.values,
+        hovertext=hover_texts.values,
+        hoverinfo='text'
+    ))
+    fig.update_layout(
+        xaxis_title=error.columns[0],
+        yaxis_title='Count',
+        title='Histogram with Sample Indices on Hover'
+    )
+
+    if display:
+        fig.show()
+
+    return fig
+
 
 def plot_reconstruction_error(table, bar_col_name, display=True, yaxis_scatter_title='Reconstruction error',
                               yaxis_bar_title='Reconstruction error reduction', labels=None):

@@ -14,6 +14,7 @@ from sklearn.metrics import r2_score
 from sklearn.cluster import DBSCAN
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.stats import f_oneway, kruskal
+from statsmodels import robust
 
 np.random.seed(42)
 
@@ -201,14 +202,25 @@ def all_split_half_combinations(lst):
 
     return result
 
+
+def rank_one_approximation(A):
+    U, S, VT = np.linalg.svd(A, full_matrices=False)
+    # Rank-one approximation: only keep the first singular value/vector
+    A1 = S[0] * np.outer(U[:, 0], VT[0, :])
+    # Score: ratio of first singular value squared to total energy
+    total_energy = np.sum(S**2)
+    rank_one_energy = S[0]**2
+    score = rank_one_energy / total_energy if total_energy > 0 else 0.0
+    return A1, score
+
 # -------------------Step 1: Detection of Components Sensitive to Rank-One Constraints-------------------
 dataset_train = eem_dataset_october
 n_components = 4
-model_standard = EEMNMF(
+model_parafac = EEMNMF(
     n_components=n_components,
     fit_rank_one={r: True for r in range(n_components)},
-    max_iter_nnls=500,
-    max_iter_als=1000,
+    max_iter_nnls=200,
+    max_iter_als=800,
     init='ordinary_cp',
     random_state=42,
     solver='hals',
@@ -216,26 +228,43 @@ model_standard = EEMNMF(
     sort_components_by_em=False,
     prior_ref_components=approx_components
 )
-model_standard.fit(eem_dataset=dataset_train)
-model_standard_components_dict = {r: model_standard.components[r].reshape(-1) for r in range(n_components)}
+model_parafac.fit(eem_dataset=dataset_train)
+model_parafac_components_dict = {r: model_parafac.components[r].reshape(-1) for r in range(n_components)}
 correlation_sim_all = [{} for i in range(n_components)]
-plot_all_components(model_standard)
+plot_all_components(model_parafac)
+
+model_nmf = EEMNMF(
+    n_components=n_components,
+    fit_rank_one=False,
+    max_iter_nnls=200,
+    max_iter_als=500,
+    init='nndsvd',
+    random_state=42,
+    solver='hals',
+    normalization=None,
+    prior_ref_components=model_parafac_components_dict
+)
+model_nmf.fit(eem_dataset=dataset_train)
+plot_all_components(model_nmf)
+components_r1 = np.array([rank_one_approximation(model_nmf.components[i])[0] for i in range(n_components)])
+plot_eem_stack(components_r1, eem_dataset.ex_range, eem_dataset.em_range, titles=[f'C{i + 1} R1' for i in range(n_components)])
+model_nmf_components_r1_dict = {k: components_r1[k].reshape(-1) for k in range(n_components)}
 
 for r in range(n_components):
     # fit_rank_one = {r: True for r in [i for i in range(n_components) if i != r]}
     # fit_rank_one = {r: True}
-    prior_dict_H = {k: model_standard.components[k].reshape(-1) for k in range(n_components) if k != r}
+    prior_dict_H = {k: model_parafac.components[k].reshape(-1) for k in range(n_components) if k != r}
     model = EEMNMF(
         n_components=n_components,
         fit_rank_one=False,
-        max_iter_nnls=500,
-        max_iter_als=1000,
+        max_iter_nnls=200,
+        max_iter_als=800,
         init='ordinary_nmf',
         random_state=42,
         solver='hals',
         normalization=None,
         sort_components_by_em=False,
-        prior_ref_components=model_standard_components_dict,
+        prior_ref_components=model_parafac_components_dict,
         prior_dict_H=prior_dict_H,
         gamma_H=1e5,
     )
@@ -244,7 +273,7 @@ for r in range(n_components):
         # cosine_sim = cosine_similarity(model.components[k].flatten().reshape(1, -1),
         #                                model_standard.components[k].flatten().reshape(1, -1))[0, 0]
         correlation_sim = np.corrcoef(model.components[k].flatten(),
-                                      model_standard.components[k].flatten())[0, 1]
+                                      model_parafac.components[k].flatten())[0, 1]
         correlation_sim_all[r][k] = correlation_sim
     plot_all_components(model)
 
@@ -252,38 +281,68 @@ correlation_sim_all_df = pd.DataFrame(correlation_sim_all)
 
 # -------------------Step 2: Detection of Outlier Samples with High Reconstruction Error-------------------
 
+model = EEMNMF(
+        n_components=n_components,
+        fit_rank_one=False,
+        max_iter_nnls=200,
+        max_iter_als=500,
+        init='nndsvd',
+        random_state=42,
+        solver='hals',
+        normalization=None,
+        sort_components_by_em=False,
+        prior_ref_components=model_parafac_components_dict,
+        prior_dict_H={k: model_nmf_components_r1_dict[k] for k in [0, 1, 2]},
+        gamma_H=1e5,
+    )
+
+def fitting_outlier_detection(model, eem_dataset, zscore_threshold=3):
+    model_work = copy.deepcopy(model)
+    model_work.fit(eem_dataset=eem_dataset)
+    _, fmax, eem_re = model.predict(
+            eem_dataset,
+            fit_beta=True if model.lam > 0 and model.idx_bot is not None and model.idx_top is not None else False,
+            idx_top=[i for i in range(len(eem_dataset.index)) if 'B1C1' in eem_dataset.index[i]],
+            idx_bot=[i for i in range(len(eem_dataset.index)) if 'B1C2' in eem_dataset.index[i]],
+        )
+    res = eem_dataset.eem_stack - eem_re
+    n_pixels = res.shape[1] * res.shape[2]
+    rmse = np.sqrt(np.sum(res_train ** 2, axis=(1, 2)) / n_pixels)
+    median = np.median(rmse)
+    mad = robust.mad(rmse)
+    modified_z_scores = 0.6745 * (rmse - median) / mad
+    outlier_indices = np.where(modified_z_scores > zscore_threshold)[0]
+    outlier_indices = [eem_dataset.index[i] for i in outlier_indices]
+    return outlier_indices
+
+outlier_indices_train = [0]
+if outlier_indices_train:
+    outlier_indices_train = fitting_outlier_detection(model=model, eem_dataset=eem_dataset_october, zscore_threshold=3)
+
+    outlier_unquenched = [i for i, idx in enumerate(dataset_train_unquenched.index) if idx in outlier_indices_train]
+    outlier_quenched = [i for i, idx in enumerate(dataset_train_quenched.index) if idx in samples_to_remove]
+    number_outliers = list(set(outlier_quenched + outlier_unquenched))
+    qualified_indices = [idx for i, idx in enumerate(dataset_train_unquenched.index) if i not in number_outliers] + \
+                         [idx for i, idx in enumerate(dataset_train_quenched.index) if i not in number_outliers]
+    eem_dataset_october_cleaned, _ = dataset_train.filter_by_index(None, qualified_indices, copy=True)
+
 
 # ----------cross-validation & hyperparameter optimization-------
 dataset_train = eem_dataset_october
 
 param_grid = {
     'n_components': [4],
-    'init': ['ordinary_cp'],
+    'init': ['nndsvd'],
     'gamma_W': [0],
     'gamma_A': [0],
-    'gamma_H': [3e4],
+    'gamma_H': [1e5],
     'prior_dict_H': [
-        None,
-        # {k: approx_components[k] for k in [0]},
-        # {k: approx_components[k] for k in [1]},
-        # {k: approx_components[k] for k in [2]},
-        # {k: approx_components[k] for k in [3]},
-        # {k: approx_components[k] for k in [0, 1]},
-        # {k: approx_components[k] for k in [0, 2]},
-        # {k: approx_components[k] for k in [0, 3]},
-        # {k: approx_components[k] for k in [1, 2]},
-        # {k: approx_components[k] for k in [1, 3]},
-        # {k: approx_components[k] for k in [2, 3]},
-        {k: approx_components[k] for k in [0, 1, 2]},
-        # {k: approx_components[k] for k in [0, 1, 3]},
-        # {k: approx_components[k] for k in [0, 2, 3]},
-        # {k: approx_components[k] for k in [1, 2, 3]},
-        # {k: approx_components[k] for k in [0, 1, 2, 3]},
+        # None,
+        {k: model_nmf_components_r1_dict[k] for k in [0, 1, 2]},
     ],
-    # 'l1_ratio': [0],
     'lam': [0],
-    'max_iter_als': [500],
-    'max_iter_nnls': [1000],
+    'max_iter_als': [100],
+    'max_iter_nnls': [500],
     'fit_rank_one': [
         False,
         # {0: True,},
@@ -307,7 +366,7 @@ param_grid = {
 param_combinations = get_param_combinations(param_grid)
 dataset_train_splits = []
 dataset_train_unquenched, _ = dataset_train.filter_by_index('B1C1', None, copy=True)
-initial_sub_eem_datasets_unquenched = dataset_train_unquenched.splitting(n_split=6, random_state=42)
+initial_sub_eem_datasets_unquenched = dataset_train_unquenched.splitting(n_split=4, random_state=42)
 dataset_train_quenched, _ = dataset_train.filter_by_index('B1C2', None, copy=True)
 for subset in initial_sub_eem_datasets_unquenched:
     pos = [dataset_train_unquenched.index.index(idx) for idx in subset.index]
@@ -321,10 +380,12 @@ splits = all_split_half_combinations(dataset_train_splits)
 components_lists_all = []
 
 for k, p in enumerate(param_combinations):
+    print(f"param_combinations: {k + 1};")
     r2_train, r2_test, rmse_train, rmse_test = 0, 0, 0, 0
     components_list = [[] for i in range(p['n_components'])]
     fmax_ratio_list = [[] for i in range(p['n_components'])]
     for j, (a, b) in enumerate(splits):
+        print(f"split: {j + 1}; ")
         d_train = combine_eem_datasets(a)
         d_test = combine_eem_datasets(b)
         sample_prior = {0: d_train.ref['TCC (million #/mL)']}
@@ -334,7 +395,7 @@ for k, p in enumerate(param_combinations):
             # prior_dict_W=sample_prior,
             # prior_dict_H=approx_components,
             sort_components_by_em=False,
-            prior_ref_components=model_standard_components_dict,
+            prior_ref_components=model_nmf_components_r1_dict,
             idx_top=[i for i in range(len(d_train.index)) if 'B1C1' in d_train.index[i]],
             idx_bot=[i for i in range(len(d_train.index)) if 'B1C2' in d_train.index[i]],
             normalization=None,
@@ -399,6 +460,7 @@ for k, p in enumerate(param_combinations):
             [np.var(group, ddof=1) for group in fmax_ratio_list[z]])
     components_lists_all.append(components_list)
 
+
 param_combinations_df = pd.DataFrame(param_combinations)
 
 with open("C:/PhD/publication/2025_prior_knowledge/param_combinations.pkl",
@@ -427,30 +489,30 @@ for k, p in enumerate(param_combinations):
         d_train = combine_eem_datasets(a)
         d_test = combine_eem_datasets(b)
         components = np.array([components_lists_all[k][r][j].reshape(d_train.eem_stack.shape[1:]) for r in range(p['n_components'])])
-        plot_eem_stack(components, d_train.ex_range, d_train.em_range, titles=[f'C{i + 1}' for i in range(p['n_components'])])
-    #     _, _, eem_re_train = eems_fit_components(d_train.eem_stack,
-    #                                              components,
-    #                                              fit_intercept=False)
-    #     _, _, eem_re_test = eems_fit_components(d_test.eem_stack,
-    #                                             components,
-    #                                             fit_intercept=False)
-    #
-    #     res_train = d_train.eem_stack - eem_re_train
-    #     n_pixels = res_train.shape[1] * res_train.shape[2]
-    #     error_train = np.sqrt(np.sum(res_train ** 2, axis=(1, 2)) / n_pixels)
-    #     outlier_indices_train = np.where(zscore(error_train) > 2)[0]
-    #     outlier_indices_train = np.array([d_train.index[i] for i in outlier_indices_train])
-    #     n_is_outlier_train.loc[outlier_indices_train] += 1
-    #
-    #     res_test = d_test.eem_stack - eem_re_test
-    #     n_pixels = res_test.shape[1] * res_test.shape[2]
-    #     error_test = np.sqrt(np.sum(res_test ** 2, axis=(1, 2)) / n_pixels)
-    #     outlier_indices_test = np.where(zscore(error_test) > 2)[0]
-    #     outlier_indices_test = np.array([d_test.index[i] for i in outlier_indices_test])
-    #     n_is_outlier_test.loc[outlier_indices_test] += 1
-    #
-    # n_is_outlier_train_all.append(n_is_outlier_train)
-    # n_is_outlier_test_all.append(n_is_outlier_test)
+        # plot_eem_stack(components, d_train.ex_range, d_train.em_range, titles=[f'C{i + 1}' for i in range(p['n_components'])])
+        _, _, eem_re_train = eems_fit_components(d_train.eem_stack,
+                                                 components,
+                                                 fit_intercept=False)
+        _, _, eem_re_test = eems_fit_components(d_test.eem_stack,
+                                                components,
+                                                fit_intercept=False)
+
+        res_train = d_train.eem_stack - eem_re_train
+        n_pixels = res_train.shape[1] * res_train.shape[2]
+        error_train = np.sqrt(np.sum(res_train ** 2, axis=(1, 2)) / n_pixels)
+        outlier_indices_train = np.where(zscore(error_train) > 2)[0]
+        outlier_indices_train = np.array([d_train.index[i] for i in outlier_indices_train])
+        n_is_outlier_train.loc[outlier_indices_train] += 1
+
+        res_test = d_test.eem_stack - eem_re_test
+        n_pixels = res_test.shape[1] * res_test.shape[2]
+        error_test = np.sqrt(np.sum(res_test ** 2, axis=(1, 2)) / n_pixels)
+        outlier_indices_test = np.where(zscore(error_test) > 2)[0]
+        outlier_indices_test = np.array([d_test.index[i] for i in outlier_indices_test])
+        n_is_outlier_test.loc[outlier_indices_test] += 1
+
+    n_is_outlier_train_all.append(n_is_outlier_train)
+    n_is_outlier_test_all.append(n_is_outlier_test)
 
 n_is_outlier_train_df = pd.concat(n_is_outlier_train_all, axis=1)
 n_is_outlier_test_df = pd.concat(n_is_outlier_test_all, axis=1)

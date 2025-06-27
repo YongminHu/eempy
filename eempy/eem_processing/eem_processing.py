@@ -1561,8 +1561,8 @@ class EEMDataset:
         if mandatory_keywords is None and optional_keywords is None:
             return self.eem_stack, self.index, self.ref, self.cluster, []
 
-        if self.index is None:
-            raise ValueError('index is not defined')
+        if self.index is None or not self.index:
+            raise ValueError('index is not defined or empty in EEMDataset')
         if isinstance(mandatory_keywords, str):
             mandatory_keywords = [mandatory_keywords]
         if isinstance(optional_keywords, str):
@@ -1839,7 +1839,7 @@ class PARAFAC:
                 if np.isnan(eem_stack_tf).any():
                     mask = np.where(np.isnan(eem_stack_tf), 0, 1)
                     if self.solver == 'hals':
-                        cptensors = non_negative_parafac_hals(eem_stack_tf, rank=self.n_components, mask=mask,
+                        cptensors = non_negative_parafac_hals(eem_stack_tf, rank=self.n_components,
                                                               init=self.init,
                                                               n_iter_max=self.max_iter_als,
                                                               tol=self.tol)
@@ -2255,6 +2255,22 @@ def loadings_similarity(loadings1: pd.DataFrame, loadings2: pd.DataFrame, wavele
 
 
 def component_similarity(components1: np.ndarray, components2: np.ndarray):
+    """
+    Calculate the Pearson correlation coefficient between each pair of components of two PARAFAC or NMF models.
+
+    Parameters:
+    ----------
+    components1: np.ndarray
+        The first set of components. Each component is a 3D array (n_components, ex, em).
+    components2:
+        The second set of components. Each component is a 3D array (n_components, ex, em).
+
+    Returns:
+    -------
+    m_sim: pandas.DataFrame
+        The table of component similarities between each pair of components.
+
+    """
     m_sim = np.zeros([components1.shape[0], components2.shape[0]])
     for n2 in range(components2.shape[0]):
         for n1 in range(components1.shape[0]):
@@ -2466,7 +2482,7 @@ class SplitValidation:
         self.subset_specific_models = models
         return self
 
-    def compare(self):
+    def compare_parafac_loadings(self):
         """
         Calculate the similarities of ex/em loadings between PARAFAC models established on sub-datasets.
 
@@ -2499,6 +2515,30 @@ class SplitValidation:
         )
         similarities_em.index.name_train = 'Test'
         return similarities_ex, similarities_em
+
+    def compare_components(self):
+        """
+        Calculate the similarities of components between PARAFAC or NMF models established on sub-datasets.
+
+        Returns
+        -------
+        similarities_components: pandas.DataFrame
+            Similarities in components.
+        """
+        labels = sorted(self.subset_specific_models.keys())
+        similarities_components = {}
+        for k in range(int(len(labels) / 2)):
+            m1 = self.subset_specific_models[labels[k]]
+            m2 = self.subset_specific_models[labels[-1 - k]]
+            sims = component_similarity(m1.components, m2.components).to_numpy().diagonal()
+            pair_labels = '{m1} vs. {m2}'.format(m1=labels[k], m2=labels[-1 - k])
+            similarities_components[pair_labels] = sims
+        similarities_components = pd.DataFrame.from_dict(
+            similarities_components, orient='index',
+            columns=['Similarities in C{i}-ex'.format(i=i + 1) for i in range(self.rank)]
+        )
+        similarities_components.index.name_train = 'Test'
+        return similarities_components
 
 
 class EEMNMF:
@@ -2769,6 +2809,17 @@ class EEMNMF:
         self.eem_stack_reconstructed = eem_stack_reconstructed.reshape(eem_dataset.eem_stack.shape)
         self.ex_range = eem_dataset.ex_range
         self.em_range = eem_dataset.em_range
+        return self
+
+    def robust_fit(self, eem_dataset):
+        """
+
+        Parameters:
+        ----------
+            eem_dataset:
+
+        """
+
         return self
 
     def component_peak_locations(self):

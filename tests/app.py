@@ -1,4 +1,4 @@
-
+import copy
 import os.path
 
 import dash
@@ -11,7 +11,8 @@ import plotly.graph_objects as go
 import plotly.express as px
 from scipy.stats import pearsonr
 
-from eempy.plot import plot_eem, plot_abs, plot_loadings, plot_fmax, plot_dendrogram, plot_reconstruction_error
+from eempy.plot import (plot_eem, plot_abs, plot_loadings, plot_fmax, plot_dendrogram, plot_reconstruction_error,
+                        plot_error)
 from eempy.read_data import *
 from eempy.eem_processing import *
 from eempy.utils import str_string_to_list, num_string_to_list
@@ -3231,7 +3232,7 @@ card_parafac_param = dbc.Card(
     className='w-100'
 )
 
-#   -------------Layout of page #3
+#   -------------Layout of page parafac------------
 
 page_parafac = html.Div([
     dbc.Stack(
@@ -3245,8 +3246,8 @@ page_parafac = html.Div([
                     children=[
                         dcc.Tab(label='ex/em loadings', id='parafac-loadings'),
                         dcc.Tab(label='Components', id='parafac-components'),
-                        # dcc.Tab(label='Scores', id='parafac-scores'),
                         dcc.Tab(label='Fmax', id='parafac-fmax'),
+                        dcc.Tab(label='Reconstruction error', id='parafac-establishment-reconstruction-error'),
                         dcc.Tab(label='Variance explained', id='parafac-variance-explained'),
                         dcc.Tab(label='Core consistency', id='parafac-core-consistency'),
                         dcc.Tab(label='Leverage', id='parafac-leverage'),
@@ -3570,6 +3571,7 @@ page_parafac = html.Div([
         Output('parafac-components', 'children'),
         # Output('parafac-scores', 'children'),
         Output('parafac-fmax', 'children'),
+        Output('parafac-establishment-reconstruction-error', 'children'),
         Output('parafac-variance-explained', 'children'),
         Output('parafac-core-consistency', 'children'),
         Output('parafac-leverage', 'children'),
@@ -3603,14 +3605,14 @@ page_parafac = html.Div([
 def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, rank, init, nn,
                            tf, optimizer, validations, eem_dataset_dict):
     if n_clicks is None:
-        return (None, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None,
+        return (None, None, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None,
                 None)
     if not path_establishment:
         if eem_dataset_dict is None:
             message = (
                 'Error: No built EEM dataset detected. Please build an EEM dataset first in "EEM pre-processing" '
                 'section, or import an EEM dataset from file.')
-            return (message, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, None)
+            return (message, None, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, None)
         eem_dataset_establishment = EEMDataset(
             eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
                                 in eem_dataset_dict['eem_stack']]),
@@ -3624,7 +3626,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
     else:
         if not os.path.exists(path_establishment):
             message = ('Error: No such file or directory: ' + path_establishment)
-            return (message, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, None)
+            return (message, None, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, None)
         else:
             _, file_extension = os.path.splitext(path_establishment)
 
@@ -3658,6 +3660,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
     components_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     scores_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     fmax_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    reconstruction_error_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     variance_explained_tabs = dbc.Card(children=[])
     core_consistency_tabs = dbc.Card(children=[])
     leverage_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
@@ -3808,17 +3811,17 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                                 layout={'width': 400, 'height': 300}),
                                             style={'width': '500', 'height': '500'}
                                         ),
-                                        width={'size': 4},
+                                        width={'size': 3},
                                     ),
 
                                     dbc.Col(
                                         dcc.Graph(
-                                            figure=plot_eem(parafac_r.components[3 * i + 1],
+                                            figure=plot_eem(parafac_r.components[4 * i + 1],
                                                             ex_range=parafac_r.ex_range,
                                                             em_range=parafac_r.em_range,
                                                             vmin=0 if np.min(
                                                                 parafac_r.components[
-                                                                    3 * i + 1]) > -1e-3 else None,
+                                                                    4 * i + 1]) > -1e-3 else None,
                                                             vmax=None,
                                                             auto_intensity_range=False,
                                                             plot_tool='plotly',
@@ -3827,24 +3830,24 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                                             axis_label_font_size=14,
                                                             cbar_font_size=12,
                                                             title_font_size=16,
-                                                            title=f'C{3 * i + 2}',
+                                                            title=f'C{4 * i + 2}',
                                                             fix_aspect_ratio=True if 'aspect_one' in eem_graph_options else False,
                                                             rotate=True if 'rotate' in eem_graph_options else False,
-                                                            ) if 3 * i + 2 <= r else go.Figure(
+                                                            ) if 4 * i + 2 <= r else go.Figure(
                                                 layout={'width': 400, 'height': 300}),
                                             style={'width': '500', 'height': '500'}
                                         ),
-                                        width={'size': 4},
+                                        width={'size': 3},
                                     ),
 
                                     dbc.Col(
                                         dcc.Graph(
-                                            figure=plot_eem(parafac_r.components[3 * i + 2],
+                                            figure=plot_eem(parafac_r.components[4 * i + 2],
                                                             ex_range=parafac_r.ex_range,
                                                             em_range=parafac_r.em_range,
                                                             vmin=0 if np.min(
                                                                 parafac_r.components[
-                                                                    3 * i + 2]) > -1e-3 else None,
+                                                                    4 * i + 2]) > -1e-3 else None,
                                                             vmax=None,
                                                             auto_intensity_range=False,
                                                             plot_tool='plotly',
@@ -3853,56 +3856,44 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                                             axis_label_font_size=14,
                                                             cbar_font_size=12,
                                                             title_font_size=16,
-                                                            title=f'C{3 * i + 3}',
+                                                            title=f'C{4 * i + 3}',
                                                             fix_aspect_ratio=True if 'aspect_one' in eem_graph_options else False,
                                                             rotate=True if 'rotate' in eem_graph_options else False,
-                                                            ) if 3 * i + 3 <= r else go.Figure(),
+                                                            ) if 4 * i + 3 <= r else go.Figure(),
                                             style={'width': '500', 'height': '500'}
                                         ),
-                                        width={'size': 4},
+                                        width={'size': 3},
+                                    ),
+
+                                    dbc.Col(
+                                        dcc.Graph(
+                                            figure=plot_eem(parafac_r.components[4 * i + 3],
+                                                            ex_range=parafac_r.ex_range,
+                                                            em_range=parafac_r.em_range,
+                                                            vmin=0 if np.min(
+                                                                parafac_r.components[
+                                                                    4 * i + 3]) > -1e-3 else None,
+                                                            vmax=None,
+                                                            auto_intensity_range=False,
+                                                            plot_tool='plotly',
+                                                            display=False,
+                                                            figure_size=(5, 3.5),
+                                                            axis_label_font_size=14,
+                                                            cbar_font_size=12,
+                                                            title_font_size=16,
+                                                            title=f'C{4 * i + 4}',
+                                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options else False,
+                                                            rotate=True if 'rotate' in eem_graph_options else False,
+                                                            ) if 4 * i + 4 <= r else go.Figure(),
+                                            style={'width': '500', 'height': '500'}
+                                        ),
+                                        width={'size': 3},
                                     ),
                                 ]
                             ) for i in range(n_rows)
                         ],
                         style={'width': '90vw'}
                     ),
-                    style={'padding': '0', 'line-width': '100%'},
-                    selected_style={'padding': '0', 'line-width': '100%'}
-                    )
-        )
-
-        # scores
-        scores_tabs.children[0].children.append(
-            dcc.Tab(label=f'{r}-component',
-                    children=[
-                        html.Div([
-                            dbc.Row(
-                                [
-                                    dbc.Col(
-                                        [
-                                            dcc.Graph(figure=plot_fmax(parafac_r.score,
-                                                                       display=False
-                                                                       ),
-                                                      config={'autosizable': False},
-                                                      style={'width': 1700, 'height': 800}
-                                                      )
-                                        ]
-                                    )
-                                ]
-                            ),
-
-                            dbc.Row(
-                                [
-                                    dbc.Col(
-                                        [
-                                            dbc.Table.from_dataframe(parafac_r.score,
-                                                                     bordered=True, hover=True, index=True)
-                                        ]
-                                    )
-                                ]
-                            )
-                        ]),
-                    ],
                     style={'padding': '0', 'line-width': '100%'},
                     selected_style={'padding': '0', 'line-width': '100%'}
                     )
@@ -3934,6 +3925,43 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                     dbc.Col(
                                         [
                                             dbc.Table.from_dataframe(parafac_r.nnls_fmax,
+                                                                     bordered=True, hover=True, index=True)
+                                        ]
+                                    )
+                                ]
+                            )
+                        ]),
+                    ],
+                    style={'padding': '0', 'line-width': '100%'},
+                    selected_style={'padding': '0', 'line-width': '100%'}
+                    )
+        )
+
+        # scores
+        reconstruction_error_tabs.children[0].children.append(
+            dcc.Tab(label=f'{r}-component',
+                    children=[
+                        html.Div([
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dcc.Graph(figure=plot_error(parafac_r.sample_rmse(),
+                                                                       display=False
+                                                                       ),
+                                                      config={'autosizable': False},
+                                                      style={'width': 1700, 'height': 800}
+                                                      )
+                                        ]
+                                    )
+                                ]
+                            ),
+
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dbc.Table.from_dataframe(parafac_r.sample_rmse(),
                                                                      bordered=True, hover=True, index=True)
                                         ]
                                     )
@@ -4056,15 +4084,11 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
             )
 
         if 'split_half' in validations:
-            model_sv = PARAFAC(
-                n_components=r,
-                non_negativity=True if 'non_negative' in nn else False,
-                tf_normalization=True if 'tf_normalization' in tf else False,
-                               )
+            model_sv = copy.deepcopy(parafac_r)
             split_validation = SplitValidation(base_model=model_sv)
             split_validation.fit(eem_dataset_establishment)
             subset_specific_models = split_validation.subset_specific_models
-            similarities_ex, similarities_em = split_validation.compare()
+            similarities_ex, similarities_em = split_validation.compare_parafac_loadings()
             split_half_tabs.children[0].children.append(
                 dcc.Tab(label=f'{r}-component',
                         children=[
@@ -4194,9 +4218,9 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
     ref_options = [{'label': var, 'value': var} for var in valid_ref] if \
         (eem_dataset_establishment.ref is not None) else None
 
-    return (None, loadings_tabs, components_tabs, fmax_tabs, variance_explained_tabs, core_consistency_tabs,
-            leverage_tabs, split_half_tabs, 'Build model', model_options, None, model_options, None, ref_options,
-            None, parafac_models)
+    return (None, loadings_tabs, components_tabs, fmax_tabs, reconstruction_error_tabs, variance_explained_tabs,
+            core_consistency_tabs, leverage_tabs, split_half_tabs, 'Build model', model_options, None, model_options,
+            None, ref_options, None, parafac_models)
 
 
 # -----------Update reference selection dropdown
@@ -4639,10 +4663,11 @@ card_nmf_param = dbc.Card(
                                     ),
                                     dbc.Col(
                                         dcc.Dropdown(options=[
-                                            {'label': 'Coordinate Descent solver', 'value': 'cd'},
-                                            {'label': 'Multiplicative Update solver', 'value': 'mu'}
+                                            {'label': 'Coordinate Descent', 'value': 'cd'},
+                                            {'label': 'Multiplicative Update', 'value': 'mu'},
+                                            {'label': 'Hierarchical ALS', 'value': 'hals'},
                                         ],
-                                            value='cd', style={'width': '300px'}, id='nmf-solver'
+                                            value='hals', style={'width': '300px'}, id='nmf-solver'
                                         ),
                                         width={'size': 2}
                                     ),
@@ -4708,12 +4733,33 @@ card_nmf_param = dbc.Card(
 
                             dbc.Row([
                                 dbc.Col(
+                                    dbc.Label("max_iter_als"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='nmf-max-iter-als', type='number',
+                                              # placeholder='Multiple values possible, e.g., 3, 4',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=500),
+                                    width={'size': 2},
+                                ),
+
+                                dbc.Col(
+                                    dbc.Label("max_iter_nnls"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='nmf-max-iter-nnls', type='number',
+                                              # placeholder='Multiple values possible, e.g., 3, 4',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=200),
+                                    width={'size': 3},
+                                ),
+                            ]),
+
+                            dbc.Row([
+                                dbc.Col(
                                     dbc.Label("Validations"), width={'size': 1}
                                 ),
                                 dbc.Col(
                                     dcc.Dropdown(
                                         options=[
-                                            {'label': 'Residual', 'value': 'leverage'},
                                             {'label': 'Split-half validation', 'value': 'split_half'},
                                         ],
                                         multi=True, id='nmf-validations', value=[]),
@@ -4752,7 +4798,7 @@ page_nmf = html.Div([
                     children=[
                         dcc.Tab(label='Components', id='nmf-components'),
                         dcc.Tab(label='Fmax', id='nmf-fmax'),
-                        dcc.Tab(label='Residual', id='nmf-residual'),
+                        dcc.Tab(label='Reconstruction error', id='nmf-establishment-reconstruction-error'),
                         dcc.Tab(label='Split-half validation', id='nmf-split-half'),
                         dcc.Tab(
                             children=[
@@ -5066,7 +5112,7 @@ page_nmf = html.Div([
         Output('nmf-eem-dataset-establishment-message', 'children'),
         Output('nmf-components', 'children'),
         Output('nmf-fmax', 'children'),
-        Output('nmf-residual', 'children'),
+        Output('nmf-establishment-reconstruction-error', 'children'),
         Output('nmf-split-half', 'children'),
         Output('nmf-spinner', 'children'),
         Output('nmf-establishment-corr-model-selection', 'options'),
@@ -5092,12 +5138,14 @@ page_nmf = html.Div([
         State('nmf-alpha-w', 'value'),
         State('nmf-alpha-h', 'value'),
         State('nmf-l1-ratio', 'value'),
+        State('nmf-max-iter-als', 'value'),
+        State('nmf-max-iter-nnls', 'value'),
         State('nmf-validations', 'value'),
         State('eem-dataset', 'data')
     ]
 )
 def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, rank, solver, init,
-                       normalization, alpha_w, alpha_h, l1_ratio, validations, eem_dataset_dict):
+                       normalization, alpha_w, alpha_h, l1_ratio, n_iter_als, n_iter_nnls, validations, eem_dataset_dict):
     if n_clicks is None:
         return None, None, None, None, None, 'Build model', [], None, [], None, [], None, None
     if not path_establishment:
@@ -5150,7 +5198,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
     nmf_models = {}
     components_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     fmax_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
-    residual_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    reconstruction_error_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     split_half_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
 
     if eem_dataset_establishment.ref is not None:
@@ -5161,7 +5209,8 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
     for r in rank_list:
         nmf_r = EEMNMF(
             n_components=r, solver=solver, init=init, normalization=normalization[0] if normalization else None,
-            alpha_component=alpha_h, alpha_sample=alpha_w, l1_ratio=l1_ratio
+            alpha_component=alpha_h, alpha_sample=alpha_w, l1_ratio=l1_ratio, max_iter_als=n_iter_als,
+            max_iter_nnls=n_iter_nnls,
         )
         nmf_r.fit(eem_dataset_establishment)
         nmf_fit_params_r = {}
@@ -5229,11 +5278,11 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                 [
                                     dbc.Col(
                                         dcc.Graph(
-                                            figure=plot_eem(nmf_r.components[3 * i],
+                                            figure=plot_eem(nmf_r.components[4 * i],
                                                             ex_range=eem_dataset_establishment.ex_range,
                                                             em_range=eem_dataset_establishment.em_range,
                                                             vmin=0 if np.min(
-                                                                nmf_r.components[3 * i]) > -1e-3 else None,
+                                                                nmf_r.components[4 * i]) > -1e-3 else None,
                                                             vmax=None,
                                                             auto_intensity_range=False,
                                                             plot_tool='plotly',
@@ -5242,25 +5291,25 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                                             axis_label_font_size=14,
                                                             cbar_font_size=12,
                                                             title_font_size=16,
-                                                            title=f'C{3 * i + 1}',
+                                                            title=f'C{4 * i + 1}',
                                                             fix_aspect_ratio=True if 'aspect_one' in eem_graph_options
                                                             else False,
                                                             rotate=True if 'rotate' in eem_graph_options else False,
-                                                            ) if 3 * i + 1 <= r else go.Figure(
+                                                            ) if 4 * i + 1 <= r else go.Figure(
                                                 layout={'width': 400, 'height': 300}),
                                             style={'width': '500', 'height': '500'}
                                         ),
-                                        width={'size': 4},
+                                        width={'size': 3},
                                     ),
 
                                     dbc.Col(
                                         dcc.Graph(
-                                            figure=plot_eem(nmf_r.components[3 * i + 1],
+                                            figure=plot_eem(nmf_r.components[4 * i + 1],
                                                             ex_range=eem_dataset_establishment.ex_range,
                                                             em_range=eem_dataset_establishment.em_range,
                                                             vmin=0 if np.min(
                                                                 nmf_r.components[
-                                                                    3 * i + 1]) > -1e-3 else None,
+                                                                    4 * i + 1]) > -1e-3 else None,
                                                             vmax=None,
                                                             auto_intensity_range=False,
                                                             plot_tool='plotly',
@@ -5269,25 +5318,25 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                                             axis_label_font_size=14,
                                                             cbar_font_size=12,
                                                             title_font_size=16,
-                                                            title=f'C{3 * i + 2}',
+                                                            title=f'C{4 * i + 2}',
                                                             fix_aspect_ratio=True if 'aspect_one' in eem_graph_options
                                                             else False,
                                                             rotate=True if 'rotate' in eem_graph_options else False,
-                                                            ) if 3 * i + 2 <= r else go.Figure(
+                                                            ) if 4 * i + 2 <= r else go.Figure(
                                                 layout={'width': 400, 'height': 300}),
                                             style={'width': '500', 'height': '500'}
                                         ),
-                                        width={'size': 4},
+                                        width={'size': 3},
                                     ),
 
                                     dbc.Col(
                                         dcc.Graph(
-                                            figure=plot_eem(nmf_r.components[3 * i + 2],
+                                            figure=plot_eem(nmf_r.components[4 * i + 2],
                                                             ex_range=eem_dataset_establishment.ex_range,
                                                             em_range=eem_dataset_establishment.em_range,
                                                             vmin=0 if np.min(
                                                                 nmf_r.components[
-                                                                    3 * i + 2]) > -1e-3 else None,
+                                                                    4 * i + 2]) > -1e-3 else None,
                                                             vmax=None,
                                                             auto_intensity_range=False,
                                                             plot_tool='plotly',
@@ -5296,14 +5345,40 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                                             axis_label_font_size=14,
                                                             cbar_font_size=12,
                                                             title_font_size=16,
-                                                            title=f'C{3 * i + 3}',
+                                                            title=f'C{4 * i + 3}',
                                                             fix_aspect_ratio=True if 'aspect_one' in eem_graph_options
                                                             else False,
                                                             rotate=True if 'rotate' in eem_graph_options else False,
-                                                            ) if 3 * i + 3 <= r else go.Figure(),
+                                                            ) if 4 * i + 3 <= r else go.Figure(),
                                             style={'width': '500', 'height': '500'}
                                         ),
-                                        width={'size': 4},
+                                        width={'size': 3},
+                                    ),
+
+                                    dbc.Col(
+                                        dcc.Graph(
+                                            figure=plot_eem(nmf_r.components[4 * i + 3],
+                                                            ex_range=eem_dataset_establishment.ex_range,
+                                                            em_range=eem_dataset_establishment.em_range,
+                                                            vmin=0 if np.min(
+                                                                nmf_r.components[
+                                                                    4 * i + 3]) > -1e-3 else None,
+                                                            vmax=None,
+                                                            auto_intensity_range=False,
+                                                            plot_tool='plotly',
+                                                            display=False,
+                                                            figure_size=(5, 3.5),
+                                                            axis_label_font_size=14,
+                                                            cbar_font_size=12,
+                                                            title_font_size=16,
+                                                            title=f'C{4 * i + 4}',
+                                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options
+                                                            else False,
+                                                            rotate=True if 'rotate' in eem_graph_options else False,
+                                                            ) if 4 * i + 4 <= r else go.Figure(),
+                                            style={'width': '500', 'height': '500'}
+                                        ),
+                                        width={'size': 3},
                                     ),
                                 ]
                             ) for i in range(n_rows)
@@ -5320,32 +5395,6 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
             dcc.Tab(label=f'{r}-component',
                     children=[
                         html.Div([
-                            dbc.Row(
-                                [
-                                    dbc.Col(
-                                        [
-                                            dcc.Graph(figure=plot_fmax(nmf_r.nnls_fmax,
-                                                                       display=False
-                                                                       ),
-                                                      config={'autosizable': False},
-                                                      style={'width': 1700, 'height': 800}
-                                                      )
-                                        ]
-                                    )
-                                ]
-                            ),
-
-                            dbc.Row(
-                                [
-                                    dbc.Col(
-                                        [
-                                            dbc.Table.from_dataframe(nmf_r.nnls_fmax,
-                                                                     bordered=True, hover=True, index=True)
-                                        ]
-                                    )
-                                ]
-                            ),
-
                             dbc.Row(
                                 [
                                     dbc.Col(
@@ -5370,6 +5419,32 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                         ]
                                     )
                                 ]
+                            ),
+
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dcc.Graph(figure=plot_fmax(nmf_r.nnls_fmax,
+                                                                       display=False
+                                                                       ),
+                                                      config={'autosizable': False},
+                                                      style={'width': 1700, 'height': 800}
+                                                      )
+                                        ]
+                                    )
+                                ]
+                            ),
+
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dbc.Table.from_dataframe(nmf_r.nnls_fmax,
+                                                                     bordered=True, hover=True, index=True)
+                                        ]
+                                    )
+                                ]
                             )
                         ]),
                     ],
@@ -5378,11 +5453,94 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                     )
         )
 
+        reconstruction_error_tabs.children[0].children.append(
+            dcc.Tab(label=f'{r}-component',
+                    children=[
+                        html.Div([
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dcc.Graph(figure=plot_error(nmf_r.sample_rmse(),
+                                                                        display=False
+                                                                        ),
+                                                      config={'autosizable': False},
+                                                      style={'width': 1700, 'height': 800}
+                                                      )
+                                        ]
+                                    )
+                                ]
+                            ),
+
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dbc.Table.from_dataframe(nmf_r.sample_rmse(),
+                                                                     bordered=True, hover=True, index=True)
+                                        ]
+                                    )
+                                ]
+                            ),
+                        ]),
+                    ],
+                    style={'padding': '0', 'line-width': '100%'},
+                    selected_style={'padding': '0', 'line-width': '100%'}
+                    )
+        )
+
+        if 'split_half' in validations:
+            model_sv = copy.deepcopy(nmf_r)
+            split_validation = SplitValidation(base_model=model_sv)
+            split_validation.fit(eem_dataset_establishment)
+            subset_specific_models = split_validation.subset_specific_models
+            similarities_components = split_validation.compare_components()
+            split_half_tabs.children[0].children.append(
+                dcc.Tab(label=f'{r}-component',
+                        children=[
+                            html.Div([
+                                # dbc.Row(
+                                #     [
+                                #         dbc.Col(
+                                #             [
+                                #                 dcc.Graph(
+                                #                     figure=plot_loadings(subset_specific_models,
+                                #                                          n_cols=3,
+                                #                                          plot_tool='plotly',
+                                #                                          display=False,
+                                #                                          legend_pad=0.2),
+                                #                     config={'autosizable': False},
+                                #                 )
+                                #             ]
+                                #         )
+                                #     ]
+                                # ),
+
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            [
+                                                dbc.Table.from_dataframe(similarities_components,
+                                                                         bordered=True, hover=True, index=True,
+                                                                         )
+                                            ]
+                                        ),
+                                    ]
+                                ),
+
+                            ]),
+                        ],
+                        style={'padding': '0', 'line-width': '100%'},
+                        selected_style={'padding': '0', 'line-width': '100%'}
+                        )
+            )
+
+
     model_options = [{'label': '{r}-component'.format(r=r), 'value': r} for r in nmf_models.keys()]
     ref_options = [{'label': var, 'value': var} for var in valid_ref] if (
             eem_dataset_establishment.ref is not None) else []
 
-    return (None, components_tabs, fmax_tabs, residual_tabs, split_half_tabs, 'Build model', model_options, None,
+    return (None, components_tabs, fmax_tabs, reconstruction_error_tabs, split_half_tabs, 'Build model', model_options, None,
             ref_options, None, model_options, None, nmf_models)
 
 
