@@ -4,6 +4,7 @@ Author: Yongmin Hu (yongmin.hu@eawag.ch, yongminhu@outlook.com)
 Last update: 2024-07-03
 """
 from matplotlib import pyplot as plt
+from statsmodels import robust
 
 from eempy.utils import *
 import scipy.stats as stats
@@ -2811,7 +2812,7 @@ class EEMNMF:
         self.em_range = eem_dataset.em_range
         return self
 
-    def robust_fit(self, eem_dataset):
+    def robust_fit(self, eem_dataset, n_splits=4, zscore_threshold=3, max_iter_outlier_removal=2):
         """
 
         Parameters:
@@ -2819,8 +2820,85 @@ class EEMNMF:
             eem_dataset:
 
         """
+        eem_dataset_work = copy.deepcopy(eem_dataset)
+        n_iter = 0
+        while n_iter < max_iter_outlier_removal:
+            if self.kw_top is not None and self.kw_bot is not None:
+                assert eem_dataset_work.index is not None
+                self.idx_top = [i for i in range(len(eem_dataset_work.index)) if self.kw_top in eem_dataset_work.index[i]]
+                idx_top_names = [eem_dataset_work.index[i] for i in self.idx_top]
+                self.idx_bot = [i for i in range(len(eem_dataset_work.index)) if self.kw_bot in eem_dataset_work.index[i]]
+                idx_bot_names = [eem_dataset_work.index[i] for i in self.idx_bot]
+            else:
+                idx_top_names, idx_bot_names = None, None
+            eem_dataset_splits = []
+            if self.idx_top is not None and self.idx_bot is not None:
+                eem_dataset_top, _ = eem_dataset_work.filter_by_index(self.idx_top, None, copy=True)
+                eem_dataset_top_splits = eem_dataset_top.splitting(n_split=n_splits, random_state=self.random_state)
+                eem_dataset_bottom, _ = eem_dataset_work.filter_by_index(self.idx_bot, None, copy=True)
+                for subset in eem_dataset_top_splits:
+                    pos = [eem_dataset_top.index.index(idx) for idx in subset.index]
+                    bot_indices = [eem_dataset_bottom.index[idx] for idx in pos]
+                    sub_eem_dataset_bot, _ = eem_dataset_work.filter_by_index(None, bot_indices, copy=True)
+                    subset.sort_by_index()
+                    sub_eem_dataset_bot.sort_by_index()
+                    eem_dataset_splits.append(combine_eem_datasets([subset, sub_eem_dataset_bot]))
+            else:
+                eem_dataset_splits = eem_dataset_work.splitting(n_split=n_splits, random_state=self.random_state)
 
-        return self
+            n = len(eem_dataset_splits) // 2
+            indices = range(len(eem_dataset_splits))
+            splits = []
+            for comb_indices in itertools.combinations(indices, n):
+                group1 = [eem_dataset_splits[i] for i in comb_indices]
+                group2 = [eem_dataset_splits[i] for i in indices if i not in comb_indices]
+                splits.append((group1, group2))
+
+            average_z_score = pd.Series(np.zeros(len(eem_dataset_work.index)), index=eem_dataset_work.index, dtype=float)
+            for j, (a, b) in enumerate(splits):
+                split_train = combine_eem_datasets(a)
+                split_test = combine_eem_datasets(b)
+                self.fit(split_train)
+                _, fmax_train, eem_re_train = self.predict(
+                    split_train,
+                    fit_beta=True if self.lam > 0 and self.idx_bot is not None and self.idx_top is not None else False,
+                    idx_top=[i for i, name in enumerate(split_train.index) if name in idx_top_names] if idx_top_names is not None else None,
+                    idx_bot=[i for i, name in enumerate(split_train.index) if name in idx_bot_names] if idx_bot_names is not None else None,
+                )
+                _, fmax_test, eem_re_test = self.predict(
+                    split_test,
+                    fit_beta=True if self.lam > 0 and self.idx_bot is not None and self.idx_top is not None else False,
+                    idx_top=[i for i, name in enumerate(split_test.index) if name in idx_top_names] if idx_top_names is not None else None,
+                    idx_bot=[i for i, name in enumerate(split_test.index) if name in idx_bot_names] if idx_bot_names is not None else None,
+                )
+                res_train = split_train.eem_stack - eem_re_train
+                n_pixels = res_train.shape[1] * res_train.shape[2]
+                rmse_train = np.sqrt(np.sum(res_train ** 2, axis=(1, 2)) / n_pixels)
+                res_test = split_test.eem_stack - eem_re_test
+                n_pixels = res_test.shape[1] * res_test.shape[2]
+                rmse_test = np.sqrt(np.sum(res_test ** 2, axis=(1, 2)) / n_pixels)
+                rmse_train_median = np.median(rmse_train)
+                rmse_train_mad = robust.mad(rmse_train)
+                modified_z_scores = 0.6745 * (rmse_test - rmse_train_median) / rmse_train_mad
+                average_z_score.loc[split_test.index] += modified_z_scores / (len(splits)/2)
+            outlier_indices = average_z_score[average_z_score > zscore_threshold].index.to_list()
+            if not outlier_indices:
+                self.fit(eem_dataset_work)
+                return [idx for idx in eem_dataset if idx not in eem_dataset_work.index]
+            if self.idx_top is not None and self.idx_bot is not None:
+                outlier_top = [i for i, idx in enumerate(eem_dataset_top.index) if idx in outlier_indices]
+                outlier_bot = [i for i, idx in enumerate(eem_dataset_bottom.index) if idx in outlier_indices]
+                number_outliers = list(set(outlier_bot + outlier_top))
+                qualified_indices = [idx for i, idx in enumerate(eem_dataset_top.index) if
+                                     i not in number_outliers] + \
+                                    [idx for i, idx in enumerate(eem_dataset_bottom.index) if
+                                     i not in number_outliers]
+            else:
+                qualified_indices = [idx for i, idx in enumerate(eem_dataset.index) if idx not in outlier_indices]
+            eem_dataset_work, _ = eem_dataset_work.filter_by_index(None, qualified_indices, copy=True)
+            max_iter_outlier_removal += 1
+        self.fit(eem_dataset_work)
+        return [idx for idx in eem_dataset.index if idx not in eem_dataset_work.index]
 
     def component_peak_locations(self):
         """

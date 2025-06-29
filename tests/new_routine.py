@@ -121,27 +121,43 @@ def plot_all_f0f(model, eem_dataset, kw_top, kw_bot, target_analyte, eps=0.01, p
 def plot_fmax_vs_truth(fmax_train, fmax_test, truth_train, truth_test, n, info_dict):
     info_dict_copy = copy.deepcopy(info_dict)
     fig, ax = plt.subplots()
+
+    # Plot training data
     ax.plot(fmax_train.iloc[:, n], truth_train.to_numpy(), 'o', label='training')
-    ax.plot(fmax_test.iloc[:, n], truth_test.to_numpy(), 'o', label='testing')
+
+    # Train model on training data
     lr_n = LinearRegression(fit_intercept=True)
     mask_train_n = ~np.isnan(truth_train.to_numpy())
     lr_n.fit(fmax_train.iloc[mask_train_n, [n]].to_numpy(), truth_train.iloc[mask_train_n])
     y_pred_train = lr_n.predict(fmax_train.iloc[mask_train_n, [n]].to_numpy())
     rmse_train = np.sqrt(mean_squared_error(truth_train.iloc[mask_train_n], y_pred_train))
     r2_train = r2_score(truth_train.iloc[mask_train_n], y_pred_train)
-    y_pred_test = lr_n.predict(fmax_test.iloc[:, [n]].to_numpy())
-    mask_test_n = ~np.isnan(truth_test.to_numpy())
-    rmse_test = np.sqrt(mean_squared_error(truth_test.iloc[mask_test_n].to_numpy(), y_pred_test[mask_test_n]))
-    r2_test = r2_score(truth_test.iloc[mask_test_n], y_pred_test[mask_test_n])
-    info_dict_copy['r2_train'] = np.round(r2_train, decimals=3)
-    info_dict_copy['r2_test'] = np.round(r2_test, decimals=3)
-    info_dict_copy['rmse_train'] = np.round(rmse_train, decimals=3)
-    info_dict_copy['rmse_test'] = np.round(rmse_test, decimals=3)
+
+    info_dict_copy['r2_train'] = np.round(r2_train, 3)
+    info_dict_copy['rmse_train'] = np.round(rmse_train, 3)
     info_dict_copy['fit_intercept'] = True if lr_n.fit_intercept else False
+
+    x_line = np.array([0, 10000])
     if lr_n.fit_intercept:
-        ax.plot([0, 10000], np.array([0, 10000]) * lr_n.coef_[0] + lr_n.intercept_, '--')
+        ax.plot(x_line, x_line * lr_n.coef_[0] + lr_n.intercept_, '--')
     else:
-        ax.plot([0, 10000], np.array([0, 10000]) * lr_n.coef_[0], '--')
+        ax.plot(x_line, x_line * lr_n.coef_[0], '--')
+
+    # If test data is provided, evaluate and plot it
+    if fmax_test is not None and truth_test is not None:
+        ax.plot(fmax_test.iloc[:, n], truth_test.to_numpy(), 'o', label='testing')
+        y_pred_test = lr_n.predict(fmax_test.iloc[:, [n]].to_numpy())
+        mask_test_n = ~np.isnan(truth_test.to_numpy())
+        rmse_test = np.sqrt(mean_squared_error(truth_test.iloc[mask_test_n].to_numpy(), y_pred_test[mask_test_n]))
+        r2_test = r2_score(truth_test.iloc[mask_test_n], y_pred_test[mask_test_n])
+        info_dict_copy['r2_test'] = np.round(r2_test, 3)
+        info_dict_copy['rmse_test'] = np.round(rmse_test, 3)
+        x_max = max(fmax_train.iloc[:, n].max(), fmax_test.iloc[:, n].max()) + 100
+        y_max = max(truth_train.max(), truth_test.max()) + 0.5
+    else:
+        x_max = fmax_train.iloc[:, n].max() + 100
+        y_max = truth_train.max() + 0.5
+
     ax.text(
         0.01, 0.99,
         '\n'.join(f'{k}: {v}' for k, v in info_dict_copy.items()),
@@ -154,16 +170,8 @@ def plot_fmax_vs_truth(fmax_train, fmax_test, truth_train, truth_test, n, info_d
     ax.set_xlabel(f'Fmax C{n + 1}', fontsize=18)
     ax.set_ylabel(f'{truth_train.name}', fontsize=18)
     ax.tick_params(labelsize=16)
-    ax.set_xlim([0, max(
-        max(fmax_train.iloc[:, n].to_numpy()),
-        max(fmax_test.iloc[:, n].to_numpy())
-    ) + 100
-                 ])
-    ax.set_ylim([0, max(
-        max(truth_train.to_numpy()),
-        max(truth_test.to_numpy())
-    ) + 0.5
-                 ])
+    ax.set_xlim([0, x_max])
+    ax.set_ylim([0, y_max])
     ax.legend(loc='best', bbox_to_anchor=(0.95, 0.25), fontsize=16)
     fig.tight_layout()
     fig.show()
@@ -203,7 +211,7 @@ def all_split_half_combinations(lst):
     return result
 
 
-def rank_one_approximation(A):
+def rank_one_approximation_svd(A):
     U, S, VT = np.linalg.svd(A, full_matrices=False)
     # Rank-one approximation: only keep the first singular value/vector
     A1 = S[0] * np.outer(U[:, 0], VT[0, :])
@@ -213,6 +221,41 @@ def rank_one_approximation(A):
     score = rank_one_energy / total_energy if total_energy > 0 else 0.0
     return A1, score
 
+
+def rank_one_approximation_nmf(A, n_components=2, max_iter=1000, random_state=0):
+    """
+    Perform NMF and extract the dominant rank-one component.
+
+    Parameters:
+    A (np.ndarray): Non-negative matrix to factor.
+    n_components (int): Number of components for NMF.
+    max_iter (int): Max iterations for NMF.
+    random_state (int): Random seed for reproducibility.
+
+    Returns:
+    dominant_component (np.ndarray): Dominant rank-one approximation (W[:, i] @ H[i, :]).
+    i_dominant (int): Index of the dominant component.
+    contribution_ratio (float): Ratio of Frobenius norm of dominant component to total approximation.
+    """
+    if np.any(A < 0):
+        raise ValueError("Matrix A must be non-negative.")
+
+    model = NMF(n_components=n_components, init='nndsvda', max_iter=max_iter, random_state=random_state)
+    W = model.fit_transform(A)
+    H = model.components_
+
+    # Compute rank-one approximations and their Frobenius norms
+    components = [np.outer(W[:, i], H[i, :]) for i in range(n_components)]
+    energies = [np.linalg.norm(comp, 'fro')**2 for comp in components]
+
+    # Identify dominant component
+    i_dominant = int(np.argmax(energies))
+    dominant_component = components[i_dominant]
+    total_energy = np.sum([np.linalg.norm(W @ H, 'fro')**2])
+    contribution_ratio = energies[i_dominant] / total_energy if total_energy > 0 else 0.0
+
+    return dominant_component, contribution_ratio
+
 # -------------------Step 1: Detection of Components Sensitive to Rank-One Constraints-------------------
 dataset_train = eem_dataset_october
 n_components = 4
@@ -220,7 +263,7 @@ model_parafac = EEMNMF(
     n_components=n_components,
     fit_rank_one={r: True for r in range(n_components)},
     max_iter_nnls=200,
-    max_iter_als=800,
+    max_iter_als=500,
     init='ordinary_cp',
     random_state=42,
     solver='hals',
@@ -236,7 +279,7 @@ plot_all_components(model_parafac)
 model_nmf = EEMNMF(
     n_components=n_components,
     fit_rank_one=False,
-    max_iter_nnls=200,
+    max_iter_nnls=100,
     max_iter_als=500,
     init='nndsvd',
     random_state=42,
@@ -246,45 +289,51 @@ model_nmf = EEMNMF(
 )
 model_nmf.fit(eem_dataset=dataset_train)
 plot_all_components(model_nmf)
-components_r1 = np.array([rank_one_approximation(model_nmf.components[i])[0] for i in range(n_components)])
+components_r1 = np.array([rank_one_approximation_nmf(model_nmf.components[i])[0] for i in range(n_components)])
 plot_eem_stack(components_r1, eem_dataset.ex_range, eem_dataset.em_range, titles=[f'C{i + 1} R1' for i in range(n_components)])
 model_nmf_components_r1_dict = {k: components_r1[k].reshape(-1) for k in range(n_components)}
-
-for r in range(n_components):
-    # fit_rank_one = {r: True for r in [i for i in range(n_components) if i != r]}
-    # fit_rank_one = {r: True}
-    prior_dict_H = {k: model_parafac.components[k].reshape(-1) for k in range(n_components) if k != r}
-    model = EEMNMF(
-        n_components=n_components,
-        fit_rank_one=False,
-        max_iter_nnls=200,
-        max_iter_als=800,
-        init='ordinary_nmf',
-        random_state=42,
-        solver='hals',
-        normalization=None,
-        sort_components_by_em=False,
-        prior_ref_components=model_parafac_components_dict,
-        prior_dict_H=prior_dict_H,
-        gamma_H=1e5,
-    )
-    model.fit(eem_dataset=dataset_train)
-    for k in range(n_components):
-        # cosine_sim = cosine_similarity(model.components[k].flatten().reshape(1, -1),
-        #                                model_standard.components[k].flatten().reshape(1, -1))[0, 0]
-        correlation_sim = np.corrcoef(model.components[k].flatten(),
-                                      model_parafac.components[k].flatten())[0, 1]
-        correlation_sim_all[r][k] = correlation_sim
-    plot_all_components(model)
-
-correlation_sim_all_df = pd.DataFrame(correlation_sim_all)
+#
+# for r in range(n_components):
+#     # fit_rank_one = {r: True for r in [i for i in range(n_components) if i != r]}
+#     # fit_rank_one = {r: True}
+#     prior_dict_H = {k: model_parafac.components[k].reshape(-1) for k in range(n_components) if k != r}
+#     model = EEMNMF(
+#         n_components=n_components,
+#         fit_rank_one=False,
+#         max_iter_nnls=200,
+#         max_iter_als=800,
+#         init='ordinary_nmf',
+#         random_state=42,
+#         solver='hals',
+#         normalization=None,
+#         sort_components_by_em=False,
+#         prior_ref_components=model_parafac_components_dict,
+#         prior_dict_H=prior_dict_H,
+#         gamma_H=1e5,
+#     )
+#     model.fit(eem_dataset=dataset_train)
+#     for k in range(n_components):
+#         # cosine_sim = cosine_similarity(model.components[k].flatten().reshape(1, -1),
+#         #                                model_standard.components[k].flatten().reshape(1, -1))[0, 0]
+#         correlation_sim = np.corrcoef(model.components[k].flatten(),
+#                                       model_parafac.components[k].flatten())[0, 1]
+#         correlation_sim_all[r][k] = correlation_sim
+#     plot_all_components(model)
+#
+# correlation_sim_all_df = pd.DataFrame(correlation_sim_all)
 
 # -------------------Step 2: Detection of Outlier Samples with High Reconstruction Error-------------------
+
+param = {
+    "prior_dict_H": {k: model_nmf_components_r1_dict[k] for k in [0, 1, 2]},
+    "gamma_H": 1e5,
+    "lam": 0
+}
 
 model = EEMNMF(
         n_components=n_components,
         fit_rank_one=False,
-        max_iter_nnls=200,
+        max_iter_nnls=100,
         max_iter_als=500,
         init='nndsvd',
         random_state=42,
@@ -292,40 +341,18 @@ model = EEMNMF(
         normalization=None,
         sort_components_by_em=False,
         prior_ref_components=model_parafac_components_dict,
-        prior_dict_H={k: model_nmf_components_r1_dict[k] for k in [0, 1, 2]},
-        gamma_H=1e5,
+        **param
     )
 
-def fitting_outlier_detection(model, eem_dataset, zscore_threshold=3):
-    model_work = copy.deepcopy(model)
-    model_work.fit(eem_dataset=eem_dataset)
-    _, fmax, eem_re = model.predict(
-            eem_dataset,
-            fit_beta=True if model.lam > 0 and model.idx_bot is not None and model.idx_top is not None else False,
-            idx_top=[i for i in range(len(eem_dataset.index)) if 'B1C1' in eem_dataset.index[i]],
-            idx_bot=[i for i in range(len(eem_dataset.index)) if 'B1C2' in eem_dataset.index[i]],
-        )
-    res = eem_dataset.eem_stack - eem_re
-    n_pixels = res.shape[1] * res.shape[2]
-    rmse = np.sqrt(np.sum(res_train ** 2, axis=(1, 2)) / n_pixels)
-    median = np.median(rmse)
-    mad = robust.mad(rmse)
-    modified_z_scores = 0.6745 * (rmse - median) / mad
-    outlier_indices = np.where(modified_z_scores > zscore_threshold)[0]
-    outlier_indices = [eem_dataset.index[i] for i in outlier_indices]
-    return outlier_indices
+outlier_indices = model.robust_fit(dataset_train, zscore_threshold=3, max_iter_outlier_removal=1)
+plt.close()
+plot_all_components(model)
+dataset_test = eem_dataset_july
 
-outlier_indices_train = [0]
-if outlier_indices_train:
-    outlier_indices_train = fitting_outlier_detection(model=model, eem_dataset=eem_dataset_october, zscore_threshold=3)
-
-    outlier_unquenched = [i for i, idx in enumerate(dataset_train_unquenched.index) if idx in outlier_indices_train]
-    outlier_quenched = [i for i, idx in enumerate(dataset_train_quenched.index) if idx in samples_to_remove]
-    number_outliers = list(set(outlier_quenched + outlier_unquenched))
-    qualified_indices = [idx for i, idx in enumerate(dataset_train_unquenched.index) if i not in number_outliers] + \
-                         [idx for i, idx in enumerate(dataset_train_quenched.index) if i not in number_outliers]
-    eem_dataset_october_cleaned, _ = dataset_train.filter_by_index(None, qualified_indices, copy=True)
-
+plot_fmax_vs_truth(fmax_train=dataset_train, fmax_test=dataset_test,
+                   truth_train=dataset_train.ref['TCC (million #/mL)'], truth_test=dataset_test.ref['TCC (million #/mL)'],
+                   n=0, info_dict=param)
+fmax_ratio, _, _ = plot_all_f0f(model, dataset_train, 'B1C1', 'B1C2', 'TCC (million #/mL)', plot=True)
 
 # ----------cross-validation & hyperparameter optimization-------
 dataset_train = eem_dataset_october
