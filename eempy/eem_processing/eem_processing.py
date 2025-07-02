@@ -2475,7 +2475,6 @@ class SplitValidation:
         models = align_components_by_components(
             models,
             {f'C{i + 1}': model_complete.components[i] for i in range(model_complete.n_components)},
-            model_type='parafac' if isinstance(self.base_model, PARAFAC) else 'nmf'
         )
         self.eem_subsets = subsets
         self.subset_specific_models = models
@@ -2505,12 +2504,12 @@ class SplitValidation:
             similarities_em[pair_labels] = sims_em
         similarities_ex = pd.DataFrame.from_dict(
             similarities_ex, orient='index',
-            columns=['Similarities in C{i}-ex'.format(i=i + 1) for i in range(self.rank)]
+            columns=['Similarities in C{i}-ex'.format(i=i + 1) for i in range(self.base_model.n_components)]
         )
         similarities_ex.index.name_train = 'Test'
         similarities_em = pd.DataFrame.from_dict(
             similarities_em, orient='index',
-            columns=['Similarities in C{i}-em'.format(i=i + 1) for i in range(self.rank)]
+            columns=['Similarities in C{i}-em'.format(i=i + 1) for i in range(self.base_model.n_components)]
         )
         similarities_em.index.name_train = 'Test'
         return similarities_ex, similarities_em
@@ -2534,7 +2533,7 @@ class SplitValidation:
             similarities_components[pair_labels] = sims
         similarities_components = pd.DataFrame.from_dict(
             similarities_components, orient='index',
-            columns=['Similarities in C{i}-ex'.format(i=i + 1) for i in range(self.rank)]
+            columns=['Similarities in C{i}-ex'.format(i=i + 1) for i in range(self.base_model.n_components)]
         )
         similarities_components.index.name_train = 'Test'
         return similarities_components

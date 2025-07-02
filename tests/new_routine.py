@@ -325,53 +325,53 @@ model_nmf_components_r1_dict = {k: components_r1[k].reshape(-1) for k in range(n
 
 # -------------------Step 2: Detection of Outlier Samples with High Reconstruction Error-------------------
 
-param = {
-    "prior_dict_H": {k: model_nmf_components_r1_dict[k] for k in [0, 1, 2]},
-    "gamma_H": 3e3,
-    # "lam": 0,
-    # "fit_rank_one": {0: True, 1: True, 2: True, 3: True}
-}
-
-model = EEMNMF(
-        n_components=n_components,
-        max_iter_nnls=100,
-        max_iter_als=500,
-        init='nndsvd',
-        random_state=42,
-        solver='hals',
-        normalization=None,
-        sort_components_by_em=False,
-        prior_ref_components=model_parafac_components_dict,
-        kw_top='B1C1',
-        kw_bot='B1C2',
-        tol=1e-5,
-        **param
-    )
-
-dataset_train_clean, outlier_indices = model.robust_fit(dataset_train, zscore_threshold=3.5, max_iter_outlier_removal=1)
-plt.close()
-plot_all_components(model)
-dataset_test = eem_dataset_july
-# fmax_train = model.fmax
-_, fmax_train, _ = model.predict(
-    eem_dataset=dataset_train_clean,
-    fit_beta=True if model.lam > 0 and model.idx_bot is not None and model.idx_top is not None else False,
-    idx_top=[i for i in range(len(dataset_train_clean.index)) if 'B1C1' in dataset_train_clean.index[i]],
-    idx_bot=[i for i in range(len(dataset_train_clean.index)) if 'B1C2' in dataset_train_clean.index[i]],
-)
-_, fmax_test, _ = model.predict(
-    eem_dataset=dataset_test,
-    fit_beta=True if model.lam > 0 and model.idx_bot is not None and model.idx_top is not None else False,
-    idx_top=[i for i in range(len(dataset_test.index)) if 'B1C1' in dataset_test.index[i]],
-    idx_bot=[i for i in range(len(dataset_test.index)) if 'B1C2' in dataset_test.index[i]],
-)
-truth_train = dataset_train.ref['TCC (million #/mL)'][~dataset_train.ref.index.isin(outlier_indices)]
-truth_test = dataset_test.ref['TCC (million #/mL)']
-plot_fmax_vs_truth(fmax_train=fmax_train, fmax_test=fmax_test,
-                   truth_train=truth_train,
-                   truth_test=truth_test,
-                   n=0, info_dict=param)
-fmax_ratio, _, _ = plot_all_f0f(model, dataset_train, 'B1C1', 'B1C2', 'TCC (million #/mL)', plot=True)
+# param = {
+#     "prior_dict_H": {k: model_nmf_components_r1_dict[k] for k in [0, 1, 2]},
+#     "gamma_H": 3e3,
+#     # "lam": 0,
+#     # "fit_rank_one": {0: True, 1: True, 2: True, 3: True}
+# }
+#
+# model = EEMNMF(
+#         n_components=n_components,
+#         max_iter_nnls=100,
+#         max_iter_als=500,
+#         init='nndsvd',
+#         random_state=42,
+#         solver='hals',
+#         normalization=None,
+#         sort_components_by_em=False,
+#         prior_ref_components=model_parafac_components_dict,
+#         kw_top='B1C1',
+#         kw_bot='B1C2',
+#         tol=1e-5,
+#         **param
+#     )
+#
+# dataset_train_clean, outlier_indices = model.robust_fit(dataset_train, zscore_threshold=3.5, max_iter_outlier_removal=1)
+# plt.close()
+# plot_all_components(model)
+# dataset_test = eem_dataset_july
+# # fmax_train = model.fmax
+# _, fmax_train, _ = model.predict(
+#     eem_dataset=dataset_train_clean,
+#     fit_beta=True if model.lam > 0 and model.idx_bot is not None and model.idx_top is not None else False,
+#     idx_top=[i for i in range(len(dataset_train_clean.index)) if 'B1C1' in dataset_train_clean.index[i]],
+#     idx_bot=[i for i in range(len(dataset_train_clean.index)) if 'B1C2' in dataset_train_clean.index[i]],
+# )
+# _, fmax_test, _ = model.predict(
+#     eem_dataset=dataset_test,
+#     fit_beta=True if model.lam > 0 and model.idx_bot is not None and model.idx_top is not None else False,
+#     idx_top=[i for i in range(len(dataset_test.index)) if 'B1C1' in dataset_test.index[i]],
+#     idx_bot=[i for i in range(len(dataset_test.index)) if 'B1C2' in dataset_test.index[i]],
+# )
+# truth_train = dataset_train.ref['TCC (million #/mL)'][~dataset_train.ref.index.isin(outlier_indices)]
+# truth_test = dataset_test.ref['TCC (million #/mL)']
+# plot_fmax_vs_truth(fmax_train=fmax_train, fmax_test=fmax_test,
+#                    truth_train=truth_train,
+#                    truth_test=truth_test,
+#                    n=0, info_dict=param)
+# fmax_ratio, _, _ = plot_all_f0f(model, dataset_train, 'B1C1', 'B1C2', 'TCC (million #/mL)', plot=True)
 
 
 # ----------cross-validation & hyperparameter optimization-------
