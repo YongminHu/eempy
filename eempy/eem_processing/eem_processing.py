@@ -20,7 +20,7 @@ import tensorly as tl
 import torch
 from math import sqrt
 from sklearn.metrics import mean_squared_error, explained_variance_score, r2_score, silhouette_score
-from sklearn.decomposition import PCA, NMF
+from sklearn.decomposition import NMF
 from sklearn.linear_model import LinearRegression
 from scipy.ndimage import gaussian_filter, median_filter
 from scipy.interpolate import RegularGridInterpolator, interp1d, griddata
@@ -31,9 +31,8 @@ from scipy.linalg import khatri_rao
 from scipy.stats import pearsonr
 from scipy.optimize import linear_sum_assignment, nnls
 from scipy.spatial.distance import cdist
-from tensorly.solvers.nnls import hals_nnls
 from tensorly.decomposition import parafac, non_negative_parafac, non_negative_parafac_hals
-from tensorly.cp_tensor import cp_to_tensor, CPTensor, cp_normalize
+from tensorly.cp_tensor import cp_to_tensor
 from tensorly.decomposition._cp import initialize_cp
 from tensorly.tenalg import unfolding_dot_khatri_rao
 from tlviz.model_evaluation import core_consistency
@@ -2441,14 +2440,13 @@ class SplitValidation:
         Dictionary of PARAFAC models established on sub-datasets.
     """
 
-    def __init__(self, base_model, n_split=4, combination_size='half', rule='random', similarity_metric='TCC',
+    def __init__(self, base_model, n_split=4, combination_size='half', rule='random',
                  random_state=None):
         # ---------------Parameters-------------------
         self.base_model = base_model
         self.n_split = n_split
         self.combination_size = combination_size
         self.rule = rule
-        self.similarity_metric = similarity_metric
         self.random_state = random_state
 
         # ----------------Attributes------------------
@@ -2608,13 +2606,15 @@ class EEMNMF:
         EEMs reconstructed by the established PARAFAC model.
     """
 
-    def __init__(self, n_components, solver='cd', init='nndsvda', beta_loss='frobenius',
-                 alpha_sample=0, alpha_component=0, l1_ratio=1,
-                 prior_dict_W=None, prior_dict_H=None, prior_dict_A=None, prior_dict_B=None, prior_dict_C=None,
-                 gamma_W=0, gamma_H=0, gamma_A=0, gamma_B=0, gamma_C=0, prior_ref_components=None,
-                 idx_top=None, idx_bot=None, kw_top=None, kw_bot=None, lam=0,
-                 fit_rank_one=False,
-                 normalization=None, sort_components_by_em=True, max_iter_als=100, max_iter_nnls=500, random_state=42):
+    def __init__(
+            self, n_components, solver='cd', init='nndsvda', beta_loss='frobenius',
+            alpha_sample=0, alpha_component=0, l1_ratio=1,
+            prior_dict_W=None, prior_dict_H=None, prior_dict_A=None, prior_dict_B=None, prior_dict_C=None,
+            gamma_W=0, gamma_H=0, gamma_A=0, gamma_B=0, gamma_C=0, prior_ref_components=None,
+            idx_top=None, idx_bot=None, kw_top=None, kw_bot=None, lam=0, fit_rank_one=False,
+            normalization=None, sort_components_by_em=True, max_iter_als=100, max_iter_nnls=500, tol=1e-5,
+            random_state=42
+    ):
 
         # -----------Parameters-------------
         self.n_components = n_components
@@ -2645,6 +2645,7 @@ class EEMNMF:
         self.sort_components_by_em = sort_components_by_em
         self.max_iter_als = max_iter_als
         self.max_iter_nnls = max_iter_nnls
+        self.tol = tol
         self.random_state = random_state
 
         # -----------Attributes-------------
@@ -2680,7 +2681,8 @@ class EEMNMF:
                 alpha_W=self.alpha_sample,
                 alpha_H=self.alpha_component,
                 l1_ratio=self.l1_ratio,
-                random_state=self.random_state
+                random_state=self.random_state,
+                tol=self.tol,
             )
             eem_dataset.threshold_masking(0, 0, 'smaller', copy=False)
             n_samples = eem_dataset.eem_stack.shape[0]
@@ -2722,7 +2724,7 @@ class EEMNMF:
                     alpha_H=self.alpha_component,
                     l1_ratio=self.l1_ratio,
                     gamma_W=self.gamma_W,
-                    gamma_H=self.gamma_H,
+                    gamma_H=self.gamma_H * eem_dataset.eem_stack.shape[0] / len(self.prior_dict_H) if self.prior_dict_H is not None else 0,
                     gamma_A=self.gamma_A,
                     gamma_B=self.gamma_B,
                     gamma_C=self.gamma_C,
@@ -2734,6 +2736,7 @@ class EEMNMF:
                     max_iter_als=self.max_iter_als,
                     max_iter_nnls=self.max_iter_nnls,
                     prior_ref_components=self.prior_ref_components,
+                    tol=self.tol,
                     random_state=self.random_state
                 )
                 self.beta = beta
@@ -2751,7 +2754,7 @@ class EEMNMF:
                     prior_dict_B=self.prior_dict_B,
                     prior_dict_C=self.prior_dict_C,
                     gamma_W=self.gamma_W,
-                    gamma_H=self.gamma_H,
+                    gamma_H=self.gamma_H*eem_dataset.eem_stack.shape[0] / len(self.prior_dict_H) if self.prior_dict_H is not None else 0,
                     gamma_A=self.gamma_A,
                     gamma_B=self.gamma_B,
                     gamma_C=self.gamma_C,
@@ -2766,6 +2769,7 @@ class EEMNMF:
                     max_iter_als=self.max_iter_als,
                     max_iter_nnls=self.max_iter_nnls,
                     prior_ref_components=self.prior_ref_components,
+                    tol=self.tol,
                     random_state=self.random_state
                 )
                 self.beta = beta
@@ -2833,9 +2837,9 @@ class EEMNMF:
                 idx_top_names, idx_bot_names = None, None
             eem_dataset_splits = []
             if self.idx_top is not None and self.idx_bot is not None:
-                eem_dataset_top, _ = eem_dataset_work.filter_by_index(self.idx_top, None, copy=True)
+                eem_dataset_top, _ = eem_dataset_work.filter_by_index(None, idx_top_names, copy=True)
                 eem_dataset_top_splits = eem_dataset_top.splitting(n_split=n_splits, random_state=self.random_state)
-                eem_dataset_bottom, _ = eem_dataset_work.filter_by_index(self.idx_bot, None, copy=True)
+                eem_dataset_bottom, _ = eem_dataset_work.filter_by_index(None, idx_bot_names, copy=True)
                 for subset in eem_dataset_top_splits:
                     pos = [eem_dataset_top.index.index(idx) for idx in subset.index]
                     bot_indices = [eem_dataset_bottom.index[idx] for idx in pos]
@@ -2884,7 +2888,7 @@ class EEMNMF:
             outlier_indices = average_z_score[average_z_score > zscore_threshold].index.to_list()
             if not outlier_indices:
                 self.fit(eem_dataset_work)
-                return [idx for idx in eem_dataset if idx not in eem_dataset_work.index]
+                return eem_dataset_work, [idx for idx in eem_dataset.index if idx not in eem_dataset_work.index]
             if self.idx_top is not None and self.idx_bot is not None:
                 outlier_top = [i for i, idx in enumerate(eem_dataset_top.index) if idx in outlier_indices]
                 outlier_bot = [i for i, idx in enumerate(eem_dataset_bottom.index) if idx in outlier_indices]
@@ -2896,9 +2900,9 @@ class EEMNMF:
             else:
                 qualified_indices = [idx for i, idx in enumerate(eem_dataset.index) if idx not in outlier_indices]
             eem_dataset_work, _ = eem_dataset_work.filter_by_index(None, qualified_indices, copy=True)
-            max_iter_outlier_removal += 1
+            n_iter += 1
         self.fit(eem_dataset_work)
-        return [idx for idx in eem_dataset.index if idx not in eem_dataset_work.index]
+        return eem_dataset_work, [idx for idx in eem_dataset.index if idx not in eem_dataset_work.index]
 
     def component_peak_locations(self):
         """
