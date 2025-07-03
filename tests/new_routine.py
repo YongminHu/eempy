@@ -312,6 +312,8 @@ def rank_one_approximation_nmf(A, n_components=2, max_iter=1000, random_state=0)
 #                    )
 # fmax_ratio, _, _ = plot_all_f0f(model, dataset_train, 'B1C1', 'B1C2', 'TCC (million #/mL)', plot=True)
 
+# eem_dataset_october_clean.ref = eem_dataset_october_clean.ref[['TCC (million #/mL)', 'DOC (mg/L)']]
+
 # with open("C:/PhD/publication/2025_prior_knowledge/eem_dataset_Oct2024_cleaned.pkl",
 #           'wb') as file:
 #     pickle.dump(eem_dataset_october_clean, file)
@@ -321,47 +323,77 @@ with open("C:/PhD/publication/2025_prior_knowledge/eem_dataset_Oct2024_cleaned.p
     eem_dataset_october_clean = pickle.load(file)
 
 
-# -------------------Step 2: Generate rank-one approximations as priors-------------------
-dataset_train = eem_dataset_october_clean
-n_components = 4
+# # -------------------Step 2: Generate rank-one approximations as priors-------------------
+# dataset_train = eem_dataset_october_clean
+# n_components = 4
+#
+# model_all = EEMNMF(
+#     n_components=n_components,
+#     fit_rank_one=False,
+#     max_iter_nnls=100,
+#     max_iter_als=500,
+#     init='nndsvd',
+#     random_state=42,
+#     solver='hals',
+#     normalization=None,
+#     sort_components_by_em=True,
+#     tol=1e-5,
+#     kw_top='B1C1',
+#     kw_bot='B1C2'
+# )
+# model_all.fit(eem_dataset=dataset_train)
+# plot_all_components(model_all)
+# components_r1 = np.array([rank_one_approximation_nmf(model_all.components[i])[0] for i in range(n_components)])
+# plot_eem_stack(components_r1, dataset_train.ex_range, dataset_train.em_range, titles=[f'C{i + 1} R1' for i in range(n_components)])
+# model_all_ref_components = {k: components_r1[k].reshape(-1) for k in range(n_components)}
+#
+# model_all.prior_ref_components = model_all_ref_components
+# sv = SplitValidation(base_model=model_all, n_split=6)
+# sv.fit(dataset_train)
+# rank1_approx_priors = []
+# for r in range(4):
+#     cr = []
+#     for sub_model in sv.subset_specific_models.values():
+#         cr.append(sub_model.components[r])
+#     component_set_r = EEMDataset(
+#         eem_stack=np.array(cr),
+#         ex_range=model_all.ex_range, em_range=model_all.em_range
+#     )
+#     cr_parafac = PARAFAC(n_components=2, solver='hals',sort_components_by_em=True)
+#     cr_parafac.fit(component_set_r)
+#     r_primary = np.argmax(np.mean(cr_parafac.fmax.to_numpy(), axis=0))
+#     print(np.mean(cr_parafac.fmax.to_numpy(), axis=0))
+#     rank1_approx_priors.append(cr_parafac.components[r_primary])
+# plot_eem_stack(np.array(rank1_approx_priors), dataset_train.ex_range, dataset_train.em_range, titles=[f'C{i + 1} R1' for i in range(n_components)])
+# rank1_approx_priors = {k: rank1_approx_priors[k].reshape(-1) for k in range(n_components)}
 
-model_all = EEMNMF(
-    n_components=n_components,
-    fit_rank_one=False,
-    max_iter_nnls=100,
-    max_iter_als=500,
-    init='nndsvd',
-    random_state=42,
-    solver='hals',
-    normalization=None,
-    sort_components_by_em=True,
-    tol=1e-5,
-    kw_top='B1C1',
-    kw_bot='B1C2'
-)
-model_all.fit(eem_dataset=dataset_train)
-plot_all_components(model_all)
-components_r1 = np.array([rank_one_approximation_nmf(model_all.components[i])[0] for i in range(n_components)])
-plot_eem_stack(components_r1, eem_dataset.ex_range, eem_dataset.em_range, titles=[f'C{i + 1} R1' for i in range(n_components)])
-model_all_ref_components = {k: components_r1[k].reshape(-1) for k in range(n_components)}
+# with open("C:/PhD/publication/2025_prior_knowledge/rank1_approx_priors_Oct2024.pkl",
+#           'wb') as file:
+#     pickle.dump(rank1_approx_priors, file)
+#
+with open("C:/PhD/publication/2025_prior_knowledge/rank1_approx_priors_Oct2024.pkl",
+          'rb') as file:
+    rank1_approx_priors = pickle.load(file)
 
-model_all.prior_ref_components = model_all_ref_components
-sv = SplitValidation(base_model=model_all, n_split=6)
-for r in range(n_components):
-    cr = []
-    for sub_model in sv.subset_specific_models.values():
-        cr.append(sub_model.components[r])
-    component_set_r = EEMDataset(
-        eem_stack=np.array(cr),
-        ex_range=model_all.ex_range, em_range=model_all.em_range
-    )
-    cr_parafac = PARAFAC(n_components=2, solver='hals')
-    cr_parafac.fit(component_set_r)
-    importance = np.mean(cr_parafac.fmax.to_numpy(), axis=0)
-
+rank1_approx_priors_reshaped = np.array([c.reshape([eem_dataset_october_clean.eem_stack.shape[1], eem_dataset_october_clean.eem_stack.shape[2]]) for c in rank1_approx_priors.values()])
+plot_eem_stack(rank1_approx_priors_reshaped, eem_dataset_october_clean.ex_range, eem_dataset_october_clean.em_range, [1,2,3,4])
 
 # -------------------Step 2.5: Detection of Components Sensitive to Rank-One Constraints-------------------
+# #
+# n_components = 4
+# dataset_train = eem_dataset_october_clean
 #
+# model_parafac = EEMNMF(
+#     n_components=4,
+#     fit_rank_one={r: True for r in range(n_components)},
+#     solver='hals',
+#     init='nndsvd',
+#     random_state=42
+# )
+# model_parafac.fit(dataset_train)
+# model_parafac_components_dict = {k: model_parafac.components[k].reshape(-1) for k in range(n_components)}
+#
+# correlation_sim_all=[{} for i in range(n_components)]
 # for r in range(n_components):
 #     # fit_rank_one = {r: True for r in [i for i in range(n_components) if i != r]}
 #     # fit_rank_one = {r: True}
@@ -371,7 +403,7 @@ for r in range(n_components):
 #         fit_rank_one=False,
 #         max_iter_nnls=100,
 #         max_iter_als=500,
-#         init='ordinary_nmf',
+#         init='nndsvd',
 #         random_state=42,
 #         solver='hals',
 #         normalization=None,
@@ -388,28 +420,29 @@ for r in range(n_components):
 #                                       model_parafac.components[k].flatten())[0, 1]
 #         correlation_sim_all[r][k] = correlation_sim
 #     plot_all_components(model)
-#
 # correlation_sim_all_df = pd.DataFrame(correlation_sim_all)
 
 
 
-# ----------cross-validation & hyperparameter optimization-------
+# ------------Step 3: cross-validation & hyperparameter optimization-------
+
 dataset_train = eem_dataset_october_clean
+n_components = 4
 
 param_grid = {
     'n_components': [4],
     'init': ['nndsvd'],
-    'gamma_H': [0],
+    'gamma_H': [0, 25, 50, 75, 100],
     'prior_dict_H': [
         # None,
-        {k: model_nmf_components_r1_dict[k] for k in [0, 1, 2]},
+        {k: rank1_approx_priors[k] for k in [0, 1, 2]},
     ],
     'lam': [0],
-    'max_iter_als': [500],
-    'max_iter_nnls': [100],
+    'max_iter_als': [300],
+    'max_iter_nnls': [500],
     'fit_rank_one': [
-        # False,
-        {r: True for r in range(n_components)}
+        False,
+        # {r: True for r in range(n_components)}
     ]
 }
 
@@ -424,51 +457,26 @@ for k, p in enumerate(param_combinations):
         solver='hals',
         random_state=42,
         sort_components_by_em=False,
-        prior_ref_components=model_nmf_components_r1_dict,
+        prior_ref_components=rank1_approx_priors,
         kw_top='B1C1',
         kw_bot='B1C2',
         normalization=None,
-        tol=1e-5,
+        tol=1e-8,
         **p
     )
-    dataset_train_clean, outlier_indices = model.robust_fit(dataset_train, zscore_threshold=3.5, max_iter_outlier_removal=2)
-
-    # reset rank-one approximation prior
-    model_nmf = EEMNMF(
-        n_components=4,
-        init='nndsvd',
-        solver='hals',
-        max_iter_als=500,
-        max_iter_nnls=100,
-        random_state=42,
-        sort_components_by_em=False,
-        prior_ref_components=model_nmf_components_r1_dict,
-        kw_top='B1C1',
-        kw_bot='B1C2',
-        normalization=None,
-        tol=1e-5,
-    )
-    model_nmf.fit(eem_dataset=dataset_train)
-    components_r1 = np.array([rank_one_approximation_nmf(model_nmf.components[i])[0] for i in range(n_components)])
-    # plot_eem_stack(components_r1, eem_dataset.ex_range, eem_dataset.em_range, titles=[f'C{i + 1} R1' for i in range(n_components)])
-    model_nmf_components_r1_dict_clean = {k: components_r1[k].reshape(-1) for k in [0,1,2]}
-    model.prior_dict_H = model_nmf_components_r1_dict_clean
-    model.fit(dataset_train_clean)
+    model.fit(dataset_train)
     components_lists_all.append(model.components)
-    dataset_train_clean.ref = dataset_train_clean.ref[['TCC (million #/mL)', 'DOC (mg/L)']]
     _, fmax_train, eem_re_train = model.predict(
-        eem_dataset=dataset_train_clean,
+        eem_dataset=dataset_train,
         fit_beta=True if model.lam > 0 and model.idx_bot is not None and model.idx_top is not None else False,
-        idx_top=[i for i in range(len(dataset_train_clean.index)) if 'B1C1' in dataset_train_clean.index[i]],
-        idx_bot=[i for i in range(len(dataset_train_clean.index)) if 'B1C2' in dataset_train_clean.index[i]],
+        idx_top=[i for i in range(len(dataset_train.index)) if 'B1C1' in dataset_train.index[i]],
+        idx_bot=[i for i in range(len(dataset_train.index)) if 'B1C2' in dataset_train.index[i]],
     )
-    outlier_rate = len(outlier_indices) / len(dataset_train.index) * 100
     explained_variance = model.explained_variance()
-    param_combinations[k]['outlier_rate'] = outlier_rate
     param_combinations[k]['explained_variance'] = explained_variance
-    for ref_col in dataset_train_clean.ref.columns:
-        mask_ref = ~np.isnan(dataset_train_clean.ref[ref_col].to_numpy())
-        y_train = dataset_train_clean.ref[ref_col].to_numpy()[mask_ref]
+    for ref_col in dataset_train.ref.columns:
+        mask_ref = ~np.isnan(dataset_train.ref[ref_col].to_numpy())
+        y_train = dataset_train.ref[ref_col].to_numpy()[mask_ref]
         for r in range(model.n_components):
             x_train_r = fmax_train.iloc[mask_ref, [r]].to_numpy()
             lr = LinearRegression(fit_intercept=True)
@@ -478,10 +486,10 @@ for k, p in enumerate(param_combinations):
             y_pred = lr.predict(x_train_r)
             r2_r = lr.score(x_train_r, y_train)
             rmse_r = np.sqrt(mean_squared_error(y_train, y_pred))
-            param_combinations[k][ref_col + '-' + f'C{r + 1} Fmax' + '-coef_with_intercept'] = coef_r
-            param_combinations[k][ref_col + '-' + f'C{r + 1} Fmax' + '-intercept_with_intercept'] = intercept_r
-            param_combinations[k][ref_col + '-' + f'C{r + 1} Fmax' + '-r2_with_intercept'] = r2_r
-            param_combinations[k][ref_col + '-' + f'C{r + 1} Fmax' + '-rmse_with_intercept'] = rmse_r
+            param_combinations[k][ref_col + '-' + f'C{r + 1} Fmax' + '-coef_fit_intercept=True'] = coef_r
+            param_combinations[k][ref_col + '-' + f'C{r + 1} Fmax' + '-intercept_fit_intercept=True'] = intercept_r
+            param_combinations[k][ref_col + '-' + f'C{r + 1} Fmax' + '-r2_with_fit_intercept=True'] = r2_r
+            param_combinations[k][ref_col + '-' + f'C{r + 1} Fmax' + '-rmse_with_fit_intercept=True'] = rmse_r
             lr = LinearRegression(fit_intercept=False)
             lr.fit(x_train_r, y_train)
             coef_r = lr.coef_[0]
@@ -489,20 +497,25 @@ for k, p in enumerate(param_combinations):
             y_pred = lr.predict(x_train_r)
             r2_r = lr.score(x_train_r, y_train)
             rmse_r = np.sqrt(mean_squared_error(y_train, y_pred))
-            param_combinations[k][ref_col + '-' + f'C{r + 1} Fmax' + '-coef_w/o_intercept'] = coef_r
-            param_combinations[k][ref_col + '-' + f'C{r + 1} Fmax' + '-intercept_w/o_intercept'] = intercept_r
-            param_combinations[k][ref_col + '-' + f'C{r + 1} Fmax' + '-r2_w/o_intercept'] = r2_r
-            param_combinations[k][ref_col + '-' + f'C{r + 1} Fmax' + '-rmse_w/o_intercept'] = rmse_r
-    if model.lam > 0 and model.idx_top is not None and model.idx_bot is not None:
+            param_combinations[k][ref_col + '-' + f'C{r + 1} Fmax' + '-coef_fit_intercept=False'] = coef_r
+            param_combinations[k][ref_col + '-' + f'C{r + 1} Fmax' + '-intercept_fit_intercept=False'] = intercept_r
+            param_combinations[k][ref_col + '-' + f'C{r + 1} Fmax' + '-r2_fit_intercept=False'] = r2_r
+            param_combinations[k][ref_col + '-' + f'C{r + 1} Fmax' + '-rmse_fit_intercept=False'] = rmse_r
+    if model.idx_top is not None and model.idx_bot is not None:
         fmax_train_top = fmax_train[fmax_train.index.str.contains('B1C1')]
         fmax_train_bot = fmax_train[fmax_train.index.str.contains('B1C2')]
-        fmax_ratio = fmax_train_top/fmax_train_bot
+        fmax_ratio = fmax_train_top.to_numpy()/fmax_train_bot.to_numpy()
         fmax_ratio_means = np.mean(fmax_ratio, axis=0)
         fmax_ratio_std = np.std(fmax_ratio, axis=0)
-        param_combinations[k]['fmax_ratio_means'] = fmax_ratio_means
-        param_combinations[k]['fmax_ratio_std'] = fmax_ratio_std
-    sv = SplitValidation(base_model=model, n_split=4)
-    sv.fit(dataset_train_clean)
+        fmax_ratio_max = np.max(fmax_ratio, axis=0)
+        fmax_ratio_min = np.min(fmax_ratio, axis=0)
+        for r in range(n_components):
+            param_combinations[k][f'C{r+1}-fmax_ratio_means'] = fmax_ratio_means[r]
+            param_combinations[k][f'C{r+1}-fmax_ratio_std'] = fmax_ratio_std[r]
+            param_combinations[k][f'C{r+1}-fmax_ratio_min'] = fmax_ratio_max[r]
+            param_combinations[k][f'C{r+1}-fmax_ratio_max'] = fmax_ratio_min[r]
+    sv = SplitValidation(base_model=model, n_split=4, random_state=42)
+    sv.fit(dataset_train)
     sim_components = sv.compare_components()
     sim_component_sim = sim_components.mean()
     for c in range(model.n_components):
