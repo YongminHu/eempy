@@ -1428,7 +1428,8 @@ class EEMDataset:
             self.em_range = em_range_new
         return eem_stack_interpolated
 
-    def splitting(self, n_split, rule: str = 'random', random_state=None):
+    def splitting(self, n_split, rule: str = 'random', random_state=None,
+                  kw_top=None, kw_bot=None, idx_top=None, idx_bot=None):
         """
         To split the EEM dataset and form multiple sub-datasets.
 
@@ -1447,17 +1448,45 @@ class EEMDataset:
         model_list: list.
             A list of sub-datasets. Each of them is an EEMDataset object.
         """
-        idx_eems = [i for i in range(self.eem_stack.shape[0])]
-        subset_list = []
-        if rule == 'random':
-            if random_state is not None:
-                random.seed(random_state)
-            random.shuffle(idx_eems)
-            idx_splits = np.array_split(idx_eems, n_split)
-        elif rule == 'sequential':
-            idx_splits = np.array_split(idx_eems, n_split)
+        if kw_top is not None and kw_bot is not None:
+            assert self.index is not None, "EEMDataset index is not specified."
+            idx_top = [i for i in range(len(self.index)) if kw_top in self.index[i]]
+            idx_bot = [i for i in range(len(self.index)) if kw_bot in self.index[i]]
+
+        if idx_top is None and idx_bot is None:
+            idx_eems = [i for i in range(self.eem_stack.shape[0])]
+            if rule == 'random':
+                if random_state is not None:
+                    random.seed(random_state)
+                random.shuffle(idx_eems)
+                idx_splits = np.array_split(idx_eems, n_split)
+            elif rule == 'sequential':
+                idx_splits = np.array_split(idx_eems, n_split)
+            else:
+                raise ValueError("'rule' should be either 'random' or 'sequential'")
+        elif idx_top is not None and idx_bot is not None:
+            assert len(idx_top) == len(idx_bot), "'idx_top' must have the same length as 'idx_bot'"
+            if rule == 'random':
+                if random_state is not None:
+                    random.seed(random_state)
+                shuffle_order = np.random.permutation(len(idx_top))
+                idx_splits_top = np.array_split([idx_top[i] for i in shuffle_order], n_split)
+                idx_splits_bot = np.array_split([idx_bot[i] for i in shuffle_order], n_split)
+                idx_splits = []
+                for s_top, s_bot in zip(idx_splits_top, idx_splits_bot):
+                    idx_splits.append(np.concatenate([s_top, s_bot], axis=0))
+            elif rule == 'sequential':
+                idx_splits_top = np.array_split(idx_top, n_split)
+                idx_splits_bot = np.array_split(idx_bot, n_split)
+                idx_splits = []
+                for s_top, s_bot in zip(idx_splits_top, idx_splits_bot):
+                    idx_splits.append(np.concatenate([s_top, s_bot], axis=0))
+            else:
+                raise ValueError("'rule' should be either 'random' or 'sequential'")
         else:
-            raise ValueError("'rule' should be either 'random' or 'sequential'")
+            raise ValueError("only one of 'idx_top' and 'idx_bot' is defined.")
+
+        subset_list = []
         for split in idx_splits:
             if self.ref is not None:
                 ref = self.ref.iloc[split]
@@ -1756,7 +1785,7 @@ class PARAFAC:
                  alpha_sample=0, alpha_ex=0, alpha_em=0, l1_ratio=1,
                  prior_dict_sample=None, prior_dict_ex=None, prior_dict_em=None,
                  gamma_sample=0, gamma_ex=0, gamma_em=0, prior_ref_components=None,
-                 idx_top=None, idx_bot=None, lam=0,
+                 idx_top=None, idx_bot=None, kw_top=None, kw_bot=None, lam=0,
                  max_iter_als=100, tol=1e-06, max_iter_nnls=500, random_state=None
                  ):
 
@@ -1782,6 +1811,8 @@ class PARAFAC:
         self.prior_ref_components = prior_ref_components
         self.idx_top = idx_top
         self.idx_bot = idx_bot
+        self.kw_top = kw_top
+        self.kw_bot = kw_bot
         self.lam = lam
         self.max_iter_als = max_iter_als
         self.tol = tol
@@ -1817,6 +1848,10 @@ class PARAFAC:
         self: object
             The established PARAFAC model
         """
+        if self.kw_top is not None and self.kw_bot is not None:
+            assert eem_dataset.index is not None
+            self.idx_top = [i for i in range(len(eem_dataset.index)) if self.kw_top in eem_dataset.index[i]]
+            self.idx_bot = [i for i in range(len(eem_dataset.index)) if self.kw_bot in eem_dataset.index[i]]
         if self.tf_normalization:
             if self.lam>0 and self.idx_bot is not None and self.idx_top is not None:
                 Warning("Applying tf_normalization together with ratio regularization (lam>0) will lead to unreasonable results")
@@ -2454,7 +2489,11 @@ class SplitValidation:
         self.subset_specific_models = None
 
     def fit(self, eem_dataset: EEMDataset):
-        split_set = eem_dataset.splitting(n_split=self.n_split, rule=self.rule, random_state=self.random_state)
+        split_set = eem_dataset.splitting(
+            n_split=self.n_split, rule=self.rule, random_state=self.random_state,
+            kw_top=self.base_model.kw_top, kw_bot=self.base_model.kw_bot,
+            idx_top=self.base_model.idx_top, idx_bot=self.base_model.idx_bot
+        )
         if self.combination_size == 'half':
             cs = int(self.n_split) / 2
         else:
@@ -2533,7 +2572,7 @@ class SplitValidation:
             similarities_components[pair_labels] = sims
         similarities_components = pd.DataFrame.from_dict(
             similarities_components, orient='index',
-            columns=['Similarities in C{i}-ex'.format(i=i + 1) for i in range(self.base_model.n_components)]
+            columns=['Similarities in C{i}'.format(i=i + 1) for i in range(self.base_model.n_components)]
         )
         similarities_components.index.name_train = 'Test'
         return similarities_components
@@ -2825,6 +2864,7 @@ class EEMNMF:
         """
         eem_dataset_work = copy.deepcopy(eem_dataset)
         n_iter = 0
+        outlier_indices_history = []
         while n_iter < max_iter_outlier_removal:
             if self.kw_top is not None and self.kw_bot is not None:
                 assert eem_dataset_work.index is not None
@@ -2885,9 +2925,10 @@ class EEMNMF:
                 modified_z_scores = 0.6745 * (rmse_test - rmse_train_median) / rmse_train_mad
                 average_z_score.loc[split_test.index] += modified_z_scores / (len(splits)/2)
             outlier_indices = average_z_score[average_z_score > zscore_threshold].index.to_list()
+            outlier_indices_history.append(outlier_indices)
             if not outlier_indices:
                 self.fit(eem_dataset_work)
-                return eem_dataset_work, [idx for idx in eem_dataset.index if idx not in eem_dataset_work.index]
+                return eem_dataset_work, [idx for idx in eem_dataset.index if idx not in eem_dataset_work.index], outlier_indices_history
             if self.idx_top is not None and self.idx_bot is not None:
                 outlier_top = [i for i, idx in enumerate(eem_dataset_top.index) if idx in outlier_indices]
                 outlier_bot = [i for i, idx in enumerate(eem_dataset_bottom.index) if idx in outlier_indices]
@@ -2901,7 +2942,7 @@ class EEMNMF:
             eem_dataset_work, _ = eem_dataset_work.filter_by_index(None, qualified_indices, copy=True)
             n_iter += 1
         self.fit(eem_dataset_work)
-        return eem_dataset_work, [idx for idx in eem_dataset.index if idx not in eem_dataset_work.index]
+        return eem_dataset_work, [idx for idx in eem_dataset.index if idx not in eem_dataset_work.index], outlier_indices_history
 
     def component_peak_locations(self):
         """
