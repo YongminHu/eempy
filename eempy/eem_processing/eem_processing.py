@@ -390,7 +390,7 @@ def eem_raman_scattering_removal(intensity, ex_range, em_range, width=5, interpo
         The emission wavelengths.
     width: float
         The width of Raman scattering.
-    interpolation_method: str, {"linear", "cubic", "nan"}
+    interpolation_method: str, {"linear", "cubic", "nan", "zero"}
         The method used to interpolate the Raman scattering.
     interpolation_dimension: str, {"1d-ex", "1d-em", "2d"}
         The axis along which the Raman scattering is interpolated. "1d-ex": interpolation is conducted along the excitation
@@ -423,6 +423,8 @@ def eem_raman_scattering_removal(intensity, ex_range, em_range, width=5, interpo
 
     if interpolation_method == 'nan':
         intensity_masked[np.where(raman_mask == 0)] = np.nan
+    elif interpolation_method == 'zero':
+        intensity_masked[np.where(raman_mask == 0)] = 0
     else:
         if interpolation_dimension == '1d-ex':
             for j in range(0, intensity.shape[1]):
@@ -2297,7 +2299,7 @@ def component_similarity(components1: np.ndarray, components2: np.ndarray):
     ----------
     components1: np.ndarray
         The first set of components. Each component is a 3D array (n_components, ex, em).
-    components2:
+    components2: np.ndarray
         The second set of components. Each component is a 3D array (n_components, ex, em).
 
     Returns:
@@ -2645,7 +2647,7 @@ class EEMNMF:
     """
 
     def __init__(
-            self, n_components, solver='cd', init='nndsvda', beta_loss='frobenius',
+            self, n_components, solver='cd', init='nndsvda', custom_init=None, beta_loss='frobenius',
             alpha_sample=0, alpha_component=0, l1_ratio=1,
             prior_dict_W=None, prior_dict_H=None, prior_dict_A=None, prior_dict_B=None, prior_dict_C=None,
             gamma_W=0, gamma_H=0, gamma_A=0, gamma_B=0, gamma_C=0, prior_ref_components=None,
@@ -2658,6 +2660,7 @@ class EEMNMF:
         self.n_components = n_components
         self.solver = solver
         self.init = init
+        self.custom_init = custom_init
         self.beta_loss = beta_loss
         self.alpha_sample = alpha_sample
         self.alpha_component = alpha_component
@@ -2753,6 +2756,7 @@ class EEMNMF:
                     X,
                     rank=self.n_components,
                     init=self.init,
+                    custom_init=self.custom_init,
                     prior_dict_W=self.prior_dict_W,
                     prior_dict_H=self.prior_dict_H,
                     prior_dict_A=self.prior_dict_A,
@@ -2762,7 +2766,7 @@ class EEMNMF:
                     alpha_H=self.alpha_component,
                     l1_ratio=self.l1_ratio,
                     gamma_W=self.gamma_W,
-                    gamma_H=self.gamma_H * eem_dataset.eem_stack.shape[0] / len(self.prior_dict_H) if self.prior_dict_H is not None else 0,
+                    gamma_H=self.gamma_H,
                     gamma_A=self.gamma_A,
                     gamma_B=self.gamma_B,
                     gamma_C=self.gamma_C,
@@ -2786,13 +2790,14 @@ class EEMNMF:
                     X,
                     rank=self.n_components,
                     init=self.init,
+                    custom_init=self.custom_init,
                     prior_dict_W=self.prior_dict_W,
                     prior_dict_H=self.prior_dict_H,
                     prior_dict_A=self.prior_dict_A,
                     prior_dict_B=self.prior_dict_B,
                     prior_dict_C=self.prior_dict_C,
                     gamma_W=self.gamma_W,
-                    gamma_H=self.gamma_H*eem_dataset.eem_stack.shape[0] / len(self.prior_dict_H) if self.prior_dict_H is not None else 0,
+                    gamma_H=self.gamma_H,
                     gamma_A=self.gamma_A,
                     gamma_B=self.gamma_B,
                     gamma_C=self.gamma_C,
@@ -2854,7 +2859,7 @@ class EEMNMF:
         self.em_range = eem_dataset.em_range
         return self
 
-    def robust_fit(self, eem_dataset, n_splits=4, zscore_threshold=3, max_iter_outlier_removal=2):
+    def robust_fit(self, eem_dataset, n_splits=4, zscore_threshold=3, max_iter_outlier_removal=1):
         """
 
         Parameters:
@@ -2972,7 +2977,7 @@ class EEMNMF:
         res = self.eem_stack_train - self.eem_stack_reconstructed
         return res
 
-    def explained_variance(self):
+    def variance_explained(self):
         """
         Calculate the explained variance of the established NMF model
 
@@ -3539,65 +3544,79 @@ def hals_prior_nnls(
         UtM,
         UtU,
         prior_dict=None,
-        V=None,
-        gamma=0,
+        gamma=None,
         alpha=0,
         l1_ratio=0,
+        V=None,
         max_iter=500,
         tol=1e-8,
         eps=1e-8,
 ):
     """
-    HALS-style non-negative the least squares update for V in an NMF step,
-    with optional quadratic priors and elastic-net penalties on rows of V.
+    HALS‐style non‐negative least‐squares update for V in an NMF step,
+    with per‐component quadratic priors and elastic‐net penalties.
 
-    Solves: min_{V>=0} 0.5||M - U V||_F^2
-                         + sum_k (gamma/2)||V_k - p_k||^2
-                         + alpha*(l1_ratio*||V||_1 + 0.5*(1-l1_ratio)*||V||_F^2)
-    via alternating updates on each row V[k].
+    Solves for each row k of V (length n):
+        min_{v>=0}  ½‖R_k - ukk·v‖²
+                   + (γ_k/2)‖v - p_k‖²
+                   + α[ℓ1‖v‖₁ + (1-ℓ1)/2‖v‖²]
+    where
+      - R_k = UtM[k] - ∑_{j≠k} UtU[k,j]·V[j] + ukk·V[k]
+      - ukk = UtU[k,k]
+      - γ_k = gamma_dict.get(k, 0) is the prior weight for component k
+      - p_k = prior_dict.get(k, None) is its prior vector (NaNs skipped)
+      - α = alpha is the overall elastic‐net weight
+      - ℓ1 = l1_ratio mixes L1 vs L2 (0⇒pure L2, 1⇒pure L1)
 
     Parameters
     ----------
-    UtM : array (r, n)
-        Precomputed U^T @ M.
-    UtU : array (r, r)
-        Precomputed U^T @ U.
+    UtM : array_like, shape (r, n)
+        U^T @ M.
+    UtU : array_like, shape (r, r)
+        U^T @ U.
     prior_dict : dict {k: p_k}, optional
-        Priors for row k of V (p_k shape matches V[k, :]).
-    V : array (r, n), optional
-        Initial guess for V. If None, solves UtU V = UtM and clips.
-    gamma : float, optional
-        Quadratic prior weight (default 0 => no prior).
-    alpha : float, optional
-        Overall regularization weight for elastic-net penalty (default 0).
-    l1_ratio : float in [0,1], optional
-        The mix of L1 vs L2 in elastic-net (0 => pure L2, 1 => pure L1).
-    max_iter : int, optional
-        Maximum number of inner HALS iterations.
-    tol : float, optional
-        Convergence tolerance on row-wise updates.
-    eps : float, optional
-        Small constant to avoid divide by zero and ensure positivity.
+        Prior vectors p_k for each row k (length‑n, may contain NaNs).
+    gamma : float or dict {k: γ_k}, optional
+        Per‐component prior weights. If not provided or k missing, γ_k=0. If a float is provided, the same gamma applies
+        to all components.
+    alpha : float, default=0
+        Elastic‐net total weight.
+    l1_ratio : float in [0,1], default=0
+        Mix between L1 and L2 in elastic‐net.
+    V : array_like, shape (r, n), optional
+        Initial V. If None, solves UtU V = UtM and clips.
+    max_iter : int, default=500
+        Max inner HALS iterations.
+    tol : float, default=1e-8
+        Convergence tolerance.
+    eps : float, default=1e-8
+        Small constant to avoid zero denominators.
 
     Returns
     -------
-    V : array (r, n)
+    V : ndarray, shape (r, n)
+        Updated factor.
     """
-    r, n = tl.shape(UtM)
-    if prior_dict is None:
-        prior_dict = {}
+    r, n = UtM.shape
+    prior_dict = {} if prior_dict is None else prior_dict
+    if gamma is None:
+        gamma_k_dict = {}
+    elif isinstance(gamma, dict):
+        gamma = gamma
+    else:
+        # scalar γ ⇒ apply to every component that has a prior
+        gamma = {k: float(gamma) for k in prior_dict.keys()}
 
-    # Elastic-net constants
+    # elastic‐net constants
     l2_pen = alpha * (1 - l1_ratio)
     l1_pen = alpha * l1_ratio
-    prev_delta = None
 
-    # Initialize V
+    # initialize V if needed
     if V is None:
-        V_np = np.linalg.solve(np.asarray(UtU), np.asarray(UtM))
-        V = tl.tensor(np.clip(V_np, a_min=eps, a_max=None), dtype=float)
-        VVt = tl.dot(V, tl.transpose(V))
-        scale = tl.sum(UtM * V) / (tl.sum(UtU * VVt) + eps)
+        V_np = np.linalg.solve(UtU, UtM)
+        V = np.clip(V_np, a_min=eps, a_max=None)
+        VVt = V @ V.T
+        scale = (UtM * V).sum() / (UtU * VVt).sum()
         V = V * scale
 
     for it in range(max_iter):
@@ -3607,37 +3626,35 @@ def hals_prior_nnls(
             if ukk < eps:
                 continue
 
-            if np.isnan(V).any():
-                raise ValueError(f"Input V contains NaN values at iteration {it}, component {k}.")
+            # residual
+            Rk = UtM[k] - UtU[k] @ V + ukk * V[k]
 
-            # HALS residual excluding component k
-            Rk = UtM[k] - tl.dot(UtU[k], V) + ukk * V[k]
+            # base numerator/denominator
+            num = Rk.copy()
+            denom = ukk + l2_pen
 
-            # Base numerator/denominator including L2
-            num = copy.copy(Rk)
-            denom = ukk + l2_pen  # scalar
-
-            # Quadratic prior
-            if k in prior_dict and gamma > 0:
+            # per‐component prior
+            gamma_k = gamma.get(k, 0.0)
+            if gamma_k > 0 and k in prior_dict:
                 p_arr = np.asarray(prior_dict[k], dtype=float)
                 mask = np.isfinite(p_arr).astype(float)
-                p_clean = np.nan_to_num(p_arr, nan=0.0)  # turn NaNs into 0
-                num += gamma * mask * p_clean  # now only adds where mask==1
-                denom += gamma * mask  # safe scalar additions
+                p_clean = np.nan_to_num(p_arr, nan=0.0)
+                num += gamma_k * mask * p_clean
+                denom += gamma_k     # scalar addition ensures denom>0
 
             # L1 shift
-            if l1_pen != 0:
+            if l1_pen:
                 num -= l1_pen
 
-            # Update and ensure non-negativity
-            h_new = num / (denom + eps)
-            V_new = tl.tensor(np.clip(h_new, a_min=eps, a_max=None), dtype=float)
-            # Track change
-            delta += tl.norm(V[k] - V_new) ** 2
-            V[k] = V_new
+            # update
+            v_new = np.clip(num / (denom + eps), a_min=eps, a_max=None)
 
-        # Convergence check
-        if prev_delta is not None and prev_delta > 0 and delta / prev_delta < tol:
+            # track change
+            diff = v_new - V[k]
+            delta += np.dot(diff, diff)
+            V[k] = v_new
+
+        if it>0 and delta / prev_delta < tol:
             break
         prev_delta = delta
 
@@ -3777,7 +3794,12 @@ def cp_hals_prior(
             C_new[:, qi] = C[:, ri]
         A, B, C = A_new, B_new, C_new
 
-    if lam > 0 and idx_top is not None and idx_bot is not None:
+    if isinstance(lam, dict):
+        lam = {k: lam.get(k, 0.0) for k in range(rank)}
+    elif lam > 0:
+        lam = {k: lam for k in range(rank)}
+
+    if lam is not None and idx_top is not None and idx_bot is not None:
         beta = np.ones(rank, dtype=float)
     else:
         beta = None
@@ -3817,7 +3839,7 @@ def cp_hals_prior(
         )
         C = C.T
 
-        if lam > 0 and idx_top is not None and idx_bot is not None:
+        if lam is not None and idx_top is not None and idx_bot is not None:
             # --- Update W via ratio-aware HALS columns ---
             UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 0).T
             UtU = (C.T @ C) * (B.T @ B)
@@ -3831,7 +3853,7 @@ def cp_hals_prior(
                     Rk=Rk,
                     hk_norm2=d,
                     beta_k=beta[k],
-                    lam=lam,
+                    lam=lam[k],
                     k=k,
                     prior_dict=prior_dict_A,
                     gamma=gamma_A,
@@ -4075,7 +4097,7 @@ def update_beta(
         idx_top,
         idx_bot,
         eps: float = 0,
-        boundaries: tuple = (0.95, 1.4)
+        boundaries: tuple = (0.95, 2)
 ) -> np.ndarray:
     """
     Fit beta per component so that W[idx_top, j] ≈ beta[j] * W[idx_bot, j].
@@ -4260,7 +4282,12 @@ def nmf_hals_prior(
             H_new[qi, :] = H[ri, :]
         W, H = W_new, H_new
 
-    if lam > 0 and idx_bot is not None and idx_top is not None:
+    if isinstance(lam, dict):
+        lam = {k: lam.get(k, 0.0) for k in range(rank)}
+    elif lam > 0:
+        lam = {k: lam for k in range(rank)}
+
+    if lam is not None and idx_bot is not None and idx_top is not None:
         beta = np.ones(rank, dtype=float)
     else:
         beta = None
@@ -4333,7 +4360,7 @@ def nmf_hals_prior(
             eps=eps
         )
 
-        if lam > 0 and idx_bot is not None and idx_top is not None:
+        if lam is not None and idx_bot is not None and idx_top is not None:
             # --- Update W via ratio-aware HALS columns ---
             UtM_W = tl.to_numpy(tl.dot(H0, tl.transpose(X0)))  # (r, m)
             UtU_W = tl.to_numpy(tl.dot(H0, tl.transpose(H0)))  # (r, r)
@@ -4347,7 +4374,7 @@ def nmf_hals_prior(
                     Rk=Rk,
                     hk_norm2=d,
                     beta_k=beta0[k],
-                    lam=lam,
+                    lam=lam[k],
                     k=k,
                     prior_dict=prior_dict_W0,
                     gamma=gamma_W,
@@ -4377,7 +4404,7 @@ def nmf_hals_prior(
             )
             W0 = tl.transpose(W0t)
 
-        return W0, H0, beta0 if lam > 0 and idx_top is not None and idx_bot is not None else None
+        return W0, H0, beta0 if lam is not None and idx_top is not None and idx_bot is not None else None
 
     def one_step_cp(X0, A0, B0, C0, beta0, prior_dict_A0, prior_dict_B0, prior_dict_C0):
 
@@ -4416,7 +4443,7 @@ def nmf_hals_prior(
         )
         C0 = C0.T
 
-        if lam > 0 and idx_top is not None and idx_bot is not None:
+        if lam is not None and idx_top is not None and idx_bot is not None:
             # --- Update W via ratio-aware HALS columns ---
             UtM = unfolding_dot_khatri_rao(M, (None, [A0, B0, C0]), 0).T
             UtU = (C0.T @ C0) * (B0.T @ B0)
@@ -4430,7 +4457,7 @@ def nmf_hals_prior(
                     Rk=Rk,
                     hk_norm2=d,
                     beta_k=beta0[k],
-                    lam=lam,
+                    lam=lam[k],
                     k=k,
                     prior_dict=prior_dict_A0,
                     gamma=gamma_A,
@@ -4462,7 +4489,7 @@ def nmf_hals_prior(
             )
             A0 = A0.T
 
-        return A0, B0, C0, beta0 if lam > 0 and idx_top is not None and idx_bot is not None else None
+        return A0, B0, C0, beta0 if lam is not None and idx_top is not None and idx_bot is not None else None
 
     for n_iter in range(max_iter_als):
         if r_cp and r_nmf:
