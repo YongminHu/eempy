@@ -199,7 +199,7 @@ def plot_eem_stack(
     vmin: float = None,
     vmax: float = None,
     cmap: str = 'jet',
-    figure_size: tuple = (12, 8),
+    figure_size: tuple = (12, 12),
     axis_label_font_size: int = 12,
     axis_ticks_font_size: int = 10,
     cbar: bool = True,
@@ -207,7 +207,9 @@ def plot_eem_stack(
     fix_aspect_ratio: bool = True,
     rotate: bool = False,
     suptitle: str = None,
-    suptitle_font_size: int = 16
+    suptitle_font_size: int = 16,
+    plot_x_axis_label = True,
+    plot_y_axis_label = True,
 ) -> tuple:
     """
     Plot a stack of EEMs in a grid of subplots.
@@ -256,8 +258,9 @@ def plot_eem_stack(
     ims : list of AxesImage
     """
     n_plots = eem_stack.shape[0]
-    if len(titles) != n_plots:
-        raise ValueError("Length of titles must match number of EEMs in stack.")
+    if titles:
+        if len(titles) != n_plots:
+            raise ValueError("Length of titles must match number of EEMs in stack.")
 
     n_rows = math.ceil(n_plots / n_cols)
     fig, axes = plt.subplots(n_rows, n_cols, figsize=figure_size, squeeze=False)
@@ -297,10 +300,12 @@ def plot_eem_stack(
         )
         ims.append(im)
 
-        if titles:
+        if titles is not None:
             ax.set_title(titles[i], fontsize=axis_label_font_size)
-        ax.set_xlabel('Emission wavelength [nm]' if not rotate else 'Excitation wavelength [nm]', fontsize=axis_label_font_size)
-        ax.set_ylabel('Excitation wavelength [nm]' if not rotate else 'Emission wavelength [nm]', fontsize=axis_label_font_size)
+        if plot_x_axis_label:
+            ax.set_xlabel('Emission wavelength [nm]' if not rotate else 'Excitation wavelength [nm]', fontsize=axis_label_font_size)
+        if plot_y_axis_label:
+            ax.set_ylabel('Excitation wavelength [nm]' if not rotate else 'Emission wavelength [nm]', fontsize=axis_label_font_size)
         ax.tick_params(labelsize=axis_ticks_font_size)
 
         if cbar:

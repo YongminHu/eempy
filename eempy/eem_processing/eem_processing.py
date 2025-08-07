@@ -35,6 +35,7 @@ from tensorly.decomposition import parafac, non_negative_parafac, non_negative_p
 from tensorly.cp_tensor import cp_to_tensor
 from tensorly.decomposition._cp import initialize_cp
 from tensorly.tenalg import unfolding_dot_khatri_rao
+from tensorly.base import unfold
 from tlviz.model_evaluation import core_consistency
 from tlviz.outliers import compute_leverage
 from tlviz.factor_tools import permute_cp_tensor
@@ -494,7 +495,7 @@ def eem_rayleigh_scattering_removal(intensity, ex_range, em_range, width_o1=15, 
     rayleigh_mask_o1: np.ndarray
         Indicate the pixels that are interpolated due to 1st order Rayleigh scattering.
         0: pixel is interpolated; 1: pixel is not interpolated.
-    rayleigh_mask_o2
+    rayleigh_mask_o2: np.ndarray
         Indicate the pixels that are interpolated due to 1st order Rayleigh scattering.
         0: pixel is interpolated; 1: pixel is not interpolated.
     """
@@ -1782,13 +1783,13 @@ class PARAFAC:
         Emission wavelengths.
     """
 
-    def __init__(self, n_components, non_negativity=True, solver='hals', init='svd', custom_init=None,
+    def __init__(self, n_components, non_negativity=True, solver='hals', init='svd', custom_init=None, fixed_components=None,
                  tf_normalization=False, loadings_normalization: Optional[str] = 'maximum', sort_components_by_em=True,
                  alpha_sample=0, alpha_ex=0, alpha_em=0, l1_ratio=1,
                  prior_dict_sample=None, prior_dict_ex=None, prior_dict_em=None,
                  gamma_sample=0, gamma_ex=0, gamma_em=0, prior_ref_components=None,
                  idx_top=None, idx_bot=None, kw_top=None, kw_bot=None, lam=0,
-                 max_iter_als=100, tol=1e-06, max_iter_nnls=500, random_state=None
+                 max_iter_als=100, tol=1e-06, max_iter_nnls=500, random_state=None, mask=None
                  ):
 
         # ----------parameters--------------
@@ -1796,6 +1797,7 @@ class PARAFAC:
         self.non_negativity = non_negativity
         self.init = init
         self.custom_init = custom_init
+        self.fixed_components = fixed_components
         self.tf_normalization = tf_normalization
         self.loadings_normalization = loadings_normalization
         self.sort_components_by_em = sort_components_by_em
@@ -1820,6 +1822,7 @@ class PARAFAC:
         self.tol = tol
         self.max_iter_nnls = max_iter_nnls
         self.random_state = random_state
+        self.mask = mask
 
         # -----------attributes---------------
         self.score = None
@@ -1873,53 +1876,41 @@ class PARAFAC:
                                         tol=self.tol)
                 a, b, c = cptensors[1]
             else:
-                if np.isnan(eem_stack_tf).any():
-                    mask = np.where(np.isnan(eem_stack_tf), 0, 1)
-                    if self.solver == 'hals':
-                        cptensors = non_negative_parafac_hals(eem_stack_tf, rank=self.n_components,
-                                                              init=self.init,
-                                                              n_iter_max=self.max_iter_als,
-                                                              tol=self.tol)
-                    elif self.solver == 'mu':
-                        cptensors = non_negative_parafac(eem_stack_tf, rank=self.n_components, mask=mask,
-                                                         init=self.init,
-                                                         n_iter_max=self.max_iter_als,
-                                                         tol=self.tol)
+                if self.solver == 'hals':
+                    a, b, c, beta = cp_hals_prior(
+                        eem_stack_tf,
+                        rank=self.n_components,
+                        init=self.init,
+                        custom_init=self.custom_init,
+                        prior_dict_A=self.prior_dict_sample,
+                        prior_dict_B=self.prior_dict_ex,
+                        prior_dict_C=self.prior_dict_em,
+                        alpha_A=self.alpha_sample,
+                        alpha_B=self.alpha_ex,
+                        alpha_C=self.alpha_em,
+                        l1_ratio=self.l1_ratio,
+                        gamma_A=self.gamma_sample,
+                        gamma_B=self.gamma_ex,
+                        gamma_C=self.gamma_em,
+                        idx_top=self.idx_top,
+                        idx_bot=self.idx_bot,
+                        lam=self.lam,
+                        max_iter_als=self.max_iter_als,
+                        max_iter_nnls=self.max_iter_nnls,
+                        prior_ref_components=self.prior_ref_components,
+                        random_state=self.random_state,
+                        fixed_components=self.fixed_components,
+                        mask=self.mask,
+                    )
+                    self.beta = beta
+                    cptensors = tl.cp_tensor.CPTensor((np.ones(self.n_components), [a, b, c]))
+                elif self.solver == 'mu':
+                    cptensors = non_negative_parafac(eem_stack_tf, rank=self.n_components, init=self.init,
+                                                     n_iter_max=self.max_iter_als, tol=self.tol)
                     a, b, c = cptensors[1]
-                else:
-                    if self.solver == 'hals':
-                        a, b, c, beta = cp_hals_prior(
-                            eem_stack_tf,
-                            rank=self.n_components,
-                            init=self.init,
-                            custom_init=self.custom_init,
-                            prior_dict_A=self.prior_dict_sample,
-                            prior_dict_B=self.prior_dict_ex,
-                            prior_dict_C=self.prior_dict_em,
-                            alpha_A=self.alpha_sample,
-                            alpha_B=self.alpha_ex,
-                            alpha_C=self.alpha_em,
-                            l1_ratio=self.l1_ratio,
-                            gamma_A=self.gamma_sample,
-                            gamma_B=self.gamma_ex,
-                            gamma_C=self.gamma_em,
-                            idx_top=self.idx_top,
-                            idx_bot=self.idx_bot,
-                            lam=self.lam,
-                            max_iter_als=self.max_iter_als,
-                            max_iter_nnls=self.max_iter_nnls,
-                            prior_ref_components=self.prior_ref_components,
-                            random_state=self.random_state
-                        )
-                        self.beta = beta
-                        cptensors = tl.cp_tensor.CPTensor((np.ones(self.n_components), [a, b, c]))
-                    elif self.solver == 'mu':
-                        cptensors = non_negative_parafac(eem_stack_tf, rank=self.n_components, init=self.init,
-                                                         n_iter_max=self.max_iter_als, tol=self.tol)
-                        a, b, c = cptensors[1]
         except ArpackError:
             print(
-                "PARAFAC failed possibly due to the presence of patches of nan values. Please consider cut or "
+                "PARAFAC failed possibly due to the presence of large non-sparse missing values. Please consider cut or "
                 "interpolate the nan values.")
         components = np.zeros([self.n_components, b.shape[0], c.shape[0]])
         for r in range(self.n_components):
@@ -2458,7 +2449,7 @@ class SplitValidation:
     ----------
     base_model: PARAFAC or EEMNMF
         The base PARAFAC or NMF model to be used for validation.
-    n_split: int
+    n_splits: int
         Number of splits.
     combination_size: int or str, {int, 'half'}
         The number of splits assembled into one combination. If 'half' is passed, each combination will include
@@ -2477,11 +2468,11 @@ class SplitValidation:
         Dictionary of PARAFAC models established on sub-datasets.
     """
 
-    def __init__(self, base_model, n_split=4, combination_size='half', rule='random',
+    def __init__(self, base_model, n_splits=4, combination_size='half', rule='random',
                  random_state=None):
         # ---------------Parameters-------------------
         self.base_model = base_model
-        self.n_split = n_split
+        self.n_split = n_splits
         self.combination_size = combination_size
         self.rule = rule
         self.random_state = random_state
@@ -2489,6 +2480,7 @@ class SplitValidation:
         # ----------------Attributes------------------
         self.eem_subsets = None
         self.subset_specific_models = None
+        self.eem_dataset_full = None
 
     def fit(self, eem_dataset: EEMDataset):
         split_set = eem_dataset.splitting(
@@ -2510,6 +2502,20 @@ class SplitValidation:
             label = ''.join(c)
             subdataset = combine_eem_datasets([split_set[i] for i in e])
             model_subdataset = copy.deepcopy(self.base_model)
+            if model_subdataset.init == "custom":
+                init0 = model_subdataset.custom_init[0]
+                idx_in_split = [eem_dataset.index.index(idx) for idx in subdataset.index]
+                model_subdataset.custom_init[0] = init0[idx_in_split]
+            if isinstance(model_subdataset, EEMNMF):
+                if self.base_model.prior_dict_W is not None:
+                    idx_in_split = [eem_dataset.index.index(idx) for idx in subdataset.index]
+                    for r in list(self.base_model.prior_dict_W.keys()):
+                        model_subdataset.prior_dict_W[r] = self.base_model.prior_dict_W[r][idx_in_split]
+            elif isinstance(model_subdataset, PARAFAC):
+                if self.base_model.prior_dict_sample is not None:
+                    idx_in_split = [eem_dataset.index.index(idx) for idx in subdataset.index]
+                    for r in list(self.base_model.prior_dict_W.keys()):
+                        model_subdataset.prior_dict_sample[r] = self.base_model.prior_dict_sample[r][idx_in_split]
             model_subdataset.fit(subdataset)
             models[label] = model_subdataset
             subsets[label] = subdataset
@@ -2519,6 +2525,7 @@ class SplitValidation:
         )
         self.eem_subsets = subsets
         self.subset_specific_models = models
+        self.eem_dataset_full = eem_dataset
         return self
 
     def compare_parafac_loadings(self):
@@ -2578,6 +2585,63 @@ class SplitValidation:
         )
         similarities_components.index.name_train = 'Test'
         return similarities_components
+
+    def correlation_cv(self, ref_col):
+        assert ref_col in self.eem_dataset_full.ref.columns, f"'{ref_col}' is not found in reference."
+        labels = sorted(self.subset_specific_models.keys())
+        tbl = {}
+        for k in range(int(len(labels) / 2)):
+            m1 = self.subset_specific_models[labels[k]]
+            m2 = self.subset_specific_models[labels[-1 - k]]
+            d1 = self.eem_subsets[labels[k]]
+            d2 = self.eem_subsets[labels[-1 - k]]
+            pair_labels_12 = 'train: {m1} / test: {m2}'.format(m1=labels[k], m2=labels[-1 - k])
+            pair_labels_21 = 'train: {m2} / test: {m1}'.format(m1=labels[k], m2=labels[-1 - k])
+            mask_ref1 = ~np.isnan(d1.ref[ref_col].to_numpy())
+            y_d1 = d1.ref[ref_col].to_numpy()[mask_ref1]
+            mask_ref2 = ~np.isnan(d2.ref[ref_col].to_numpy())
+            y_d2 = d2.ref[ref_col].to_numpy()[mask_ref2]
+            _, fmax_train_d1, _ = m1.predict(d1)
+            _, fmax_test_d2, _ = m1.predict(d2)
+            _, fmax_train_d2, _ = m2.predict(d2)
+            _, fmax_test_d1, _ = m2.predict(d1)
+            tbl_12 = {}
+            for r in range(self.base_model.n_components):
+                x_train = fmax_train_d1.iloc[mask_ref1, [r]].to_numpy()
+                x_test = fmax_test_d2.iloc[mask_ref2, [r]].to_numpy()
+                lr = LinearRegression(fit_intercept=True)
+                lr.fit(x_train, y_d1)
+                y_pred_train = lr.predict(x_train)
+                r2_train = lr.score(x_train, y_d1)
+                rmse_train = np.sqrt(mean_squared_error(y_d1, y_pred_train))
+                tbl_12[ref_col + '-' + f'C{r + 1} Fmax' + '-r2-training'] = r2_train
+                tbl_12[ref_col + '-' + f'C{r + 1} Fmax' + '-rmse-training'] = rmse_train
+                y_pred_test = lr.predict(x_test)
+                r2_test = lr.score(x_test, y_d2)
+                rmse_test = np.sqrt(mean_squared_error(y_d2, y_pred_test))
+                tbl_12[ref_col + '-' + f'C{r + 1} Fmax' + '-r2-test'] = r2_test
+                tbl_12[ref_col + '-' + f'C{r + 1} Fmax' + '-rmse-test'] = rmse_test
+            tbl[pair_labels_12] = tbl_12
+            tbl_21 = {}
+            for r in range(self.base_model.n_components):
+                x_train = fmax_train_d2.iloc[mask_ref2, [r]].to_numpy()
+                x_test = fmax_test_d1.iloc[mask_ref1, [r]].to_numpy()
+                lr = LinearRegression(fit_intercept=True)
+                lr.fit(x_train, y_d2)
+                y_pred_train = lr.predict(x_train)
+                r2_train = lr.score(x_train, y_d2)
+                rmse_train = np.sqrt(mean_squared_error(y_d2, y_pred_train))
+                tbl_21[ref_col + '-' + f'C{r + 1} Fmax' + '-r2-training'] = r2_train
+                tbl_21[ref_col + '-' + f'C{r + 1} Fmax' + '-rmse-training'] = rmse_train
+                y_pred_test = lr.predict(x_test)
+                r2_test = lr.score(x_test, y_d1)
+                rmse_test = np.sqrt(mean_squared_error(y_d1, y_pred_test))
+                tbl_21[ref_col + '-' + f'C{r + 1} Fmax' + '-r2-test'] = r2_test
+                tbl_21[ref_col + '-' + f'C{r + 1} Fmax' + '-rmse-test'] = rmse_test
+            tbl[pair_labels_21] = tbl_21
+        tbl_df = pd.DataFrame(tbl).T
+        return tbl_df
+
 
 
 class EEMNMF:
@@ -2647,8 +2711,8 @@ class EEMNMF:
     """
 
     def __init__(
-            self, n_components, solver='cd', init='nndsvda', custom_init=None, beta_loss='frobenius',
-            alpha_sample=0, alpha_component=0, l1_ratio=1,
+            self, n_components, solver='cd', init='nndsvda', custom_init=None, fixed_components=None,
+            beta_loss='frobenius', alpha_sample=0, alpha_component=0, l1_ratio=1,
             prior_dict_W=None, prior_dict_H=None, prior_dict_A=None, prior_dict_B=None, prior_dict_C=None,
             gamma_W=0, gamma_H=0, gamma_A=0, gamma_B=0, gamma_C=0, prior_ref_components=None,
             idx_top=None, idx_bot=None, kw_top=None, kw_bot=None, lam=0, fit_rank_one=False,
@@ -2661,6 +2725,7 @@ class EEMNMF:
         self.solver = solver
         self.init = init
         self.custom_init = custom_init
+        self.fixed_components = fixed_components
         self.beta_loss = beta_loss
         self.alpha_sample = alpha_sample
         self.alpha_component = alpha_component
@@ -2757,6 +2822,7 @@ class EEMNMF:
                     rank=self.n_components,
                     init=self.init,
                     custom_init=self.custom_init,
+                    fixed_components=self.fixed_components,
                     prior_dict_W=self.prior_dict_W,
                     prior_dict_H=self.prior_dict_H,
                     prior_dict_A=self.prior_dict_A,
@@ -2791,6 +2857,7 @@ class EEMNMF:
                     rank=self.n_components,
                     init=self.init,
                     custom_init=self.custom_init,
+                    fixed_components=self.fixed_components,
                     prior_dict_W=self.prior_dict_W,
                     prior_dict_H=self.prior_dict_H,
                     prior_dict_A=self.prior_dict_A,
@@ -3073,6 +3140,44 @@ class EEMNMF:
         score_sample = pd.DataFrame(score_sample, index=eem_dataset.index, columns=self.fmax.columns)
         fmax_sample = pd.DataFrame(fmax_sample, index=eem_dataset.index, columns=self.fmax.columns)
         return score_sample, fmax_sample, eem_stack_pred
+
+
+class RobustPARAFAC:
+    """
+
+    """
+
+    def __init__(self, base_model_layer1, base_model_layer2, n_splits_layer1=6, random_state=None):
+        self.base_model_layer1 = base_model_layer1
+        self.base_model_layer2 = base_model_layer2
+        self.n_splits_layer1 = n_splits_layer1
+        self.random_state = random_state
+        self.component_set_layer1 = None
+        self.fmax = None
+        self.components = None
+        self.ex_loadings = None,
+        self.em_loadings = None,
+
+    def fit(self, eem_dataset: EEMDataset):
+        self.base_model_layer1.fit(eem_dataset)
+        sv = SplitValidation(base_model=self.base_model_layer1, n_splits=self.n_splits_layer1, random_state=self.random_state)
+        sv.fit(eem_dataset)
+
+        c_all = []
+        for sub_model in sv.subset_specific_models.values():
+            c_all.append(sub_model.components)
+        component_set_layer1 = EEMDataset(
+            eem_stack=np.concatenate(c_all, axis=0),
+            ex_range=eem_dataset.ex_range, em_range=eem_dataset.em_range
+        )
+        self.base_model_layer2.fit(component_set_layer1)
+        _, fmax, _ =self.base_model_layer2.predict(eem_dataset)
+        self.component_set_layer1 = component_set_layer1
+        self.fmax = fmax
+        self.components = self.base_model_layer2.components
+        # self.ex_loadings = self.base_model_layer2.ex_loadings
+        # self.em_loadings = self.base_model_layer2.em_loadings
+
 
 
 class KMethod:
@@ -3539,6 +3644,131 @@ class KMethod:
 
         return best_model_label, score_all, fmax_all, sample_error
 
+#
+# def hals_prior_nnls(
+#         UtM,
+#         UtU,
+#         prior_dict=None,
+#         gamma=None,
+#         alpha=0,
+#         l1_ratio=0,
+#         V=None,
+#         max_iter=500,
+#         tol=1e-8,
+#         eps=1e-8,
+#         fixed_components=None,
+# ):
+#     """
+#     HALS‐style non‐negative least‐squares update for V in an NMF step,
+#     with per‐component quadratic priors and elastic‐net penalties.
+#
+#     Solves for each row k of V (length n):
+#         min_{v>=0}  ½‖R_k - ukk·v‖²
+#                    + (γ_k/2)‖v - p_k‖²
+#                    + α[ℓ1‖v‖₁ + (1-ℓ1)/2‖v‖²]
+#     where
+#       - R_k = UtM[k] - ∑_{j≠k} UtU[k,j]·V[j] + ukk·V[k]
+#       - ukk = UtU[k,k]
+#       - γ_k = gamma_dict.get(k, 0) is the prior weight for component k
+#       - p_k = prior_dict.get(k, None) is its prior vector (NaNs skipped)
+#       - α = alpha is the overall elastic‐net weight
+#       - ℓ1 = l1_ratio mixes L1 vs L2 (0⇒pure L2, 1⇒pure L1)
+#
+#     Parameters
+#     ----------
+#     UtM : array_like, shape (r, n)
+#         U^T @ M.
+#     UtU : array_like, shape (r, r)
+#         U^T @ U.
+#     prior_dict : dict {k: p_k}, optional
+#         Prior vectors p_k for each row k (length‑n, may contain NaNs).
+#     gamma : float or dict {k: γ_k}, optional
+#         Per‐component prior weights. If not provided or k missing, γ_k=0. If a float is provided, the same gamma applies
+#         to all components.
+#     alpha : float, default=0
+#         Elastic‐net total weight.
+#     l1_ratio : float in [0,1], default=0
+#         Mix between L1 and L2 in elastic‐net.
+#     V : array_like, shape (r, n), optional
+#         Initial V. If None, solves UtU V = UtM and clips.
+#     max_iter : int, default=500
+#         Max inner HALS iterations.
+#     tol : float, default=1e-8
+#         Convergence tolerance.
+#     eps : float, default=1e-8
+#         Small constant to avoid zero denominators.
+#
+#     Returns
+#     -------
+#     V : ndarray, shape (r, n)
+#         Updated factor.
+#     """
+#     fixed_components = [] if fixed_components is None else fixed_components
+#     r, n = UtM.shape
+#     prior_dict = {} if prior_dict is None else prior_dict
+#     if gamma is None:
+#         gamma_k_dict = {}
+#     elif isinstance(gamma, dict):
+#         gamma = gamma
+#     else:
+#         # scalar γ ⇒ apply to every component that has a prior
+#         gamma = {k: float(gamma) for k in prior_dict.keys()}
+#
+#     # elastic‐net constants
+#     l2_pen = alpha * (1 - l1_ratio)
+#     l1_pen = alpha * l1_ratio
+#
+#     # initialize V if needed
+#     if V is None:
+#         V_np = np.linalg.solve(UtU, UtM)
+#         V = np.clip(V_np, a_min=eps, a_max=None)
+#         VVt = V @ V.T
+#         scale = (UtM * V).sum() / (UtU * VVt).sum()
+#         V = V * scale
+#
+#     for it in range(max_iter):
+#         delta = 0.0
+#         for k in range(r):
+#             if k in fixed_components:
+#                 continue
+#             ukk = UtU[k, k]
+#             if ukk < eps:
+#                 continue
+#             # residual
+#             Rk = UtM[k] - UtU[k] @ V + ukk * V[k]
+#
+#             # base numerator/denominator
+#             num = Rk.copy()
+#             denom = ukk + l2_pen
+#
+#             # per‐component prior
+#             gamma_k = gamma.get(k, 0.0)
+#             if gamma_k > 0 and k in prior_dict:
+#                 p_arr = np.asarray(prior_dict[k], dtype=float)
+#                 mask = np.isfinite(p_arr).astype(float)
+#                 p_clean = np.nan_to_num(p_arr, nan=0.0)
+#                 num += gamma_k * mask * p_clean
+#                 denom += gamma_k     # scalar addition ensures denom>0
+#
+#             # L1 shift
+#             if l1_pen:
+#                 num -= l1_pen
+#
+#             # update
+#             v_new = np.clip(num / (denom + eps), a_min=eps, a_max=None)
+#
+#             # track change
+#             diff = v_new - V[k]
+#             delta += np.dot(diff, diff)
+#             V[k] = v_new
+#
+#         if it>0 and delta / prev_delta < tol:
+#             break
+#         prev_delta = delta
+#
+#     return V
+
+import numpy as np
 
 def hals_prior_nnls(
         UtM,
@@ -3551,114 +3781,104 @@ def hals_prior_nnls(
         max_iter=500,
         tol=1e-8,
         eps=1e-8,
+        fixed_components=None,
 ):
     """
-    HALS‐style non‐negative least‐squares update for V in an NMF step,
-    with per‐component quadratic priors and elastic‐net penalties.
+    FastHALS-style non‐negative least‐squares update for V in an NMF step,
+    with per‐component quadratic priors, elastic‐net penalties, and fixed components.
 
-    Solves for each row k of V (length n):
-        min_{v>=0}  ½‖R_k - ukk·v‖²
-                   + (γ_k/2)‖v - p_k‖²
-                   + α[ℓ1‖v‖₁ + (1-ℓ1)/2‖v‖²]
-    where
-      - R_k = UtM[k] - ∑_{j≠k} UtU[k,j]·V[j] + ukk·V[k]
-      - ukk = UtU[k,k]
-      - γ_k = gamma_dict.get(k, 0) is the prior weight for component k
-      - p_k = prior_dict.get(k, None) is its prior vector (NaNs skipped)
-      - α = alpha is the overall elastic‐net weight
-      - ℓ1 = l1_ratio mixes L1 vs L2 (0⇒pure L2, 1⇒pure L1)
+#     Solves for each row k of V (length n):
+#         min_{v>=0}  ½‖R_k - ukk·v‖²
+#                    + (γ_k/2)‖v - p_k‖²
+#                    + α[ℓ1‖v‖₁ + (1-ℓ1)/2‖v‖²]
+#     where
+#       - R_k = UtM[k] - ∑_{j≠k} UtU[k,j]·V[j] + ukk·V[k]
+#       - ukk = UtU[k,k]
+#       - γ_k = gamma_dict.get(k, 0) is the prior weight for component k
+#       - p_k = prior_dict.get(k, None) is its prior vector (NaNs skipped)
+#       - α = alpha is the overall elastic‐net weight
+#       - ℓ1 = l1_ratio mixes L1 vs L2 (0⇒pure L2, 1⇒pure L1)
 
-    Parameters
-    ----------
-    UtM : array_like, shape (r, n)
-        U^T @ M.
-    UtU : array_like, shape (r, r)
-        U^T @ U.
-    prior_dict : dict {k: p_k}, optional
-        Prior vectors p_k for each row k (length‑n, may contain NaNs).
-    gamma : float or dict {k: γ_k}, optional
-        Per‐component prior weights. If not provided or k missing, γ_k=0. If a float is provided, the same gamma applies
-        to all components.
-    alpha : float, default=0
-        Elastic‐net total weight.
-    l1_ratio : float in [0,1], default=0
-        Mix between L1 and L2 in elastic‐net.
-    V : array_like, shape (r, n), optional
-        Initial V. If None, solves UtU V = UtM and clips.
-    max_iter : int, default=500
-        Max inner HALS iterations.
-    tol : float, default=1e-8
-        Convergence tolerance.
-    eps : float, default=1e-8
-        Small constant to avoid zero denominators.
-
-    Returns
-    -------
-    V : ndarray, shape (r, n)
-        Updated factor.
     """
+    fixed_components = [] if fixed_components is None else fixed_components
     r, n = UtM.shape
     prior_dict = {} if prior_dict is None else prior_dict
+
     if gamma is None:
-        gamma_k_dict = {}
-    elif isinstance(gamma, dict):
-        gamma = gamma
-    else:
-        # scalar γ ⇒ apply to every component that has a prior
+        gamma = {}
+    elif not isinstance(gamma, dict):
         gamma = {k: float(gamma) for k in prior_dict.keys()}
 
-    # elastic‐net constants
+    # Elastic-net constants
     l2_pen = alpha * (1 - l1_ratio)
     l1_pen = alpha * l1_ratio
 
-    # initialize V if needed
+    # Initialize V if not provided
     if V is None:
-        V_np = np.linalg.solve(UtU, UtM)
+        V_np = np.linalg.solve(UtU + eps * np.eye(r), UtM)
         V = np.clip(V_np, a_min=eps, a_max=None)
         VVt = V @ V.T
-        scale = (UtM * V).sum() / (UtU * VVt).sum()
+        scale = (UtM * V).sum() / ((UtU * VVt).sum() + eps)
         V = V * scale
+
+    # Initialize residual: R = UtM - UtU @ V
+    R = UtM - UtU @ V
 
     for it in range(max_iter):
         delta = 0.0
+
         for k in range(r):
+            if k in fixed_components:
+                continue
             ukk = UtU[k, k]
             if ukk < eps:
                 continue
 
-            # residual
-            Rk = UtM[k] - UtU[k] @ V + ukk * V[k]
+            # Local residual with V[k]'s contribution restored
+            Rk = R[k] + ukk * V[k]
 
-            # base numerator/denominator
+            # Numerator and denominator
             num = Rk.copy()
             denom = ukk + l2_pen
 
-            # per‐component prior
+            # Per-component prior
             gamma_k = gamma.get(k, 0.0)
             if gamma_k > 0 and k in prior_dict:
                 p_arr = np.asarray(prior_dict[k], dtype=float)
                 mask = np.isfinite(p_arr).astype(float)
                 p_clean = np.nan_to_num(p_arr, nan=0.0)
                 num += gamma_k * mask * p_clean
-                denom += gamma_k     # scalar addition ensures denom>0
+                denom += gamma_k
 
-            # L1 shift
+            # L1 penalty
             if l1_pen:
                 num -= l1_pen
 
-            # update
+            # Update rule and clipping
             v_new = np.clip(num / (denom + eps), a_min=eps, a_max=None)
 
-            # track change
+            # Track and apply update
             diff = v_new - V[k]
             delta += np.dot(diff, diff)
-            V[k] = v_new
 
-        if it>0 and delta / prev_delta < tol:
+            V[k] = v_new
+            R -= np.outer(UtU[:, k], diff)  # FastHALS residual update
+
+        if it > 0 and delta / (prev_delta + eps) < tol:
             break
         prev_delta = delta
 
     return V
+
+
+
+
+def masked_unfolding_dot_khatri_rao(tensor, factors, mode, mask):
+    masked_tensor = tl.tensor(tensor * mask, dtype=float)
+    return tl.dot(unfold(masked_tensor, mode), tl.tenalg.khatri_rao(factors[1], skip_matrix=mode))
+
+def masked_tensor_norm_error(tensor, reconstruction, mask):
+    return tl.norm((tensor - reconstruction) * mask)
 
 
 def cp_hals_prior(
@@ -3684,7 +3904,9 @@ def cp_hals_prior(
         eps=1e-8,
         init='svd',
         custom_init=None,
-        random_state=None
+        random_state=None,
+        fixed_components=None,
+        mask=None,
 ):
     """
     Perform non-negative PARAFAC/CP decomposition of a 3-way tensor using HALS with optional priors
@@ -3723,6 +3945,10 @@ def cp_hals_prior(
         Initialization scheme for factor matrices.
     random_state : int or None
         Random seed.
+    fixed_components: list, optional
+        List of indices of components that are fixed as initialization.
+    mask: array-like, shape (I, J, K), optional
+        Binary mask indicating positions not considered in optimization. 0: positions not considered; 1: valid positions.
 
     Returns
     -------
@@ -3733,10 +3959,16 @@ def cp_hals_prior(
     """
     # Ensure tensor
     X = tl.tensor(tensor, dtype=float)
+    if mask is None:
+        mask = np.isfinite(X)  # fallback if user just passed in nan-masked data
+    mask = tl.tensor(mask.astype(float))
     I, J, K = X.shape
     rng = np.random.RandomState(random_state)
+    if np.isfinite(X).any():
+        X = process_eem_stack(X, eem_nan_imputing, ex_range=np.arange(X.shape[1]), em_range=np.arange(X.shape[2]))
 
     # Initialize factors A, B, C
+
     if init == 'random':
         A = tl.clip(rng.rand(I, rank), a_min=eps)
         B = tl.clip(rng.rand(J, rank), a_min=eps)
@@ -3794,6 +4026,13 @@ def cp_hals_prior(
             C_new[:, qi] = C[:, ri]
         A, B, C = A_new, B_new, C_new
 
+    if np.isnan(A).any():
+        print(f"A contains NaN in init")
+    if np.isnan(B).any():
+        print(f"B contains NaN in init")
+    if np.isnan(C).any():
+        print(f"C contains NaN in init")
+
     if isinstance(lam, dict):
         lam = {k: lam.get(k, 0.0) for k in range(rank)}
     elif lam > 0:
@@ -3803,11 +4042,15 @@ def cp_hals_prior(
         beta = np.ones(rank, dtype=float)
     else:
         beta = None
-    prev_error = tl.norm(X - cp_to_tensor((None, [A, B, C])))
+    prev_error = masked_tensor_norm_error(X, cp_to_tensor((None, [A, B, C])), mask)
     for iteration in range(max_iter_als):
         # Update B:
-        UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 1).T
+        UtM = masked_unfolding_dot_khatri_rao(X, (None, [A, B, C]), 1, mask).T
+        if np.isnan(UtM).any():
+            print(f"UtM contains NaN in {iteration}")
         UtU = (C.T @ C) * (A.T @ A)
+        if np.isnan(UtU).any():
+            print(f"UtU contains NaN in {iteration}")
         B = hals_prior_nnls(
             UtM=UtM,
             UtU=UtU,
@@ -3818,13 +4061,20 @@ def cp_hals_prior(
             l1_ratio=l1_ratio,
             tol=tol,
             eps=eps,
-            max_iter=max_iter_nnls
+            max_iter=max_iter_nnls,
+            fixed_components=fixed_components,
         )
         B = B.T
+        if np.isnan(B).any():
+            print(f"B contains NaN in {iteration}")
 
         # Update C:
-        UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 2).T
+        UtM = masked_unfolding_dot_khatri_rao(X, (None, [A, B, C]), 2, mask).T
+        if np.isnan(UtM).any():
+            print(f"UtM contains NaN in {iteration}")
         UtU = (B.T @ B) * (A.T @ A)  # shape (rank, rank)
+        if np.isnan(UtU).any():
+            print(f"UtU contains NaN in {iteration}")
         C = hals_prior_nnls(
             UtM=UtM,
             UtU=UtU,
@@ -3835,13 +4085,16 @@ def cp_hals_prior(
             l1_ratio=l1_ratio,
             tol=tol,
             eps=eps,
-            max_iter=max_iter_nnls
+            max_iter=max_iter_nnls,
+            fixed_components=fixed_components,
         )
         C = C.T
+        if np.isnan(C).any():
+            print(f"C contains NaN in {iteration}")
 
         if lam is not None and idx_top is not None and idx_bot is not None:
             # --- Update W via ratio-aware HALS columns ---
-            UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 0).T
+            UtM = masked_unfolding_dot_khatri_rao(X, (None, [A, B, C]), 0, mask).T
             UtU = (C.T @ C) * (B.T @ B)
             for k in range(rank):
                 Rk = UtM[k].copy()
@@ -3869,8 +4122,12 @@ def cp_hals_prior(
 
         else:
             # Update A:
-            UtM = unfolding_dot_khatri_rao(tensor, (None, [A, B, C]), 0).T
+            UtM = masked_unfolding_dot_khatri_rao(X, (None, [A, B, C]), 0, mask).T
+            if np.isnan(UtM).any():
+                print(f"UtM contains NaN in {iteration}")
             UtU = (C.T @ C) * (B.T @ B)
+            if np.isnan(UtU).any():
+                print(f"UtU contains NaN in {iteration}")
             A = hals_prior_nnls(
                 UtM=UtM,
                 UtU=UtU,
@@ -3884,10 +4141,12 @@ def cp_hals_prior(
                 max_iter=max_iter_nnls
             )
             A = A.T
+            if np.isnan(A).any():
+                print(f"A contains NaN in {iteration}")
 
         # Check convergence
         reconstructed = cp_to_tensor((None, [A, B, C]))
-        err = tl.norm(X - reconstructed)
+        err = masked_tensor_norm_error(X, reconstructed, mask)
         if abs(prev_error - err) / (prev_error + eps) < tol:
             break
         prev_error = err
@@ -4180,6 +4439,7 @@ def nmf_hals_prior(
         eps=1e-8,
         init='random',
         custom_init=None,
+        fixed_components=None,
         random_state=None
 ):
     """
@@ -4237,6 +4497,7 @@ def nmf_hals_prior(
 
     m, n = X.shape
     rng = np.random.RandomState(random_state)
+    fixed_components = [] if fixed_components is None else fixed_components
 
     # 1) Initialize W, H
     if init == 'random':
@@ -4284,8 +4545,10 @@ def nmf_hals_prior(
 
     if isinstance(lam, dict):
         lam = {k: lam.get(k, 0.0) for k in range(rank)}
-    elif lam > 0:
+    elif lam >= 0:
         lam = {k: lam for k in range(rank)}
+    else:
+        lam = None
 
     if lam is not None and idx_bot is not None and idx_top is not None:
         beta = np.ones(rank, dtype=float)
@@ -4294,12 +4557,18 @@ def nmf_hals_prior(
     prev_err = np.inf
 
     r_nmf, r_cp = [], []
+    fixed_components_nmf, fixed_components_cp = [], []
     if fit_rank_one:
         for k in range(rank):
             if fit_rank_one.get(k, False):
                 r_cp.append(k)
             else:
                 r_nmf.append(k)
+        for fc in fixed_components:
+            if fc in r_nmf:
+                fixed_components_nmf.append(r_nmf.index(fc))
+            elif fc in r_cp:
+                fixed_components_cp.append(r_cp.index(fc))
 
     prior_dict_W = {} if prior_dict_W is None else prior_dict_W
     prior_dict_H = {} if prior_dict_H is None else prior_dict_H
@@ -4344,7 +4613,7 @@ def nmf_hals_prior(
             W = W[:, r_nmf]
             H = H[r_nmf, :]
 
-    def one_step_nmf(X0, W0, H0, beta0, prior_dict_W0, prior_dict_H0):
+    def one_step_nmf(X0, W0, H0, beta0, prior_dict_W0, prior_dict_H0, fixed_components_specific):
         UtM_H = tl.dot(tl.transpose(W0), X0)
         UtU_H = tl.dot(tl.transpose(W0), W0)
         H0 = hals_prior_nnls(
@@ -4357,7 +4626,8 @@ def nmf_hals_prior(
             l1_ratio=l1_ratio,
             max_iter=max_iter_nnls,
             tol=tol,
-            eps=eps
+            eps=eps,
+            fixed_components=fixed_components_specific,
         )
 
         if lam is not None and idx_bot is not None and idx_top is not None:
@@ -4406,7 +4676,7 @@ def nmf_hals_prior(
 
         return W0, H0, beta0 if lam is not None and idx_top is not None and idx_bot is not None else None
 
-    def one_step_cp(X0, A0, B0, C0, beta0, prior_dict_A0, prior_dict_B0, prior_dict_C0):
+    def one_step_cp(X0, A0, B0, C0, beta0, prior_dict_A0, prior_dict_B0, prior_dict_C0, fixed_components_specific):
 
         M = X0.reshape((m, component_shape[0], component_shape[1]))
         # Update B:
@@ -4422,7 +4692,8 @@ def nmf_hals_prior(
             l1_ratio=l1_ratio,
             tol=tol,
             eps=eps,
-            max_iter=max_iter_nnls
+            max_iter=max_iter_nnls,
+            fixed_components=fixed_components_specific,
         )
         B0 = B0.T
 
@@ -4439,7 +4710,8 @@ def nmf_hals_prior(
             l1_ratio=l1_ratio,
             tol=tol,
             eps=eps,
-            max_iter=max_iter_nnls
+            max_iter=max_iter_nnls,
+            fixed_components=fixed_components_specific,
         )
         C0 = C0.T
 
@@ -4494,15 +4766,15 @@ def nmf_hals_prior(
     for n_iter in range(max_iter_als):
         if r_cp and r_nmf:
             X_nmf = X - cp_to_tensor((None, [A, B, C])).reshape((m, -1))
-            W, H, beta_nmf = one_step_nmf(X_nmf, W, H, beta_nmf, prior_dict_W_nmf, prior_dict_H_nmf)
+            W, H, beta_nmf = one_step_nmf(X_nmf, W, H, beta_nmf, prior_dict_W_nmf, prior_dict_H_nmf, fixed_components_nmf)
             X_cp = X - W @ H
-            A, B, C, beta_cp = one_step_cp(X_cp, A, B, C, beta_cp, prior_dict_A_cp, prior_dict_B_cp, prior_dict_C_cp)
+            A, B, C, beta_cp = one_step_cp(X_cp, A, B, C, beta_cp, prior_dict_A_cp, prior_dict_B_cp, prior_dict_C_cp, fixed_components_cp)
             err = tl.norm(X - W @ H - cp_to_tensor((None, [A, B, C])).reshape((m, -1)))
         elif r_cp and not r_nmf:
-            A, B, C, beta = one_step_cp(X, A, B, C, beta, prior_dict_A_cp, prior_dict_B_cp, prior_dict_C_cp)
+            A, B, C, beta = one_step_cp(X, A, B, C, beta, prior_dict_A_cp, prior_dict_B_cp, prior_dict_C_cp, fixed_components_cp)
             err = tl.norm(X - cp_to_tensor((None, [A, B, C])).reshape((m, -1)))
         else:
-            W, H, beta = one_step_nmf(X, W, H, beta, prior_dict_W, prior_dict_H)
+            W, H, beta = one_step_nmf(X, W, H, beta, prior_dict_W, prior_dict_H, fixed_components)
             err = tl.norm(X - W @ H)
             if np.isnan(W).any():
                 print("n_iter: ", n_iter)
