@@ -3768,7 +3768,6 @@ class KMethod:
 #
 #     return V
 
-import numpy as np
 
 def hals_prior_nnls(
         UtM,
@@ -3879,6 +3878,91 @@ def masked_unfolding_dot_khatri_rao(tensor, factors, mode, mask):
 
 def masked_tensor_norm_error(tensor, reconstruction, mask):
     return tl.norm((tensor - reconstruction) * mask)
+
+#
+# def hals_prior_nnls(
+#         UtM,
+#         UtU,
+#         prior_dict=None,
+#         gamma=None,
+#         alpha=0,
+#         l1_ratio=0,
+#         V=None,
+#         max_iter=500,
+#         tol=1e-8,
+#         eps=1e-8,
+# ):
+#     """
+#     FastHALS‐style non‐negative least‐squares update for V in an NMF step,
+#     with per‐component quadratic priors and elastic‐net penalties.
+#     """
+#
+#     r, n = UtM.shape
+#     prior_dict = {} if prior_dict is None else prior_dict
+#     if gamma is None:
+#         gamma = {}
+#     elif not isinstance(gamma, dict):
+#         gamma = {k: float(gamma) for k in prior_dict.keys()}
+#
+#     # Elastic-net regularization terms
+#     l2_pen = alpha * (1 - l1_ratio)
+#     l1_pen = alpha * l1_ratio
+#
+#     # Initialize V if not given
+#     if V is None:
+#         V_np = np.linalg.solve(UtU + eps * np.eye(r), UtM)
+#         V = np.clip(V_np, a_min=eps, a_max=None)
+#         VVt = V @ V.T
+#         scale = (UtM * V).sum() / ((UtU * VVt).sum() + eps)
+#         V = V * scale
+#
+#     # Precompute full residual: R = UtM - UtU @ V
+#     R = UtM - UtU @ V
+#
+#     for it in range(max_iter):
+#         delta = 0.0
+#
+#         for k in range(r):
+#             ukk = UtU[k, k]
+#             if ukk < eps:
+#                 continue
+#
+#             # Local residual with k's contribution restored
+#             Rk = R[k] + ukk * V[k]
+#
+#             # Start numerator and denominator for update
+#             num = Rk.copy()
+#             denom = ukk + l2_pen
+#
+#             # Prior term
+#             gamma_k = gamma.get(k, 0.0)
+#             if gamma_k > 0 and k in prior_dict:
+#                 p_arr = np.asarray(prior_dict[k], dtype=float)
+#                 mask = np.isfinite(p_arr).astype(float)
+#                 p_clean = np.nan_to_num(p_arr, nan=0.0)
+#                 num += gamma_k * mask * p_clean
+#                 denom += gamma_k  # scalar
+#
+#             # L1 penalty
+#             if l1_pen:
+#                 num -= l1_pen
+#
+#             # Update rule (element-wise), clipped to avoid exact zero
+#             v_new = np.clip(num / (denom + eps), a_min=eps, a_max=None)
+#
+#             # Track change
+#             diff = v_new - V[k]
+#             delta += np.dot(diff, diff)
+#
+#             # Update V and residual (FastHALS rank-1 residual update)
+#             V[k] = v_new
+#             R -= np.outer(UtU[:, k], diff)
+#
+#         if it > 0 and delta / (prev_delta + eps) < tol:
+#             break
+#         prev_delta = delta
+#
+#     return V
 
 
 def cp_hals_prior(
@@ -4086,7 +4170,7 @@ def cp_hals_prior(
             tol=tol,
             eps=eps,
             max_iter=max_iter_nnls,
-            fixed_components=fixed_components,
+            # fixed_components=fixed_components,
         )
         C = C.T
         if np.isnan(C).any():
