@@ -1294,7 +1294,7 @@ def on_build_eem_dataset(n_clicks,
     if any([np.min(ex_range) != ex_range_min, np.max(ex_range) != ex_range_max,
             np.min(em_range) != em_range_min, np.max(em_range) != em_range_max]):
         eem_dataset.cutting(ex_min=ex_range_min, ex_max=ex_range_max,
-                            em_min=em_range_min, em_max=em_range_max, copy=False)
+                            em_min=em_range_min, em_max=em_range_max, inplace=True)
         steps_track += "- EEM cutting \n"
 
     # RSU normalization
@@ -1311,7 +1311,7 @@ def on_build_eem_dataset(n_clicks,
                                         em_range_blank=em_range_blank, from_blank=True,
                                         ex_target=su_ex,
                                         bandwidth=su_em_width, rsu_standard=su_normalization_factor,
-                                        copy=False)
+                                        inplace=True)
         steps_track += ["- Raman scattering unit normalization\n"]
 
     # IFE correction
@@ -1323,18 +1323,18 @@ def on_build_eem_dataset(n_clicks,
             custom_filename_list=file_name_abs_list, wavelength_alignment=True if align_exem else False,
             interpolation_method='linear'
         )
-        eem_dataset.ife_correction(absorbance=abs_stack, ex_range_abs=ex_range_abs, copy=False)
+        eem_dataset.ife_correction(absorbance=abs_stack, ex_range_abs=ex_range_abs, inplace=True)
         steps_track += ["- Inner filter effect correction\n"]
 
     # Median filter
     if all([median_filter, median_filter_ex, median_filter_em, median_filter_mode]):
-        eem_dataset.median_filter(footprint=(median_filter_ex, median_filter_em), mode=median_filter_mode, copy=False)
+        eem_dataset.median_filter(footprint=(median_filter_ex, median_filter_em), mode=median_filter_mode, inplace=True)
         steps_track += ["- Median filter\n"]
 
     # Raman scattering removal
     if all([raman, raman_method, raman_width, raman_dimension]):
         eem_dataset.raman_scattering_removal(interpolation_method=raman_method, width=raman_width,
-                                             interpolation_dimension=raman_dimension, copy=False)
+                                             interpolation_dimension=raman_dimension, inplace=True)
         steps_track += ["- Raman scattering removal\n"]
 
     # Rayleigh scattering removal
@@ -1345,12 +1345,12 @@ def on_build_eem_dataset(n_clicks,
                                                 interpolation_method_o2=rayleigh_o2_method,
                                                 interpolation_dimension_o1=rayleigh_o1_dimension,
                                                 interpolation_dimension_o2=rayleigh_o2_dimension,
-                                                copy=False)
+                                                inplace=True)
         steps_track += ["- Rayleigh scattering removal\n"]
 
     # Gaussian smoothing
     if all([gaussian, gaussian_sigma, gaussian_truncate]):
-        eem_dataset.gaussian_filter(sigma=gaussian_sigma, truncate=gaussian_truncate, copy=False)
+        eem_dataset.gaussian_filter(sigma=gaussian_sigma, truncate=gaussian_truncate, inplace=True)
         steps_track += ["- Gaussian smoothing\n"]
 
     # convert eem_dataset to a dict whose values are json serializable
@@ -1850,7 +1850,7 @@ def on_build_pp_model(n_clicks, eem_graph_options, path_establishment, kw_mandat
     kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
     kw_optional = str_string_to_list(kw_optional) if kw_optional else None
     eem_dataset_establishment.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional,
-                                              copy=False)
+                                              inplace=True)
 
     pp_model = {}
     intensities_tabs = dbc.Card([])
@@ -2033,7 +2033,7 @@ def on_pp_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, pp_model
         )
     kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
     kw_optional = str_string_to_list(kw_optional) if kw_optional else None
-    eem_dataset_predict.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, copy=False)
+    eem_dataset_predict.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, inplace=True)
 
     if eem_dataset_predict.ref is not None:
         valid_ref = eem_dataset_predict.ref.columns[~eem_dataset_predict.ref.isna().all()].tolist()
@@ -2696,7 +2696,7 @@ def on_build_ri_model(n_clicks, eem_graph_options, path_establishment, kw_mandat
     kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
     kw_optional = str_string_to_list(kw_optional) if kw_optional else None
     eem_dataset_establishment.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional,
-                                              copy=False)
+                                              inplace=True)
 
     ri_model = {}
     intensities_tabs = dbc.Card([])
@@ -2882,7 +2882,7 @@ def on_ri_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, ri_model
         )
     kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
     kw_optional = str_string_to_list(kw_optional) if kw_optional else None
-    eem_dataset_predict.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, copy=False)
+    eem_dataset_predict.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, inplace=True)
 
     if eem_dataset_predict.ref is not None:
         valid_ref = eem_dataset_predict.ref.columns[~eem_dataset_predict.ref.isna().all()].tolist()
@@ -3652,7 +3652,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
     kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
     kw_optional = str_string_to_list(kw_optional) if kw_optional else None
     eem_dataset_establishment.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional,
-                                              copy=False)
+                                              inplace=True)
 
     rank_list = num_string_to_list(rank)
     parafac_models = {}
@@ -4356,7 +4356,7 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
         )
     kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
     kw_optional = str_string_to_list(kw_optional) if kw_optional else None
-    eem_dataset_predict.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, copy=False)
+    eem_dataset_predict.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, inplace=True)
 
     if eem_dataset_predict.ref is not None:
         valid_ref = eem_dataset_predict.ref.columns[~eem_dataset_predict.ref.isna().all()].tolist()
@@ -5193,7 +5193,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
     kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
     kw_optional = str_string_to_list(kw_optional) if kw_optional else None
     eem_dataset_establishment.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional,
-                                              copy=False)
+                                              inplace=True)
     rank_list = num_string_to_list(rank)
     nmf_models = {}
     components_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
@@ -5677,7 +5677,7 @@ def on_nmf_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, model_r
         )
     kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
     kw_optional = str_string_to_list(kw_optional) if kw_optional else None
-    eem_dataset_predict.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, copy=False)
+    eem_dataset_predict.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, inplace=True)
 
     if eem_dataset_predict.ref is not None:
         valid_ref = eem_dataset_predict.ref.columns[~eem_dataset_predict.ref.isna().all()].tolist()
@@ -6641,7 +6641,7 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
     kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
     kw_optional = str_string_to_list(kw_optional) if kw_optional else None
     eem_dataset_establishment.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional,
-                                              copy=False)
+                                              inplace=True)
 
     eem_dataset_establishment_json_dict = {
         'eem_stack': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for sublist in

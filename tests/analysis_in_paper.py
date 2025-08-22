@@ -15,8 +15,8 @@ colors = list(TABLEAU_COLORS.values())
 eem_dataset_path = \
     "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_260_ex_274_em_310_mfem_3.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
-eem_dataset, _ = eem_dataset.filter_by_index(None, ['M3', 'G1', 'G2', 'G3'], copy=True)
-eem_dataset_original, _ = eem_dataset.filter_by_index(['B1C1'], None, copy=True)
+eem_dataset = eem_dataset.filter_by_index(None, ['M3', 'G1', 'G2', 'G3'], inplace=False)
+eem_dataset_original = eem_dataset.filter_by_index(['B1C1'], None, inplace=False)
 abs_stack, ex_range_abs, _ = read_abs_dataset('C:/PhD/Fluo-detect/_data/_greywater/2024_quenching', ['ABS', 'B1C1'])
 # eem_dataset.gaussian_filter(sigma=1, truncate=3, copy=False)
 
@@ -35,14 +35,14 @@ kw_dict = {
     # 'all': [['2024'], None, 4]
 }
 
-eem_dataset_normal_oct, _ = eem_dataset_original.filter_by_index(None, ['2024-10-15', '2024-10-16', '2024-10-22'], copy=True)
-eem_dataset_normal_oct_col, _ = eem_dataset_normal_oct.filter_by_index(None, ['G1', 'G2', 'G3'], copy=True)
-eem_dataset_normal_oct_eff, _ = eem_dataset_normal_oct.filter_by_index(None, ['M3'], copy=True)
-eem_dataset_lowflow_oct_col, _ = eem_dataset_original.filter_by_index(['2024-10-18'], ['G1', 'G2', 'G3'], copy=True)
-eem_dataset_lowflow_oct_eff, _ = eem_dataset_original.filter_by_index(['2024-10-18', 'M3'], None, copy=True)
-eem_dataset_highflow_oct_col, _ = eem_dataset_original.filter_by_index(['2024-10-17'], ['G1', 'G2', 'G3'], copy=True)
-eem_dataset_highflow_oct_eff, _ = eem_dataset_original.filter_by_index(['2024-10-17', 'M3'], None, copy=True)
-eem_dataset_crossconnection_oct_eff, _ = eem_dataset_original.filter_by_index(['2024-10-21'], None,  copy=True)
+eem_dataset_normal_oct = eem_dataset_original.filter_by_index(None, ['2024-10-15', '2024-10-16', '2024-10-22'], inplace=False)
+eem_dataset_normal_oct_col = eem_dataset_normal_oct.filter_by_index(None, ['G1', 'G2', 'G3'], inplace=False)
+eem_dataset_normal_oct_eff = eem_dataset_normal_oct.filter_by_index(None, ['M3'], inplace=False)
+eem_dataset_lowflow_oct_col = eem_dataset_original.filter_by_index(['2024-10-18'], ['G1', 'G2', 'G3'], inplace=False)
+eem_dataset_lowflow_oct_eff = eem_dataset_original.filter_by_index(['2024-10-18', 'M3'], None, inplace=False)
+eem_dataset_highflow_oct_col = eem_dataset_original.filter_by_index(['2024-10-17'], ['G1', 'G2', 'G3'], inplace=False)
+eem_dataset_highflow_oct_eff = eem_dataset_original.filter_by_index(['2024-10-17', 'M3'], None, inplace=False)
+eem_dataset_crossconnection_oct_eff = eem_dataset_original.filter_by_index(['2024-10-21'], None, inplace=False)
 
 dataset_divisions = {
     'N-col.': eem_dataset_normal_oct_col,
@@ -183,7 +183,7 @@ dataset_test_original, _ = dataset_test.filter_by_index(['B1C1'], None)
 
 indices_test_in_scenarios = {}
 for name, kw in kw_dict.items():
-    dataset_test_filtered, _ = dataset_test.filter_by_index(kw[0], kw[1], copy=True)
+    dataset_test_filtered = dataset_test.filter_by_index(kw[0], kw[1], inplace=False)
     indices_test_in_scenarios[name] = dataset_test_filtered.index
 
 r = 4

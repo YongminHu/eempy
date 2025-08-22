@@ -10,7 +10,7 @@ colors = list(TABLEAU_COLORS.values())
 eem_dataset_path = \
     "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_266_ex_274_em_310_mfem_3.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
-eem_dataset, _ = eem_dataset.filter_by_index(None, ['M3', 'G1', 'G2', 'G3'], copy=True)
+eem_dataset = eem_dataset.filter_by_index(None, ['M3', 'G1', 'G2', 'G3'], inplace=False)
 
 
 # eem_dataset_ref_path = 'C:/PhD/Fluo-detect/_data/20240313_BSA_Ecoli/synthetic_samples.json'
@@ -122,7 +122,7 @@ kw_dict = {
 
 indices_scenarios = {}
 for name, kw in kw_dict.items():
-    eem_dataset_train, _ = eem_dataset.filter_by_index(kw[0], kw[1], copy=True)
+    eem_dataset_train = eem_dataset.filter_by_index(kw[0], kw[1], inplace=False)
     indices_scenarios[name] = eem_dataset_train.index
 
 scenarios_colors = {
@@ -181,7 +181,7 @@ plt.show()
 
 for name, kw in kw_dict.items():
     model = PARAFAC(n_components=kw[2])
-    eem_dataset_scenario, _ = eem_dataset.filter_by_index(kw[0], kw[1], copy=True)
+    eem_dataset_scenario = eem_dataset.filter_by_index(kw[0], kw[1], inplace=False)
     model.fit(eem_dataset_scenario)
     fmax = model.nnls_fmax.iloc[:, 0]
     tcc = eem_dataset_scenario.ref['TCC'].dropna()
@@ -787,7 +787,7 @@ dataset_test, _ = eem_dataset.filter_by_index(None,
 
 indices_test_in_scenarios = {}
 for name, kw in kw_dict.items():
-    dataset_test_filtered, _ = dataset_test.filter_by_index(kw[0], kw[1], copy=True)
+    dataset_test_filtered = dataset_test.filter_by_index(kw[0], kw[1], inplace=False)
     indices_test_in_scenarios[name] = dataset_test_filtered.index
 
 r = 5

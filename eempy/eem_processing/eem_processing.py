@@ -1120,7 +1120,7 @@ class EEMDataset:
 
     # -----------------EEM dataset processing methods-----------------
 
-    def threshold_masking(self, threshold, fill, mask_type='greater', copy=True):
+    def threshold_masking(self, threshold, fill, mask_type='greater', inplace=True):
         """
         Mask the fluorescence intensities above or below a certain threshold in an EEM.
 
@@ -1128,23 +1128,26 @@ class EEMDataset:
         ----------
         threshold, fill, mask_type:
             See eempy.eem_processing.eem_threshold_masking
-        copy: bool
-            if False, overwrite the EEMDataset object with the processed EEMs.
+        inplace: bool
+            if True, overwrite the EEMDataset object with the processed EEMs.
 
         Returns
         -------
-        eem_stack_masked: np.ndarray
-            The masked EEM.
-        mask: np.ndarray
-            The mask matrix. +1: unmasked area; np.nan: masked area.
+        eem_dataset_new: EEMDataset
+            The processed EEM dataset.
         """
         eem_stack_masked, masks = process_eem_stack(self.eem_stack, eem_threshold_masking, threshold=threshold,
                                                     fill=fill, mask_type=mask_type)
-        if not copy:
+        if inplace:
             self.eem_stack = eem_stack_masked
-        return eem_stack_masked, masks
+            return self
+        else:
+            eem_dataset_new = copy.deepcopy(self)
+            eem_dataset_new.eem_stack = eem_stack_masked
+            return eem_dataset_new
 
-    def gaussian_filter(self, sigma=1, truncate=3, copy=True):
+
+    def gaussian_filter(self, sigma=1, truncate=3, inplace=True):
         """
         Apply Gaussian filtering to an EEM.
 
@@ -1152,20 +1155,25 @@ class EEMDataset:
         ----------
         sigma, truncate:
             See eempy.eem_processing.eem_gaussian_filter
-        copy: bool
-            if False, overwrite the EEMDataset object with the processed EEMs.
+        inplace: bool
+            if True, overwrite the EEMDataset object with the processed EEMs.
 
         Returns
         -------
-        eem_stack_filtered: np.ndarray
-            The filtered EEM.
+        eem_dataset_new: EEMDataset
+            The processed EEM dataset.
         """
         eem_stack_filtered = process_eem_stack(self.eem_stack, eem_gaussian_filter, sigma=sigma, truncate=truncate)
-        if not copy:
+        if inplace:
             self.eem_stack = eem_stack_filtered
-        return eem_stack_filtered
+            return self
+        else:
+            eem_dataset_new = copy.deepcopy(self)
+            eem_dataset_new.eem_stack = eem_stack_filtered
+            return eem_dataset_new
 
-    def median_filter(self, footprint=(3, 3), mode='reflect', copy=True):
+
+    def median_filter(self, footprint=(3, 3), mode='reflect', inplace=True):
         """
         Apply median filtering to an EEM.
 
@@ -1176,20 +1184,25 @@ class EEMDataset:
             function.
         mode: str, {‘reflect’, ‘constant’, ‘nearest’, ‘mirror’, ‘wrap’}
             The mode parameter determines how the input array is extended beyond its boundaries.
-        copy: bool
-            if False, overwrite the EEMDataset object with the processed EEMs.
+        inplace: bool
+            if True, overwrite the EEMDataset object with the processed EEMs.
 
         Returns
         -------
-        eem_stack_filtered: np.ndarray
-            The filtered EEM.
+        eem_dataset_new: EEMDataset
+            The processed EEM dataset.
         """
-        eem_stack_filtered = process_eem_stack(self.eem_stack, eem_median_filter, footprint=(3, 3), mode='reflect')
-        if not copy:
+        eem_stack_filtered = process_eem_stack(self.eem_stack, eem_median_filter, footprint=footprint, mode=mode)
+        if inplace:
             self.eem_stack = eem_stack_filtered
-        return eem_stack_filtered
+            return self
+        else:
+            eem_dataset_new = copy.deepcopy(self)
+            eem_dataset_new.eem_stack = eem_stack_filtered
+            return eem_dataset_new
 
-    def region_masking(self, ex_min, ex_max, em_min, em_max, fill_value='nan', copy=True):
+
+    def region_masking(self, ex_min, ex_max, em_min, em_max, fill_value='nan', inplace=True):
         """
         Mask the fluorescence intensities in a specified rectangular region.
 
@@ -1197,24 +1210,29 @@ class EEMDataset:
         ----------
         ex_min, ex_max, em_min, em_max, fill_value:
             See eempy.eem_processing.eem_region_masking
-        copy: bool
-            if False, overwrite the EEMDataset object with the processed EEMs.
+        inplace: bool
+            if True, overwrite the EEMDataset object with the processed EEMs.
 
         Returns
         -------
-        eem_stack_masked: np.ndarray
-            The masked EEM.
+        eem_dataset_new: EEMDataset
+            The processed EEM dataset.
         """
         eem_stack_masked, _ = process_eem_stack(
             self.eem_stack, eem_region_masking, ex_range=self.ex_range,
             em_range=self.em_range, ex_min=ex_min, ex_max=ex_max, em_min=em_min,
             em_max=em_max, fill_value=fill_value
         )
-        if not copy:
+        if inplace:
             self.eem_stack = eem_stack_masked
-        return eem_stack_masked
+            return self
+        else:
+            eem_dataset_new = copy.deepcopy(self)
+            eem_dataset_new.eem_stack = eem_stack_masked
+            return eem_dataset_new
 
-    def cutting(self, ex_min, ex_max, em_min, em_max, copy=True):
+
+    def cutting(self, ex_min, ex_max, em_min, em_max, inplace=True):
         """
         Calculate the regional fluorescence integration (RFI) over a rectangular region.
 
@@ -1222,17 +1240,13 @@ class EEMDataset:
         ----------
         ex_min, ex_max, em_min, em_max:
             See eempy.eem_processing.eem_cutting
-        copy: bool
-            if False, overwrite the EEMDataset object with the processed EEMs.
+        inplace: bool
+            if True, overwrite the EEMDataset object with the processed EEMs.
 
         Returns
         -------
-        intensity_cut: np.ndarray
-            The cut EEM.
-        ex_range_cut: np.ndarray
-            The cut ex wavelengths.
-        em_range_cut:np.ndarray
-            The cut em wavelengths.
+        eem_dataset_new: EEMDataset
+            The processed EEM dataset.
         """
         eem_stack_cut, new_ranges = process_eem_stack(
             self.eem_stack, eem_cutting, ex_range_old=self.ex_range,
@@ -1240,13 +1254,20 @@ class EEMDataset:
             ex_min_new=ex_min, ex_max_new=ex_max, em_min_new=em_min,
             em_max_new=em_max
         )
-        if not copy:
+        if inplace:
             self.eem_stack = eem_stack_cut
             self.ex_range = new_ranges[0][0]
             self.em_range = new_ranges[0][1]
-        return eem_stack_cut, new_ranges[0][0], new_ranges[0][1]
+            return self
+        else:
+            eem_dataset_new = copy.deepcopy(self)
+            eem_dataset_new.eem_stack = eem_stack_cut
+            eem_dataset_new.ex_range = new_ranges[0][0]
+            eem_dataset_new.em_range = new_ranges[0][1]
+            return eem_dataset_new
 
-    def nan_imputing(self, method='linear', fill_value='linear_ex', copy=True):
+
+    def nan_imputing(self, method='linear', fill_value='linear_ex', inplace=True):
         """
         Impute the NaN values in an EEM.
 
@@ -1254,23 +1275,28 @@ class EEMDataset:
         ----------
         method, fill_value
             See eempy.eem_processing.eem_nan_imputing
-        copy: bool
-            if False, overwrite the EEMDataset object with the processed EEMs.
+        inplace: bool
+            if True, overwrite the EEMDataset object with the processed EEMs.
 
         Returns
         -------
-        eem_stack_imputed: np.ndarray
-            The imputed EEM.
+        eem_dataset_new: EEMDataset
+            The processed EEM dataset.
         """
         eem_stack_imputed = process_eem_stack(self.eem_stack, eem_nan_imputing, ex_range=self.ex_range,
                                               em_range=self.em_range, method=method, fill_value=fill_value)
-        if not copy:
+        if inplace:
             self.eem_stack = eem_stack_imputed
-        return eem_stack_imputed
+            return self
+        else:
+            eem_dataset_new = copy.deepcopy(self)
+            eem_dataset_new.eem_stack = eem_stack_imputed
+            return eem_dataset_new
+
 
     def raman_normalization(self, ex_range_blank=None, em_range_blank=None, blank=None, from_blank=False,
                             integration_time=1, ex_target=350, bandwidth=5,
-                            rsu_standard=20000, manual_rsu=1, copy=True):
+                            rsu_standard=20000, manual_rsu=1, inplace=True):
         """
         Normalize the EEM using the Raman scattering unit (RSU) given directly or calculated from a blank EEM.
         RSU_final = RSU_raw / (RSU_standard * integration_time).
@@ -1281,13 +1307,13 @@ class EEMDataset:
             See eempy.eem_processing.eem_raman_normalization
         rsu_standard, manual_rsu
             See eempy.eem_processing.eem_raman_normalization
-        copy: bool
-            if False, overwrite the EEMDataset object with the processed EEMs.
+        inplace: bool
+            if True, overwrite the EEMDataset object with the processed EEMs.
 
         Returns
         -------
-        eem_stack_normalized: np.ndarray
-            The normalized EEM.
+        eem_dataset_new: EEMDataset
+            The processed EEM dataset.
         """
         eem_stack_normalized, rsu = process_eem_stack(
             self.eem_stack, eem_raman_normalization, ex_range_blank=ex_range_blank,
@@ -1295,32 +1321,40 @@ class EEMDataset:
             integration_time=integration_time, ex_target=ex_target,
             bandwidth=bandwidth, rsu_standard=rsu_standard, manual_rsu=manual_rsu
         )
-        if not copy:
+        if inplace:
             self.eem_stack = eem_stack_normalized
-        return eem_stack_normalized, rsu
+            return self
+        else:
+            eem_dataset_new = copy.deepcopy(self)
+            eem_dataset_new.eem_stack = eem_stack_normalized
+            return eem_dataset_new
 
-    def tf_normalization(self, copy=True):
+
+    def tf_normalization(self, inplace=True):
         """
         Normalize EEMs by the total fluorescence of each EEM.
 
         Parameters
         ----------
-        copy: bool
-            if False, overwrite the EEMDataset object with the processed EEMs.
+        inplace: bool
+            if True, overwrite the EEMDataset object with the processed EEMs.
 
         Returns
         -------
-        eem_stack_normalized: np.ndarray
-            The normalized EEM stack.
-        weights: np.ndarray
-            The weighted total fluorescence of each EEM.
+        eem_dataset_new: EEMDataset
+            The processed EEM dataset.
         """
         eem_stack_normalized, weights = eems_tf_normalization(self.eem_stack)
-        if not copy:
+        if inplace:
             self.eem_stack = eem_stack_normalized
-        return eem_stack_normalized, weights
+            return self
+        else:
+            eem_dataset_new = copy.deepcopy(self)
+            eem_dataset_new.eem_stack = eem_stack_normalized
+            return eem_dataset_new
 
-    def raman_scattering_removal(self, width=5, interpolation_method='linear', interpolation_dimension='2d', copy=True):
+
+    def raman_scattering_removal(self, width=5, interpolation_method='linear', interpolation_dimension='2d', inplace=True):
         """
         Remove and interpolate the Raman scattering.
 
@@ -1328,13 +1362,13 @@ class EEMDataset:
         ----------
         width, interpolation_method, interpolation_dimension:
             See eempy.eem_processing.eem_raman_scattering_removal
-        copy: bool
-            if False, overwrite the EEMDataset object with the processed EEMs.
+        inplace: bool
+            if True, overwrite the EEMDataset object with the processed EEMs.
 
         Returns
         -------
-        eem_stack_masked: np.ndarray
-            The EEM with Raman scattering interpolated.
+        eem_dataset_new: EEMDataset
+            The processed EEM dataset.
         """
         eem_stack_masked, _ = process_eem_stack(
             self.eem_stack, eem_raman_scattering_removal, ex_range=self.ex_range,
@@ -1342,13 +1376,18 @@ class EEMDataset:
             interpolation_method=interpolation_method,
             interpolation_dimension=interpolation_dimension
         )
-        if not copy:
+        if inplace:
             self.eem_stack = eem_stack_masked
-        return eem_stack_masked
+            return self
+        else:
+            eem_dataset_new = copy.deepcopy(self)
+            eem_dataset_new.eem_stack = eem_stack_masked
+            return eem_dataset_new
+
 
     def rayleigh_scattering_removal(self, width_o1=15, width_o2=15, interpolation_dimension_o1='2d',
                                     interpolation_dimension_o2='2d', interpolation_method_o1='zero',
-                                    interpolation_method_o2='linear', copy=True):
+                                    interpolation_method_o2='linear', inplace=True):
         """
         Remove and interpolate the Rayleigh scattering.
 
@@ -1356,13 +1395,13 @@ class EEMDataset:
         ----------
         width_o1, width_o2, interpolation_dimension_o1, interpolation_dimension_o2, interpolation_method_o1, interpolation_method_o2:
             See eempy.eem_processing.eem_rayleigh_scattering_removal
-        copy: bool
-            if False, overwrite the EEMDataset object with the processed EEMs.
+        inplace: bool
+            if True, overwrite the EEMDataset object with the processed EEMs.
 
         Returns
         -------
-        eem_stack_masked: np.ndarray
-            The EEM with Rayleigh scattering interpolated.
+        eem_dataset_new: EEMDataset
+            The processed EEM dataset.
         """
         eem_stack_masked, _ = process_eem_stack(
             self.eem_stack, eem_rayleigh_scattering_removal, ex_range=self.ex_range,
@@ -1373,11 +1412,16 @@ class EEMDataset:
             interpolation_method_o1=interpolation_method_o1,
             interpolation_method_o2=interpolation_method_o2
         )
-        if not copy:
+        if inplace:
             self.eem_stack = eem_stack_masked
-        return eem_stack_masked
+            return self
+        else:
+            eem_dataset_new = copy.deepcopy(self)
+            eem_dataset_new.eem_stack = eem_stack_masked
+            return eem_dataset_new
 
-    def ife_correction(self, absorbance, ex_range_abs, copy=True):
+
+    def ife_correction(self, absorbance, ex_range_abs, inplace=True):
         """
         Correct the inner filter effect (IFE).
 
@@ -1385,24 +1429,29 @@ class EEMDataset:
         ----------
         absorbance, ex_range_abs:
             See eempy.eem_processing.eem_ife_correction
-        copy: bool
-            if False, overwrite the EEMDataset object with the processed EEMs.
+        inplace: bool
+            if True, overwrite the EEMDataset object with the processed EEMs.
 
         Returns
         -------
-        eem_stack_corrected: np.ndarray
-            The corrected EEM.
+        eem_dataset_new: EEMDataset
+            The processed EEM dataset.
         """
         eem_stack_corrected = process_eem_stack(
             self.eem_stack, eem_ife_correction, ex_range_eem=self.ex_range,
             em_range_eem=self.em_range, absorbance=absorbance,
             ex_range_abs=ex_range_abs
         )
-        if not copy:
+        if inplace:
             self.eem_stack = eem_stack_corrected
-        return eem_stack_corrected
+            return self
+        else:
+            eem_dataset_new = copy.deepcopy(self)
+            eem_dataset_new.eem_stack = eem_stack_corrected
+            return eem_dataset_new
 
-    def interpolation(self, ex_range_new, em_range_new, method, copy=True):
+
+    def interpolation(self, ex_range_new, em_range_new, method, inplace=True):
         """
         Interpolate EEM on given ex/em ranges. This function is typically used for changing the ex/em ranges of an EEM
         (e.g., in order to synchronize EEMs to the same ex/em ranges). It may not be able to interpolate EEM containing
@@ -1412,24 +1461,31 @@ class EEMDataset:
         ----------
         ex_range_new, em_range_new, method:
             See eempy.eem_processing.eem_interpolation
-        copy: bool
-            if False, overwrite the EEMDataset object with the processed EEMs.
+        inplace: bool
+            if True, overwrite the EEMDataset object with the processed EEMs.
 
         Returns
         -------
-        eem_stack_interpolated: np.ndarray
-            The interpolated EEM.
+        eem_dataset_new: EEMDataset
+            The processed EEM dataset.
         """
         eem_stack_interpolated = process_eem_stack(
             self.eem_stack, eem_interpolation, ex_range_old=self.ex_range,
             em_range_old=self.em_range, ex_range_new=ex_range_new,
             em_range_new=em_range_new, method=method
         )
-        if not copy:
+        if inplace:
             self.eem_stack = eem_stack_interpolated
             self.ex_range = ex_range_new
             self.em_range = em_range_new
-        return eem_stack_interpolated
+            return self
+        else:
+            eem_dataset_new = copy.deepcopy(self)
+            eem_dataset_new.eem_stack = eem_stack_interpolated
+            eem_dataset_new.ex_range = ex_range_new
+            eem_dataset_new.em_range = em_range_new
+            return eem_dataset_new
+
 
     def splitting(self, n_split, rule: str = 'random', random_state=None,
                   kw_top=None, kw_bot=None, idx_top=None, idx_bot=None):
@@ -1508,7 +1564,8 @@ class EEMDataset:
             subset_list.append(m)
         return subset_list
 
-    def subsampling(self, portion=0.8, copy=True):
+
+    def subsampling(self, portion=0.8, inplace=True):
         """
         Randomly select a portion of the EEM.
 
@@ -1516,8 +1573,8 @@ class EEMDataset:
         ----------
         portion: float
             The portion.
-        copy: bool
-            if False, overwrite the EEMDataset object.
+        inplace: bool
+            if True, overwrite the EEMDataset object.
 
         Returns
         -------
@@ -1541,36 +1598,56 @@ class EEMDataset:
             cluster_new = [self.cluster[i] for i in selected_indices]
         else:
             cluster_new = None
-        if not copy:
+        if inplace:
             self.eem_stack = eem_stack_new
             self.index = index_new
             self.ref = ref_new
             self.cluster = cluster_new
-        eem_dataset_sub = EEMDataset(eem_stack=eem_stack_new, ex_range=self.ex_range, em_range=self.em_range,
-                                     index=index_new, ref=ref_new, cluster=cluster_new)
-        eem_dataset_sub.sort_by_index()
-        selected_indices = sorted(selected_indices)
-        return eem_dataset_sub, selected_indices
+            return self.sort_by_index(inplace=True), sorted(selected_indices)
+        else:
+            eem_dataset_sub = copy.deepcopy(self)
+            eem_dataset_sub.eem_stack = eem_stack_new
+            eem_dataset_sub.index = index_new
+            eem_dataset_sub.ref = ref_new
+            eem_dataset_sub.cluster = cluster_new
+            return eem_dataset_sub.sort_by_index(inplace=True), sorted(selected_indices)
 
-    def sort_by_index(self):
+
+    def sort_by_index(self, inplace=True):
         """
         Sort the sample order of eem_stack, index and reference (if exists) by the index.
 
+        Parameters
+        -------
+        inplace: bool
+            If True, overwrite the EEMDataset object.
+
         Returns
         -------
-        sorted_indices: np.ndarray
-            The sorted sample order
+        eem_dataset_new: EEMDataset
+            The processed EEM dataset.
         """
         sorted_indices = sorted(range(len(self.index)), key=lambda i: self.index[i])
-        self.index = sorted(self.index)
-        self.eem_stack = self.eem_stack[sorted_indices]
-        if self.ref is not None:
-            self.ref = self.ref.iloc[sorted_indices]
-        if self.cluster is not None:
-            self.cluster = [self.cluster[i] for i in sorted_indices]
-        return sorted_indices
+        if inplace:
+            self.index = sorted(self.index)
+            self.eem_stack = self.eem_stack[sorted_indices]
+            if self.ref is not None:
+                self.ref = self.ref.iloc[sorted_indices]
+            if self.cluster is not None:
+                self.cluster = [self.cluster[i] for i in sorted_indices]
+            return self
+        else:
+            eem_dataset_new = copy.deepcopy(self)
+            eem_dataset_new.index = sorted(self.index)
+            eem_dataset_new.eem_stack = self.eem_stack[sorted_indices]
+            if self.ref is not None:
+                eem_dataset_new.ref = self.ref.iloc[sorted_indices]
+            if self.cluster is not None:
+                eem_dataset_new.cluster = [self.cluster[i] for i in sorted_indices]
+            return eem_dataset_new
 
-    def filter_by_index(self, mandatory_keywords, optional_keywords, copy=True):
+
+    def filter_by_index(self, mandatory_keywords, optional_keywords, inplace=True):
         """
         Select the samples whose indexes contain the given keyword.
 
@@ -1580,15 +1657,13 @@ class EEMDataset:
             Keywords for selecting samples whose indexes contain all the mandatory keywords.
         optional_keywords: str or list of str
             Keywords for selecting samples whose indexes contain any of the optional keywords.
-        copy: bool
-            if False, overwrite the EEMDataset object.
+        inplace: bool
+            if True, overwrite the EEMDataset object.
 
         Returns
         -------
-        eem_dataset_filtered: EEMDataset
-            Filtered EEM dataset.
-        sample_number_all_filtered: list
-            Indexes (orders in the list) of samples that have been preserved after filtering.
+        eem_dataset_new: EEMDataset
+            The filtered EEM dataset.
         """
         if mandatory_keywords is None and optional_keywords is None:
             return self.eem_stack, self.index, self.ref, self.cluster, []
@@ -1624,14 +1699,22 @@ class EEMDataset:
                                           em_range=self.em_range,
                                           index=index_filtered,
                                           ref=ref_filtered)
-        if not copy:
+        if inplace:
             self.eem_stack = eem_stack_filtered
             self.index = index_filtered
             self.ref = ref_filtered
             self.cluster = cluster_filtered
-        return eem_dataset_filtered, sample_number_all_filtered
+            return self
+        else:
+            eem_dataset_new = copy.deepcopy(self)
+            eem_dataset_new.eem_stack = eem_stack_filtered
+            eem_dataset_new.index = index_filtered
+            eem_dataset_new.ref = ref_filtered
+            eem_dataset_new.cluster = cluster_filtered
+            return eem_dataset_new
 
-    def filter_by_cluster(self, cluster_names, copy=True):
+
+    def filter_by_cluster(self, cluster_names, inplace=True):
         """
         Select the samples belong to certain cluster(s).
 
@@ -1639,15 +1722,13 @@ class EEMDataset:
         -------
         cluster_names: int/float/str or list of int/float/str
             cluster names.
-        copy: bool
+        inplace: bool
             if False, overwrite the EEMDataset object.
 
         Returns
         -------
-        eem_dataset_filtered: EEMDataset
-            Filtered EEM dataset.
-        sample_number_all_filtered: list
-            Indexes (orders in the list) of samples that have been preserved after filtering.
+        eem_dataset_new: EEMDataset
+            The filtered EEM dataset.
         """
 
         if self.cluster is None:
@@ -1667,12 +1748,20 @@ class EEMDataset:
                                           em_range=self.em_range,
                                           index=index_filtered,
                                           ref=ref_filtered)
-        if not copy:
+        if inplace:
             self.eem_stack = eem_stack_filtered
             self.index = index_filtered
             self.ref = ref_filtered
             self.cluster = cluster_filtered
-        return eem_dataset_filtered, sample_number_all_filtered
+            return self
+        else:
+            eem_dataset_new = copy.deepcopy(self)
+            eem_dataset_new.eem_stack = eem_stack_filtered
+            eem_dataset_new.index = index_filtered
+            eem_dataset_new.ref = ref_filtered
+            eem_dataset_new.cluster = cluster_filtered
+            return eem_dataset_new
+
 
     def to_json(self, filepath=None):
         eem_dataset_json_dict = {
@@ -1860,7 +1949,7 @@ class PARAFAC:
         if self.tf_normalization:
             if self.lam>0 and self.idx_bot is not None and self.idx_top is not None:
                 Warning("Applying tf_normalization together with ratio regularization (lam>0) will lead to unreasonable results")
-            eem_stack_tf, tf_weights = eem_dataset.tf_normalization(copy=True)
+            eem_stack_tf, tf_weights = eem_dataset.tf_normalization(inplace=True)
         else:
             eem_stack_tf = eem_dataset.eem_stack.copy()
         try:
@@ -2790,7 +2879,7 @@ class EEMNMF:
                 random_state=self.random_state,
                 tol=self.tol,
             )
-            eem_dataset.threshold_masking(0, 0, 'smaller', copy=False)
+            eem_dataset.threshold_masking(0, 0, 'smaller', inplace=True)
             n_samples = eem_dataset.eem_stack.shape[0]
             X = eem_dataset.eem_stack.reshape([n_samples, -1])
             X[np.isnan(X)] = 0
@@ -2809,7 +2898,7 @@ class EEMNMF:
                                      columns=["component {i} NMF-Fmax".format(i=i + 1) for i in
                                               range(self.n_components)])
         elif self.solver == 'hals':
-            eem_dataset.threshold_masking(0, 0, 'smaller', copy=False)
+            eem_dataset.threshold_masking(0, 0, 'smaller', inplace=True)
             n_samples = eem_dataset.eem_stack.shape[0]
             X = eem_dataset.eem_stack.reshape([n_samples, -1])
             X[np.isnan(X)] = 0
@@ -3378,13 +3467,13 @@ class KMethod:
             initial_sub_eem_datasets = eem_dataset.splitting(n_split=self.n_initial_splits)
         elif self.distance_metric in ["quenching_coefficient", "reconstruction_error_with_beta"]:
             initial_sub_eem_datasets = []
-            eem_dataset_unquenched, _ = eem_dataset.filter_by_index(self.kw_top, None, copy=True)
+            eem_dataset_unquenched = eem_dataset.filter_by_index(self.kw_top, None, inplace=False)
             initial_sub_eem_datasets_unquenched = eem_dataset_unquenched.splitting(n_split=self.n_initial_splits)
-            eem_dataset_quenched, _ = eem_dataset.filter_by_index(self.kw_bot, None, copy=True)
+            eem_dataset_quenched = eem_dataset.filter_by_index(self.kw_bot, None, inplace=False)
             for subset in initial_sub_eem_datasets_unquenched:
                 pos = [eem_dataset_unquenched.index.index(idx) for idx in subset.index]
                 quenched_index = [eem_dataset_quenched.index[idx] for idx in pos]
-                sub_eem_dataset_quenched, _ = eem_dataset.filter_by_index(None, quenched_index, copy=True)
+                sub_eem_dataset_quenched = eem_dataset.filter_by_index(None, quenched_index, inplace=False)
                 subset.sort_by_index()
                 sub_eem_dataset_quenched.sort_by_index()
                 initial_sub_eem_datasets.append(combine_eem_datasets([subset, sub_eem_dataset_quenched]))
@@ -3471,20 +3560,20 @@ class KMethod:
         error_history = []
 
         if self.distance_metric == "quenching_coefficient":
-            eem_dataset_unquenched, _ = eem_dataset.filter_by_index(self.kw_top, None, copy=True)
-            eem_dataset_quenched, _ = eem_dataset.filter_by_index(self.kw_bot, None, copy=True)
+            eem_dataset_unquenched = eem_dataset.filter_by_index(self.kw_top, None, inplace=False)
+            eem_dataset_quenched = eem_dataset.filter_by_index(self.kw_bot, None, inplace=False)
 
         while n < n_base_clusterings:
 
             # ------Subsampling-------
             if self.distance_metric == "reconstruction_error":
-                eem_dataset_n, selected_indices = eem_dataset.subsampling(portion=subsampling_portion)
+                eem_dataset_n, selected_indices = eem_dataset.subsampling(portion=subsampling_portion, inplace=False)
             elif self.distance_metric == "quenching_coefficient":
                 eem_dataset_new_uq, selected_indices_uq = eem_dataset_unquenched.subsampling(
-                    portion=subsampling_portion)
+                    portion=subsampling_portion, inplace=False)
                 pos = [eem_dataset_unquenched.index.index(idx) for idx in eem_dataset_new_uq.index]
                 quenched_index = [eem_dataset_quenched.index[idx] for idx in pos]
-                eem_dataset_new_q, _ = eem_dataset.filter_by_index(None, quenched_index, copy=True)
+                eem_dataset_new_q = eem_dataset.filter_by_index(None, quenched_index, inplace=False)
                 eem_dataset_n = combine_eem_datasets([eem_dataset_new_uq, eem_dataset_new_q])
                 eem_dataset_n.sort_by_index()
                 selected_indices = [eem_dataset.index.index(idx) for idx in eem_dataset_n.index]

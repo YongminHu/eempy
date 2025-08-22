@@ -23,14 +23,14 @@ np.random.seed(42)
 eem_dataset_path = \
     "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/sample_276_ex_274_em_310_mfem_5_gaussian_rsu_rs_interpolated.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
-eem_dataset.median_filter(footprint=(5, 5), copy=False)
-eem_dataset.cutting(ex_min=274, ex_max=500, em_min=312, em_max=500, copy=False)
+eem_dataset.median_filter(footprint=(5, 5), inplace=True)
+eem_dataset.cutting(ex_min=274, ex_max=500, em_min=312, em_max=500, inplace=True)
 # eem_dataset.raman_scattering_removal(width=15, interpolation_method='nan', copy=False)
 # eem_dataset.eem_stack = np.nan_to_num(eem_dataset.eem_stack, copy=True, nan=0)
-eem_dataset_july, _ = eem_dataset.filter_by_index(None, ['2024-07-'], copy=True)
-eem_dataset_october, _ = eem_dataset.filter_by_index(None, ['2024-10-'], copy=True)
-eem_dataset_original, _ = eem_dataset.filter_by_index(['B1C1'], None, copy=True)
-eem_dataset_quenched, _ = eem_dataset.filter_by_index(['B1C2'], None, copy=True)
+eem_dataset_july = eem_dataset.filter_by_index(None, ['2024-07-'], inplace=False)
+eem_dataset_october = eem_dataset.filter_by_index(None, ['2024-10-'], inplace=False)
+eem_dataset_original = eem_dataset.filter_by_index(['B1C1'], None, inplace=False)
+eem_dataset_quenched = eem_dataset.filter_by_index(['B1C2'], None, inplace=False)
 idx_top_oct = [i for i in range(len(eem_dataset_october.index)) if 'B1C1' in eem_dataset_october.index[i]]
 idx_bot_oct = [i for i in range(len(eem_dataset_october.index)) if 'B1C2' in eem_dataset_october.index[i]]
 idx_top_jul = [i for i in range(len(eem_dataset_july.index)) if 'B1C1' in eem_dataset_july.index[i]]
@@ -292,13 +292,13 @@ def plot_outlier_plots(model, indicator, estimator_rank, dataset_train, dataset_
 # -----------model training-------------
 # dataset_train, dataset_test = eem_dataset_october.splitting(2)
 dataset_train_splits = []
-dataset_train_unquenched, _ = eem_dataset_october.filter_by_index('B1C1', None, copy=True)
+dataset_train_unquenched = eem_dataset_october.filter_by_index('B1C1', None, inplace=False)
 initial_sub_eem_datasets_unquenched = dataset_train_unquenched.splitting(n_split=2, random_state=42)
-dataset_train_quenched, _ = eem_dataset_october.filter_by_index('B1C2', None, copy=True)
+dataset_train_quenched = eem_dataset_october.filter_by_index('B1C2', None, inplace=False)
 for subset in initial_sub_eem_datasets_unquenched:
     pos = [dataset_train_unquenched.index.index(idx) for idx in subset.index]
     quenched_index = [dataset_train_quenched.index[idx] for idx in pos]
-    sub_eem_dataset_quenched, _ = eem_dataset.filter_by_index(None, quenched_index, copy=True)
+    sub_eem_dataset_quenched = eem_dataset.filter_by_index(None, quenched_index, inplace=False)
     subset.sort_by_index()
     sub_eem_dataset_quenched.sort_by_index()
     dataset_train_splits.append(combine_eem_datasets([subset, sub_eem_dataset_quenched]))
@@ -536,13 +536,13 @@ def all_split_half_combinations(lst):
 
 param_combinations = get_param_combinations(param_grid)
 dataset_train_splits = []
-dataset_train_unquenched, _ = dataset_train.filter_by_index('B1C1', None, copy=True)
+dataset_train_unquenched = dataset_train.filter_by_index('B1C1', None, inplace=False)
 initial_sub_eem_datasets_unquenched = dataset_train_unquenched.splitting(n_split=1, random_state=42)
-dataset_train_quenched, _ = dataset_train.filter_by_index('B1C2', None, copy=True)
+dataset_train_quenched = dataset_train.filter_by_index('B1C2', None, inplace=False)
 for subset in initial_sub_eem_datasets_unquenched:
     pos = [dataset_train_unquenched.index.index(idx) for idx in subset.index]
     quenched_index = [dataset_train_quenched.index[idx] for idx in pos]
-    sub_eem_dataset_quenched, _ = eem_dataset.filter_by_index(None, quenched_index, copy=True)
+    sub_eem_dataset_quenched = eem_dataset.filter_by_index(None, quenched_index, inplace=False)
     subset.sort_by_index()
     sub_eem_dataset_quenched.sort_by_index()
     dataset_train_splits.append(combine_eem_datasets([subset, sub_eem_dataset_quenched]))
@@ -673,7 +673,7 @@ outlier_quenched = [i for i, idx in enumerate(dataset_train_quenched.index) if i
 number_outliers = list(set(outlier_quenched + outlier_unquenched))
 qualified_indices = [idx for i, idx in enumerate(dataset_train_unquenched.index) if i not in number_outliers] + \
                      [idx for i, idx in enumerate(dataset_train_quenched.index) if i not in number_outliers]
-eem_dataset_october_cleaned, _ = dataset_train.filter_by_index(None, qualified_indices, copy=True)
+eem_dataset_october_cleaned = dataset_train.filter_by_index(None, qualified_indices, inplace=False)
 
 
 # with open("C:/PhD/publication/2025_prior_knowledge/param_combinations.pkl",
@@ -774,7 +774,8 @@ df_cluster = pd.DataFrame(cluster_labels, index=dataset_train.index)
 dataset_train.cluster = cluster_labels
 clusters = {}
 for label in list(set(cluster_labels)):
-    cluster, _ = dataset_train.filter_by_cluster(cluster_names=label)
+    cluster = dataset_train.filter_by_cluster(cluster_names=label, inplace=False)
+    clusters[label] = cluster
     clusters[label] = cluster
 
 # with open("C:/PhD/publication/2025_prior_knowledge/clusters_all.pkl",

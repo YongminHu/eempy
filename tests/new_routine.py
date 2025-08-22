@@ -22,13 +22,13 @@ eem_dataset_path = \
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
 # eem_dataset.median_filter(footprint=(5, 5), copy=False)
 # eem_dataset.raman_scattering_removal(width=15, interpolation_method="nan", copy=False)
-eem_dataset.cutting(ex_min=250, ex_max=450, em_min=300, em_max=600, copy=False)
+eem_dataset.cutting(ex_min=250, ex_max=450, em_min=300, em_max=600, inplace=True)
 # eem_dataset, _ = eem_dataset.filter_by_index(["2024-10"], None, copy=True)
 
-eem_dataset_feb, _ = eem_dataset.filter_by_index(["2025-02-"], None, copy=True)
-eem_dataset_filtered, _ = eem_dataset.filter_by_index(["-filtered"], None, copy=True)
+eem_dataset_feb = eem_dataset.filter_by_index(["2025-02-"], None, inplace=False)
+eem_dataset_filtered = eem_dataset.filter_by_index(["-filtered"], None, inplace=False)
 indices_non_feb = [i for i in eem_dataset.index if i not in eem_dataset_feb.index and i not in eem_dataset_filtered.index]
-eem_dataset_non_feb, _ = eem_dataset.filter_by_index(None, indices_non_feb, copy=True)
+eem_dataset_non_feb = eem_dataset.filter_by_index(None, indices_non_feb, inplace=False)
 
 
 def plot_all_f0f(model, eem_dataset, kw_top, kw_bot, target_analyte, eps=0.01, plot=True, zscore_threshold=3):
@@ -576,11 +576,11 @@ eem_dataset_clean.ref = eem_dataset_clean.ref[['TCC (million #/mL)', 'DOC (mg/L)
 # ------------------Normal PARAFAC--------------------
 
 dataset_train = eem_dataset
-dataset_train_unquenched, _ = dataset_train.filter_by_index("B", None, copy=True)
+dataset_train_unquenched = dataset_train.filter_by_index("B", None, inplace=False)
 dataset_train_rs_removed = copy.deepcopy(dataset_train)
-dataset_train_rs_removed.raman_scattering_removal(width=15, interpolation_method='zero', copy=False)
-dataset_train_rs_removed.rayleigh_scattering_removal(width_o1=20, width_o2=40, interpolation_method_o2='zero', copy=False)
-dataset_train_rs_removed_unquenched, _ = dataset_train_rs_removed.filter_by_index("B", None, copy=True)
+dataset_train_rs_removed.raman_scattering_removal(width=15, interpolation_method='zero', inplace=True)
+dataset_train_rs_removed.rayleigh_scattering_removal(width_o1=20, width_o2=40, interpolation_method_o2='zero', inplace=True)
+dataset_train_rs_removed_unquenched = dataset_train_rs_removed.filter_by_index("B", None, inplace=False)
 
 
 n_components = 5
@@ -705,8 +705,8 @@ plot_all_components(robust_model)
 model_standard = model_normal_parafac
 
 component_set = EEMDataset(model_standard.components, model_standard.ex_range, model_standard.em_range)
-component_set.raman_scattering_removal(width=15, interpolation_method='zero', copy=False)
-component_set.rayleigh_scattering_removal(width_o1=20, width_o2=40,interpolation_method_o2="zero", copy=False)
+component_set.raman_scattering_removal(width=15, interpolation_method='zero', inplace=True)
+component_set.rayleigh_scattering_removal(width_o1=20, width_o2=40, interpolation_method_o2="zero", inplace=True)
 # component_set.cutting(ex_min=250, ex_max=325, em_min=300, em_max=370,copy=False)
 # cutting_mask = ~(component_set.eem_stack<1e-2).all(axis=(1,2))
 # component_set.eem_stack = component_set.eem_stack[cutting_mask]
@@ -763,8 +763,8 @@ model_hr_layer1 = EEMNMF(
 model_hr_layer1.fit(dataset_train_rs_removed_unquenched)
 plot_all_components(model_hr_layer1)
 component_hr_layer1 = EEMDataset(model_hr_layer1.components, model_hr_layer1.ex_range, model_hr_layer1.em_range)
-component_hr_layer1.raman_scattering_removal(width=10, interpolation_method='nan', copy=False)
-component_hr_layer1.rayleigh_scattering_removal(width_o1=20, width_o2=40,interpolation_method_o2="nan", copy=False)
+component_hr_layer1.raman_scattering_removal(width=10, interpolation_method='nan', inplace=True)
+component_hr_layer1.rayleigh_scattering_removal(width_o1=20, width_o2=40, interpolation_method_o2="nan", inplace=True)
 plot_eem_stack(component_hr_layer1.eem_stack, model_hr_layer1.ex_range, model_hr_layer1.em_range, n_cols=5,
         cbar=None,
         plot_x_axis_label=False,
@@ -958,7 +958,7 @@ for k, p in enumerate(param_combinations):
         fixed_components=[i for i in range(n_components_original + n_deconvoluted - 1) if new_order[i] != r_to_deconvolute],
         # prior_dict_W = {new_order.index(r_to_deconvolute): dataset_train_grid.ref['TCC (million #/mL)'].to_numpy()},
         prior_dict_H={i: prior_components_rs_removed[k] for i, k in enumerate(new_order)},
-        gamma_H={k: 1e5 for k in range(n_components_original+n_deconvoluted-1) if new_order[k] == r_to_deconvolute},
+        gamma_H={k: 1e6 for k in range(n_components_original+n_deconvoluted-1) if new_order[k] == r_to_deconvolute},
         # lam=3e3,
         # idx_top="B1C1",
         # idx_bot="B1C2",
@@ -990,9 +990,9 @@ for k, p in enumerate(param_combinations):
     for c in range(model.n_components):
         param_combinations[k][sim_mean.index[c] + ' similarities'] = sim_mean.iloc[c]
     param_combinations[k]['overall similarities'] = np.mean(sim_mean)
-    # children_r = [k for k in range(model.n_components) if new_order[k] == r_to_deconvolute]
-    # param_combinations[k]["split-half stability"] = np.mean(sim_mean.iloc[children_r])
-    # param_combinations[k]["children similarities"] = mean_pairwise_correlation([model.components[i].reshape(-1) for i in children_r])
+    children_r = [k for k in range(model.n_components) if new_order[k] == r_to_deconvolute]
+    param_combinations[k]["split-half stability"] = np.mean(sim_mean.iloc[children_r])
+    param_combinations[k]["children similarities"] = mean_pairwise_correlation([model.components[i].reshape(-1) for i in children_r])
     # cvdf = sv.correlation_cv("TCC (million #/mL)")
     # cvdf_mean = cvdf.mean()
     # param_combinations[k].update(cvdf_mean.to_dict())

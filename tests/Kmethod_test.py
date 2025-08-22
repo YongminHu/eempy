@@ -120,8 +120,8 @@ def k_method_consensus_to_clusters_stats(eem_dataset_combinations, consensus_mat
         # q_sample_indices = [index for index, value in enumerate(dataset_0.index) if 'B1C2' in value]
         consensus = combo_consensus['0'][o_sample_indices, :]
         consensus = consensus[:, o_sample_indices]
-        dataset_0_o, _ = dataset_0.filter_by_index(['B1C1'], None, copy=True)
-        dataset_0_q, _ = dataset_0.filter_by_index(['B1C2'], None, copy=True)
+        dataset_0_o, _ = dataset_0.filter_by_index(['B1C1'], None, inplace=True)
+        dataset_0_q, _ = dataset_0.filter_by_index(['B1C2'], None, inplace=True)
         kmodel.consensus_matrix = consensus
         kmodel.hierarchical_clustering(dataset_0_o, n_clusters=n_clusters)
         clustered_dataset_combo = {}
@@ -130,7 +130,7 @@ def k_method_consensus_to_clusters_stats(eem_dataset_combinations, consensus_mat
             dataset_cluster = combine_eem_datasets(
                 [
                     d,
-                    dataset_0.filter_by_index(None, idx_q, copy=True)[0]
+                    dataset_0.filter_by_index(None, idx_q, inplace=True)[0]
                 ]
             )
             clustered_dataset_combo['0' + str(c)] = dataset_cluster
@@ -152,7 +152,7 @@ def k_method_consensus_to_clusters_stats(eem_dataset_combinations, consensus_mat
 eem_dataset_path = \
     "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_260_ex_274_em_310_mfem_3.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
-eem_dataset, _ = eem_dataset.filter_by_index(None, ['M3', 'G1', 'G2', 'G3'], copy=True)
+eem_dataset = eem_dataset.filter_by_index(None, ['M3', 'G1', 'G2', 'G3'], inplace=False)
 
 consensus_matrices, cluster_stats = k_method_quenching(
     eem_dataset=eem_dataset,
@@ -600,7 +600,7 @@ def outlier_removal(eem_dataset, clustered_datasets, base_model, target_depth, n
 eem_dataset_path = \
     "C:/PhD/Fluo-detect/_data/_greywater/2024_quenching/sample_260_ex_274_em_310_mfem_3.json"
 eem_dataset_work = read_eem_dataset_from_json(eem_dataset_path)
-eem_dataset_work, _ = eem_dataset_work.filter_by_index(None, ['M3', 'G1', 'G2', 'G3'], copy=True)
+eem_dataset_work = eem_dataset_work.filter_by_index(None, ['M3', 'G1', 'G2', 'G3'], inplace=False)
 
 # kw_dict_conditions = {
 #     'normal_jul': [['M3'], ['2024-07-12', '2024-07-13', '2024-07-15', '2024-07-16', '2024-07-17'], 3],
@@ -631,7 +631,7 @@ kw_dict_types = {
 
 eem_dataset_pool = {}
 for name, kw in kw_dict_types.items():
-    eem_dataset_conditioned, _ = eem_dataset_work.filter_by_index(kw[0], kw[1], copy=True)
+    eem_dataset_conditioned = eem_dataset_work.filter_by_index(kw[0], kw[1], inplace=False)
     eem_dataset_pool[name] = eem_dataset_conditioned
 # type1_proportion = 36 / eem_dataset_pool['type 1'].eem_stack.shape[0]
 other_type_proportion = 120 / eem_dataset_pool['other types'].eem_stack.shape[0]
@@ -645,12 +645,12 @@ for i in range(30):
     # eem_dataset_new_q, _ = eem_dataset_pool['type 1'].filter_by_index(None, quenched_index, copy=True)
     # eem_dataset_type_1 = combine_eem_datasets([eem_dataset_new_uq, eem_dataset_new_q])
 
-    eem_dataset_unquenched_other, _ = eem_dataset_pool['other types'].filter_by_index('B1C1', None, copy=True)
-    eem_dataset_quenched_other, _ = eem_dataset_pool['other types'].filter_by_index('B1C2', None, copy=True)
+    eem_dataset_unquenched_other = eem_dataset_pool['other types'].filter_by_index('B1C1', None, inplace=False)
+    eem_dataset_quenched_other = eem_dataset_pool['other types'].filter_by_index('B1C2', None, inplace=False)
     eem_dataset_new_uq, selected_indices_uq = eem_dataset_unquenched_other.subsampling(portion=other_type_proportion)
     pos = [eem_dataset_unquenched_other.index.index(idx) for idx in eem_dataset_new_uq.index]
     quenched_index = [eem_dataset_quenched_other.index[idx] for idx in pos]
-    eem_dataset_new_q, _ = eem_dataset_pool['other types'].filter_by_index(None, quenched_index, copy=True)
+    eem_dataset_new_q = eem_dataset_pool['other types'].filter_by_index(None, quenched_index, inplace=False)
     eem_dataset_other_type = combine_eem_datasets([eem_dataset_new_uq, eem_dataset_new_q])
 
     # combined_data = combine_eem_datasets([eem_dataset_type_1, eem_dataset_other_type])
@@ -724,8 +724,8 @@ for combo_code, combo_consensus in consensus_matrices_combos.items():
     # q_sample_indices = [index for index, value in enumerate(dataset_0.index) if 'B1C2' in value]
     consensus = combo_consensus['0'][o_sample_indices, :]
     consensus = consensus[:, o_sample_indices]
-    dataset_0_o, _ = dataset_0.filter_by_index(['B1C1'], None, copy=True)
-    dataset_0_q, _ = dataset_0.filter_by_index(['B1C2'], None, copy=True)
+    dataset_0_o = dataset_0.filter_by_index(['B1C1'], None, inplace=False)
+    dataset_0_q = dataset_0.filter_by_index(['B1C2'], None, inplace=False)
     kmodel.consensus_matrix = consensus
     kmodel.hierarchical_clustering(dataset_0_o, n_clusters=5)
     clustered_dataset_combo = {}
@@ -734,7 +734,7 @@ for combo_code, combo_consensus in consensus_matrices_combos.items():
         dataset_cluster = combine_eem_datasets(
             [
                 d,
-                dataset_0.filter_by_index(None, idx_q, copy=True)[0]
+                dataset_0.filter_by_index(None, idx_q, inplace=False)
             ]
         )
         clustered_dataset_combo['0' + str(c)] = dataset_cluster
@@ -1002,9 +1002,9 @@ plt.show()
 #----------------------
 
 eem_dataset.cluster = [item for item in labels for _ in range(2)]
-eem_cluster1, _ = eem_dataset.filter_by_cluster(2, copy=True)
-eem_cluster2, _ = eem_dataset.filter_by_cluster(0, copy=True)
-eem_cluster3, _ = eem_dataset.filter_by_cluster(1, copy=True)
+eem_cluster1 = eem_dataset.filter_by_cluster(2, inplace=False)
+eem_cluster2 = eem_dataset.filter_by_cluster(0, inplace=False)
+eem_cluster3 = eem_dataset.filter_by_cluster(1, inplace=False)
 
 model_full = PARAFAC(n_components=4).fit(eem_dataset)
 dataset_outlier_removed = combine_eem_datasets([eem_cluster1, eem_cluster2])
@@ -1072,7 +1072,7 @@ def outlier_removal_simple(eem_dataset_work, n_clusters, set_point, r):
     fmax_ratio_r = fmax_ratio[:, r]
     mean_fmax_ratios = [np.mean(fmax_ratio_r[labels == j]) for j in range(n_clusters)]
     qualified_clusters = [index for index, value in enumerate(mean_fmax_ratios) if value <= set_point]
-    qualified_dataset, _ = eem_dataset_work.filter_by_cluster(qualified_clusters, copy=True)
+    qualified_dataset = eem_dataset_work.filter_by_cluster(qualified_clusters, inplace=False)
     model.fit(qualified_dataset)
     fmax_after = model.nnls_fmax
     fmax_after_original = fmax_after[fmax_after.index.str.contains('B1C1')]
@@ -1090,7 +1090,7 @@ kw_dict_types = {
 
 eem_dataset_pool = {}
 for name, kw in kw_dict_types.items():
-    eem_dataset_conditioned, _ = eem_dataset.filter_by_index(kw[0], kw[1], copy=True)
+    eem_dataset_conditioned = eem_dataset.filter_by_index(kw[0], kw[1], inplace=False)
     eem_dataset_pool[name] = eem_dataset_conditioned
 # type1_proportion = 36 / eem_dataset_pool['type 1'].eem_stack.shape[0]
 other_type_proportion = 120 / eem_dataset_pool['other types'].eem_stack.shape[0]
@@ -1104,12 +1104,12 @@ for i in range(10):
     # eem_dataset_new_q, _ = eem_dataset_pool['type 1'].filter_by_index(None, quenched_index, copy=True)
     # eem_dataset_type_1 = combine_eem_datasets([eem_dataset_new_uq, eem_dataset_new_q])
 
-    eem_dataset_unquenched_other, _ = eem_dataset_pool['other types'].filter_by_index('B1C1', None, copy=True)
-    eem_dataset_quenched_other, _ = eem_dataset_pool['other types'].filter_by_index('B1C2', None, copy=True)
+    eem_dataset_unquenched_other = eem_dataset_pool['other types'].filter_by_index('B1C1', None, inplace=False)
+    eem_dataset_quenched_other = eem_dataset_pool['other types'].filter_by_index('B1C2', None, inplace=False)
     eem_dataset_new_uq, selected_indices_uq = eem_dataset_unquenched_other.subsampling(portion=other_type_proportion)
     pos = [eem_dataset_unquenched_other.index.index(idx) for idx in eem_dataset_new_uq.index]
     quenched_index = [eem_dataset_quenched_other.index[idx] for idx in pos]
-    eem_dataset_new_q, _ = eem_dataset_pool['other types'].filter_by_index(None, quenched_index, copy=True)
+    eem_dataset_new_q = eem_dataset_pool['other types'].filter_by_index(None, quenched_index, inplace=False)
     eem_dataset_other_type = combine_eem_datasets([eem_dataset_new_uq, eem_dataset_new_q])
 
     # combined_data = combine_eem_datasets([eem_dataset_type_1, eem_dataset_other_type])
