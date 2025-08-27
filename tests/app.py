@@ -1068,7 +1068,7 @@ def update_eem_plot(folder_path, file_name_sample, graph_options,
 
         # Median filter
         if all([median_filter, median_filter_window_ex, median_filter_window_em, median_filter_mode]):
-            intensity = eem_median_filter(intensity, footprint=(median_filter_window_ex, median_filter_window_em),
+            intensity = eem_median_filter(intensity, window_size=(median_filter_window_ex, median_filter_window_em),
                                           mode=median_filter_mode)
 
         # Raman scattering removal
