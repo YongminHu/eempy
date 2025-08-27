@@ -1343,15 +1343,17 @@ class EEMDataset:
         -------
         eem_dataset_new: EEMDataset
             The processed EEM dataset.
+        weights: np.ndarray
+            The normalization    weights.
         """
         eem_stack_normalized, weights = eems_tf_normalization(self.eem_stack)
         if inplace:
             self.eem_stack = eem_stack_normalized
-            return self
+            return self, weights
         else:
             eem_dataset_new = copy.deepcopy(self)
             eem_dataset_new.eem_stack = eem_stack_normalized
-            return eem_dataset_new
+            return eem_dataset_new, weights
 
 
     def raman_scattering_removal(self, width=5, interpolation_method='linear', interpolation_dimension='2d', inplace=True):
@@ -1949,7 +1951,8 @@ class PARAFAC:
         if self.tf_normalization:
             if self.lam>0 and self.idx_bot is not None and self.idx_top is not None:
                 Warning("Applying tf_normalization together with ratio regularization (lam>0) will lead to unreasonable results")
-            eem_stack_tf, tf_weights = eem_dataset.tf_normalization(inplace=True)
+            eem_dataset_tf, tf_weights = eem_dataset.tf_normalization(inplace=True)
+            eem_stack_tf = eem_dataset_tf.eem_stack
         else:
             eem_stack_tf = eem_dataset.eem_stack.copy()
         try:
@@ -3499,7 +3502,6 @@ class KMethod:
             cluster_specific_models_new = align_components_by_components(
                 cluster_specific_models_new,
                 {f'component {i + 1}': unified_model.components[i] for i in range(unified_model.components.shape[0])},
-                model_type='parafac' if isinstance(self.base_model, PARAFAC) else 'nmf'
             )
 
             # -------The maximization step--------

@@ -16,6 +16,7 @@ from eempy.eem_processing import PARAFAC
 from plotly.subplots import make_subplots
 from sklearn.linear_model import LinearRegression
 from matplotlib.colors import LogNorm, TABLEAU_COLORS
+from matplotlib.lines import Line2D
 import plotly.figure_factory as ff
 
 
@@ -494,41 +495,81 @@ def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()
     n_cols = min(n_tot_components, n_cols) if n_cols else n_tot_components
 
     if plot_tool == 'matplotlib':
-        fig, ax = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=(3.3 * n_cols, 4 * n_rows), sharey='row',
-                               sharex='col')
-        fig.subplots_adjust(wspace=0, hspace=10)
-        for k, (model_name, model) in enumerate(parafac_models_dict.items()):
+        # ----- Component layout (deterministic order, no sets) -----
+        if component_labels_dict:
+            comp_order = []
+            for name in parafac_models_dict:
+                for lbl in component_labels_dict[name]:
+                    if lbl not in comp_order:
+                        comp_order.append(lbl)
+            n_tot_components = len(comp_order)
+        else:
+            n_tot_components = max(m.n_components for m in parafac_models_dict.values())
+            comp_order = [f"C{i + 1}" for i in range(n_tot_components)]
+
+        n_rows = (n_tot_components - 1) // n_cols + 1 if n_cols else 1
+        n_cols = min(n_tot_components, n_cols) if n_cols else n_tot_components
+
+        fig, ax = plt.subplots(
+            nrows=n_rows, ncols=n_cols,
+            figsize=(3.3 * n_cols + 2.5, 4 * n_rows),  # add space for legend
+            sharey='row', sharex='col'
+        )
+        # No gaps between subplots
+        fig.subplots_adjust(wspace=0, hspace=0, right=0.8)  # reserve space on the right
+
+        # Normalize axes to a flat array
+        axes = ax.ravel() if isinstance(ax, np.ndarray) else np.array([ax])
+
+        # ----- Consistent color per model -----
+        model_names = list(parafac_models_dict.keys())
+        model_colors = {name: colors[i % len(colors)] for i, name in enumerate(model_names)}
+
+        for model_name, model in parafac_models_dict.items():
             for i in range(model.n_components):
-                component_label = component_labels_dict[model_name][i] if component_labels_dict else f'C{i + 1}'
-                pos = list(set(component_labels_dict.values())).index(component_label) if component_labels_dict else i
-                if n_rows > 1:
-                    ax[pos // n_cols, pos % n_cols].plot(model.ex_range, model.ex_loadings.iloc[:, i], '--',
-                                                         c=colors[k])
-                    ax[pos // n_cols, pos % n_cols].plot(model.em_range, model.em_loadings.iloc[:, i], label=model_name,
-                                                         c=colors[k])
-                    ax[pos // n_cols, pos % n_cols].tick_params(labelsize=14)
-                else:
-                    ax[pos].plot(model.ex_range, model.ex_loadings.iloc[:, i], '--', c=colors[k])
-                    ax[pos].plot(model.em_range, model.em_loadings.iloc[:, i], label=model_name, c=colors[k])
-                    ax[pos].tick_params(labelsize=14)
+                comp_label = (
+                    component_labels_dict[model_name][i] if component_labels_dict else f"C{i + 1}"
+                )
+                pos = comp_order.index(comp_label)
 
-        for j in range(n_tot_components):
-            if component_labels_dict:
-                if n_rows > 1:
-                    ax[j // n_rows, j % n_cols].set_title(list(set(component_labels_dict.values()))[j], fontsize=18)
-                else:
-                    ax[j].set_title(list(set(component_labels_dict.values()))[j], fontsize=18)
-            else:
-                ax[j].set_title('C{i}'.format(i=j + 1), fontsize=18)
-            ax[j].legend(fontsize=12)
+                # Excitation (dashed)
+                axes[pos].plot(
+                    model.ex_range, model.ex_loadings.iloc[:, i],
+                    '--', c=model_colors[model_name]
+                )
+                # Emission (solid)
+                axes[pos].plot(
+                    model.em_range, model.em_loadings.iloc[:, i],
+                    '-', c=model_colors[model_name]
+                )
+                axes[pos].tick_params(labelsize=14)
 
-        leg_ax = fig.add_subplot(111)
-        leg_ax.axis('off')
-        # handles, labels = ax[0].get_legend_handles_labels()
-        # leg_ax.legend(flip_legend_order(handles,3), flip_legend_order(labels,3),
-        #               loc='upper center', bbox_to_anchor=(0.5, -0.35), fontsize=14, ncol=3)
-        fig.text(0.4, -0.1, 'Wavelength (nm)', fontsize=18)
-        fig.text(0.04, 0.35, 'Loadings', fontsize=18, rotation='vertical')
+        # Titles
+        for j, title in enumerate(comp_order):
+            axes[j].set_title(title, fontsize=18)
+
+        # ----- Shared legend on the right -----
+        legend_handles, legend_labels = [], []
+        for name in model_names:
+            legend_handles.extend([
+                Line2D([0], [0], linestyle='--', color=model_colors[name]),
+                Line2D([0], [0], linestyle='-', color=model_colors[name]),
+            ])
+            legend_labels.extend([f"{name}-ex", f"{name}-em"])
+
+        fig.legend(
+            legend_handles, legend_labels,
+            loc='center left', bbox_to_anchor=(0.82, 0.5),
+            fontsize=12, ncol=1
+        )
+
+        # Axis labels
+        # fig.text(0.5, 0.0, 'Wavelength (nm)', fontsize=18, ha='center')
+        # fig.text(0.05, 0.5, 'Loadings', fontsize=18, va='center', rotation='vertical')
+        fig.subplots_adjust(bottom=0.2)
+        fig.supxlabel("Wavelength (nm)", fontsize=18)
+        fig.supylabel("Loadings", fontsize=18, x=0.02)
+
         if display:
             plt.show()
         return fig, ax

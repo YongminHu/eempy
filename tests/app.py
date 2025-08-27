@@ -6659,7 +6659,7 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
             'n_components': rank, 'init': parafac_init,
             'non_negativity': True if 'non_negative' in parafac_nn else False,
             'tf_normalization': True if 'tf_normalization' in parafac_tf else False,
-            'sort_em': True
+            'sort_components_by_em': True
         }
         base_model = PARAFAC(**base_clustering_parameters)
     elif base_clustering == 'nmf':
@@ -6671,7 +6671,7 @@ def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_manda
         base_model = EEMNMF(**base_clustering_parameters)
 
     kmethod = KMethod(base_model=base_model, n_initial_splits=n_init_splits, max_iter=n_iterations, tol=tol,
-                      elimination=elimination, distance_metric="quenching_coefficient", kw_top="B1C1", kw_bot="B1C2")
+                      elimination=elimination, distance_metric="reconstruction_error", kw_top="B1C1", kw_bot="B1C2")
     consensus_matrix, _, error_history = kmethod.calculate_consensus(eem_dataset_establishment, n_base_clusterings,
                                                                      subsampling_portion)
     consensus_matrix_tabs = dbc.Card(children=[])
@@ -7436,4 +7436,4 @@ def serve_layout():
 app.layout = serve_layout
 
 if __name__ == '__main__':
-    app.run_server(debug=False)
+    app.run(debug=False)
