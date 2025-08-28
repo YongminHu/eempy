@@ -1841,2039 +1841,6 @@ def combine_eem_datasets(list_eem_datasets):
     return eem_dataset_combined
 
 
-class PARAFAC:
-    """
-    Parallel factor analysis (PARAFAC) model for EEM dataset.
-
-    Parameters
-    ----------
-    n_components: int
-        The number of components
-    non_negativity: bool
-        Whether to apply the non-negativity constraint
-    solver: str, {'mu', 'hals'}
-        Optimizer to for PARAFAC. 'mu' for multiplicative update optimizer, 'hals' for hierarchical alternating least
-        square. 'hals' can only be applied together with non-negativity contraint.
-    init: str or tensorly.CPTensor, {‘svd’, ‘random’, CPTensor}
-        Type of factor matrix initialization
-    tf_normalization: bool
-        Whether to normalize the EEMs by the total fluorescence in PARAFAC model establishment
-    loadings_normalization: str or None, {'sd', 'maximum', None}
-        Type of normalization applied to loadings. if 'sd' is passed, the standard deviation will be normalized
-        to 1. If 'maximum' is passed, the maximum will be normalized to 1. The scores will be adjusted accordingly.
-    sort_components_by_em: bool
-        Whether to sort components by emission peak position from lowest to highest. If False is passed, the
-        components will be sorted by the contribution to the total variance.
-
-    Attributes
-    ----------
-    score: pandas.DataFrame
-        Score table.
-    ex_loadings: pandas.DataFrame
-        Excitation loadings table.
-    em_loadings: pandas.DataFrame
-        Emission loadings table.
-    fmax: pandas.DataFrame
-        Fmax table.
-    components: np.ndarray
-        PARAFAC components.
-    cptensors: tensorly CPTensor
-        The output of PARAFAC in the form of tensorly CPTensor.
-    eem_stack_train: np.ndarray
-        EEMs used for PARAFAC model establishment.
-    eem_stack_reconstructed: np.ndarray
-        EEMs reconstructed by the established PARAFAC model.
-    ex_range: np.ndarray
-        Excitation wavelengths.
-    em_range: np.ndarray
-        Emission wavelengths.
-    """
-
-    def __init__(self, n_components, non_negativity=True, solver='hals', init='svd', custom_init=None, fixed_components=None,
-                 tf_normalization=False, loadings_normalization: Optional[str] = 'maximum', sort_components_by_em=True,
-                 alpha_sample=0, alpha_ex=0, alpha_em=0, l1_ratio=1,
-                 prior_dict_sample=None, prior_dict_ex=None, prior_dict_em=None,
-                 gamma_sample=0, gamma_ex=0, gamma_em=0, prior_ref_components=None,
-                 idx_top=None, idx_bot=None, kw_top=None, kw_bot=None, lam=0,
-                 max_iter_als=100, tol=1e-06, max_iter_nnls=500, random_state=None, mask=None
-                 ):
-
-        # ----------parameters--------------
-        self.n_components = n_components
-        self.non_negativity = non_negativity
-        self.init = init
-        self.custom_init = custom_init
-        self.fixed_components = fixed_components
-        self.tf_normalization = tf_normalization
-        self.loadings_normalization = loadings_normalization
-        self.sort_components_by_em = sort_components_by_em
-        self.solver = solver
-        self.alpha_sample = alpha_sample
-        self.alpha_ex = alpha_ex
-        self.alpha_em = alpha_em
-        self.l1_ratio = l1_ratio
-        self.prior_dict_sample = prior_dict_sample
-        self.prior_dict_ex = prior_dict_ex
-        self.prior_dict_em = prior_dict_em
-        self.gamma_sample = gamma_sample
-        self.gamma_ex = gamma_ex
-        self.gamma_em = gamma_em
-        self.prior_ref_components = prior_ref_components
-        self.idx_top = idx_top
-        self.idx_bot = idx_bot
-        self.kw_top = kw_top
-        self.kw_bot = kw_bot
-        self.lam = lam
-        self.max_iter_als = max_iter_als
-        self.tol = tol
-        self.max_iter_nnls = max_iter_nnls
-        self.random_state = random_state
-        self.mask = mask
-
-        # -----------attributes---------------
-        self.score = None
-        self.ex_loadings = None
-        self.em_loadings = None
-        self.fmax = None
-        self.nnls_fmax = None
-        self.components = None
-        self.cptensors = None
-        self.eem_stack_train = None
-        self.eem_stack_reconstructed = None
-        self.ex_range = None
-        self.em_range = None
-        self.beta = None
-
-    # --------------methods------------------
-    def fit(self, eem_dataset: EEMDataset):
-        """
-        Establish a PARAFAC model based on a given EEM dataset
-
-        Parameters
-        ----------
-        eem_dataset: EEMDataset
-            The EEM dataset that the PARAFAC model establishes on.
-
-        Returns
-        -------
-        self: object
-            The established PARAFAC model
-        """
-        if self.kw_top is not None and self.kw_bot is not None:
-            assert eem_dataset.index is not None
-            self.idx_top = [i for i in range(len(eem_dataset.index)) if self.kw_top in eem_dataset.index[i]]
-            self.idx_bot = [i for i in range(len(eem_dataset.index)) if self.kw_bot in eem_dataset.index[i]]
-        if self.tf_normalization:
-            if self.lam>0 and self.idx_bot is not None and self.idx_top is not None:
-                Warning("Applying tf_normalization together with ratio regularization (lam>0) will lead to unreasonable results")
-            eem_dataset_tf, tf_weights = eem_dataset.tf_normalization(inplace=True)
-            eem_stack_tf = eem_dataset_tf.eem_stack
-        else:
-            eem_stack_tf = eem_dataset.eem_stack.copy()
-        try:
-            if not self.non_negativity:
-                if np.isnan(eem_stack_tf).any():
-                    mask = np.where(np.isnan(eem_stack_tf), 0, 1)
-                    cptensors = parafac(eem_stack_tf, rank=self.n_components, mask=mask, init=self.init,
-                                        n_iter_max=self.max_iter_als,
-                                        tol=self.tol)
-                else:
-                    cptensors = parafac(eem_stack_tf, rank=self.n_components, init=self.init,
-                                        n_iter_max=self.max_iter_als,
-                                        tol=self.tol)
-                a, b, c = cptensors[1]
-            else:
-                if self.solver == 'hals':
-                    a, b, c, beta = cp_hals_prior(
-                        eem_stack_tf,
-                        rank=self.n_components,
-                        init=self.init,
-                        custom_init=self.custom_init,
-                        prior_dict_A=self.prior_dict_sample,
-                        prior_dict_B=self.prior_dict_ex,
-                        prior_dict_C=self.prior_dict_em,
-                        alpha_A=self.alpha_sample,
-                        alpha_B=self.alpha_ex,
-                        alpha_C=self.alpha_em,
-                        l1_ratio=self.l1_ratio,
-                        gamma_A=self.gamma_sample,
-                        gamma_B=self.gamma_ex,
-                        gamma_C=self.gamma_em,
-                        idx_top=self.idx_top,
-                        idx_bot=self.idx_bot,
-                        lam=self.lam,
-                        max_iter_als=self.max_iter_als,
-                        max_iter_nnls=self.max_iter_nnls,
-                        prior_ref_components=self.prior_ref_components,
-                        random_state=self.random_state,
-                        fixed_components=self.fixed_components,
-                        mask=self.mask,
-                    )
-                    self.beta = beta
-                    cptensors = tl.cp_tensor.CPTensor((np.ones(self.n_components), [a, b, c]))
-                elif self.solver == 'mu':
-                    cptensors = non_negative_parafac(eem_stack_tf, rank=self.n_components, init=self.init,
-                                                     n_iter_max=self.max_iter_als, tol=self.tol)
-                    a, b, c = cptensors[1]
-        except ArpackError:
-            print(
-                "PARAFAC failed possibly due to the presence of large non-sparse missing values. Please consider cut or "
-                "interpolate the nan values.")
-        components = np.zeros([self.n_components, b.shape[0], c.shape[0]])
-        for r in range(self.n_components):
-            # when non_negativity is not applied, ensure the scores are generally positive
-            if not self.non_negativity:
-                if a[:, r].sum() < 0:
-                    a[:, r] = -a[:, r]
-                    if abs(b[:, r].min()) > b[:, r].max():
-                        b[:, r] = -b[:, r]
-                    else:
-                        c[:, r] = -c[:, r]
-                elif abs(b[:, r].min()) > b[:, r].max() and abs(c[:, r].min()) > c[:, r].max():
-                    b[:, r] = -b[:, r]
-                    c[:, r] = -c[:, r]
-
-            if self.loadings_normalization == 'sd':
-                stdb = b[:, r].std()
-                stdc = c[:, r].std()
-                b[:, r] = b[:, r] / stdb
-                c[:, r] = c[:, r] / stdc
-                a[:, r] = a[:, r] * stdb * stdc
-            elif self.loadings_normalization == 'maximum':
-                maxb = b[:, r].max()
-                maxc = c[:, r].max()
-                b[:, r] = b[:, r] / maxb
-                c[:, r] = c[:, r] / maxc
-                a[:, r] = a[:, r] * maxb * maxc
-            component = np.array([b[:, r]]).T.dot(np.array([c[:, r]]))
-            components[r, :, :] = component
-        if self.tf_normalization:
-            fmax = pd.DataFrame(a * tf_weights[:, np.newaxis])
-            self.beta = update_beta(fmax.to_numpy(), self.idx_top, self.idx_bot) if self.beta is not None else None
-        else:
-            fmax = pd.DataFrame(a)
-        a, _, _ = eems_fit_components(eem_dataset.eem_stack, components, fit_intercept=False, positive=True)
-        score = pd.DataFrame(a)
-        nnls_fmax = a * components.max(axis=(1, 2))
-        ex_loadings = pd.DataFrame(np.flipud(b), index=eem_dataset.ex_range)
-        em_loadings = pd.DataFrame(c, index=eem_dataset.em_range)
-        if self.sort_components_by_em:
-            em_peaks = [c for c in em_loadings.idxmax()]
-            peak_rank = list(enumerate(stats.rankdata(em_peaks)))
-            order = [i[0] for i in sorted(peak_rank, key=lambda x: x[1])]
-            components = components[order]
-            ex_loadings = pd.DataFrame({'component {r} ex loadings'.format(r=i + 1): ex_loadings.iloc[:, order[i]]
-                                        for i in range(self.n_components)})
-            em_loadings = pd.DataFrame({'component {r} em loadings'.format(r=i + 1): em_loadings.iloc[:, order[i]]
-                                        for i in range(self.n_components)})
-            score = pd.DataFrame({'component {r} score'.format(r=i + 1): score.iloc[:, order[i]]
-                                  for i in range(self.n_components)})
-            fmax = pd.DataFrame({'component {r} score'.format(r=i + 1): fmax.iloc[:, order[i]]
-                                 for i in range(self.n_components)})
-            nnls_fmax = pd.DataFrame({'component {r} fmax'.format(r=i + 1): nnls_fmax[:, order[i]]
-                                      for i in range(self.n_components)})
-            self.beta = self.beta[order] if self.beta is not None else None
-        else:
-            column_labels = ['component {r}'.format(r=i + 1) for i in range(self.n_components)]
-            ex_loadings.columns = column_labels
-            em_loadings.columns = column_labels
-            score.columns = ['component {r} PARAFAC-score'.format(r=i + 1) for i in range(self.n_components)]
-            nnls_fmax = pd.DataFrame(nnls_fmax, columns=['component {r} PARAFAC-Fmax'.format(r=i + 1) for i in
-                                                         range(self.n_components)])
-
-        ex_loadings.index = eem_dataset.ex_range.tolist()
-        em_loadings.index = eem_dataset.em_range.tolist()
-
-        if eem_dataset.index:
-            score.index = eem_dataset.index
-            fmax.index = eem_dataset.index
-            nnls_fmax.index = eem_dataset.index
-        else:
-            score.index = [i + 1 for i in range(a.shape[0])]
-            fmax.index = [i + 1 for i in range(a.shape[0])]
-            nnls_fmax.index = [i + 1 for i in range(a.shape[0])]
-
-        eem_stack_reconstructed = np.tensordot(score.to_numpy(), components, axes=(1, 0))
-
-        self.score = score
-        self.ex_loadings = ex_loadings
-        self.em_loadings = em_loadings
-        self.fmax = fmax
-        self.nnls_fmax = nnls_fmax
-        self.components = components
-        self.cptensors = cptensors
-        self.eem_stack_train = eem_dataset.eem_stack
-        self.ex_range = eem_dataset.ex_range
-        self.em_range = eem_dataset.em_range
-        self.eem_stack_reconstructed = eem_stack_reconstructed
-        return self
-
-    def predict(self, eem_dataset: EEMDataset, fit_intercept=False, fit_beta=False, idx_top=None, idx_bot=None):
-        """
-        Predict the score and Fmax of a given EEM dataset using the component fitted. This method can be applied to a
-        new EEM dataset independent of the one used in NMF model establishment.
-
-        Parameters
-        ----------
-        eem_dataset: EEMDataset
-            The EEM dataset to be predicted.
-        fit_intercept: bool
-            Whether to calculate the intercept.
-        fit_beta: bool
-            Whether to fit the beta parameter (the proportions between "top" and "bot" samples).
-        idx_top: list, optional
-            List of indices of samples serving as numerators in ratio calculation.
-        idx_bot: list, optional
-            List of indices of samples serving as denominators in ratio calculation.
-
-        Returns
-        -------
-        score_sample: pd.DataFrame
-            The fitted score.
-        fmax_sample: pd.DataFrame
-            The fitted Fmax.
-        eem_stack_pred: np.ndarray (3d)
-            The EEM dataset reconstructed.
-        """
-        if not fit_beta:
-            score_sample, fmax_sample, eem_stack_pred = eems_fit_components(eem_dataset.eem_stack, self.components,
-                                                                            fit_intercept=fit_intercept)
-        else:
-            assert self.beta is not None, "Parameter beta must be provided through fitting."
-            assert idx_top is not None and idx_bot is not None, "idx_top and idx_bot must be provided."
-            max_values = np.amax(self.components, axis=(1, 2))
-            score_sample = np.zeros([eem_dataset.eem_stack.shape[0], self.n_components])
-            score_sample_bot = solve_W(
-                X1=eem_stack_to_2d(eem_dataset.eem_stack)[idx_bot],
-                X2=eem_stack_to_2d(eem_dataset.eem_stack)[idx_top],
-                H=self.components.reshape([self.n_components, -1]),
-                beta=self.beta
-            )
-            score_sample[idx_bot] = score_sample_bot
-            score_sample[idx_top] = score_sample_bot * self.beta
-            fmax_sample = score_sample * max_values
-            eem_stack_pred = score_sample @ self.components.reshape([self.n_components, -1])
-            eem_stack_pred = eem_stack_pred.reshape(eem_dataset.eem_stack.shape)
-        score_sample = pd.DataFrame(score_sample, index=eem_dataset.index, columns=self.nnls_fmax.columns)
-        fmax_sample = pd.DataFrame(fmax_sample, index=eem_dataset.index, columns=self.nnls_fmax.columns)
-        return score_sample, fmax_sample, eem_stack_pred
-
-    def component_peak_locations(self):
-        """
-        Get the ex/em of component peaks
-
-        Returns
-        -------
-        max_exem: list
-            A List of (ex, em) of component peaks.
-        """
-        max_exem = []
-        for r in range(self.n_components):
-            max_index = np.unravel_index(np.argmax(self.components[r, :, :]), self.components[r, :, :].shape)
-            max_exem.append((self.ex_range[-(max_index[0] + 1)], self.em_range[max_index[1]]))
-        return max_exem
-
-    def residual(self):
-        """
-        Get the residual of the established PARAFAC model, i.e., the difference between the original EEM dataset and
-        the reconstructed EEM dataset.
-
-        Returns
-        -------
-        res: np.ndarray (3d)
-            the residual
-        """
-        res = self.eem_stack_train - self.eem_stack_reconstructed
-        return res
-
-    def variance_explained(self):
-        """
-        Calculate the explained variance of the established PARAFAC model
-
-        Returns
-        -------
-        ev: float
-            the explained variance
-        """
-        ss_total = tl.norm(self.eem_stack_train) ** 2
-        ss_residual = tl.norm(self.eem_stack_train - self.eem_stack_reconstructed) ** 2
-        variance_explained = (ss_total - ss_residual) / ss_total * 100
-        return variance_explained
-
-    def core_consistency(self):
-        """
-        Calculate the core consistency of the established PARAFAC model
-
-        Returns
-        -------
-        cc: float
-            core consistency
-        """
-        cc = core_consistency(self.cptensors, self.eem_stack_train)
-        return cc
-
-    def leverage(self, mode: str = 'sample'):
-        """
-        Calculate the leverage of a selected mode.
-
-        Parameters
-        ----------
-        mode: str, {'ex', 'em', 'sample'}
-            The mode of which the leverage is calculated.
-
-        Returns
-        -------
-        lvr: pandas.DataFrame
-            The table of leverage
-
-        """
-        if mode == 'ex':
-            lvr = compute_leverage(self.ex_loadings)
-            lvr.columns = ['leverage-ex']
-        elif mode == 'em':
-            lvr = compute_leverage(self.em_loadings)
-            lvr.columns = ['leverage-em']
-        elif mode == 'sample':
-            lvr = compute_leverage(self.score)
-            lvr.columns = ['leverage-sample']
-        else:
-            raise ValueError("'mode' should be 'ex' or 'em' or 'sample'.")
-        # lvr.index = lvr.index.set_levels(['leverage of {m}'.format(m=mode)] * len(lvr.index.levels[0]), level=0)
-        return lvr
-
-    def sample_rmse(self):
-        """
-        Calculate the root mean squared error (RMSE) of EEM of each sample.
-
-        Returns
-        -------
-        rmse: pandas.DataFrame
-            Table of RMSE
-        """
-        res = self.residual()
-        # res = process_eem_stack(res, eem_rayleigh_scattering_removal, ex_range=self.ex_range, em_range=self.em_range)
-        n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
-        rmse = pd.DataFrame(np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels),
-                            index=self.nnls_fmax.index, columns=['RMSE'])
-        return rmse
-
-    def sample_relative_rmse(self):
-        """
-        Calculate the normalized root mean squared error (normalized RMSE) of EEM of each sample. It is defined as the
-        RMSE divided by the mean of original signal.
-
-        Returns
-        -------
-        relative_rmse: pandas.DataFrame
-            Table of normalized RMSE
-        """
-        res = self.residual()
-        # res = process_eem_stack(res, eem_rayleigh_scattering_removal, ex_range=self.ex_range, em_range=self.em_range)
-        n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
-        relative_rmse = pd.DataFrame(
-            np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels) / np.average(self.eem_stack_train, axis=(1, 2)),
-            index=self.score.index, columns=['Relative RMSE'])
-        return relative_rmse
-
-    def sample_summary(self):
-        """
-        Get a table showing the score, Fmax, leverage, RMSE and normalized RMSE for each sample.
-
-        Returns
-        -------
-        summary: pandas.DataFrame
-            Table of samples' score, Fmax, leverage, RMSE and normalized RMSE.
-        """
-        lvr = self.leverage()
-        rmse = self.sample_rmse()
-        normalized_rmse = self.sample_normalized_rmse()
-        summary = pd.concat([self.score, self.nnls_fmax, lvr, rmse, normalized_rmse], axis=1)
-        return summary
-
-    def export(self, filepath, info_dict):
-        """
-        Export the PARAFAC model to a text file that can be uploaded to the online PARAFAC model database Openfluor
-        (https://openfluor.lablicate.com/#).
-
-        Parameters
-        ----------
-        filepath: str
-            Location of the saved text file. Please specify the ".csv" extension.
-        info_dict: dict
-            A dictionary containing the model information. Possible keys include: name, creator
-            date, email, doi, reference, unit, toolbox, fluorometer, nSample, decomposition_method, validation,
-            dataset_calibration, preprocess, sources, description
-
-        Returns
-        -------
-        info_dict: dict
-            A dictionary containing the information of the PARAFAC model.
-
-        """
-
-        ex_column = ["Ex"] * self.ex_range.shape[0]
-        em_column = ["Em"] * self.em_range.shape[0]
-        score_column = ["Score"] * self.score.shape[0]
-        exl, eml, score = (self.ex_loadings.copy(), self.em_loadings.copy(), self.score.copy())
-        exl.index = pd.MultiIndex.from_tuples(list(zip(*[ex_column, self.ex_range.tolist()])),
-                                              names=('type', 'wavelength'))
-        eml.index = pd.MultiIndex.from_tuples(list(zip(*[em_column, self.em_range.tolist()])),
-                                              names=('type', 'wavelength'))
-        score.index = pd.MultiIndex.from_tuples(list(zip(*[score_column, self.score.index])),
-                                                names=('type', 'time'))
-
-        with open(filepath, 'w') as f:
-            f.write('# \n# Fluorescence Model \n# \n')
-            for key, value in info_dict.items():
-                f.write(key + '\t' + value)
-                f.write('\n')
-            f.write('# \n# Excitation/Emission (Ex, Em), wavelength [nm], component_n [loading] \n# \n')
-            f.close()
-        with pd.option_context('display.multi_sparse', False):
-            exl.to_csv(filepath, mode='a', sep="\t", header=None)
-            eml.to_csv(filepath, mode='a', sep="\t", header=None)
-        with open(filepath, 'a') as f:
-            f.write('# \n# timestamp, component_n [Score] \n# \n')
-            f.close()
-        score.to_csv(filepath, mode='a', sep="\t", header=None)
-        with open(filepath, 'a') as f:
-            f.write('# end #')
-        return info_dict
-
-
-def loadings_similarity(loadings1: pd.DataFrame, loadings2: pd.DataFrame, wavelength_alignment=False, dtw=False):
-    """
-    Calculate the Tucker's congruence between each pair of components of two loadings (of excitation or emission).
-
-    Parameters
-    ----------
-    loadings1: pandas.DataFrame
-        The first loadings. Each column of the table corresponds to one component.
-    loadings2: pandas.DataFrame
-        The second loadings. Each column of the table corresponds to one component.
-    wavelength_alignment: bool
-        Align the ex/em ranges of the components. This is useful if the PARAFAC models have different ex/em wavelengths.
-        Note that ex/em will be aligned according to the ex/em ranges with the lower intervals between the two PARAFAC
-        models.
-    dtw: bool
-        Apply dynamic time warping (DTW) to align the component loadings before calculating the similarity. This is
-        useful for matching loadings with similar but shifted shapes.
-
-    Returns
-    -------
-    m_sim: pandas.DataFrame
-        The table of loadings similarities between each pair of components.
-    """
-    wl_range1, wl_range2 = (loadings1.index, loadings2.index)
-    if wavelength_alignment:
-        wl_interval1 = (wl_range1.max() - wl_range1.min()) / (wl_range1.shape[0] - 1)
-        wl_interval2 = (wl_range2.max() - wl_range2.min()) / (wl_range2.shape[0] - 1)
-        if wl_interval2 > wl_interval1:
-            f2 = interp1d(wl_range2, loadings2.to_numpy(), axis=0)
-            loadings2 = f2(wl_range1)
-        elif wl_interval1 > wl_interval2:
-            f1 = interp1d(wl_range1, loadings1.to_numpy(), axis=0)
-            loadings1 = f1(wl_range2)
-    else:
-        loadings1, loadings2 = (loadings1.to_numpy(), loadings2.to_numpy())
-    m_sim = np.zeros([loadings1.shape[1], loadings2.shape[1]])
-    for n2 in range(loadings2.shape[1]):
-        for n1 in range(loadings1.shape[1]):
-            if dtw:
-                l1, l2 = dynamic_time_warping(loadings1[:, n1], loadings2[:, n2])
-            else:
-                l1, l2 = [loadings1[:, n1], loadings2[:, n2]]
-            m_sim[n1, n2] = stats.pearsonr(l1, l2)[0]
-    m_sim = pd.DataFrame(m_sim, index=['model1 C{i}'.format(i=i + 1) for i in range(loadings1.shape[1])],
-                         columns=['model2 C{i}'.format(i=i + 1) for i in range(loadings2.shape[1])])
-    return m_sim
-
-
-def component_similarity(components1: np.ndarray, components2: np.ndarray):
-    """
-    Calculate the Pearson correlation coefficient between each pair of components of two PARAFAC or NMF models.
-
-    Parameters:
-    ----------
-    components1: np.ndarray
-        The first set of components. Each component is a 3D array (n_components, ex, em).
-    components2: np.ndarray
-        The second set of components. Each component is a 3D array (n_components, ex, em).
-
-    Returns:
-    -------
-    m_sim: pandas.DataFrame
-        The table of component similarities between each pair of components.
-
-    """
-    m_sim = np.zeros([components1.shape[0], components2.shape[0]])
-    for n2 in range(components2.shape[0]):
-        for n1 in range(components1.shape[0]):
-            c1_unfolded, c2_unfolded = [components1[n1].reshape(-1), components2[n2].reshape(-1)]
-            m_sim[n1, n2] = stats.pearsonr(c1_unfolded, c2_unfolded)[0]
-    m_sim = pd.DataFrame(m_sim, index=['model1 C{i}'.format(i=i + 1) for i in range(components1.shape[0])],
-                         columns=['model2 C{i}'.format(i=i + 1) for i in range(components2.shape[0])])
-    return m_sim
-
-
-def align_components_by_loadings(models_dict: dict, ex_ref: pd.DataFrame, em_ref: pd.DataFrame,
-                                 wavelength_alignment=False):
-    """
-    Align the components of PARAFAC models according to given reference ex/em loadings so that similar components
-    are labelled by the same name.
-
-    Parameters
-    ----------
-    models_dict: dict
-        Dictionary of PARAFAC objects, the models to be aligned.
-    ex_ref: pandas.DataFrame
-        Ex loadings of the reference
-    em_ref: pandas.DataFrame
-        Em loadings of the reference
-    wavelength_alignment: bool
-        Align the ex/em ranges of the components. This is useful if the PARAFAC models have different ex/em wavelengths.
-        Note that ex/em will be aligned according to the ex/em ranges with the lower intervals between the two PARAFAC
-        models.
-
-    Returns
-    -------
-    models_dict_new: dict
-        Dictionary of the aligned PARAFAC object.
-    """
-    component_labels_ref = ex_ref.columns
-    models_dict_new = {}
-    for model_label, model in models_dict.items():
-        m_sim_ex = loadings_similarity(ex_ref, model.ex_loadings, wavelength_alignment=wavelength_alignment)
-        m_sim_em = loadings_similarity(em_ref, model.em_loadings, wavelength_alignment=wavelength_alignment)
-        m_sim = (m_sim_ex + m_sim_em) / 2
-        padded_matrix = np.zeros((max(m_sim.shape), max(m_sim.shape)))
-        padded_matrix[:m_sim.shape[0], :m_sim.shape[1]] = m_sim
-        row_ind, col_ind = linear_sum_assignment(-padded_matrix)
-        pairs = [(i, j) for i, j in zip(row_ind, col_ind) if i < m_sim.shape[0]]
-        sorted_pairs = sorted(pairs, key=lambda x: x[0])
-        row_ind, col_ind = zip(*sorted_pairs)
-        col_ind = list(col_ind)
-        non_ordered_index = list(set([i for i in range(m_sim.shape[1])]) - set(col_ind))
-        permutation = col_ind + non_ordered_index
-        if non_ordered_index:
-            component_labels_ref_extended = component_labels_ref + ['O{i}'.format(i=i + 1) for i in
-                                                                    range(len(non_ordered_index))]
-        else:
-            component_labels_ref_extended = component_labels_ref
-        component_labels_var = [0] * len(permutation)
-        for i, nc in enumerate(permutation):
-            component_labels_var[nc] = component_labels_ref_extended[i]
-        model.score.columns, model.ex_loadings.columns, model.em_loadings.columns, model.nnls_fmax.columns = (
-                [component_labels_var] * 4)
-        model.score = model.score.iloc[:, permutation]
-        model.ex_loadings = model.ex_loadings.iloc[:, permutation]
-        model.em_loadings = model.em_loadings.iloc[:, permutation]
-        model.nnls_fmax = model.nnls_fmax.iloc[:, permutation]
-        model.components = model.components[permutation, :, :]
-        model.cptensor = permute_cp_tensor(model.cptensors, permutation)
-        model.beta = model.beta[permutation] if model.beta is not None else None
-        models_dict_new[model_label] = model
-    return models_dict_new
-
-
-def align_components_by_components(models_dict: dict, components_ref: dict):
-    """
-    Align the components of PARAFAC or NMF models according to given reference components so that similar components
-    are labelled by the same name.
-
-    Parameters
-    ----------
-    models_dict: dict
-        Dictionary of PARAFAC objects, the models to be aligned.
-    components_ref: dict
-        Dictionary where each item is a reference component. The keys are the component labels, the values are the
-        components (np.ndarray).
-
-    Returns
-    -------
-    models_dict_new: dict
-        Dictionary of the aligned PARAFAC object.
-    """
-    component_labels_ref = list(components_ref.keys())
-    components_stack_ref = np.array([c.reshape(-1) for c in components_ref.values()])
-    models_dict_new = {}
-
-    for model_label, model in models_dict.items():
-        comp = model.components.reshape([model.n_components, -1])
-        cost_mat = cdist(components_stack_ref, comp, metric='correlation')
-
-        row_ind, col_ind = linear_sum_assignment(cost_mat)
-        # permutation = list(row_ind)
-        # matched_index = list(col_ind)
-
-        pairs = [(i, j) for i, j in zip(row_ind, col_ind) if i < cost_mat.shape[0]]
-        sorted_pairs = sorted(pairs, key=lambda x: x[0])
-        row_ind, col_ind = zip(*sorted_pairs)
-        col_ind = list(col_ind)
-        non_ordered_index = list(set([i for i in range(cost_mat.shape[1])]) - set(col_ind))
-        permutation = col_ind + non_ordered_index
-        if non_ordered_index:
-            component_labels_ref_extended = component_labels_ref + ['O{i}'.format(i=i + 1) for i in
-                                                                    range(len(non_ordered_index))]
-        else:
-            component_labels_ref_extended = component_labels_ref
-        component_labels_var = [0] * len(permutation)
-        for i, nc in enumerate(permutation):
-            component_labels_var[nc] = component_labels_ref_extended[i]
-        #
-        # # Generate new labels
-        # component_labels_var = [component_labels_ref[j] for j in matched_index]
-        # if len(permutation) < comp.shape[0]:
-        #     unmatched = list(set(range(comp.shape[0])) - set(permutation))
-        #     component_labels_var += [f"O{i + 1}" for i in range(len(unmatched))]
-        #     permutation += unmatched
-        if isinstance(model, PARAFAC):
-            model.score.columns, model.ex_loadings.columns, model.em_loadings.columns, model.nnls_fmax.columns = (
-                    [component_labels_var] * 4)
-            model.score = model.score.iloc[:, permutation]
-            model.ex_loadings = model.ex_loadings.iloc[:, permutation]
-            model.em_loadings = model.em_loadings.iloc[:, permutation]
-            model.nnls_fmax = model.nnls_fmax.iloc[:, permutation]
-            model.components = model.components[permutation, :, :]
-            model.cptensor = permute_cp_tensor(model.cptensors, permutation)
-            model.beta = model.beta[permutation] if model.beta is not None else None
-        elif isinstance(model, EEMNMF):
-            model.fmax.columns, model.nnls_fmax.columns = (
-                    [component_labels_var] * 2)
-            model.fmax = model.fmax.iloc[:, permutation]
-            model.nnls_fmax = model.nnls_fmax.iloc[:, permutation]
-            model.components = model.components[permutation, :, :]
-            model.beta = model.beta[permutation] if model.beta is not None else None
-        models_dict_new[model_label] = model
-    return models_dict_new
-
-
-class SplitValidation:
-    """
-    Conduct PARAFAC model validation by evaluating the consistency of PARAFAC models established on EEM sub-datasets.
-
-    Parameters
-    ----------
-    base_model: PARAFAC or EEMNMF
-        The base PARAFAC or NMF model to be used for validation.
-    n_splits: int
-        Number of splits.
-    combination_size: int or str, {int, 'half'}
-        The number of splits assembled into one combination. If 'half' is passed, each combination will include
-        half of the splits (i.e., the split-half validation).
-    rule: str, {'random', 'sequential'}
-        Whether to split the EEM dataset randomly. If 'sequential' is passed, the dataset will be split according
-        to index order.
-    random_state: int, optional
-        Random seed for reproducibility. Only used if `rule` is 'random'.
-
-    Attributes
-    -----------
-    eem_subsets: dict
-        Dictionary of EEM sub-datasets.
-    subset_specific_models: dict
-        Dictionary of PARAFAC models established on sub-datasets.
-    """
-
-    def __init__(self, base_model, n_splits=4, combination_size='half', rule='random',
-                 random_state=None):
-        # ---------------Parameters-------------------
-        self.base_model = base_model
-        self.n_split = n_splits
-        self.combination_size = combination_size
-        self.rule = rule
-        self.random_state = random_state
-
-        # ----------------Attributes------------------
-        self.eem_subsets = None
-        self.subset_specific_models = None
-        self.eem_dataset_full = None
-
-    def fit(self, eem_dataset: EEMDataset):
-        split_set = eem_dataset.splitting(
-            n_split=self.n_split, rule=self.rule, random_state=self.random_state,
-            kw_top=self.base_model.kw_top, kw_bot=self.base_model.kw_bot,
-            idx_top=self.base_model.idx_top, idx_bot=self.base_model.idx_bot
-        )
-        if self.combination_size == 'half':
-            cs = int(self.n_split) / 2
-        else:
-            cs = int(self.combination_size)
-        elements = list(itertools.combinations([i for i in range(self.n_split)], int(cs)))
-        codes = list(itertools.combinations(list(string.ascii_uppercase)[0:self.n_split], int(cs)))
-        model_complete = copy.deepcopy(self.base_model)
-        model_complete.fit(eem_dataset=eem_dataset)
-        sims_ex, sims_em, models, subsets = ({}, {}, {}, {})
-
-        for e, c in zip(elements, codes):
-            label = ''.join(c)
-            subdataset = combine_eem_datasets([split_set[i] for i in e])
-            model_subdataset = copy.deepcopy(self.base_model)
-            if model_subdataset.init == "custom":
-                init0 = model_subdataset.custom_init[0]
-                idx_in_split = [eem_dataset.index.index(idx) for idx in subdataset.index]
-                model_subdataset.custom_init[0] = init0[idx_in_split]
-            if isinstance(model_subdataset, EEMNMF):
-                if self.base_model.prior_dict_W is not None:
-                    idx_in_split = [eem_dataset.index.index(idx) for idx in subdataset.index]
-                    for r in list(self.base_model.prior_dict_W.keys()):
-                        model_subdataset.prior_dict_W[r] = self.base_model.prior_dict_W[r][idx_in_split]
-            elif isinstance(model_subdataset, PARAFAC):
-                if self.base_model.prior_dict_sample is not None:
-                    idx_in_split = [eem_dataset.index.index(idx) for idx in subdataset.index]
-                    for r in list(self.base_model.prior_dict_W.keys()):
-                        model_subdataset.prior_dict_sample[r] = self.base_model.prior_dict_sample[r][idx_in_split]
-            model_subdataset.fit(subdataset)
-            models[label] = model_subdataset
-            subsets[label] = subdataset
-        models = align_components_by_components(
-            models,
-            {f'C{i + 1}': model_complete.components[i] for i in range(model_complete.n_components)},
-        )
-        self.eem_subsets = subsets
-        self.subset_specific_models = models
-        self.eem_dataset_full = eem_dataset
-        return self
-
-    def compare_parafac_loadings(self):
-        """
-        Calculate the similarities of ex/em loadings between PARAFAC models established on sub-datasets.
-
-        Returns
-        -------
-        similarities_ex: pandas.DataFrame
-            Similarities in excitation loadings.
-        similarities_em: pandas.DataFrame
-            Similarities in emission loadings.
-        """
-        labels = sorted(self.subset_specific_models.keys())
-        similarities_ex = {}
-        similarities_em = {}
-        for k in range(int(len(labels) / 2)):
-            m1 = self.subset_specific_models[labels[k]]
-            m2 = self.subset_specific_models[labels[-1 - k]]
-            sims_ex = loadings_similarity(m1.ex_loadings, m2.ex_loadings).to_numpy().diagonal()
-            sims_em = loadings_similarity(m1.em_loadings, m2.em_loadings).to_numpy().diagonal()
-            pair_labels = '{m1} vs. {m2}'.format(m1=labels[k], m2=labels[-1 - k])
-            similarities_ex[pair_labels] = sims_ex
-            similarities_em[pair_labels] = sims_em
-        similarities_ex = pd.DataFrame.from_dict(
-            similarities_ex, orient='index',
-            columns=['Similarities in C{i}-ex'.format(i=i + 1) for i in range(self.base_model.n_components)]
-        )
-        similarities_ex.index.name_train = 'Test'
-        similarities_em = pd.DataFrame.from_dict(
-            similarities_em, orient='index',
-            columns=['Similarities in C{i}-em'.format(i=i + 1) for i in range(self.base_model.n_components)]
-        )
-        similarities_em.index.name_train = 'Test'
-        return similarities_ex, similarities_em
-
-    def compare_components(self):
-        """
-        Calculate the similarities of components between PARAFAC or NMF models established on sub-datasets.
-
-        Returns
-        -------
-        similarities_components: pandas.DataFrame
-            Similarities in components.
-        """
-        labels = sorted(self.subset_specific_models.keys())
-        similarities_components = {}
-        for k in range(int(len(labels) / 2)):
-            m1 = self.subset_specific_models[labels[k]]
-            m2 = self.subset_specific_models[labels[-1 - k]]
-            sims = component_similarity(m1.components, m2.components).to_numpy().diagonal()
-            pair_labels = '{m1} vs. {m2}'.format(m1=labels[k], m2=labels[-1 - k])
-            similarities_components[pair_labels] = sims
-        similarities_components = pd.DataFrame.from_dict(
-            similarities_components, orient='index',
-            columns=['Similarities in C{i}'.format(i=i + 1) for i in range(self.base_model.n_components)]
-        )
-        similarities_components.index.name_train = 'Test'
-        return similarities_components
-
-    def correlation_cv(self, ref_col):
-        assert ref_col in self.eem_dataset_full.ref.columns, f"'{ref_col}' is not found in reference."
-        labels = sorted(self.subset_specific_models.keys())
-        tbl = {}
-        for k in range(int(len(labels) / 2)):
-            m1 = self.subset_specific_models[labels[k]]
-            m2 = self.subset_specific_models[labels[-1 - k]]
-            d1 = self.eem_subsets[labels[k]]
-            d2 = self.eem_subsets[labels[-1 - k]]
-            pair_labels_12 = 'train: {m1} / test: {m2}'.format(m1=labels[k], m2=labels[-1 - k])
-            pair_labels_21 = 'train: {m2} / test: {m1}'.format(m1=labels[k], m2=labels[-1 - k])
-            mask_ref1 = ~np.isnan(d1.ref[ref_col].to_numpy())
-            y_d1 = d1.ref[ref_col].to_numpy()[mask_ref1]
-            mask_ref2 = ~np.isnan(d2.ref[ref_col].to_numpy())
-            y_d2 = d2.ref[ref_col].to_numpy()[mask_ref2]
-            _, fmax_train_d1, _ = m1.predict(d1)
-            _, fmax_test_d2, _ = m1.predict(d2)
-            _, fmax_train_d2, _ = m2.predict(d2)
-            _, fmax_test_d1, _ = m2.predict(d1)
-            tbl_12 = {}
-            for r in range(self.base_model.n_components):
-                x_train = fmax_train_d1.iloc[mask_ref1, [r]].to_numpy()
-                x_test = fmax_test_d2.iloc[mask_ref2, [r]].to_numpy()
-                lr = LinearRegression(fit_intercept=True)
-                lr.fit(x_train, y_d1)
-                y_pred_train = lr.predict(x_train)
-                r2_train = lr.score(x_train, y_d1)
-                rmse_train = np.sqrt(mean_squared_error(y_d1, y_pred_train))
-                tbl_12[ref_col + '-' + f'C{r + 1} Fmax' + '-r2-training'] = r2_train
-                tbl_12[ref_col + '-' + f'C{r + 1} Fmax' + '-rmse-training'] = rmse_train
-                y_pred_test = lr.predict(x_test)
-                r2_test = lr.score(x_test, y_d2)
-                rmse_test = np.sqrt(mean_squared_error(y_d2, y_pred_test))
-                tbl_12[ref_col + '-' + f'C{r + 1} Fmax' + '-r2-test'] = r2_test
-                tbl_12[ref_col + '-' + f'C{r + 1} Fmax' + '-rmse-test'] = rmse_test
-            tbl[pair_labels_12] = tbl_12
-            tbl_21 = {}
-            for r in range(self.base_model.n_components):
-                x_train = fmax_train_d2.iloc[mask_ref2, [r]].to_numpy()
-                x_test = fmax_test_d1.iloc[mask_ref1, [r]].to_numpy()
-                lr = LinearRegression(fit_intercept=True)
-                lr.fit(x_train, y_d2)
-                y_pred_train = lr.predict(x_train)
-                r2_train = lr.score(x_train, y_d2)
-                rmse_train = np.sqrt(mean_squared_error(y_d2, y_pred_train))
-                tbl_21[ref_col + '-' + f'C{r + 1} Fmax' + '-r2-training'] = r2_train
-                tbl_21[ref_col + '-' + f'C{r + 1} Fmax' + '-rmse-training'] = rmse_train
-                y_pred_test = lr.predict(x_test)
-                r2_test = lr.score(x_test, y_d1)
-                rmse_test = np.sqrt(mean_squared_error(y_d1, y_pred_test))
-                tbl_21[ref_col + '-' + f'C{r + 1} Fmax' + '-r2-test'] = r2_test
-                tbl_21[ref_col + '-' + f'C{r + 1} Fmax' + '-rmse-test'] = rmse_test
-            tbl[pair_labels_21] = tbl_21
-        tbl_df = pd.DataFrame(tbl).T
-        return tbl_df
-
-
-
-class EEMNMF:
-    """
-    Non-negative matrix factorization (NMF) model for EEM dataset.
-
-    Parameters
-    ----------
-    n_components: int
-        The number of components
-    solver: str, {'cd', 'mu', 'hals'}
-        The numerical solver of NMF. 'cd' is a Coordinate Descent solver. 'mu' is a Multiplicative Update solver. 'hals'
-        is a Hierarchical Alternating Least Squares solver.
-    beta_loss: str, {‘frobenius’, ‘kullback-leibler’, ‘itakura-saito’}
-        Beta divergence to be minimized, measuring the distance between X and the dot product WH. Used only in 'mu'
-        solver.
-    alpha_component: float, default=0.0
-        Strength of the elastic-net regularization on sample loadings.
-    alpha_sample: float, default=0.0
-        Strength of the elastic-net regularization on component loadings.
-    l1_ratio: float, default=0.0
-        The mixing ratio between L1 and L2 regularization:
-            - 0.0 corresponds to pure L2 penalty,
-            - 1.0 to pure L1,
-            - values in between correspond to elastic-net.
-    prior_dict_W: dict, optional
-        A dictionary mapping component indices (int) to prior vectors (1D array of length n_features) for regularizing
-        sample loadings. The k-th loading of sample loadings will be penalized to be close to prior_dict_sample[k] if
-        present. Only applied to 'hals' solver.
-    prior_dict_H: dict, optional
-        A dictionary mapping component indices (int) to prior vectors (1D array of length n_samples) for regularizing
-        component loadings. The k-th loading of components loadings will be penalized to be close to
-        prior_dict_component[k] if present. Only applied to 'hals' solver.
-    gamma_W: float, default=0
-        Strength of the prior regularization on sample loadings. Only applied to 'hals' solver.
-    gamma_H: float ,default=0
-        Strength of the prior regularization on component loadings. Only applied to 'hals' solver.
-    idx_top: list, optional
-        List of indices of samples serving as numerators in ratio calculation.
-    idx_bot: list, optional
-        List of indices of samples serving as denominators in ratio calculation.
-    lam: float, default=0
-        Strength of the ratio regularization on sample loadings. Only applied to 'hals' solver.
-    r1_coef : float, optional
-        Strength of the rank-one deviation penalty on components
-    mu : float, optional
-        Strength of the nuclear-norm penalty on components.
-    normalization: str, {'pixel_std'}:
-        The normalization of EEMs before conducting NMF. 'pixel_std' normalizes the intensities of each pixel across
-        all samples by standard deviation.
-    sort_components_by_em: bool,
-        Whether to sort components by emission peak position from lowest to highest. If False is passed, the
-        components will be sorted by the contribution to the total variance.
-
-    Attributes
-    ----------
-    fmax: pandas.DataFrame
-        Fmax table calculated using the score matrix of NMF.
-    nnls_fmax: pandas.DataFrame
-        Fmax table calculated by fitting EEMs with NMF components using non-negative least square (NNLS).
-    components: np.ndarray
-        NMF components.
-    eem_stack_train: np.ndarray
-        EEMs used for PARAFAC model establishment.
-    eem_stack_reconstructed: np.ndarray
-        EEMs reconstructed by the established PARAFAC model.
-    """
-
-    def __init__(
-            self, n_components, solver='cd', init='nndsvda', custom_init=None, fixed_components=None,
-            beta_loss='frobenius', alpha_sample=0, alpha_component=0, l1_ratio=1,
-            prior_dict_W=None, prior_dict_H=None, prior_dict_A=None, prior_dict_B=None, prior_dict_C=None,
-            gamma_W=0, gamma_H=0, gamma_A=0, gamma_B=0, gamma_C=0, prior_ref_components=None,
-            idx_top=None, idx_bot=None, kw_top=None, kw_bot=None, lam=0, fit_rank_one=False,
-            normalization=None, sort_components_by_em=True, max_iter_als=100, max_iter_nnls=500, tol=1e-5,
-            random_state=42
-    ):
-
-        # -----------Parameters-------------
-        self.n_components = n_components
-        self.solver = solver
-        self.init = init
-        self.custom_init = custom_init
-        self.fixed_components = fixed_components
-        self.beta_loss = beta_loss
-        self.alpha_sample = alpha_sample
-        self.alpha_component = alpha_component
-        self.l1_ratio = l1_ratio
-        self.prior_dict_W = prior_dict_W
-        self.prior_dict_H = prior_dict_H
-        self.prior_dict_A = prior_dict_A
-        self.prior_dict_B = prior_dict_B
-        self.prior_dict_C = prior_dict_C
-        self.prior_ref_components = prior_ref_components
-        self.gamma_W = gamma_W
-        self.gamma_H = gamma_H
-        self.gamma_A = gamma_A
-        self.gamma_B = gamma_B
-        self.gamma_C = gamma_C
-        self.idx_top = idx_top
-        self.idx_bot = idx_bot
-        self.kw_top = kw_top
-        self.kw_bot = kw_bot
-        self.lam = lam
-        self.fit_rank_one = fit_rank_one
-        self.normalization = normalization
-        self.sort_components_by_em = sort_components_by_em
-        self.max_iter_als = max_iter_als
-        self.max_iter_nnls = max_iter_nnls
-        self.tol = tol
-        self.random_state = random_state
-
-        # -----------Attributes-------------
-        self.eem_stack_unfolded = None
-        self.fmax = None
-        self.nnls_fmax = None
-        self.components = None
-        self.decomposer = None
-        self.normalization_factor_std = None
-        self.normalization_factor_max = None
-        self.reconstruction_error = None
-        self.eem_stack_train = None
-        self.eem_stack_reconstructed = None
-        self.ex_range = None,
-        self.em_range = None
-        self.beta = None
-        self.objective_function_error = None,
-
-    def fit(self, eem_dataset):
-        if self.kw_top is not None and self.kw_bot is not None:
-            assert eem_dataset.index is not None
-            self.idx_top = [i for i in range(len(eem_dataset.index)) if self.kw_top in eem_dataset.index[i]]
-            self.idx_bot = [i for i in range(len(eem_dataset.index)) if self.kw_bot in eem_dataset.index[i]]
-        if self.solver == 'cd' or self.solver == 'mu':
-            if self.prior_dict_W is not None or self.prior_dict_H is not None:
-                raise ValueError("'cd' and 'mu' solver do not support prior knowledge input. Please use 'hals' solver "
-                                 "instead")
-            decomposer = NMF(
-                n_components=self.n_components,
-                solver=self.solver,
-                init=self.init,
-                beta_loss=self.beta_loss,
-                alpha_W=self.alpha_sample,
-                alpha_H=self.alpha_component,
-                l1_ratio=self.l1_ratio,
-                random_state=self.random_state,
-                tol=self.tol,
-            )
-            eem_dataset.threshold_masking(0, 0, 'smaller', inplace=True)
-            n_samples = eem_dataset.eem_stack.shape[0]
-            X = eem_dataset.eem_stack.reshape([n_samples, -1])
-            X[np.isnan(X)] = 0
-            if self.normalization == 'pixel_std':
-                factor_std = np.std(X, axis=0)
-                X = X / factor_std
-                X[np.isnan(X)] = 0
-                nmf_score = decomposer.fit_transform(X)
-                components = decomposer.components_ * factor_std
-            else:
-                factor_std = None
-                nmf_score = decomposer.fit_transform(X)
-                components = decomposer.components_
-            eem_stack_reconstructed = nmf_score @ components
-            nmf_score = pd.DataFrame(nmf_score, index=eem_dataset.index,
-                                     columns=["component {i} NMF-Fmax".format(i=i + 1) for i in
-                                              range(self.n_components)])
-        elif self.solver == 'hals':
-            eem_dataset.threshold_masking(0, 0, 'smaller', inplace=True)
-            n_samples = eem_dataset.eem_stack.shape[0]
-            X = eem_dataset.eem_stack.reshape([n_samples, -1])
-            X[np.isnan(X)] = 0
-            if self.normalization == 'pixel_std':
-                factor_std = np.std(X, axis=0)
-                X = X / factor_std
-                X[np.isnan(X)] = 0
-                W, H, beta = nmf_hals_prior(
-                    X,
-                    rank=self.n_components,
-                    init=self.init,
-                    custom_init=self.custom_init,
-                    fixed_components=self.fixed_components,
-                    prior_dict_W=self.prior_dict_W,
-                    prior_dict_H=self.prior_dict_H,
-                    prior_dict_A=self.prior_dict_A,
-                    prior_dict_B=self.prior_dict_B,
-                    prior_dict_C=self.prior_dict_C,
-                    alpha_W=self.alpha_sample,
-                    alpha_H=self.alpha_component,
-                    l1_ratio=self.l1_ratio,
-                    gamma_W=self.gamma_W,
-                    gamma_H=self.gamma_H,
-                    gamma_A=self.gamma_A,
-                    gamma_B=self.gamma_B,
-                    gamma_C=self.gamma_C,
-                    idx_top=self.idx_top,
-                    idx_bot=self.idx_bot,
-                    lam=self.lam,
-                    fit_rank_one=self.fit_rank_one,
-                    component_shape=[eem_dataset.eem_stack.shape[1], eem_dataset.eem_stack.shape[2]],
-                    max_iter_als=self.max_iter_als,
-                    max_iter_nnls=self.max_iter_nnls,
-                    prior_ref_components=self.prior_ref_components,
-                    tol=self.tol,
-                    random_state=self.random_state
-                )
-                self.beta = beta
-                nmf_score = W
-                components = H * factor_std
-            else:
-                factor_std = None
-                W, H, beta = nmf_hals_prior(
-                    X,
-                    rank=self.n_components,
-                    init=self.init,
-                    custom_init=self.custom_init,
-                    fixed_components=self.fixed_components,
-                    prior_dict_W=self.prior_dict_W,
-                    prior_dict_H=self.prior_dict_H,
-                    prior_dict_A=self.prior_dict_A,
-                    prior_dict_B=self.prior_dict_B,
-                    prior_dict_C=self.prior_dict_C,
-                    gamma_W=self.gamma_W,
-                    gamma_H=self.gamma_H,
-                    gamma_A=self.gamma_A,
-                    gamma_B=self.gamma_B,
-                    gamma_C=self.gamma_C,
-                    alpha_W=self.alpha_sample,
-                    alpha_H=self.alpha_component,
-                    l1_ratio=self.l1_ratio,
-                    idx_top=self.idx_top,
-                    idx_bot=self.idx_bot,
-                    lam=self.lam,
-                    fit_rank_one=self.fit_rank_one,
-                    component_shape=eem_dataset.eem_stack.shape[1:],
-                    max_iter_als=self.max_iter_als,
-                    max_iter_nnls=self.max_iter_nnls,
-                    prior_ref_components=self.prior_ref_components,
-                    tol=self.tol,
-                    random_state=self.random_state
-                )
-                self.beta = beta
-                nmf_score = W
-                components = H
-            eem_stack_reconstructed = W @ H
-            nmf_score = pd.DataFrame(nmf_score, index=eem_dataset.index,
-                                     columns=["component {i} NMF-Fmax".format(i=i + 1) for i in
-                                              range(self.n_components)])
-        else:
-            raise ValueError("Unknown solver name: choose 'mu', 'cd' or 'hals'.")
-        factor_max = np.max(components, axis=1)
-        components = components / factor_max[:, None]
-        components = components.reshape([self.n_components, eem_dataset.eem_stack.shape[1],
-                                         eem_dataset.eem_stack.shape[2]])
-        nmf_score = nmf_score.mul(factor_max, axis=1)
-        _, nnls_score, _ = eems_fit_components(eem_dataset.eem_stack, components,
-                                               fit_intercept=False, positive=True)
-        nnls_score = pd.DataFrame(nnls_score, index=eem_dataset.index,
-                                  columns=["component {i} NNLS-Fmax".format(i=i + 1) for i in range(self.n_components)])
-        if self.sort_components_by_em:
-            em_peaks = []
-            for i in range(self.n_components):
-                flat_max_index = components[i].argmax()
-                row_index, col_index = np.unravel_index(flat_max_index, components[i].shape)
-                em_peaks.append(col_index)
-            peak_rank = list(enumerate(stats.rankdata(em_peaks)))
-            order = [i[0] for i in sorted(peak_rank, key=lambda x: x[1])]
-            components = components[order]
-            nmf_score = pd.DataFrame({'component {r} NMF-Fmax'.format(r=i + 1): nmf_score.iloc[:, order[i]]
-                                      for i in range(self.n_components)})
-            nnls_score = pd.DataFrame({'component {r} NNLS-Fmax'.format(r=i + 1): nnls_score.iloc[:, order[i]]
-                                       for i in range(self.n_components)})
-            self.beta = self.beta[order] if self.beta is not None else None
-        self.fmax = nmf_score
-        self.nnls_fmax = nnls_score
-        self.components = components
-        self.eem_stack_unfolded = X
-        self.normalization_factor_std = factor_std
-        self.normalization_factor_max = factor_max
-        self.eem_stack_train = eem_dataset.eem_stack
-        self.eem_stack_reconstructed = eem_stack_reconstructed.reshape(eem_dataset.eem_stack.shape)
-        self.ex_range = eem_dataset.ex_range
-        self.em_range = eem_dataset.em_range
-        return self
-
-    def robust_fit(self, eem_dataset, n_splits=4, zscore_threshold=3, max_iter_outlier_removal=1):
-        """
-
-        Parameters:
-        ----------
-            eem_dataset:
-
-        """
-        eem_dataset_work = copy.deepcopy(eem_dataset)
-        n_iter = 0
-        outlier_indices_history = []
-        while n_iter < max_iter_outlier_removal:
-            if self.kw_top is not None and self.kw_bot is not None:
-                assert eem_dataset_work.index is not None
-                self.idx_top = [i for i in range(len(eem_dataset_work.index)) if self.kw_top in eem_dataset_work.index[i]]
-                idx_top_names = [eem_dataset_work.index[i] for i in self.idx_top]
-                self.idx_bot = [i for i in range(len(eem_dataset_work.index)) if self.kw_bot in eem_dataset_work.index[i]]
-                idx_bot_names = [eem_dataset_work.index[i] for i in self.idx_bot]
-            else:
-                idx_top_names, idx_bot_names = None, None
-            eem_dataset_splits = []
-            if self.idx_top is not None and self.idx_bot is not None:
-                eem_dataset_top, _ = eem_dataset_work.filter_by_index(None, idx_top_names, copy=True)
-                eem_dataset_top_splits = eem_dataset_top.splitting(n_split=n_splits, random_state=self.random_state)
-                eem_dataset_bottom, _ = eem_dataset_work.filter_by_index(None, idx_bot_names, copy=True)
-                for subset in eem_dataset_top_splits:
-                    pos = [eem_dataset_top.index.index(idx) for idx in subset.index]
-                    bot_indices = [eem_dataset_bottom.index[idx] for idx in pos]
-                    sub_eem_dataset_bot, _ = eem_dataset_work.filter_by_index(None, bot_indices, copy=True)
-                    subset.sort_by_index()
-                    sub_eem_dataset_bot.sort_by_index()
-                    eem_dataset_splits.append(combine_eem_datasets([subset, sub_eem_dataset_bot]))
-            else:
-                eem_dataset_splits = eem_dataset_work.splitting(n_split=n_splits, random_state=self.random_state)
-
-            n = len(eem_dataset_splits) // 2
-            indices = range(len(eem_dataset_splits))
-            splits = []
-            for comb_indices in itertools.combinations(indices, n):
-                group1 = [eem_dataset_splits[i] for i in comb_indices]
-                group2 = [eem_dataset_splits[i] for i in indices if i not in comb_indices]
-                splits.append((group1, group2))
-
-            average_z_score = pd.Series(np.zeros(len(eem_dataset_work.index)), index=eem_dataset_work.index, dtype=float)
-            for j, (a, b) in enumerate(splits):
-                split_train = combine_eem_datasets(a)
-                split_test = combine_eem_datasets(b)
-                self.fit(split_train)
-                _, fmax_train, eem_re_train = self.predict(
-                    split_train,
-                    fit_beta=True if self.lam > 0 and self.idx_bot is not None and self.idx_top is not None else False,
-                    idx_top=[i for i, name in enumerate(split_train.index) if name in idx_top_names] if idx_top_names is not None else None,
-                    idx_bot=[i for i, name in enumerate(split_train.index) if name in idx_bot_names] if idx_bot_names is not None else None,
-                )
-                _, fmax_test, eem_re_test = self.predict(
-                    split_test,
-                    fit_beta=True if self.lam > 0 and self.idx_bot is not None and self.idx_top is not None else False,
-                    idx_top=[i for i, name in enumerate(split_test.index) if name in idx_top_names] if idx_top_names is not None else None,
-                    idx_bot=[i for i, name in enumerate(split_test.index) if name in idx_bot_names] if idx_bot_names is not None else None,
-                )
-                res_train = split_train.eem_stack - eem_re_train
-                n_pixels = res_train.shape[1] * res_train.shape[2]
-                rmse_train = np.sqrt(np.sum(res_train ** 2, axis=(1, 2)) / n_pixels)
-                res_test = split_test.eem_stack - eem_re_test
-                n_pixels = res_test.shape[1] * res_test.shape[2]
-                rmse_test = np.sqrt(np.sum(res_test ** 2, axis=(1, 2)) / n_pixels)
-                rmse_train_median = np.median(rmse_train)
-                rmse_train_mad = robust.mad(rmse_train)
-                modified_z_scores = 0.6745 * (rmse_test - rmse_train_median) / rmse_train_mad
-                average_z_score.loc[split_test.index] += modified_z_scores / (len(splits)/2)
-            outlier_indices = average_z_score[average_z_score > zscore_threshold].index.to_list()
-            outlier_indices_history.append(outlier_indices)
-            if not outlier_indices:
-                self.fit(eem_dataset_work)
-                return eem_dataset_work, [idx for idx in eem_dataset.index if idx not in eem_dataset_work.index], outlier_indices_history
-            if self.idx_top is not None and self.idx_bot is not None:
-                outlier_top = [i for i, idx in enumerate(eem_dataset_top.index) if idx in outlier_indices]
-                outlier_bot = [i for i, idx in enumerate(eem_dataset_bottom.index) if idx in outlier_indices]
-                number_outliers = list(set(outlier_bot + outlier_top))
-                qualified_indices = [idx for i, idx in enumerate(eem_dataset_top.index) if
-                                     i not in number_outliers] + \
-                                    [idx for i, idx in enumerate(eem_dataset_bottom.index) if
-                                     i not in number_outliers]
-            else:
-                qualified_indices = [idx for i, idx in enumerate(eem_dataset.index) if idx not in outlier_indices]
-            eem_dataset_work, _ = eem_dataset_work.filter_by_index(None, qualified_indices, copy=True)
-            n_iter += 1
-        self.fit(eem_dataset_work)
-        return eem_dataset_work, [idx for idx in eem_dataset.index if idx not in eem_dataset_work.index], outlier_indices_history
-
-    def component_peak_locations(self):
-        """
-        Get the ex/em of component peaks
-
-        Returns
-        -------
-        max_exem: list
-            A List of (ex, em) of component peaks.
-        """
-        max_exem = []
-        for r in range(self.n_components):
-            max_index = np.unravel_index(np.argmax(self.components[r, :, :]), self.components[r, :, :].shape)
-            max_exem.append((self.ex_range[-(max_index[0] + 1)], self.em_range[max_index[1]]))
-        return max_exem
-
-    def residual(self):
-        """
-        Get the residual of the established PARAFAC model, i.e., the difference between the original EEM dataset and
-        the reconstructed EEM dataset.
-
-        Returns
-        -------
-        res: np.ndarray (3d)
-            the residual
-        """
-        res = self.eem_stack_train - self.eem_stack_reconstructed
-        return res
-
-    def variance_explained(self):
-        """
-        Calculate the explained variance of the established NMF model
-
-        Returns
-        -------
-        ev: float
-            the explained variance
-        """
-        y_train = self.eem_stack_train.reshape(-1)
-        y_pred = self.eem_stack_reconstructed.reshape(-1)
-        ev = 100 * (1 - np.var(y_pred - y_train) / np.var(y_train))
-        return ev
-
-    def sample_rmse(self):
-        """
-        Calculate the root mean squared error (RMSE) of EEM of each sample.
-
-        Returns
-        -------
-        sse: pandas.DataFrame
-            Table of RMSE
-        """
-        res = self.residual()
-        n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
-        rmse = pd.DataFrame(np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels), index=self.nnls_fmax.index,
-                            columns=['RMSE'])
-        return rmse
-
-    def sample_normalized_rmse(self):
-        """
-        Calculate the normalized root mean squared error (normalized RMSE) of EEM of each sample. It is defined as the
-        RMSE divided by the mean of original signal.
-
-        Returns
-        -------
-        normalized_sse: pandas.DataFrame
-            Table of normalized RMSE
-        """
-        res = self.residual()
-        n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
-        normalized_sse = pd.DataFrame(sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels) /
-                                      np.average(self.eem_stack_train, axis=(1, 2)),
-                                      index=self.nnls_fmax.index, columns=['sample_normalized_rmse'])
-        return normalized_sse
-
-    def predict(self, eem_dataset: EEMDataset, fit_intercept=False, fit_beta=False, idx_top=None, idx_bot=None):
-        """
-        Predict the score and Fmax of a given EEM dataset using the component fitted. This method can be applied to a
-        new EEM dataset independent of the one used in NMF model establishment.
-
-        Parameters
-        ----------
-        eem_dataset: EEMDataset
-            The EEM dataset to be predicted.
-        fit_intercept: bool
-            Whether to calculate the intercept.
-        fit_beta: bool
-            Whether to fit the beta parameter (the proportions between "top" and "bot" samples).
-        idx_top: list, optional
-            List of indices of samples serving as numerators in ratio calculation.
-        idx_bot: list, optional
-            List of indices of samples serving as denominators in ratio calculation.
-
-        Returns
-        -------
-        score_sample: pd.DataFrame
-            The fitted score.
-        fmax_sample: pd.DataFrame
-            The fitted Fmax.
-        eem_stack_pred: np.ndarray (3d)
-            The EEM dataset reconstructed.
-        """
-        if not fit_beta:
-            score_sample, fmax_sample, eem_stack_pred = eems_fit_components(eem_dataset.eem_stack,
-                                                                            self.components,
-                                                                            fit_intercept=fit_intercept)
-        else:
-            assert self.beta is not None, "Parameter beta must be provided through fitting."
-            assert idx_top is not None and idx_bot is not None, "idx_top and idx_bot must be provided."
-            max_values = np.amax(self.components, axis=(1, 2))
-            score_sample = np.zeros([eem_dataset.eem_stack.shape[0], self.n_components])
-            score_sample_bot = solve_W(
-                X1=eem_stack_to_2d(eem_dataset.eem_stack)[idx_bot],
-                X2=eem_stack_to_2d(eem_dataset.eem_stack)[idx_top],
-                H=self.components.reshape([self.n_components, -1]),
-                beta=self.beta
-            )
-            score_sample[idx_bot] = score_sample_bot
-            score_sample[idx_top] = score_sample_bot * self.beta
-            fmax_sample = score_sample * max_values
-            eem_stack_pred = score_sample @ self.components.reshape([self.n_components, -1])
-            eem_stack_pred = eem_stack_pred.reshape(eem_dataset.eem_stack.shape)
-        score_sample = pd.DataFrame(score_sample, index=eem_dataset.index, columns=self.fmax.columns)
-        fmax_sample = pd.DataFrame(fmax_sample, index=eem_dataset.index, columns=self.fmax.columns)
-        return score_sample, fmax_sample, eem_stack_pred
-
-
-class RobustPARAFAC:
-    """
-
-    """
-
-    def __init__(self, base_model_layer1, base_model_layer2, n_splits_layer1=6, random_state=None):
-        self.base_model_layer1 = base_model_layer1
-        self.base_model_layer2 = base_model_layer2
-        self.n_splits_layer1 = n_splits_layer1
-        self.random_state = random_state
-        self.component_set_layer1 = None
-        self.fmax = None
-        self.components = None
-        self.ex_loadings = None,
-        self.em_loadings = None,
-
-    def fit(self, eem_dataset: EEMDataset):
-        self.base_model_layer1.fit(eem_dataset)
-        sv = SplitValidation(base_model=self.base_model_layer1, n_splits=self.n_splits_layer1, random_state=self.random_state)
-        sv.fit(eem_dataset)
-
-        c_all = []
-        for sub_model in sv.subset_specific_models.values():
-            c_all.append(sub_model.components)
-        component_set_layer1 = EEMDataset(
-            eem_stack=np.concatenate(c_all, axis=0),
-            ex_range=eem_dataset.ex_range, em_range=eem_dataset.em_range
-        )
-        self.base_model_layer2.fit(component_set_layer1)
-        _, fmax, _ =self.base_model_layer2.predict(eem_dataset)
-        self.component_set_layer1 = component_set_layer1
-        self.fmax = fmax
-        self.components = self.base_model_layer2.components
-        # self.ex_loadings = self.base_model_layer2.ex_loadings
-        # self.em_loadings = self.base_model_layer2.em_loadings
-
-
-
-class KMethod:
-    """
-    Conduct K-method, an EEM clustering algorithm aiming to minimize the general PARAFAC reconstruction error. The
-    key hypothesis behind K-PARAFACs is that fitting EEMs with varied underlying chemical compositions using the same
-    PARAFAC model could lead to a large reconstruction error. In contrast, samples with similar chemical composition
-    can be incorporated into the same PARAFAC model with small reconstruction error (i.e., the root mean-squared
-    error (RMSE) between the original EEM and its reconstruction derived from loadings and scores). if samples can be
-    appropriately clustered by their chemical compositions, then the PARAFAC models established on individual
-    clusters, i.e., the cluster-specific PARAFAC models, should exhibit reduced reconstruction error compared to the
-    unified PARAFAC model. Based on this hypothesis, K-PARAFACs is proposed to search for an optimal clustering
-    strategy so that the overall reconstruction error of cluster-specific PARAFAC models is minimized.
-
-    Parameters
-    -----------
-    n_initial_splits: int
-        Number of splits in clustering initialization (the first time that the EEM dataset is divided).
-    max_iter: int
-        Maximum number of iterations in a single run of base clustering.
-    tol: float
-        Tolerance in regard to the average Tucker's congruence between the cluster-specific PARAFAC models
-        of two consecutive iterations to declare convergence. If the Tucker's congruence > 1-tol, then convergence is
-        confirmed.
-    elimination: 'default' or int
-        The minimum number of EEMs in each cluster. During optimization, clusters with EEMs less than the specified
-        number would be eliminated. If 'default' is passed, then the number is set to be the same as the number of
-        components.
-
-    Attributes
-    ------------
-    unified_model: PARAFAC
-        Unified PARAFAC model.
-    label_history: list
-        A list of cluster labels after each run of clustering.
-    error_history: list
-        A list of average RMSE over all pixels after each run of clustering.
-    labels: np.ndarray
-        Final cluster labels.
-    eem_clusters: dict
-        EEM clusters.
-    cluster_specific_models: dict
-        Cluster-specific PARAFAC models.
-    consensus_matrix: np.ndarray
-        Consensus matrix.
-    consensus_matrix_sorted: np.ndarray
-        Sorted consensus matrix.
-    """
-
-    def __init__(self, base_model, n_initial_splits, distance_metric="reconstruction_error", max_iter=20, tol=0.001,
-                 elimination='default', kw_top=None, kw_bot=None):
-
-        # -----------Parameters-------------
-        self.base_model = base_model
-        self.n_initial_splits = n_initial_splits
-        self.distance_metric = distance_metric
-        self.max_iter = max_iter
-        self.tol = tol
-        self.elimination = elimination
-        self.kw_top = kw_top
-        self.kw_bot = kw_bot
-        self.subsampling_portion = None
-        self.n_runs = None
-        self.consensus_conversion_power = None
-
-        # ----------Attributes-------------
-        self.unified_model = None
-        self.label_history = None
-        self.error_history = None
-        self.silhouette_score = None
-        self.labels = None
-        self.index_sorted = None
-        self.ref_sorted = None
-        self.threshold_r = None
-        self.eem_clusters = None
-        self.cluster_specific_models = None
-        self.consensus_matrix = None
-        self.distance_matrix = None
-        self.linkage_matrix = None
-        self.consensus_matrix_sorted = None
-
-    def base_clustering(self, eem_dataset: EEMDataset):
-        """
-        Run clustering for a single time.
-
-        Parameters
-        ----------
-        eem_dataset: EEMDataset
-            The EEM dataset to be clustered.
-
-        Returns
-        -------
-        cluster_labels: np.ndarray
-            Cluster labels.
-        label_history: list
-            Cluster labels in each iteration.
-        error_history: list
-            Average reconstruction error (RMSE) in each iteration.
-        """
-
-        # -------Generate a unified model as reference for ordering components--------
-
-        unified_model = copy.deepcopy(self.base_model)
-        unified_model.fit(eem_dataset)
-
-        # -------Define functions for estimation and maximization steps-------
-
-        def get_quenching_coef(fmax_tot, kw_o, kw_q):
-            fmax_original = fmax_tot[fmax_tot.index.str.contains(kw_o)]
-            fmax_quenched = fmax_tot[fmax_tot.index.str.contains(kw_q)]
-            fmax_ratio = fmax_tot.copy()
-            fmax_ratio[fmax_ratio.index.str.contains(kw_o)] = fmax_original.to_numpy() / fmax_quenched.to_numpy()
-            fmax_ratio[fmax_ratio.index.str.contains(kw_q)] = fmax_original.to_numpy() / fmax_quenched.to_numpy()
-            return fmax_ratio.to_numpy()
-
-        def estimation(sub_datasets: dict):
-            models = {}
-            for label, d in sub_datasets.items():
-                model = copy.deepcopy(self.base_model)
-                model.fit(d)
-                models[label] = model
-            return models
-
-        def maximization(models: dict):
-            sample_error = []
-            sub_datasets = {}
-            for label, m in models.items():
-                if self.distance_metric == "reconstruction_error_with_beta":
-                    idx_top = [i for i in range(len(eem_dataset.index)) if self.kw_top in eem_dataset.index[i]]
-                    idx_bot = [i for i in range(len(eem_dataset.index)) if self.kw_bot in eem_dataset.index[i]]
-                    score_m, fmax_m, eem_stack_re_m = m.predict(
-                        eem_dataset=eem_dataset,
-                        fit_beta=True,
-                        idx_bot=idx_bot,
-                        idx_top=idx_top,
-                    )
-                    res = eem_dataset.eem_stack - eem_stack_re_m
-                    res = np.sum(res ** 2, axis=(1, 2))
-                    error_with_beta = np.zeros(fmax_m.shape[0])
-                    error_with_beta[idx_top] = res[idx_top] + res[idx_bot]
-                    error_with_beta[idx_bot] = res[idx_top] + res[idx_bot]
-                    sample_error.append(error_with_beta)
-                elif self.distance_metric == "reconstruction_error":
-                    score_m, fmax_m, eem_stack_re_m = m.predict(eem_dataset)
-                    res = eem_dataset.eem_stack - eem_stack_re_m
-                    n_pixels = m.eem_stack_train.shape[1] * m.eem_stack_train.shape[2]
-                    rmse = np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels)
-                    sample_error.append(rmse)
-                elif self.distance_metric == "quenching_coefficient":
-                    if not all([self.kw_top, self.kw_bot]):
-                        raise ValueError("Both kw_unquenched and kw_quenched must be passed.")
-                    if type(m).__name__ == 'PARAFAC':
-                        fmax_establishment = m.nnls_fmax
-                    elif type(m).__name__ == 'EEMNMF':
-                        fmax_establishment = m.nnls_fmax
-                    else:
-                        raise TypeError("Invalid base model type.")
-                    quenching_coef_establishment = get_quenching_coef(fmax_establishment, self.kw_top,
-                                                                      self.kw_bot)
-                    quenching_coef_archetype = np.mean(quenching_coef_establishment, axis=0)
-
-                    quenching_coef_test = get_quenching_coef(fmax_m, self.kw_top, self.kw_bot)
-
-                    quenching_coef_diff = np.abs(quenching_coef_test - quenching_coef_archetype)
-                    sample_error.append(np.sum(quenching_coef_diff ** 2, axis=1))
-            best_model_idx = np.argmin(sample_error, axis=0)
-            least_model_errors = np.min(sample_error, axis=0)
-            for j, label in enumerate(models.keys()):
-                eem_stack_j = eem_dataset.eem_stack[np.where(best_model_idx == j)]
-                if eem_dataset.ref is not None:
-                    ref_j = eem_dataset.ref.iloc[np.where(best_model_idx == j)]
-                else:
-                    ref_j = None
-                if eem_dataset.index is not None:
-                    index_j = [eem_dataset.index[k] for k, idx in enumerate(best_model_idx) if idx == j]
-                else:
-                    index_j = None
-                sub_datasets[label] = EEMDataset(eem_stack=eem_stack_j, ex_range=eem_dataset.ex_range,
-                                                 em_range=eem_dataset.em_range, ref=ref_j, index=index_j)
-            best_model_label = np.array([list(models.keys())[idx] for idx in best_model_idx])
-            return sub_datasets, best_model_label, least_model_errors
-
-        # -------Define function for convergence detection-------
-
-        def model_similarity(models_1: dict, models_2: dict):
-            similarity = 0
-            for label, m in models_1.items():
-                similarity = component_similarity(m.components, models_2[label].components).to_numpy().diagonal()
-            similarity = np.sum(similarity) / len(models_1)
-            return similarity
-
-        # -------Initialization--------
-        label_history = []
-        error_history = []
-        sample_errors = []
-        sub_datasets_n = {}
-        if self.distance_metric == "reconstruction_error":
-            initial_sub_eem_datasets = eem_dataset.splitting(n_split=self.n_initial_splits)
-        elif self.distance_metric in ["quenching_coefficient", "reconstruction_error_with_beta"]:
-            initial_sub_eem_datasets = []
-            eem_dataset_unquenched = eem_dataset.filter_by_index(self.kw_top, None, inplace=False)
-            initial_sub_eem_datasets_unquenched = eem_dataset_unquenched.splitting(n_split=self.n_initial_splits)
-            eem_dataset_quenched = eem_dataset.filter_by_index(self.kw_bot, None, inplace=False)
-            for subset in initial_sub_eem_datasets_unquenched:
-                pos = [eem_dataset_unquenched.index.index(idx) for idx in subset.index]
-                quenched_index = [eem_dataset_quenched.index[idx] for idx in pos]
-                sub_eem_dataset_quenched = eem_dataset.filter_by_index(None, quenched_index, inplace=False)
-                subset.sort_by_index()
-                sub_eem_dataset_quenched.sort_by_index()
-                initial_sub_eem_datasets.append(combine_eem_datasets([subset, sub_eem_dataset_quenched]))
-
-        for i, random_m in enumerate(initial_sub_eem_datasets):
-            sub_datasets_n[i + 1] = random_m
-
-        for n in range(self.max_iter):
-
-            # -------Eliminate sub_datasets having EEMs less than the number of ranks--------
-            cluster_label_to_remove = []
-            for cluster_label, sub_dataset_i in sub_datasets_n.items():
-                if self.elimination == 'default' and sub_dataset_i.eem_stack.shape[0] <= self.base_model.n_components:
-                    cluster_label_to_remove.append(cluster_label)
-                elif isinstance(self.elimination, int):
-                    if self.elimination <= max(self.base_model.n_components, self.elimination):
-                        cluster_label_to_remove.append(cluster_label)
-            for l in cluster_label_to_remove:
-                sub_datasets_n.pop(l)
-
-            # -------The estimation step-------
-            cluster_specific_models_new = estimation(sub_datasets_n)
-            cluster_specific_models_new = align_components_by_components(
-                cluster_specific_models_new,
-                {f'component {i + 1}': unified_model.components[i] for i in range(unified_model.components.shape[0])},
-            )
-
-            # -------The maximization step--------
-            sub_datasets_n, cluster_labels, fitting_errors = maximization(cluster_specific_models_new)
-            label_history.append(cluster_labels)
-            error_history.append(fitting_errors)
-
-            # -------Detect convergence---------
-            if 0 < n < self.max_iter - 1:
-                if np.array_equal(label_history[-1], label_history[-2]):
-                    break
-                if len(cluster_specific_models_old) == len(cluster_specific_models_new):
-                    if model_similarity(cluster_specific_models_new, cluster_specific_models_old) > 1 - self.tol:
-                        break
-
-            cluster_specific_models_old = cluster_specific_models_new
-
-        label_history = pd.DataFrame(np.array(label_history).T, index=eem_dataset.index,
-                                     columns=['iter_{i}'.format(i=i + 1) for i in range(n + 1)])
-        error_history = pd.DataFrame(np.array(error_history).T, index=eem_dataset.index,
-                                     columns=['iter_{i}'.format(i=i + 1) for i in range(n + 1)])
-        self.label_history = [label_history]
-        self.error_history = [error_history]
-        self.unified_model = unified_model
-        self.labels = cluster_labels
-        self.eem_clusters = sub_datasets_n
-        self.cluster_specific_models = cluster_specific_models_new
-
-        return cluster_labels, label_history, error_history
-
-    def calculate_consensus(self, eem_dataset: EEMDataset, n_base_clusterings: int, subsampling_portion: float):
-        """
-        Run the clustering for many times and combine the output of each run to obtain an optimal clustering.
-
-        Parameters
-        ----------
-        eem_dataset: EEMDataset
-            EEM dataset.
-        n_base_clusterings: int
-            Number of base clustering.
-        subsampling_portion: float
-            The portion of EEMs remained after subsampling.
-
-        Returns
-        -------
-        self: object
-            The established K-PARAFACs model
-        """
-
-        n_samples = eem_dataset.eem_stack.shape[0]
-        co_label_matrix = np.zeros((n_samples, n_samples))
-        co_occurrence_matrix = np.zeros((n_samples, n_samples))
-
-        # ---------Repeat base clustering and generate consensus matrix---------
-
-        n = 0
-        label_history = []
-        error_history = []
-
-        if self.distance_metric == "quenching_coefficient":
-            eem_dataset_unquenched = eem_dataset.filter_by_index(self.kw_top, None, inplace=False)
-            eem_dataset_quenched = eem_dataset.filter_by_index(self.kw_bot, None, inplace=False)
-
-        while n < n_base_clusterings:
-
-            # ------Subsampling-------
-            if self.distance_metric == "reconstruction_error":
-                eem_dataset_n, selected_indices = eem_dataset.subsampling(portion=subsampling_portion, inplace=False)
-            elif self.distance_metric == "quenching_coefficient":
-                eem_dataset_new_uq, selected_indices_uq = eem_dataset_unquenched.subsampling(
-                    portion=subsampling_portion, inplace=False)
-                pos = [eem_dataset_unquenched.index.index(idx) for idx in eem_dataset_new_uq.index]
-                quenched_index = [eem_dataset_quenched.index[idx] for idx in pos]
-                eem_dataset_new_q = eem_dataset.filter_by_index(None, quenched_index, inplace=False)
-                eem_dataset_n = combine_eem_datasets([eem_dataset_new_uq, eem_dataset_new_q])
-                eem_dataset_n.sort_by_index()
-                selected_indices = [eem_dataset.index.index(idx) for idx in eem_dataset_n.index]
-            n_samples_new = eem_dataset_n.eem_stack.shape[0]
-
-            # ------Base clustering-------
-            cluster_labels_n, label_history_n, error_history_n = self.base_clustering(eem_dataset_n)
-            for j in range(n_samples_new):
-                for k in range(n_samples_new):
-                    co_occurrence_matrix[selected_indices[j], selected_indices[k]] += 1
-                    if cluster_labels_n[j] == cluster_labels_n[k]:
-                        co_label_matrix[selected_indices[j], selected_indices[k]] += 1
-            label_history.append(label_history_n)
-            error_history.append(error_history_n)
-
-            # ----check if counting_matrix contains 0, meaning that not all sample pairs have been included in the
-            # clustering. If this is the case, run more base clustering until all sample pairs are covered----
-            if n == n_base_clusterings - 1 and np.any(co_occurrence_matrix == 0):
-                warnings.warn(
-                    'Not all sample pairs are covered. One extra clustering will be executed.')
-            else:
-                n += 1
-
-        # ---------Obtain consensus matrix, distance matrix and linkage matrix----------
-        consensus_matrix = co_label_matrix / co_occurrence_matrix
-
-        self.n_runs = n_base_clusterings
-        self.subsampling_portion = subsampling_portion
-        self.label_history = label_history
-        self.error_history = error_history
-        self.consensus_matrix = consensus_matrix
-
-        return consensus_matrix, label_history, error_history
-
-    def hierarchical_clustering(self, eem_dataset, n_clusters, consensus_conversion_power=1):
-        """
-
-        Parameters
-        ----------
-        eem_dataset: EEMDataset
-            EEM dataset to cluster.
-        n_clusters: int
-            Number of clusters.
-        consensus_conversion_power: float
-            The factor adjusting the conversion from consensus matrix (M) to distance matrix (D) used for hierarchical
-            clustering. D_{i,j} = (1 - M_{i,j})^factor. This number influences the gradient of distance with respect
-            to consensus. A smaller number will lead to shaper increase of distance at consensus close to 1.
-
-        Returns
-        -------
-
-        """
-        if self.consensus_matrix is None:
-            raise ValueError('Consensus matrix is not defined.')
-        distance_matrix = (1 - self.consensus_matrix) ** consensus_conversion_power
-        linkage_matrix = linkage(squareform(distance_matrix), method='complete')
-        labels = fcluster(linkage_matrix, n_clusters, criterion='maxclust')
-
-        # Find the minimum threshold distance for forming k clusters
-        # max_d = 0
-        # for i in range(linkage_matrix.shape[0] - n_clusters + 1):
-        #     max_d = max(max_d, linkage_matrix[i, 2])
-
-        linkage_matrix_sorted = linkage_matrix[linkage_matrix[:, 2].argsort()[::-1]]
-        max_d = linkage_matrix_sorted[n_clusters - 2, 2]
-
-        self.threshold_r = max_d
-
-        sorted_indices = np.argsort(labels)
-        consensus_matrix_sorted = self.consensus_matrix[sorted_indices][:, sorted_indices]
-        if eem_dataset.index is not None:
-            eem_index_sorted = [eem_dataset.index[i] for i in sorted_indices]
-            self.index_sorted = eem_index_sorted
-        if eem_dataset.ref is not None:
-            eem_ref_sorted = eem_dataset.ref.iloc[sorted_indices, :]
-            self.ref_sorted = eem_ref_sorted
-        sc = silhouette_score(X=distance_matrix, labels=labels, metric='precomputed')
-        self.silhouette_score = sc
-        self.distance_matrix = distance_matrix
-        self.linkage_matrix = linkage_matrix
-        self.consensus_matrix_sorted = consensus_matrix_sorted
-
-        # ---------Get final clusters and cluster-specific models-------
-        clusters = {}
-        cluster_specific_models = {}
-        for j in set(list(labels)):
-            eem_stack_j = eem_dataset.eem_stack[np.where(labels == j)]
-            if eem_dataset.ref is not None:
-                ref_j = eem_dataset.ref.iloc[np.where(labels == j)]
-            else:
-                ref_j = None
-            if eem_dataset.index is not None:
-                index_j = [eem_dataset.index[k] for k, idx in enumerate(labels) if idx == j]
-            else:
-                index_j = None
-            cluster_j = [j] * eem_stack_j.shape[0]
-            clusters[j] = EEMDataset(eem_stack=eem_stack_j, ex_range=eem_dataset.ex_range,
-                                     em_range=eem_dataset.em_range, ref=ref_j, index=index_j, cluster=cluster_j)
-            model = copy.deepcopy(self.base_model)
-            # model = PARAFAC(rank=self.rank, non_negativity=self.non_negativity, init=self.init,
-            #                 tf_normalization=self.tf_normalization,
-            #                 loadings_normalization=self.loadings_normalization, sort_em=self.sort_em)
-            model.fit(clusters[j])
-            cluster_specific_models[j] = model
-
-        self.labels = labels
-        self.eem_clusters = clusters
-        self.cluster_specific_models = cluster_specific_models
-
-    def predict(self, eem_dataset: EEMDataset):
-        """
-        Fit the cluster-specific models to a given EEM dataset. Each EEM in the EEM dataset is fitted to the model that
-        produce the least RMSE.
-
-        Parameters
-        ----------
-        eem_dataset: EEMDataset
-            The EEM dataset to be predicted.
-
-        Returns
-        -------
-        best_model_label: pd.DataFrame
-            The best-fit model for every EEM.
-        score_all: pd.DataFrame
-            The score fitted with each cluster-specific model.
-        fmax_all: pd.DataFrame
-            The fmax fitted with each cluster-specific model.
-        sample_error: pd.DataFrame
-            The RMSE fitted with each cluster-specific model.
-        """
-
-        sample_error = []
-        score_all = []
-        fmax_all = []
-
-        for label, m in self.cluster_specific_models.items():
-            score_m, fmax_m, eem_stack_re_m = m.predict(eem_dataset)
-            res = m.eem_stack_train - eem_stack_re_m
-            n_pixels = m.eem_stack_train.shape[1] * m.eem_stack_train.shape[2]
-            rmse = sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels)
-            sample_error.append(rmse)
-            score_all.append(score_m)
-            fmax_all.append(fmax_m)
-
-        score_all = pd.DataFrame(np.array(score_all), index=eem_dataset.index,
-                                 columns=list(self.cluster_specific_models.keys()))
-        fmax_all = pd.DataFrame(np.array(fmax_all), index=eem_dataset.index,
-                                columns=list(self.cluster_specific_models.keys()))
-        best_model_idx = np.argmin(sample_error, axis=0)
-        # least_model_errors = np.min(sample_error, axis=0)
-        # score_opt = np.array([score_all[i, j] for j, i in enumerate(best_model_idx)])
-        # fmax_opt = np.array([fmax_all[i, j] for j, i in enumerate(best_model_idx)])
-        best_model_label = np.array([list(self.cluster_specific_models.keys())[idx] for idx in best_model_idx])
-        best_model_label = pd.DataFrame(best_model_label, index=eem_dataset.index, columns=['best-fit model'])
-        sample_error = pd.DataFrame(np.array(sample_error), index=eem_dataset.index,
-                                    columns=list(self.cluster_specific_models.keys()))
-
-        return best_model_label, score_all, fmax_all, sample_error
-
-#
-# def hals_prior_nnls(
-#         UtM,
-#         UtU,
-#         prior_dict=None,
-#         gamma=None,
-#         alpha=0,
-#         l1_ratio=0,
-#         V=None,
-#         max_iter=500,
-#         tol=1e-8,
-#         eps=1e-8,
-#         fixed_components=None,
-# ):
-#     """
-#     HALS‐style non‐negative least‐squares update for V in an NMF step,
-#     with per‐component quadratic priors and elastic‐net penalties.
-#
-#     Solves for each row k of V (length n):
-#         min_{v>=0}  ½‖R_k - ukk·v‖²
-#                    + (γ_k/2)‖v - p_k‖²
-#                    + α[ℓ1‖v‖₁ + (1-ℓ1)/2‖v‖²]
-#     where
-#       - R_k = UtM[k] - ∑_{j≠k} UtU[k,j]·V[j] + ukk·V[k]
-#       - ukk = UtU[k,k]
-#       - γ_k = gamma_dict.get(k, 0) is the prior weight for component k
-#       - p_k = prior_dict.get(k, None) is its prior vector (NaNs skipped)
-#       - α = alpha is the overall elastic‐net weight
-#       - ℓ1 = l1_ratio mixes L1 vs L2 (0⇒pure L2, 1⇒pure L1)
-#
-#     Parameters
-#     ----------
-#     UtM : array_like, shape (r, n)
-#         U^T @ M.
-#     UtU : array_like, shape (r, r)
-#         U^T @ U.
-#     prior_dict : dict {k: p_k}, optional
-#         Prior vectors p_k for each row k (length‑n, may contain NaNs).
-#     gamma : float or dict {k: γ_k}, optional
-#         Per‐component prior weights. If not provided or k missing, γ_k=0. If a float is provided, the same gamma applies
-#         to all components.
-#     alpha : float, default=0
-#         Elastic‐net total weight.
-#     l1_ratio : float in [0,1], default=0
-#         Mix between L1 and L2 in elastic‐net.
-#     V : array_like, shape (r, n), optional
-#         Initial V. If None, solves UtU V = UtM and clips.
-#     max_iter : int, default=500
-#         Max inner HALS iterations.
-#     tol : float, default=1e-8
-#         Convergence tolerance.
-#     eps : float, default=1e-8
-#         Small constant to avoid zero denominators.
-#
-#     Returns
-#     -------
-#     V : ndarray, shape (r, n)
-#         Updated factor.
-#     """
-#     fixed_components = [] if fixed_components is None else fixed_components
-#     r, n = UtM.shape
-#     prior_dict = {} if prior_dict is None else prior_dict
-#     if gamma is None:
-#         gamma_k_dict = {}
-#     elif isinstance(gamma, dict):
-#         gamma = gamma
-#     else:
-#         # scalar γ ⇒ apply to every component that has a prior
-#         gamma = {k: float(gamma) for k in prior_dict.keys()}
-#
-#     # elastic‐net constants
-#     l2_pen = alpha * (1 - l1_ratio)
-#     l1_pen = alpha * l1_ratio
-#
-#     # initialize V if needed
-#     if V is None:
-#         V_np = np.linalg.solve(UtU, UtM)
-#         V = np.clip(V_np, a_min=eps, a_max=None)
-#         VVt = V @ V.T
-#         scale = (UtM * V).sum() / (UtU * VVt).sum()
-#         V = V * scale
-#
-#     for it in range(max_iter):
-#         delta = 0.0
-#         for k in range(r):
-#             if k in fixed_components:
-#                 continue
-#             ukk = UtU[k, k]
-#             if ukk < eps:
-#                 continue
-#             # residual
-#             Rk = UtM[k] - UtU[k] @ V + ukk * V[k]
-#
-#             # base numerator/denominator
-#             num = Rk.copy()
-#             denom = ukk + l2_pen
-#
-#             # per‐component prior
-#             gamma_k = gamma.get(k, 0.0)
-#             if gamma_k > 0 and k in prior_dict:
-#                 p_arr = np.asarray(prior_dict[k], dtype=float)
-#                 mask = np.isfinite(p_arr).astype(float)
-#                 p_clean = np.nan_to_num(p_arr, nan=0.0)
-#                 num += gamma_k * mask * p_clean
-#                 denom += gamma_k     # scalar addition ensures denom>0
-#
-#             # L1 shift
-#             if l1_pen:
-#                 num -= l1_pen
-#
-#             # update
-#             v_new = np.clip(num / (denom + eps), a_min=eps, a_max=None)
-#
-#             # track change
-#             diff = v_new - V[k]
-#             delta += np.dot(diff, diff)
-#             V[k] = v_new
-#
-#         if it>0 and delta / prev_delta < tol:
-#             break
-#         prev_delta = delta
-#
-#     return V
-
 
 def hals_prior_nnls(
         UtM,
@@ -3976,99 +1943,13 @@ def hals_prior_nnls(
     return V
 
 
-
-
 def masked_unfolding_dot_khatri_rao(tensor, factors, mode, mask):
     masked_tensor = tl.tensor(tensor * mask, dtype=float)
     return tl.dot(unfold(masked_tensor, mode), tl.tenalg.khatri_rao(factors[1], skip_matrix=mode))
 
+
 def masked_tensor_norm_error(tensor, reconstruction, mask):
     return tl.norm((tensor - reconstruction) * mask)
-
-#
-# def hals_prior_nnls(
-#         UtM,
-#         UtU,
-#         prior_dict=None,
-#         gamma=None,
-#         alpha=0,
-#         l1_ratio=0,
-#         V=None,
-#         max_iter=500,
-#         tol=1e-8,
-#         eps=1e-8,
-# ):
-#     """
-#     FastHALS‐style non‐negative least‐squares update for V in an NMF step,
-#     with per‐component quadratic priors and elastic‐net penalties.
-#     """
-#
-#     r, n = UtM.shape
-#     prior_dict = {} if prior_dict is None else prior_dict
-#     if gamma is None:
-#         gamma = {}
-#     elif not isinstance(gamma, dict):
-#         gamma = {k: float(gamma) for k in prior_dict.keys()}
-#
-#     # Elastic-net regularization terms
-#     l2_pen = alpha * (1 - l1_ratio)
-#     l1_pen = alpha * l1_ratio
-#
-#     # Initialize V if not given
-#     if V is None:
-#         V_np = np.linalg.solve(UtU + eps * np.eye(r), UtM)
-#         V = np.clip(V_np, a_min=eps, a_max=None)
-#         VVt = V @ V.T
-#         scale = (UtM * V).sum() / ((UtU * VVt).sum() + eps)
-#         V = V * scale
-#
-#     # Precompute full residual: R = UtM - UtU @ V
-#     R = UtM - UtU @ V
-#
-#     for it in range(max_iter):
-#         delta = 0.0
-#
-#         for k in range(r):
-#             ukk = UtU[k, k]
-#             if ukk < eps:
-#                 continue
-#
-#             # Local residual with k's contribution restored
-#             Rk = R[k] + ukk * V[k]
-#
-#             # Start numerator and denominator for update
-#             num = Rk.copy()
-#             denom = ukk + l2_pen
-#
-#             # Prior term
-#             gamma_k = gamma.get(k, 0.0)
-#             if gamma_k > 0 and k in prior_dict:
-#                 p_arr = np.asarray(prior_dict[k], dtype=float)
-#                 mask = np.isfinite(p_arr).astype(float)
-#                 p_clean = np.nan_to_num(p_arr, nan=0.0)
-#                 num += gamma_k * mask * p_clean
-#                 denom += gamma_k  # scalar
-#
-#             # L1 penalty
-#             if l1_pen:
-#                 num -= l1_pen
-#
-#             # Update rule (element-wise), clipped to avoid exact zero
-#             v_new = np.clip(num / (denom + eps), a_min=eps, a_max=None)
-#
-#             # Track change
-#             diff = v_new - V[k]
-#             delta += np.dot(diff, diff)
-#
-#             # Update V and residual (FastHALS rank-1 residual update)
-#             V[k] = v_new
-#             R -= np.outer(UtU[:, k], diff)
-#
-#         if it > 0 and delta / (prev_delta + eps) < tol:
-#             break
-#         prev_delta = delta
-#
-#     return V
 
 
 def cp_hals_prior(
@@ -5085,156 +2966,1967 @@ def solve_W(X1, H, X2=None, beta=None, reg=0.0, non_negativity=True):
 def eem_stack_to_2d(eem_stack):
     return eem_stack.reshape([eem_stack.shape[0], -1])
 
-#
-# def hals_prior_nnls_torch(
-#     UtM: torch.Tensor,
-#     UtU: torch.Tensor,
-#     prior_dict: dict = None,
-#     V: torch.Tensor = None,
-#     gamma: float = 0.0,
-#     alpha: float = 0.0,
-#     l1_ratio: float = 0.0,
-#     max_iter: int = 500,
-#     tol: float = 1e-8,
-#     eps: float = 1e-8,
-# ) -> torch.Tensor:
-#     """
-#     HALS-style non-negative least squares update (PyTorch) with priors & elastic-net.
-#
-#     UtM: (r, n), UtU: (r, r), V: (r, n)
-#     prior_dict: {k: np.ndarray or torch.Tensor of length n}
-#     Returns V updated as torch.Tensor.
-#     """
-#     device = UtM.device
-#     dtype = UtM.dtype
-#     r, n = UtM.shape
-#     if prior_dict is None:
-#         prior_dict = {}
-#
-#     # initialize V if needed
-#     if V is None:
-#         V = torch.linalg.solve(UtU, UtM).clamp(min=eps)
-#         VVt = V @ V.T
-#         scale = (UtM * V).sum() / ((UtU @ VVt).sum() + eps)
-#         V = V * scale
-#
-#     l2_pen = alpha * (1 - l1_ratio)
-#     l1_pen = alpha * l1_ratio
-#     prev_delta = None
-#
-#     for _ in range(max_iter):
-#         delta = 0.0
-#         for k in range(r):
-#             ukk = UtU[k, k]
-#             if ukk < eps:
-#                 continue
-#             Rk = UtM[k] - UtU[k] @ V + ukk * V[k]
-#             num = Rk.clone()
-#             denom = torch.full((n,), ukk + l2_pen, device=device, dtype=dtype)
-#             # apply prior if present
-#             if k in prior_dict and gamma > 0:
-#                 p = prior_dict[k]
-#                 if not isinstance(p, torch.Tensor):
-#                     p = torch.tensor(p, dtype=dtype, device=device)
-#                 mask = torch.isfinite(p).float()
-#                 p = torch.nan_to_num(p, nan=0.0)
-#                 num += gamma * p
-#                 denom += gamma * mask
-#             if l1_pen != 0:
-#                 num -= l1_pen
-#             V_new = (num / (denom + eps)).clamp(min=eps)
-#             delta += torch.norm(V[k] - V_new).item()**2
-#             V[k] = V_new
-#         if prev_delta is None:
-#             prev_delta = delta
-#         elif prev_delta > 0 and delta / prev_delta < tol:
-#             break
-#         prev_delta = delta
-#     return V
-#
-#
-# def nmf_hals_prior_torch(
-#     X: np.ndarray,
-#     rank: int,
-#     prior_dict_H: dict = None,
-#     prior_dict_W: dict = None,
-#     gamma_W: float = 0.0,
-#     gamma_H: float = 0.0,
-#     alpha_W: float = 0.0,
-#     alpha_H: float = 0.0,
-#     l1_ratio: float = 0.0,
-#     max_iter_als: int = 100,
-#     max_iter_nnls: int = 500,
-#     tol: float = 1e-6,
-#     eps: float = 1e-8,
-#     init: str = 'random',
-#     random_state: int = None,
-#     device_type: str = 'cpu',
-# ) -> (np.ndarray, np.ndarray):
-#     """
-#     NMF via HALS (PyTorch backend). Inputs X and prior_dicts are numpy.
-#     Returns W, H as numpy arrays.
-#     """
-#     if device_type == 'gpu':
-#         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-#     else:
-#         device = torch.device('cpu')
-#     dtype = torch.float32
-#
-#     X_torch = torch.tensor(X, dtype=dtype, device=device)
-#     a, b = X.shape
-#     rng = np.random.RandomState(random_state)
-#
-#     # init W, H
-#     if init == 'random':
-#         W = torch.rand(a, rank, dtype=dtype, device=device).clamp(min=eps)
-#         H = torch.rand(rank, b, dtype=dtype, device=device).clamp(min=eps)
-#     else:
-#         # use unfolded_eem_stack_initialization_torch on full X
-#         W, H = unfolded_eem_stack_initialization(X, rank, method=init)
-#         W = torch.tensor(W, dtype=torch.float32)
-#         H = torch.tensor(H, dtype=torch.float32)
-#         W = W.to(device).clamp(min=eps)
-#         H = H.to(device).clamp(min=eps)
-#
-#     prior_dict_H = prior_dict_H or {}
-#     prior_dict_W = prior_dict_W or {}
-#
-#     prev_err = torch.norm(X_torch - W @ H).item()
-#     for _ in range(max_iter_als):
-#         UtM_H = W.T @ X_torch
-#         UtU_H = W.T @ W
-#         H = hals_prior_nnls_torch(
-#             UtM=UtM_H,
-#             UtU=UtU_H,
-#             prior_dict=prior_dict_H,
-#             V=H,
-#             gamma=gamma_H,
-#             alpha=alpha_H,
-#             l1_ratio=l1_ratio,
-#             max_iter=max_iter_nnls,
-#             tol=tol,
-#             eps=eps,
-#         )
-#         UtM_W = H @ X_torch.T
-#         UtU_W = H @ H.T
-#         Wt = hals_prior_nnls_torch(
-#             UtM=UtM_W,
-#             UtU=UtU_W,
-#             prior_dict=prior_dict_W,
-#             V=W.T,
-#             gamma=gamma_W,
-#             alpha=alpha_W,
-#             l1_ratio=l1_ratio,
-#             max_iter=max_iter_nnls,
-#             tol=tol,
-#             eps=eps,
-#         )
-#         W = Wt.T
-#
-#         err = torch.norm(X_torch - W @ H).item()
-#         if abs(prev_err - err) / (prev_err + eps) < tol:
-#             break
-#         prev_err = err
-#
-#     return W.cpu().numpy(), H.cpu().numpy()
+
+class EEMNMF:
+    """
+    Non-negative matrix factorization (NMF) model for EEM dataset.
+
+    Parameters
+    ----------
+    n_components: int
+        The number of components
+    solver: str, {'cd', 'mu', 'hals'}
+        The numerical solver of NMF. 'cd' is a Coordinate Descent solver. 'mu' is a Multiplicative Update solver. 'hals'
+        is a Hierarchical Alternating Least Squares solver.
+    beta_loss: str, {‘frobenius’, ‘kullback-leibler’, ‘itakura-saito’}
+        Beta divergence to be minimized, measuring the distance between X and the dot product WH. Used only in 'mu'
+        solver.
+    alpha_component: float, default=0.0
+        Strength of the elastic-net regularization on sample loadings.
+    alpha_sample: float, default=0.0
+        Strength of the elastic-net regularization on component loadings.
+    l1_ratio: float, default=0.0
+        The mixing ratio between L1 and L2 regularization:
+            - 0.0 corresponds to pure L2 penalty,
+            - 1.0 to pure L1,
+            - values in between correspond to elastic-net.
+    prior_dict_W: dict, optional
+        A dictionary mapping component indices (int) to prior vectors (1D array of length n_features) for regularizing
+        sample loadings. The k-th loading of sample loadings will be penalized to be close to prior_dict_sample[k] if
+        present. Only applied to 'hals' solver.
+    prior_dict_H: dict, optional
+        A dictionary mapping component indices (int) to prior vectors (1D array of length n_samples) for regularizing
+        component loadings. The k-th loading of components loadings will be penalized to be close to
+        prior_dict_component[k] if present. Only applied to 'hals' solver.
+    gamma_W: float, default=0
+        Strength of the prior regularization on sample loadings. Only applied to 'hals' solver.
+    gamma_H: float ,default=0
+        Strength of the prior regularization on component loadings. Only applied to 'hals' solver.
+    idx_top: list, optional
+        List of indices of samples serving as numerators in ratio calculation.
+    idx_bot: list, optional
+        List of indices of samples serving as denominators in ratio calculation.
+    lam: float, default=0
+        Strength of the ratio regularization on sample loadings. Only applied to 'hals' solver.
+    r1_coef : float, optional
+        Strength of the rank-one deviation penalty on components
+    mu : float, optional
+        Strength of the nuclear-norm penalty on components.
+    normalization: str, {'pixel_std'}:
+        The normalization of EEMs before conducting NMF. 'pixel_std' normalizes the intensities of each pixel across
+        all samples by standard deviation.
+    sort_components_by_em: bool,
+        Whether to sort components by emission peak position from lowest to highest. If False is passed, the
+        components will be sorted by the contribution to the total variance.
+
+    Attributes
+    ----------
+    fmax: pandas.DataFrame
+        Fmax table calculated using the score matrix of NMF.
+    nnls_fmax: pandas.DataFrame
+        Fmax table calculated by fitting EEMs with NMF components using non-negative least square (NNLS).
+    components: np.ndarray
+        NMF components.
+    eem_stack_train: np.ndarray
+        EEMs used for PARAFAC model establishment.
+    eem_stack_reconstructed: np.ndarray
+        EEMs reconstructed by the established PARAFAC model.
+    """
+
+    def __init__(
+            self, n_components, solver='cd', init='nndsvda', custom_init=None, fixed_components=None,
+            beta_loss='frobenius', alpha_sample=0, alpha_component=0, l1_ratio=1,
+            prior_dict_W=None, prior_dict_H=None, prior_dict_A=None, prior_dict_B=None, prior_dict_C=None,
+            gamma_W=0, gamma_H=0, gamma_A=0, gamma_B=0, gamma_C=0, prior_ref_components=None,
+            idx_top=None, idx_bot=None, kw_top=None, kw_bot=None, lam=0, fit_rank_one=False,
+            normalization=None, sort_components_by_em=True, max_iter_als=100, max_iter_nnls=500, tol=1e-5,
+            random_state=42
+    ):
+
+        # -----------Parameters-------------
+        self.n_components = n_components
+        self.solver = solver
+        self.init = init
+        self.custom_init = custom_init
+        self.fixed_components = fixed_components
+        self.beta_loss = beta_loss
+        self.alpha_sample = alpha_sample
+        self.alpha_component = alpha_component
+        self.l1_ratio = l1_ratio
+        self.prior_dict_W = prior_dict_W
+        self.prior_dict_H = prior_dict_H
+        self.prior_dict_A = prior_dict_A
+        self.prior_dict_B = prior_dict_B
+        self.prior_dict_C = prior_dict_C
+        self.prior_ref_components = prior_ref_components
+        self.gamma_W = gamma_W
+        self.gamma_H = gamma_H
+        self.gamma_A = gamma_A
+        self.gamma_B = gamma_B
+        self.gamma_C = gamma_C
+        self.idx_top = idx_top
+        self.idx_bot = idx_bot
+        self.kw_top = kw_top
+        self.kw_bot = kw_bot
+        self.lam = lam
+        self.fit_rank_one = fit_rank_one
+        self.normalization = normalization
+        self.sort_components_by_em = sort_components_by_em
+        self.max_iter_als = max_iter_als
+        self.max_iter_nnls = max_iter_nnls
+        self.tol = tol
+        self.random_state = random_state
+
+        # -----------Attributes-------------
+        self.eem_stack_unfolded = None
+        self.fmax = None
+        self.nnls_fmax = None
+        self.components = None
+        self.decomposer = None
+        self.normalization_factor_std = None
+        self.normalization_factor_max = None
+        self.reconstruction_error = None
+        self.eem_stack_train = None
+        self.eem_stack_reconstructed = None
+        self.ex_range = None,
+        self.em_range = None
+        self.beta = None
+        self.objective_function_error = None,
+
+    def fit(self, eem_dataset):
+        if self.kw_top is not None and self.kw_bot is not None:
+            assert eem_dataset.index is not None
+            self.idx_top = [i for i in range(len(eem_dataset.index)) if self.kw_top in eem_dataset.index[i]]
+            self.idx_bot = [i for i in range(len(eem_dataset.index)) if self.kw_bot in eem_dataset.index[i]]
+        if self.solver == 'cd' or self.solver == 'mu':
+            if self.prior_dict_W is not None or self.prior_dict_H is not None:
+                raise ValueError("'cd' and 'mu' solver do not support prior knowledge input. Please use 'hals' solver "
+                                 "instead")
+            decomposer = NMF(
+                n_components=self.n_components,
+                solver=self.solver,
+                init=self.init,
+                beta_loss=self.beta_loss,
+                alpha_W=self.alpha_sample,
+                alpha_H=self.alpha_component,
+                l1_ratio=self.l1_ratio,
+                random_state=self.random_state,
+                tol=self.tol,
+            )
+            eem_dataset.threshold_masking(0, 0, 'smaller', inplace=True)
+            n_samples = eem_dataset.eem_stack.shape[0]
+            X = eem_dataset.eem_stack.reshape([n_samples, -1])
+            X[np.isnan(X)] = 0
+            if self.normalization == 'pixel_std':
+                factor_std = np.std(X, axis=0)
+                X = X / factor_std
+                X[np.isnan(X)] = 0
+                nmf_score = decomposer.fit_transform(X)
+                components = decomposer.components_ * factor_std
+            else:
+                factor_std = None
+                nmf_score = decomposer.fit_transform(X)
+                components = decomposer.components_
+            eem_stack_reconstructed = nmf_score @ components
+            nmf_score = pd.DataFrame(nmf_score, index=eem_dataset.index,
+                                     columns=["component {i} NMF-Fmax".format(i=i + 1) for i in
+                                              range(self.n_components)])
+        elif self.solver == 'hals':
+            eem_dataset.threshold_masking(0, 0, 'smaller', inplace=True)
+            n_samples = eem_dataset.eem_stack.shape[0]
+            X = eem_dataset.eem_stack.reshape([n_samples, -1])
+            X[np.isnan(X)] = 0
+            if self.normalization == 'pixel_std':
+                factor_std = np.std(X, axis=0)
+                X = X / factor_std
+                X[np.isnan(X)] = 0
+                W, H, beta = nmf_hals_prior(
+                    X,
+                    rank=self.n_components,
+                    init=self.init,
+                    custom_init=self.custom_init,
+                    fixed_components=self.fixed_components,
+                    prior_dict_W=self.prior_dict_W,
+                    prior_dict_H=self.prior_dict_H,
+                    prior_dict_A=self.prior_dict_A,
+                    prior_dict_B=self.prior_dict_B,
+                    prior_dict_C=self.prior_dict_C,
+                    alpha_W=self.alpha_sample,
+                    alpha_H=self.alpha_component,
+                    l1_ratio=self.l1_ratio,
+                    gamma_W=self.gamma_W,
+                    gamma_H=self.gamma_H,
+                    gamma_A=self.gamma_A,
+                    gamma_B=self.gamma_B,
+                    gamma_C=self.gamma_C,
+                    idx_top=self.idx_top,
+                    idx_bot=self.idx_bot,
+                    lam=self.lam,
+                    fit_rank_one=self.fit_rank_one,
+                    component_shape=[eem_dataset.eem_stack.shape[1], eem_dataset.eem_stack.shape[2]],
+                    max_iter_als=self.max_iter_als,
+                    max_iter_nnls=self.max_iter_nnls,
+                    prior_ref_components=self.prior_ref_components,
+                    tol=self.tol,
+                    random_state=self.random_state
+                )
+                self.beta = beta
+                nmf_score = W
+                components = H * factor_std
+            else:
+                factor_std = None
+                W, H, beta = nmf_hals_prior(
+                    X,
+                    rank=self.n_components,
+                    init=self.init,
+                    custom_init=self.custom_init,
+                    fixed_components=self.fixed_components,
+                    prior_dict_W=self.prior_dict_W,
+                    prior_dict_H=self.prior_dict_H,
+                    prior_dict_A=self.prior_dict_A,
+                    prior_dict_B=self.prior_dict_B,
+                    prior_dict_C=self.prior_dict_C,
+                    gamma_W=self.gamma_W,
+                    gamma_H=self.gamma_H,
+                    gamma_A=self.gamma_A,
+                    gamma_B=self.gamma_B,
+                    gamma_C=self.gamma_C,
+                    alpha_W=self.alpha_sample,
+                    alpha_H=self.alpha_component,
+                    l1_ratio=self.l1_ratio,
+                    idx_top=self.idx_top,
+                    idx_bot=self.idx_bot,
+                    lam=self.lam,
+                    fit_rank_one=self.fit_rank_one,
+                    component_shape=eem_dataset.eem_stack.shape[1:],
+                    max_iter_als=self.max_iter_als,
+                    max_iter_nnls=self.max_iter_nnls,
+                    prior_ref_components=self.prior_ref_components,
+                    tol=self.tol,
+                    random_state=self.random_state
+                )
+                self.beta = beta
+                nmf_score = W
+                components = H
+            eem_stack_reconstructed = W @ H
+            nmf_score = pd.DataFrame(nmf_score, index=eem_dataset.index,
+                                     columns=["component {i} NMF-Fmax".format(i=i + 1) for i in
+                                              range(self.n_components)])
+        else:
+            raise ValueError("Unknown solver name: choose 'mu', 'cd' or 'hals'.")
+        factor_max = np.max(components, axis=1)
+        components = components / factor_max[:, None]
+        components = components.reshape([self.n_components, eem_dataset.eem_stack.shape[1],
+                                         eem_dataset.eem_stack.shape[2]])
+        nmf_score = nmf_score.mul(factor_max, axis=1)
+        _, nnls_score, _ = eems_fit_components(eem_dataset.eem_stack, components,
+                                               fit_intercept=False, positive=True)
+        nnls_score = pd.DataFrame(nnls_score, index=eem_dataset.index,
+                                  columns=["component {i} NNLS-Fmax".format(i=i + 1) for i in range(self.n_components)])
+        if self.sort_components_by_em:
+            em_peaks = []
+            for i in range(self.n_components):
+                flat_max_index = components[i].argmax()
+                row_index, col_index = np.unravel_index(flat_max_index, components[i].shape)
+                em_peaks.append(col_index)
+            peak_rank = list(enumerate(stats.rankdata(em_peaks)))
+            order = [i[0] for i in sorted(peak_rank, key=lambda x: x[1])]
+            components = components[order]
+            nmf_score = pd.DataFrame({'component {r} NMF-Fmax'.format(r=i + 1): nmf_score.iloc[:, order[i]]
+                                      for i in range(self.n_components)})
+            nnls_score = pd.DataFrame({'component {r} NNLS-Fmax'.format(r=i + 1): nnls_score.iloc[:, order[i]]
+                                       for i in range(self.n_components)})
+            self.beta = self.beta[order] if self.beta is not None else None
+        self.fmax = nmf_score
+        self.nnls_fmax = nnls_score
+        self.components = components
+        self.eem_stack_unfolded = X
+        self.normalization_factor_std = factor_std
+        self.normalization_factor_max = factor_max
+        self.eem_stack_train = eem_dataset.eem_stack
+        self.eem_stack_reconstructed = eem_stack_reconstructed.reshape(eem_dataset.eem_stack.shape)
+        self.ex_range = eem_dataset.ex_range
+        self.em_range = eem_dataset.em_range
+        return self
+
+    def cv_outlier_detection(self, eem_dataset, n_splits=4, zscore_threshold=3, max_iter_outlier_removal=1):
+        """
+
+        Parameters:
+        ----------
+            eem_dataset:
+
+        """
+        eem_dataset_work = copy.deepcopy(eem_dataset)
+        n_iter = 0
+        outlier_indices_history = []
+        while n_iter < max_iter_outlier_removal:
+            if self.kw_top is not None and self.kw_bot is not None:
+                assert eem_dataset_work.index is not None
+                self.idx_top = [i for i in range(len(eem_dataset_work.index)) if self.kw_top in eem_dataset_work.index[i]]
+                idx_top_names = [eem_dataset_work.index[i] for i in self.idx_top]
+                self.idx_bot = [i for i in range(len(eem_dataset_work.index)) if self.kw_bot in eem_dataset_work.index[i]]
+                idx_bot_names = [eem_dataset_work.index[i] for i in self.idx_bot]
+            else:
+                idx_top_names, idx_bot_names = None, None
+            eem_dataset_splits = []
+            if self.idx_top is not None and self.idx_bot is not None:
+                eem_dataset_top, _ = eem_dataset_work.filter_by_index(None, idx_top_names, copy=True)
+                eem_dataset_top_splits = eem_dataset_top.splitting(n_split=n_splits, random_state=self.random_state)
+                eem_dataset_bottom, _ = eem_dataset_work.filter_by_index(None, idx_bot_names, copy=True)
+                for subset in eem_dataset_top_splits:
+                    pos = [eem_dataset_top.index.index(idx) for idx in subset.index]
+                    bot_indices = [eem_dataset_bottom.index[idx] for idx in pos]
+                    sub_eem_dataset_bot, _ = eem_dataset_work.filter_by_index(None, bot_indices, copy=True)
+                    subset.sort_by_index()
+                    sub_eem_dataset_bot.sort_by_index()
+                    eem_dataset_splits.append(combine_eem_datasets([subset, sub_eem_dataset_bot]))
+            else:
+                eem_dataset_splits = eem_dataset_work.splitting(n_split=n_splits, random_state=self.random_state)
+
+            n = len(eem_dataset_splits) // 2
+            indices = range(len(eem_dataset_splits))
+            splits = []
+            for comb_indices in itertools.combinations(indices, n):
+                group1 = [eem_dataset_splits[i] for i in comb_indices]
+                group2 = [eem_dataset_splits[i] for i in indices if i not in comb_indices]
+                splits.append((group1, group2))
+
+            average_z_score = pd.Series(np.zeros(len(eem_dataset_work.index)), index=eem_dataset_work.index, dtype=float)
+            for j, (a, b) in enumerate(splits):
+                split_train = combine_eem_datasets(a)
+                split_test = combine_eem_datasets(b)
+                self.fit(split_train)
+                _, fmax_train, eem_re_train = self.predict(
+                    split_train,
+                    fit_beta=True if self.lam > 0 and self.idx_bot is not None and self.idx_top is not None else False,
+                    idx_top=[i for i, name in enumerate(split_train.index) if name in idx_top_names] if idx_top_names is not None else None,
+                    idx_bot=[i for i, name in enumerate(split_train.index) if name in idx_bot_names] if idx_bot_names is not None else None,
+                )
+                _, fmax_test, eem_re_test = self.predict(
+                    split_test,
+                    fit_beta=True if self.lam > 0 and self.idx_bot is not None and self.idx_top is not None else False,
+                    idx_top=[i for i, name in enumerate(split_test.index) if name in idx_top_names] if idx_top_names is not None else None,
+                    idx_bot=[i for i, name in enumerate(split_test.index) if name in idx_bot_names] if idx_bot_names is not None else None,
+                )
+                res_train = split_train.eem_stack - eem_re_train
+                n_pixels = res_train.shape[1] * res_train.shape[2]
+                rmse_train = np.sqrt(np.sum(res_train ** 2, axis=(1, 2)) / n_pixels)
+                res_test = split_test.eem_stack - eem_re_test
+                n_pixels = res_test.shape[1] * res_test.shape[2]
+                rmse_test = np.sqrt(np.sum(res_test ** 2, axis=(1, 2)) / n_pixels)
+                rmse_train_median = np.median(rmse_train)
+                rmse_train_mad = robust.mad(rmse_train)
+                modified_z_scores = 0.6745 * (rmse_test - rmse_train_median) / rmse_train_mad
+                average_z_score.loc[split_test.index] += modified_z_scores / (len(splits)/2)
+            outlier_indices = average_z_score[average_z_score > zscore_threshold].index.to_list()
+            outlier_indices_history.append(outlier_indices)
+            if not outlier_indices:
+                self.fit(eem_dataset_work)
+                return eem_dataset_work, [idx for idx in eem_dataset.index if idx not in eem_dataset_work.index], outlier_indices_history
+            if self.idx_top is not None and self.idx_bot is not None:
+                outlier_top = [i for i, idx in enumerate(eem_dataset_top.index) if idx in outlier_indices]
+                outlier_bot = [i for i, idx in enumerate(eem_dataset_bottom.index) if idx in outlier_indices]
+                number_outliers = list(set(outlier_bot + outlier_top))
+                qualified_indices = [idx for i, idx in enumerate(eem_dataset_top.index) if
+                                     i not in number_outliers] + \
+                                    [idx for i, idx in enumerate(eem_dataset_bottom.index) if
+                                     i not in number_outliers]
+            else:
+                qualified_indices = [idx for i, idx in enumerate(eem_dataset.index) if idx not in outlier_indices]
+            eem_dataset_work, _ = eem_dataset_work.filter_by_index(None, qualified_indices, copy=True)
+            n_iter += 1
+        self.fit(eem_dataset_work)
+        return eem_dataset_work, [idx for idx in eem_dataset.index if idx not in eem_dataset_work.index], outlier_indices_history
+
+    def component_peak_locations(self):
+        """
+        Get the ex/em of component peaks
+
+        Returns
+        -------
+        max_exem: list
+            A List of (ex, em) of component peaks.
+        """
+        max_exem = []
+        for r in range(self.n_components):
+            max_index = np.unravel_index(np.argmax(self.components[r, :, :]), self.components[r, :, :].shape)
+            max_exem.append((self.ex_range[-(max_index[0] + 1)], self.em_range[max_index[1]]))
+        return max_exem
+
+    def residual(self):
+        """
+        Get the residual of the established PARAFAC model, i.e., the difference between the original EEM dataset and
+        the reconstructed EEM dataset.
+
+        Returns
+        -------
+        res: np.ndarray (3d)
+            the residual
+        """
+        res = self.eem_stack_train - self.eem_stack_reconstructed
+        return res
+
+    def variance_explained(self):
+        """
+        Calculate the explained variance of the established NMF model
+
+        Returns
+        -------
+        ev: float
+            the explained variance
+        """
+        y_train = self.eem_stack_train.reshape(-1)
+        y_pred = self.eem_stack_reconstructed.reshape(-1)
+        ev = 100 * (1 - np.var(y_pred - y_train) / np.var(y_train))
+        return ev
+
+    def sample_rmse(self):
+        """
+        Calculate the root mean squared error (RMSE) of EEM of each sample.
+
+        Returns
+        -------
+        sse: pandas.DataFrame
+            Table of RMSE
+        """
+        res = self.residual()
+        n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
+        rmse = pd.DataFrame(np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels), index=self.nnls_fmax.index,
+                            columns=['RMSE'])
+        return rmse
+
+    def sample_normalized_rmse(self):
+        """
+        Calculate the normalized root mean squared error (normalized RMSE) of EEM of each sample. It is defined as the
+        RMSE divided by the mean of original signal.
+
+        Returns
+        -------
+        normalized_sse: pandas.DataFrame
+            Table of normalized RMSE
+        """
+        res = self.residual()
+        n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
+        normalized_sse = pd.DataFrame(sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels) /
+                                      np.average(self.eem_stack_train, axis=(1, 2)),
+                                      index=self.nnls_fmax.index, columns=['sample_normalized_rmse'])
+        return normalized_sse
+
+    def predict(self, eem_dataset: EEMDataset, fit_intercept=False, fit_beta=False, idx_top=None, idx_bot=None):
+        """
+        Predict the score and Fmax of a given EEM dataset using the component fitted. This method can be applied to a
+        new EEM dataset independent of the one used in NMF model establishment.
+
+        Parameters
+        ----------
+        eem_dataset: EEMDataset
+            The EEM dataset to be predicted.
+        fit_intercept: bool
+            Whether to calculate the intercept.
+        fit_beta: bool
+            Whether to fit the beta parameter (the proportions between "top" and "bot" samples).
+        idx_top: list, optional
+            List of indices of samples serving as numerators in ratio calculation.
+        idx_bot: list, optional
+            List of indices of samples serving as denominators in ratio calculation.
+
+        Returns
+        -------
+        score_sample: pd.DataFrame
+            The fitted score.
+        fmax_sample: pd.DataFrame
+            The fitted Fmax.
+        eem_stack_pred: np.ndarray (3d)
+            The EEM dataset reconstructed.
+        """
+        if not fit_beta:
+            score_sample, fmax_sample, eem_stack_pred = eems_fit_components(eem_dataset.eem_stack,
+                                                                            self.components,
+                                                                            fit_intercept=fit_intercept)
+        else:
+            assert self.beta is not None, "Parameter beta must be provided through fitting."
+            assert idx_top is not None and idx_bot is not None, "idx_top and idx_bot must be provided."
+            max_values = np.amax(self.components, axis=(1, 2))
+            score_sample = np.zeros([eem_dataset.eem_stack.shape[0], self.n_components])
+            score_sample_bot = solve_W(
+                X1=eem_stack_to_2d(eem_dataset.eem_stack)[idx_bot],
+                X2=eem_stack_to_2d(eem_dataset.eem_stack)[idx_top],
+                H=self.components.reshape([self.n_components, -1]),
+                beta=self.beta
+            )
+            score_sample[idx_bot] = score_sample_bot
+            score_sample[idx_top] = score_sample_bot * self.beta
+            fmax_sample = score_sample * max_values
+            eem_stack_pred = score_sample @ self.components.reshape([self.n_components, -1])
+            eem_stack_pred = eem_stack_pred.reshape(eem_dataset.eem_stack.shape)
+        score_sample = pd.DataFrame(score_sample, index=eem_dataset.index, columns=self.fmax.columns)
+        fmax_sample = pd.DataFrame(fmax_sample, index=eem_dataset.index, columns=self.fmax.columns)
+        return score_sample, fmax_sample, eem_stack_pred
+
+
+
+class PARAFAC:
+    """
+    Parallel factor analysis (PARAFAC) model for EEM dataset.
+
+    Parameters
+    ----------
+    n_components: int
+        The number of components
+    non_negativity: bool
+        Whether to apply the non-negativity constraint
+    solver: str, {'mu', 'hals'}
+        Optimizer to for PARAFAC. 'mu' for multiplicative update optimizer, 'hals' for hierarchical alternating least
+        square. 'hals' can only be applied together with non-negativity contraint.
+    init: str or tensorly.CPTensor, {‘svd’, ‘random’, CPTensor}
+        Type of factor matrix initialization
+    tf_normalization: bool
+        Whether to normalize the EEMs by the total fluorescence in PARAFAC model establishment
+    loadings_normalization: str or None, {'sd', 'maximum', None}
+        Type of normalization applied to loadings. if 'sd' is passed, the standard deviation will be normalized
+        to 1. If 'maximum' is passed, the maximum will be normalized to 1. The scores will be adjusted accordingly.
+    sort_components_by_em: bool
+        Whether to sort components by emission peak position from lowest to highest. If False is passed, the
+        components will be sorted by the contribution to the total variance.
+
+    Attributes
+    ----------
+    score: pandas.DataFrame
+        Score table.
+    ex_loadings: pandas.DataFrame
+        Excitation loadings table.
+    em_loadings: pandas.DataFrame
+        Emission loadings table.
+    fmax: pandas.DataFrame
+        Fmax table.
+    components: np.ndarray
+        PARAFAC components.
+    cptensors: tensorly CPTensor
+        The output of PARAFAC in the form of tensorly CPTensor.
+    eem_stack_train: np.ndarray
+        EEMs used for PARAFAC model establishment.
+    eem_stack_reconstructed: np.ndarray
+        EEMs reconstructed by the established PARAFAC model.
+    ex_range: np.ndarray
+        Excitation wavelengths.
+    em_range: np.ndarray
+        Emission wavelengths.
+    """
+
+    def __init__(self, n_components, non_negativity=True, solver='hals', init='svd', custom_init=None, fixed_components=None,
+                 tf_normalization=False, loadings_normalization: Optional[str] = 'maximum', sort_components_by_em=True,
+                 alpha_sample=0, alpha_ex=0, alpha_em=0, l1_ratio=1,
+                 prior_dict_sample=None, prior_dict_ex=None, prior_dict_em=None,
+                 gamma_sample=0, gamma_ex=0, gamma_em=0, prior_ref_components=None,
+                 idx_top=None, idx_bot=None, kw_top=None, kw_bot=None, lam=0,
+                 max_iter_als=100, tol=1e-06, max_iter_nnls=500, random_state=None, mask=None
+                 ):
+
+        # ----------parameters--------------
+        self.n_components = n_components
+        self.non_negativity = non_negativity
+        self.init = init
+        self.custom_init = custom_init
+        self.fixed_components = fixed_components
+        self.tf_normalization = tf_normalization
+        self.loadings_normalization = loadings_normalization
+        self.sort_components_by_em = sort_components_by_em
+        self.solver = solver
+        self.alpha_sample = alpha_sample
+        self.alpha_ex = alpha_ex
+        self.alpha_em = alpha_em
+        self.l1_ratio = l1_ratio
+        self.prior_dict_sample = prior_dict_sample
+        self.prior_dict_ex = prior_dict_ex
+        self.prior_dict_em = prior_dict_em
+        self.gamma_sample = gamma_sample
+        self.gamma_ex = gamma_ex
+        self.gamma_em = gamma_em
+        self.prior_ref_components = prior_ref_components
+        self.idx_top = idx_top
+        self.idx_bot = idx_bot
+        self.kw_top = kw_top
+        self.kw_bot = kw_bot
+        self.lam = lam
+        self.max_iter_als = max_iter_als
+        self.tol = tol
+        self.max_iter_nnls = max_iter_nnls
+        self.random_state = random_state
+        self.mask = mask
+
+        # -----------attributes---------------
+        self.score = None
+        self.ex_loadings = None
+        self.em_loadings = None
+        self.fmax = None
+        self.nnls_fmax = None
+        self.components = None
+        self.cptensors = None
+        self.eem_stack_train = None
+        self.eem_stack_reconstructed = None
+        self.ex_range = None
+        self.em_range = None
+        self.beta = None
+
+    # --------------methods------------------
+    def fit(self, eem_dataset: EEMDataset):
+        """
+        Establish a PARAFAC model based on a given EEM dataset
+
+        Parameters
+        ----------
+        eem_dataset: EEMDataset
+            The EEM dataset that the PARAFAC model establishes on.
+
+        Returns
+        -------
+        self: object
+            The established PARAFAC model
+        """
+        if self.kw_top is not None and self.kw_bot is not None:
+            assert eem_dataset.index is not None
+            self.idx_top = [i for i in range(len(eem_dataset.index)) if self.kw_top in eem_dataset.index[i]]
+            self.idx_bot = [i for i in range(len(eem_dataset.index)) if self.kw_bot in eem_dataset.index[i]]
+        if self.tf_normalization:
+            if self.lam>0 and self.idx_bot is not None and self.idx_top is not None:
+                Warning("Applying tf_normalization together with ratio regularization (lam>0) will lead to unreasonable results")
+            eem_dataset_tf, tf_weights = eem_dataset.tf_normalization(inplace=True)
+            eem_stack_tf = eem_dataset_tf.eem_stack
+        else:
+            eem_stack_tf = eem_dataset.eem_stack.copy()
+        try:
+            if not self.non_negativity:
+                if np.isnan(eem_stack_tf).any():
+                    mask = np.where(np.isnan(eem_stack_tf), 0, 1)
+                    cptensors = parafac(eem_stack_tf, rank=self.n_components, mask=mask, init=self.init,
+                                        n_iter_max=self.max_iter_als,
+                                        tol=self.tol)
+                else:
+                    cptensors = parafac(eem_stack_tf, rank=self.n_components, init=self.init,
+                                        n_iter_max=self.max_iter_als,
+                                        tol=self.tol)
+                a, b, c = cptensors[1]
+            else:
+                if self.solver == 'hals':
+                    a, b, c, beta = cp_hals_prior(
+                        eem_stack_tf,
+                        rank=self.n_components,
+                        init=self.init,
+                        custom_init=self.custom_init,
+                        prior_dict_A=self.prior_dict_sample,
+                        prior_dict_B=self.prior_dict_ex,
+                        prior_dict_C=self.prior_dict_em,
+                        alpha_A=self.alpha_sample,
+                        alpha_B=self.alpha_ex,
+                        alpha_C=self.alpha_em,
+                        l1_ratio=self.l1_ratio,
+                        gamma_A=self.gamma_sample,
+                        gamma_B=self.gamma_ex,
+                        gamma_C=self.gamma_em,
+                        idx_top=self.idx_top,
+                        idx_bot=self.idx_bot,
+                        lam=self.lam,
+                        max_iter_als=self.max_iter_als,
+                        max_iter_nnls=self.max_iter_nnls,
+                        prior_ref_components=self.prior_ref_components,
+                        random_state=self.random_state,
+                        fixed_components=self.fixed_components,
+                        mask=self.mask,
+                    )
+                    self.beta = beta
+                    cptensors = tl.cp_tensor.CPTensor((np.ones(self.n_components), [a, b, c]))
+                elif self.solver == 'mu':
+                    cptensors = non_negative_parafac(eem_stack_tf, rank=self.n_components, init=self.init,
+                                                     n_iter_max=self.max_iter_als, tol=self.tol)
+                    a, b, c = cptensors[1]
+        except ArpackError:
+            print(
+                "PARAFAC failed possibly due to the presence of large non-sparse missing values. Please consider cut or "
+                "interpolate the nan values.")
+        components = np.zeros([self.n_components, b.shape[0], c.shape[0]])
+        for r in range(self.n_components):
+            # when non_negativity is not applied, ensure the scores are generally positive
+            if not self.non_negativity:
+                if a[:, r].sum() < 0:
+                    a[:, r] = -a[:, r]
+                    if abs(b[:, r].min()) > b[:, r].max():
+                        b[:, r] = -b[:, r]
+                    else:
+                        c[:, r] = -c[:, r]
+                elif abs(b[:, r].min()) > b[:, r].max() and abs(c[:, r].min()) > c[:, r].max():
+                    b[:, r] = -b[:, r]
+                    c[:, r] = -c[:, r]
+
+            if self.loadings_normalization == 'sd':
+                stdb = b[:, r].std()
+                stdc = c[:, r].std()
+                b[:, r] = b[:, r] / stdb
+                c[:, r] = c[:, r] / stdc
+                a[:, r] = a[:, r] * stdb * stdc
+            elif self.loadings_normalization == 'maximum':
+                maxb = b[:, r].max()
+                maxc = c[:, r].max()
+                b[:, r] = b[:, r] / maxb
+                c[:, r] = c[:, r] / maxc
+                a[:, r] = a[:, r] * maxb * maxc
+            component = np.array([b[:, r]]).T.dot(np.array([c[:, r]]))
+            components[r, :, :] = component
+        if self.tf_normalization:
+            fmax = pd.DataFrame(a * tf_weights[:, np.newaxis])
+            self.beta = update_beta(fmax.to_numpy(), self.idx_top, self.idx_bot) if self.beta is not None else None
+        else:
+            fmax = pd.DataFrame(a)
+        a, _, _ = eems_fit_components(eem_dataset.eem_stack, components, fit_intercept=False, positive=True)
+        score = pd.DataFrame(a)
+        nnls_fmax = a * components.max(axis=(1, 2))
+        ex_loadings = pd.DataFrame(np.flipud(b), index=eem_dataset.ex_range)
+        em_loadings = pd.DataFrame(c, index=eem_dataset.em_range)
+        if self.sort_components_by_em:
+            em_peaks = [c for c in em_loadings.idxmax()]
+            peak_rank = list(enumerate(stats.rankdata(em_peaks)))
+            order = [i[0] for i in sorted(peak_rank, key=lambda x: x[1])]
+            components = components[order]
+            ex_loadings = pd.DataFrame({'component {r} ex loadings'.format(r=i + 1): ex_loadings.iloc[:, order[i]]
+                                        for i in range(self.n_components)})
+            em_loadings = pd.DataFrame({'component {r} em loadings'.format(r=i + 1): em_loadings.iloc[:, order[i]]
+                                        for i in range(self.n_components)})
+            score = pd.DataFrame({'component {r} score'.format(r=i + 1): score.iloc[:, order[i]]
+                                  for i in range(self.n_components)})
+            fmax = pd.DataFrame({'component {r} score'.format(r=i + 1): fmax.iloc[:, order[i]]
+                                 for i in range(self.n_components)})
+            nnls_fmax = pd.DataFrame({'component {r} fmax'.format(r=i + 1): nnls_fmax[:, order[i]]
+                                      for i in range(self.n_components)})
+            self.beta = self.beta[order] if self.beta is not None else None
+        else:
+            column_labels = ['component {r}'.format(r=i + 1) for i in range(self.n_components)]
+            ex_loadings.columns = column_labels
+            em_loadings.columns = column_labels
+            score.columns = ['component {r} PARAFAC-score'.format(r=i + 1) for i in range(self.n_components)]
+            nnls_fmax = pd.DataFrame(nnls_fmax, columns=['component {r} PARAFAC-Fmax'.format(r=i + 1) for i in
+                                                         range(self.n_components)])
+
+        ex_loadings.index = eem_dataset.ex_range.tolist()
+        em_loadings.index = eem_dataset.em_range.tolist()
+
+        if eem_dataset.index:
+            score.index = eem_dataset.index
+            fmax.index = eem_dataset.index
+            nnls_fmax.index = eem_dataset.index
+        else:
+            score.index = [i + 1 for i in range(a.shape[0])]
+            fmax.index = [i + 1 for i in range(a.shape[0])]
+            nnls_fmax.index = [i + 1 for i in range(a.shape[0])]
+
+        eem_stack_reconstructed = np.tensordot(score.to_numpy(), components, axes=(1, 0))
+
+        self.score = score
+        self.ex_loadings = ex_loadings
+        self.em_loadings = em_loadings
+        self.fmax = fmax
+        self.nnls_fmax = nnls_fmax
+        self.components = components
+        self.cptensors = cptensors
+        self.eem_stack_train = eem_dataset.eem_stack
+        self.ex_range = eem_dataset.ex_range
+        self.em_range = eem_dataset.em_range
+        self.eem_stack_reconstructed = eem_stack_reconstructed
+        return self
+
+    def predict(self, eem_dataset: EEMDataset, fit_intercept=False, fit_beta=False, idx_top=None, idx_bot=None):
+        """
+        Predict the score and Fmax of a given EEM dataset using the component fitted. This method can be applied to a
+        new EEM dataset independent of the one used in NMF model establishment.
+
+        Parameters
+        ----------
+        eem_dataset: EEMDataset
+            The EEM dataset to be predicted.
+        fit_intercept: bool
+            Whether to calculate the intercept.
+        fit_beta: bool
+            Whether to fit the beta parameter (the proportions between "top" and "bot" samples).
+        idx_top: list, optional
+            List of indices of samples serving as numerators in ratio calculation.
+        idx_bot: list, optional
+            List of indices of samples serving as denominators in ratio calculation.
+
+        Returns
+        -------
+        score_sample: pd.DataFrame
+            The fitted score.
+        fmax_sample: pd.DataFrame
+            The fitted Fmax.
+        eem_stack_pred: np.ndarray (3d)
+            The EEM dataset reconstructed.
+        """
+        if not fit_beta:
+            score_sample, fmax_sample, eem_stack_pred = eems_fit_components(eem_dataset.eem_stack, self.components,
+                                                                            fit_intercept=fit_intercept)
+        else:
+            assert self.beta is not None, "Parameter beta must be provided through fitting."
+            assert idx_top is not None and idx_bot is not None, "idx_top and idx_bot must be provided."
+            max_values = np.amax(self.components, axis=(1, 2))
+            score_sample = np.zeros([eem_dataset.eem_stack.shape[0], self.n_components])
+            score_sample_bot = solve_W(
+                X1=eem_stack_to_2d(eem_dataset.eem_stack)[idx_bot],
+                X2=eem_stack_to_2d(eem_dataset.eem_stack)[idx_top],
+                H=self.components.reshape([self.n_components, -1]),
+                beta=self.beta
+            )
+            score_sample[idx_bot] = score_sample_bot
+            score_sample[idx_top] = score_sample_bot * self.beta
+            fmax_sample = score_sample * max_values
+            eem_stack_pred = score_sample @ self.components.reshape([self.n_components, -1])
+            eem_stack_pred = eem_stack_pred.reshape(eem_dataset.eem_stack.shape)
+        score_sample = pd.DataFrame(score_sample, index=eem_dataset.index, columns=self.nnls_fmax.columns)
+        fmax_sample = pd.DataFrame(fmax_sample, index=eem_dataset.index, columns=self.nnls_fmax.columns)
+        return score_sample, fmax_sample, eem_stack_pred
+
+    def component_peak_locations(self):
+        """
+        Get the ex/em of component peaks
+
+        Returns
+        -------
+        max_exem: list
+            A List of (ex, em) of component peaks.
+        """
+        max_exem = []
+        for r in range(self.n_components):
+            max_index = np.unravel_index(np.argmax(self.components[r, :, :]), self.components[r, :, :].shape)
+            max_exem.append((self.ex_range[-(max_index[0] + 1)], self.em_range[max_index[1]]))
+        return max_exem
+
+    def residual(self):
+        """
+        Get the residual of the established PARAFAC model, i.e., the difference between the original EEM dataset and
+        the reconstructed EEM dataset.
+
+        Returns
+        -------
+        res: np.ndarray (3d)
+            the residual
+        """
+        res = self.eem_stack_train - self.eem_stack_reconstructed
+        return res
+
+    def variance_explained(self):
+        """
+        Calculate the explained variance of the established PARAFAC model
+
+        Returns
+        -------
+        ev: float
+            the explained variance
+        """
+        ss_total = tl.norm(self.eem_stack_train) ** 2
+        ss_residual = tl.norm(self.eem_stack_train - self.eem_stack_reconstructed) ** 2
+        variance_explained = (ss_total - ss_residual) / ss_total * 100
+        return variance_explained
+
+    def core_consistency(self):
+        """
+        Calculate the core consistency of the established PARAFAC model
+
+        Returns
+        -------
+        cc: float
+            core consistency
+        """
+        cc = core_consistency(self.cptensors, self.eem_stack_train)
+        return cc
+
+    def leverage(self, mode: str = 'sample'):
+        """
+        Calculate the leverage of a selected mode.
+
+        Parameters
+        ----------
+        mode: str, {'ex', 'em', 'sample'}
+            The mode of which the leverage is calculated.
+
+        Returns
+        -------
+        lvr: pandas.DataFrame
+            The table of leverage
+
+        """
+        if mode == 'ex':
+            lvr = compute_leverage(self.ex_loadings)
+            lvr.columns = ['leverage-ex']
+        elif mode == 'em':
+            lvr = compute_leverage(self.em_loadings)
+            lvr.columns = ['leverage-em']
+        elif mode == 'sample':
+            lvr = compute_leverage(self.score)
+            lvr.columns = ['leverage-sample']
+        else:
+            raise ValueError("'mode' should be 'ex' or 'em' or 'sample'.")
+        # lvr.index = lvr.index.set_levels(['leverage of {m}'.format(m=mode)] * len(lvr.index.levels[0]), level=0)
+        return lvr
+
+    def sample_rmse(self):
+        """
+        Calculate the root mean squared error (RMSE) of EEM of each sample.
+
+        Returns
+        -------
+        rmse: pandas.DataFrame
+            Table of RMSE
+        """
+        res = self.residual()
+        # res = process_eem_stack(res, eem_rayleigh_scattering_removal, ex_range=self.ex_range, em_range=self.em_range)
+        n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
+        rmse = pd.DataFrame(np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels),
+                            index=self.nnls_fmax.index, columns=['RMSE'])
+        return rmse
+
+    def sample_relative_rmse(self):
+        """
+        Calculate the normalized root mean squared error (normalized RMSE) of EEM of each sample. It is defined as the
+        RMSE divided by the mean of original signal.
+
+        Returns
+        -------
+        relative_rmse: pandas.DataFrame
+            Table of normalized RMSE
+        """
+        res = self.residual()
+        # res = process_eem_stack(res, eem_rayleigh_scattering_removal, ex_range=self.ex_range, em_range=self.em_range)
+        n_pixels = self.eem_stack_train.shape[1] * self.eem_stack_train.shape[2]
+        relative_rmse = pd.DataFrame(
+            np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels) / np.average(self.eem_stack_train, axis=(1, 2)),
+            index=self.score.index, columns=['Relative RMSE'])
+        return relative_rmse
+
+    def sample_summary(self):
+        """
+        Get a table showing the score, Fmax, leverage, RMSE and normalized RMSE for each sample.
+
+        Returns
+        -------
+        summary: pandas.DataFrame
+            Table of samples' score, Fmax, leverage, RMSE and normalized RMSE.
+        """
+        lvr = self.leverage()
+        rmse = self.sample_rmse()
+        normalized_rmse = self.sample_normalized_rmse()
+        summary = pd.concat([self.score, self.nnls_fmax, lvr, rmse, normalized_rmse], axis=1)
+        return summary
+
+    def export(self, filepath, info_dict):
+        """
+        Export the PARAFAC model to a text file that can be uploaded to the online PARAFAC model database Openfluor
+        (https://openfluor.lablicate.com/#).
+
+        Parameters
+        ----------
+        filepath: str
+            Location of the saved text file. Please specify the ".csv" extension.
+        info_dict: dict
+            A dictionary containing the model information. Possible keys include: name, creator
+            date, email, doi, reference, unit, toolbox, fluorometer, nSample, decomposition_method, validation,
+            dataset_calibration, preprocess, sources, description
+
+        Returns
+        -------
+        info_dict: dict
+            A dictionary containing the information of the PARAFAC model.
+
+        """
+
+        ex_column = ["Ex"] * self.ex_range.shape[0]
+        em_column = ["Em"] * self.em_range.shape[0]
+        score_column = ["Score"] * self.score.shape[0]
+        exl, eml, score = (self.ex_loadings.copy(), self.em_loadings.copy(), self.score.copy())
+        exl.index = pd.MultiIndex.from_tuples(list(zip(*[ex_column, self.ex_range.tolist()])),
+                                              names=('type', 'wavelength'))
+        eml.index = pd.MultiIndex.from_tuples(list(zip(*[em_column, self.em_range.tolist()])),
+                                              names=('type', 'wavelength'))
+        score.index = pd.MultiIndex.from_tuples(list(zip(*[score_column, self.score.index])),
+                                                names=('type', 'time'))
+
+        with open(filepath, 'w') as f:
+            f.write('# \n# Fluorescence Model \n# \n')
+            for key, value in info_dict.items():
+                f.write(key + '\t' + value)
+                f.write('\n')
+            f.write('# \n# Excitation/Emission (Ex, Em), wavelength [nm], component_n [loading] \n# \n')
+            f.close()
+        with pd.option_context('display.multi_sparse', False):
+            exl.to_csv(filepath, mode='a', sep="\t", header=None)
+            eml.to_csv(filepath, mode='a', sep="\t", header=None)
+        with open(filepath, 'a') as f:
+            f.write('# \n# timestamp, component_n [Score] \n# \n')
+            f.close()
+        score.to_csv(filepath, mode='a', sep="\t", header=None)
+        with open(filepath, 'a') as f:
+            f.write('# end #')
+        return info_dict
+
+
+def loadings_similarity(loadings1: pd.DataFrame, loadings2: pd.DataFrame, wavelength_alignment=False, dtw=False):
+    """
+    Calculate the Tucker's congruence between each pair of components of two loadings (of excitation or emission).
+
+    Parameters
+    ----------
+    loadings1: pandas.DataFrame
+        The first loadings. Each column of the table corresponds to one component.
+    loadings2: pandas.DataFrame
+        The second loadings. Each column of the table corresponds to one component.
+    wavelength_alignment: bool
+        Align the ex/em ranges of the components. This is useful if the PARAFAC models have different ex/em wavelengths.
+        Note that ex/em will be aligned according to the ex/em ranges with the lower intervals between the two PARAFAC
+        models.
+    dtw: bool
+        Apply dynamic time warping (DTW) to align the component loadings before calculating the similarity. This is
+        useful for matching loadings with similar but shifted shapes.
+
+    Returns
+    -------
+    m_sim: pandas.DataFrame
+        The table of loadings similarities between each pair of components.
+    """
+    wl_range1, wl_range2 = (loadings1.index, loadings2.index)
+    if wavelength_alignment:
+        wl_interval1 = (wl_range1.max() - wl_range1.min()) / (wl_range1.shape[0] - 1)
+        wl_interval2 = (wl_range2.max() - wl_range2.min()) / (wl_range2.shape[0] - 1)
+        if wl_interval2 > wl_interval1:
+            f2 = interp1d(wl_range2, loadings2.to_numpy(), axis=0)
+            loadings2 = f2(wl_range1)
+        elif wl_interval1 > wl_interval2:
+            f1 = interp1d(wl_range1, loadings1.to_numpy(), axis=0)
+            loadings1 = f1(wl_range2)
+    else:
+        loadings1, loadings2 = (loadings1.to_numpy(), loadings2.to_numpy())
+    m_sim = np.zeros([loadings1.shape[1], loadings2.shape[1]])
+    for n2 in range(loadings2.shape[1]):
+        for n1 in range(loadings1.shape[1]):
+            if dtw:
+                l1, l2 = dynamic_time_warping(loadings1[:, n1], loadings2[:, n2])
+            else:
+                l1, l2 = [loadings1[:, n1], loadings2[:, n2]]
+            m_sim[n1, n2] = stats.pearsonr(l1, l2)[0]
+    m_sim = pd.DataFrame(m_sim, index=['model1 C{i}'.format(i=i + 1) for i in range(loadings1.shape[1])],
+                         columns=['model2 C{i}'.format(i=i + 1) for i in range(loadings2.shape[1])])
+    return m_sim
+
+
+def component_similarity(components1: np.ndarray, components2: np.ndarray):
+    """
+    Calculate the Pearson correlation coefficient between each pair of components of two PARAFAC or NMF models.
+
+    Parameters:
+    ----------
+    components1: np.ndarray
+        The first set of components. Each component is a 3D array (n_components, ex, em).
+    components2: np.ndarray
+        The second set of components. Each component is a 3D array (n_components, ex, em).
+
+    Returns:
+    -------
+    m_sim: pandas.DataFrame
+        The table of component similarities between each pair of components.
+
+    """
+    m_sim = np.zeros([components1.shape[0], components2.shape[0]])
+    for n2 in range(components2.shape[0]):
+        for n1 in range(components1.shape[0]):
+            c1_unfolded, c2_unfolded = [components1[n1].reshape(-1), components2[n2].reshape(-1)]
+            m_sim[n1, n2] = stats.pearsonr(c1_unfolded, c2_unfolded)[0]
+    m_sim = pd.DataFrame(m_sim, index=['model1 C{i}'.format(i=i + 1) for i in range(components1.shape[0])],
+                         columns=['model2 C{i}'.format(i=i + 1) for i in range(components2.shape[0])])
+    return m_sim
+
+
+def align_components_by_loadings(models_dict: dict, ex_ref: pd.DataFrame, em_ref: pd.DataFrame,
+                                 wavelength_alignment=False):
+    """
+    Align the components of PARAFAC models according to given reference ex/em loadings so that similar components
+    are labelled by the same name.
+
+    Parameters
+    ----------
+    models_dict: dict
+        Dictionary of PARAFAC objects, the models to be aligned.
+    ex_ref: pandas.DataFrame
+        Ex loadings of the reference
+    em_ref: pandas.DataFrame
+        Em loadings of the reference
+    wavelength_alignment: bool
+        Align the ex/em ranges of the components. This is useful if the PARAFAC models have different ex/em wavelengths.
+        Note that ex/em will be aligned according to the ex/em ranges with the lower intervals between the two PARAFAC
+        models.
+
+    Returns
+    -------
+    models_dict_new: dict
+        Dictionary of the aligned PARAFAC object.
+    """
+    component_labels_ref = ex_ref.columns
+    models_dict_new = {}
+    for model_label, model in models_dict.items():
+        m_sim_ex = loadings_similarity(ex_ref, model.ex_loadings, wavelength_alignment=wavelength_alignment)
+        m_sim_em = loadings_similarity(em_ref, model.em_loadings, wavelength_alignment=wavelength_alignment)
+        m_sim = (m_sim_ex + m_sim_em) / 2
+        padded_matrix = np.zeros((max(m_sim.shape), max(m_sim.shape)))
+        padded_matrix[:m_sim.shape[0], :m_sim.shape[1]] = m_sim
+        row_ind, col_ind = linear_sum_assignment(-padded_matrix)
+        pairs = [(i, j) for i, j in zip(row_ind, col_ind) if i < m_sim.shape[0]]
+        sorted_pairs = sorted(pairs, key=lambda x: x[0])
+        row_ind, col_ind = zip(*sorted_pairs)
+        col_ind = list(col_ind)
+        non_ordered_index = list(set([i for i in range(m_sim.shape[1])]) - set(col_ind))
+        permutation = col_ind + non_ordered_index
+        if non_ordered_index:
+            component_labels_ref_extended = component_labels_ref + ['O{i}'.format(i=i + 1) for i in
+                                                                    range(len(non_ordered_index))]
+        else:
+            component_labels_ref_extended = component_labels_ref
+        component_labels_var = [0] * len(permutation)
+        for i, nc in enumerate(permutation):
+            component_labels_var[nc] = component_labels_ref_extended[i]
+        model.score.columns, model.ex_loadings.columns, model.em_loadings.columns, model.nnls_fmax.columns = (
+                [component_labels_var] * 4)
+        model.score = model.score.iloc[:, permutation]
+        model.ex_loadings = model.ex_loadings.iloc[:, permutation]
+        model.em_loadings = model.em_loadings.iloc[:, permutation]
+        model.nnls_fmax = model.nnls_fmax.iloc[:, permutation]
+        model.components = model.components[permutation, :, :]
+        model.cptensor = permute_cp_tensor(model.cptensors, permutation)
+        model.beta = model.beta[permutation] if model.beta is not None else None
+        models_dict_new[model_label] = model
+    return models_dict_new
+
+
+def align_components_by_components(models_dict: dict, components_ref: dict):
+    """
+    Align the components of PARAFAC or NMF models according to given reference components so that similar components
+    are labelled by the same name.
+
+    Parameters
+    ----------
+    models_dict: dict
+        Dictionary of PARAFAC objects, the models to be aligned.
+    components_ref: dict
+        Dictionary where each item is a reference component. The keys are the component labels, the values are the
+        components (np.ndarray).
+
+    Returns
+    -------
+    models_dict_new: dict
+        Dictionary of the aligned PARAFAC object.
+    """
+    component_labels_ref = list(components_ref.keys())
+    components_stack_ref = np.array([c.reshape(-1) for c in components_ref.values()])
+    models_dict_new = {}
+
+    for model_label, model in models_dict.items():
+        comp = model.components.reshape([model.n_components, -1])
+        cost_mat = cdist(components_stack_ref, comp, metric='correlation')
+
+        row_ind, col_ind = linear_sum_assignment(cost_mat)
+        # permutation = list(row_ind)
+        # matched_index = list(col_ind)
+
+        pairs = [(i, j) for i, j in zip(row_ind, col_ind) if i < cost_mat.shape[0]]
+        sorted_pairs = sorted(pairs, key=lambda x: x[0])
+        row_ind, col_ind = zip(*sorted_pairs)
+        col_ind = list(col_ind)
+        non_ordered_index = list(set([i for i in range(cost_mat.shape[1])]) - set(col_ind))
+        permutation = col_ind + non_ordered_index
+        if non_ordered_index:
+            component_labels_ref_extended = component_labels_ref + ['O{i}'.format(i=i + 1) for i in
+                                                                    range(len(non_ordered_index))]
+        else:
+            component_labels_ref_extended = component_labels_ref
+        component_labels_var = [0] * len(permutation)
+        for i, nc in enumerate(permutation):
+            component_labels_var[nc] = component_labels_ref_extended[i]
+        #
+        # # Generate new labels
+        # component_labels_var = [component_labels_ref[j] for j in matched_index]
+        # if len(permutation) < comp.shape[0]:
+        #     unmatched = list(set(range(comp.shape[0])) - set(permutation))
+        #     component_labels_var += [f"O{i + 1}" for i in range(len(unmatched))]
+        #     permutation += unmatched
+        if isinstance(model, PARAFAC):
+            model.score.columns, model.ex_loadings.columns, model.em_loadings.columns, model.nnls_fmax.columns = (
+                    [component_labels_var] * 4)
+            model.score = model.score.iloc[:, permutation]
+            model.ex_loadings = model.ex_loadings.iloc[:, permutation]
+            model.em_loadings = model.em_loadings.iloc[:, permutation]
+            model.nnls_fmax = model.nnls_fmax.iloc[:, permutation]
+            model.components = model.components[permutation, :, :]
+            model.cptensor = permute_cp_tensor(model.cptensors, permutation)
+            model.beta = model.beta[permutation] if model.beta is not None else None
+        elif isinstance(model, EEMNMF):
+            model.fmax.columns, model.nnls_fmax.columns = (
+                    [component_labels_var] * 2)
+            model.fmax = model.fmax.iloc[:, permutation]
+            model.nnls_fmax = model.nnls_fmax.iloc[:, permutation]
+            model.components = model.components[permutation, :, :]
+            model.beta = model.beta[permutation] if model.beta is not None else None
+        models_dict_new[model_label] = model
+    return models_dict_new
+
+
+class SplitValidation:
+    """
+    Conduct PARAFAC model validation by evaluating the consistency of PARAFAC models established on EEM sub-datasets.
+
+    Parameters
+    ----------
+    base_model: PARAFAC or EEMNMF
+        The base PARAFAC or NMF model to be used for validation.
+    n_splits: int
+        Number of splits.
+    combination_size: int or str, {int, 'half'}
+        The number of splits assembled into one combination. If 'half' is passed, each combination will include
+        half of the splits (i.e., the split-half validation).
+    rule: str, {'random', 'sequential'}
+        Whether to split the EEM dataset randomly. If 'sequential' is passed, the dataset will be split according
+        to index order.
+    random_state: int, optional
+        Random seed for reproducibility. Only used if `rule` is 'random'.
+
+    Attributes
+    -----------
+    eem_subsets: dict
+        Dictionary of EEM sub-datasets.
+    subset_specific_models: dict
+        Dictionary of PARAFAC models established on sub-datasets.
+    """
+
+    def __init__(self, base_model, n_splits=4, combination_size='half', rule='random',
+                 random_state=None):
+        # ---------------Parameters-------------------
+        self.base_model = base_model
+        self.n_split = n_splits
+        self.combination_size = combination_size
+        self.rule = rule
+        self.random_state = random_state
+
+        # ----------------Attributes------------------
+        self.eem_subsets = None
+        self.subset_specific_models = None
+        self.eem_dataset_full = None
+
+    def fit(self, eem_dataset: EEMDataset):
+        split_set = eem_dataset.splitting(
+            n_split=self.n_split, rule=self.rule, random_state=self.random_state,
+            kw_top=self.base_model.kw_top, kw_bot=self.base_model.kw_bot,
+            idx_top=self.base_model.idx_top, idx_bot=self.base_model.idx_bot
+        )
+        if self.combination_size == 'half':
+            cs = int(self.n_split) / 2
+        else:
+            cs = int(self.combination_size)
+        elements = list(itertools.combinations([i for i in range(self.n_split)], int(cs)))
+        codes = list(itertools.combinations(list(string.ascii_uppercase)[0:self.n_split], int(cs)))
+        model_complete = copy.deepcopy(self.base_model)
+        model_complete.fit(eem_dataset=eem_dataset)
+        sims_ex, sims_em, models, subsets = ({}, {}, {}, {})
+
+        for e, c in zip(elements, codes):
+            label = ''.join(c)
+            subdataset = combine_eem_datasets([split_set[i] for i in e])
+            model_subdataset = copy.deepcopy(self.base_model)
+            if model_subdataset.init == "custom":
+                init0 = model_subdataset.custom_init[0]
+                idx_in_split = [eem_dataset.index.index(idx) for idx in subdataset.index]
+                model_subdataset.custom_init[0] = init0[idx_in_split]
+            if isinstance(model_subdataset, EEMNMF):
+                if self.base_model.prior_dict_W is not None:
+                    idx_in_split = [eem_dataset.index.index(idx) for idx in subdataset.index]
+                    for r in list(self.base_model.prior_dict_W.keys()):
+                        model_subdataset.prior_dict_W[r] = self.base_model.prior_dict_W[r][idx_in_split]
+            elif isinstance(model_subdataset, PARAFAC):
+                if self.base_model.prior_dict_sample is not None:
+                    idx_in_split = [eem_dataset.index.index(idx) for idx in subdataset.index]
+                    for r in list(self.base_model.prior_dict_W.keys()):
+                        model_subdataset.prior_dict_sample[r] = self.base_model.prior_dict_sample[r][idx_in_split]
+            model_subdataset.fit(subdataset)
+            models[label] = model_subdataset
+            subsets[label] = subdataset
+        models = align_components_by_components(
+            models,
+            {f'C{i + 1}': model_complete.components[i] for i in range(model_complete.n_components)},
+        )
+        self.eem_subsets = subsets
+        self.subset_specific_models = models
+        self.eem_dataset_full = eem_dataset
+        return self
+
+    def compare_parafac_loadings(self):
+        """
+        Calculate the similarities of ex/em loadings between PARAFAC models established on sub-datasets.
+
+        Returns
+        -------
+        similarities_ex: pandas.DataFrame
+            Similarities in excitation loadings.
+        similarities_em: pandas.DataFrame
+            Similarities in emission loadings.
+        """
+        labels = sorted(self.subset_specific_models.keys())
+        similarities_ex = {}
+        similarities_em = {}
+        for k in range(int(len(labels) / 2)):
+            m1 = self.subset_specific_models[labels[k]]
+            m2 = self.subset_specific_models[labels[-1 - k]]
+            sims_ex = loadings_similarity(m1.ex_loadings, m2.ex_loadings).to_numpy().diagonal()
+            sims_em = loadings_similarity(m1.em_loadings, m2.em_loadings).to_numpy().diagonal()
+            pair_labels = '{m1} vs. {m2}'.format(m1=labels[k], m2=labels[-1 - k])
+            similarities_ex[pair_labels] = sims_ex
+            similarities_em[pair_labels] = sims_em
+        similarities_ex = pd.DataFrame.from_dict(
+            similarities_ex, orient='index',
+            columns=['Similarities in C{i}-ex'.format(i=i + 1) for i in range(self.base_model.n_components)]
+        )
+        similarities_ex.index.name_train = 'Test'
+        similarities_em = pd.DataFrame.from_dict(
+            similarities_em, orient='index',
+            columns=['Similarities in C{i}-em'.format(i=i + 1) for i in range(self.base_model.n_components)]
+        )
+        similarities_em.index.name_train = 'Test'
+        return similarities_ex, similarities_em
+
+    def compare_components(self):
+        """
+        Calculate the similarities of components between PARAFAC or NMF models established on sub-datasets.
+
+        Returns
+        -------
+        similarities_components: pandas.DataFrame
+            Similarities in components.
+        """
+        labels = sorted(self.subset_specific_models.keys())
+        similarities_components = {}
+        for k in range(int(len(labels) / 2)):
+            m1 = self.subset_specific_models[labels[k]]
+            m2 = self.subset_specific_models[labels[-1 - k]]
+            sims = component_similarity(m1.components, m2.components).to_numpy().diagonal()
+            pair_labels = '{m1} vs. {m2}'.format(m1=labels[k], m2=labels[-1 - k])
+            similarities_components[pair_labels] = sims
+        similarities_components = pd.DataFrame.from_dict(
+            similarities_components, orient='index',
+            columns=['Similarities in C{i}'.format(i=i + 1) for i in range(self.base_model.n_components)]
+        )
+        similarities_components.index.name_train = 'Test'
+        return similarities_components
+
+    def correlation_cv(self, ref_col):
+        assert ref_col in self.eem_dataset_full.ref.columns, f"'{ref_col}' is not found in reference."
+        labels = sorted(self.subset_specific_models.keys())
+        tbl = {}
+        for k in range(int(len(labels) / 2)):
+            m1 = self.subset_specific_models[labels[k]]
+            m2 = self.subset_specific_models[labels[-1 - k]]
+            d1 = self.eem_subsets[labels[k]]
+            d2 = self.eem_subsets[labels[-1 - k]]
+            pair_labels_12 = 'train: {m1} / test: {m2}'.format(m1=labels[k], m2=labels[-1 - k])
+            pair_labels_21 = 'train: {m2} / test: {m1}'.format(m1=labels[k], m2=labels[-1 - k])
+            mask_ref1 = ~np.isnan(d1.ref[ref_col].to_numpy())
+            y_d1 = d1.ref[ref_col].to_numpy()[mask_ref1]
+            mask_ref2 = ~np.isnan(d2.ref[ref_col].to_numpy())
+            y_d2 = d2.ref[ref_col].to_numpy()[mask_ref2]
+            _, fmax_train_d1, _ = m1.predict(d1)
+            _, fmax_test_d2, _ = m1.predict(d2)
+            _, fmax_train_d2, _ = m2.predict(d2)
+            _, fmax_test_d1, _ = m2.predict(d1)
+            tbl_12 = {}
+            for r in range(self.base_model.n_components):
+                x_train = fmax_train_d1.iloc[mask_ref1, [r]].to_numpy()
+                x_test = fmax_test_d2.iloc[mask_ref2, [r]].to_numpy()
+                lr = LinearRegression(fit_intercept=True)
+                lr.fit(x_train, y_d1)
+                y_pred_train = lr.predict(x_train)
+                r2_train = lr.score(x_train, y_d1)
+                rmse_train = np.sqrt(mean_squared_error(y_d1, y_pred_train))
+                tbl_12[ref_col + '-' + f'C{r + 1} Fmax' + '-r2-training'] = r2_train
+                tbl_12[ref_col + '-' + f'C{r + 1} Fmax' + '-rmse-training'] = rmse_train
+                y_pred_test = lr.predict(x_test)
+                r2_test = lr.score(x_test, y_d2)
+                rmse_test = np.sqrt(mean_squared_error(y_d2, y_pred_test))
+                tbl_12[ref_col + '-' + f'C{r + 1} Fmax' + '-r2-test'] = r2_test
+                tbl_12[ref_col + '-' + f'C{r + 1} Fmax' + '-rmse-test'] = rmse_test
+            tbl[pair_labels_12] = tbl_12
+            tbl_21 = {}
+            for r in range(self.base_model.n_components):
+                x_train = fmax_train_d2.iloc[mask_ref2, [r]].to_numpy()
+                x_test = fmax_test_d1.iloc[mask_ref1, [r]].to_numpy()
+                lr = LinearRegression(fit_intercept=True)
+                lr.fit(x_train, y_d2)
+                y_pred_train = lr.predict(x_train)
+                r2_train = lr.score(x_train, y_d2)
+                rmse_train = np.sqrt(mean_squared_error(y_d2, y_pred_train))
+                tbl_21[ref_col + '-' + f'C{r + 1} Fmax' + '-r2-training'] = r2_train
+                tbl_21[ref_col + '-' + f'C{r + 1} Fmax' + '-rmse-training'] = rmse_train
+                y_pred_test = lr.predict(x_test)
+                r2_test = lr.score(x_test, y_d1)
+                rmse_test = np.sqrt(mean_squared_error(y_d1, y_pred_test))
+                tbl_21[ref_col + '-' + f'C{r + 1} Fmax' + '-r2-test'] = r2_test
+                tbl_21[ref_col + '-' + f'C{r + 1} Fmax' + '-rmse-test'] = rmse_test
+            tbl[pair_labels_21] = tbl_21
+        tbl_df = pd.DataFrame(tbl).T
+        return tbl_df
+
+
+
+
+class RobustPARAFAC:
+    """
+
+    """
+
+    def __init__(self, base_model_layer1, base_model_layer2, n_splits_layer1=6, random_state=None):
+        self.base_model_layer1 = base_model_layer1
+        self.base_model_layer2 = base_model_layer2
+        self.n_splits_layer1 = n_splits_layer1
+        self.random_state = random_state
+        self.component_set_layer1 = None
+        self.fmax = None
+        self.components = None
+        self.ex_loadings = None,
+        self.em_loadings = None,
+
+    def fit(self, eem_dataset: EEMDataset):
+        self.base_model_layer1.fit(eem_dataset)
+        sv = SplitValidation(base_model=self.base_model_layer1, n_splits=self.n_splits_layer1, random_state=self.random_state)
+        sv.fit(eem_dataset)
+
+        c_all = []
+        for sub_model in sv.subset_specific_models.values():
+            c_all.append(sub_model.components)
+        component_set_layer1 = EEMDataset(
+            eem_stack=np.concatenate(c_all, axis=0),
+            ex_range=eem_dataset.ex_range, em_range=eem_dataset.em_range
+        )
+        self.base_model_layer2.fit(component_set_layer1)
+        _, fmax, _ =self.base_model_layer2.predict(eem_dataset)
+        self.component_set_layer1 = component_set_layer1
+        self.fmax = fmax
+        self.components = self.base_model_layer2.components
+        # self.ex_loadings = self.base_model_layer2.ex_loadings
+        # self.em_loadings = self.base_model_layer2.em_loadings
+
+
+
+class KMethod:
+    """
+    Conduct K-method, an EEM clustering algorithm aiming to minimize the general PARAFAC reconstruction error. The
+    key hypothesis behind K-PARAFACs is that fitting EEMs with varied underlying chemical compositions using the same
+    PARAFAC model could lead to a large reconstruction error. In contrast, samples with similar chemical composition
+    can be incorporated into the same PARAFAC model with small reconstruction error (i.e., the root mean-squared
+    error (RMSE) between the original EEM and its reconstruction derived from loadings and scores). if samples can be
+    appropriately clustered by their chemical compositions, then the PARAFAC models established on individual
+    clusters, i.e., the cluster-specific PARAFAC models, should exhibit reduced reconstruction error compared to the
+    unified PARAFAC model. Based on this hypothesis, K-PARAFACs is proposed to search for an optimal clustering
+    strategy so that the overall reconstruction error of cluster-specific PARAFAC models is minimized.
+
+    Parameters
+    -----------
+    n_initial_splits: int
+        Number of splits in clustering initialization (the first time that the EEM dataset is divided).
+    max_iter: int
+        Maximum number of iterations in a single run of base clustering.
+    tol: float
+        Tolerance in regard to the average Tucker's congruence between the cluster-specific PARAFAC models
+        of two consecutive iterations to declare convergence. If the Tucker's congruence > 1-tol, then convergence is
+        confirmed.
+    elimination: 'default' or int
+        The minimum number of EEMs in each cluster. During optimization, clusters with EEMs less than the specified
+        number would be eliminated. If 'default' is passed, then the number is set to be the same as the number of
+        components.
+
+    Attributes
+    ------------
+    unified_model: PARAFAC
+        Unified PARAFAC model.
+    label_history: list
+        A list of cluster labels after each run of clustering.
+    error_history: list
+        A list of average RMSE over all pixels after each run of clustering.
+    labels: np.ndarray
+        Final cluster labels.
+    eem_clusters: dict
+        EEM clusters.
+    cluster_specific_models: dict
+        Cluster-specific PARAFAC models.
+    consensus_matrix: np.ndarray
+        Consensus matrix.
+    consensus_matrix_sorted: np.ndarray
+        Sorted consensus matrix.
+    """
+
+    def __init__(self, base_model, n_initial_splits, distance_metric="reconstruction_error", max_iter=20, tol=0.001,
+                 elimination='default', kw_top=None, kw_bot=None):
+
+        # -----------Parameters-------------
+        self.base_model = base_model
+        self.n_initial_splits = n_initial_splits
+        self.distance_metric = distance_metric
+        self.max_iter = max_iter
+        self.tol = tol
+        self.elimination = elimination
+        self.kw_top = kw_top
+        self.kw_bot = kw_bot
+        self.subsampling_portion = None
+        self.n_runs = None
+        self.consensus_conversion_power = None
+
+        # ----------Attributes-------------
+        self.unified_model = None
+        self.label_history = None
+        self.error_history = None
+        self.silhouette_score = None
+        self.labels = None
+        self.index_sorted = None
+        self.ref_sorted = None
+        self.threshold_r = None
+        self.eem_clusters = None
+        self.cluster_specific_models = None
+        self.consensus_matrix = None
+        self.distance_matrix = None
+        self.linkage_matrix = None
+        self.consensus_matrix_sorted = None
+
+    def base_clustering(self, eem_dataset: EEMDataset):
+        """
+        Run clustering for a single time.
+
+        Parameters
+        ----------
+        eem_dataset: EEMDataset
+            The EEM dataset to be clustered.
+
+        Returns
+        -------
+        cluster_labels: np.ndarray
+            Cluster labels.
+        label_history: list
+            Cluster labels in each iteration.
+        error_history: list
+            Average reconstruction error (RMSE) in each iteration.
+        """
+
+        # -------Generate a unified model as reference for ordering components--------
+
+        unified_model = copy.deepcopy(self.base_model)
+        unified_model.fit(eem_dataset)
+
+        # -------Define functions for estimation and maximization steps-------
+
+        def get_quenching_coef(fmax_tot, kw_o, kw_q):
+            fmax_original = fmax_tot[fmax_tot.index.str.contains(kw_o)]
+            fmax_quenched = fmax_tot[fmax_tot.index.str.contains(kw_q)]
+            fmax_ratio = fmax_tot.copy()
+            fmax_ratio[fmax_ratio.index.str.contains(kw_o)] = fmax_original.to_numpy() / fmax_quenched.to_numpy()
+            fmax_ratio[fmax_ratio.index.str.contains(kw_q)] = fmax_original.to_numpy() / fmax_quenched.to_numpy()
+            return fmax_ratio.to_numpy()
+
+        def estimation(sub_datasets: dict):
+            models = {}
+            for label, d in sub_datasets.items():
+                model = copy.deepcopy(self.base_model)
+                model.fit(d)
+                models[label] = model
+            return models
+
+        def maximization(models: dict):
+            sample_error = []
+            sub_datasets = {}
+            for label, m in models.items():
+                if self.distance_metric == "reconstruction_error_with_beta":
+                    idx_top = [i for i in range(len(eem_dataset.index)) if self.kw_top in eem_dataset.index[i]]
+                    idx_bot = [i for i in range(len(eem_dataset.index)) if self.kw_bot in eem_dataset.index[i]]
+                    score_m, fmax_m, eem_stack_re_m = m.predict(
+                        eem_dataset=eem_dataset,
+                        fit_beta=True,
+                        idx_bot=idx_bot,
+                        idx_top=idx_top,
+                    )
+                    res = eem_dataset.eem_stack - eem_stack_re_m
+                    res = np.sum(res ** 2, axis=(1, 2))
+                    error_with_beta = np.zeros(fmax_m.shape[0])
+                    error_with_beta[idx_top] = res[idx_top] + res[idx_bot]
+                    error_with_beta[idx_bot] = res[idx_top] + res[idx_bot]
+                    sample_error.append(error_with_beta)
+                elif self.distance_metric == "reconstruction_error":
+                    score_m, fmax_m, eem_stack_re_m = m.predict(eem_dataset)
+                    res = eem_dataset.eem_stack - eem_stack_re_m
+                    n_pixels = m.eem_stack_train.shape[1] * m.eem_stack_train.shape[2]
+                    rmse = np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels)
+                    sample_error.append(rmse)
+                elif self.distance_metric == "quenching_coefficient":
+                    if not all([self.kw_top, self.kw_bot]):
+                        raise ValueError("Both kw_unquenched and kw_quenched must be passed.")
+                    if type(m).__name__ == 'PARAFAC':
+                        fmax_establishment = m.nnls_fmax
+                    elif type(m).__name__ == 'EEMNMF':
+                        fmax_establishment = m.nnls_fmax
+                    else:
+                        raise TypeError("Invalid base model type.")
+                    quenching_coef_establishment = get_quenching_coef(fmax_establishment, self.kw_top,
+                                                                      self.kw_bot)
+                    quenching_coef_archetype = np.mean(quenching_coef_establishment, axis=0)
+
+                    quenching_coef_test = get_quenching_coef(fmax_m, self.kw_top, self.kw_bot)
+
+                    quenching_coef_diff = np.abs(quenching_coef_test - quenching_coef_archetype)
+                    sample_error.append(np.sum(quenching_coef_diff ** 2, axis=1))
+            best_model_idx = np.argmin(sample_error, axis=0)
+            least_model_errors = np.min(sample_error, axis=0)
+            for j, label in enumerate(models.keys()):
+                eem_stack_j = eem_dataset.eem_stack[np.where(best_model_idx == j)]
+                if eem_dataset.ref is not None:
+                    ref_j = eem_dataset.ref.iloc[np.where(best_model_idx == j)]
+                else:
+                    ref_j = None
+                if eem_dataset.index is not None:
+                    index_j = [eem_dataset.index[k] for k, idx in enumerate(best_model_idx) if idx == j]
+                else:
+                    index_j = None
+                sub_datasets[label] = EEMDataset(eem_stack=eem_stack_j, ex_range=eem_dataset.ex_range,
+                                                 em_range=eem_dataset.em_range, ref=ref_j, index=index_j)
+            best_model_label = np.array([list(models.keys())[idx] for idx in best_model_idx])
+            return sub_datasets, best_model_label, least_model_errors
+
+        # -------Define function for convergence detection-------
+
+        def model_similarity(models_1: dict, models_2: dict):
+            similarity = 0
+            for label, m in models_1.items():
+                similarity = component_similarity(m.components, models_2[label].components).to_numpy().diagonal()
+            similarity = np.sum(similarity) / len(models_1)
+            return similarity
+
+        # -------Initialization--------
+        label_history = []
+        error_history = []
+        sample_errors = []
+        sub_datasets_n = {}
+        if self.distance_metric == "reconstruction_error":
+            initial_sub_eem_datasets = eem_dataset.splitting(n_split=self.n_initial_splits)
+        elif self.distance_metric in ["quenching_coefficient", "reconstruction_error_with_beta"]:
+            initial_sub_eem_datasets = []
+            eem_dataset_unquenched = eem_dataset.filter_by_index(self.kw_top, None, inplace=False)
+            initial_sub_eem_datasets_unquenched = eem_dataset_unquenched.splitting(n_split=self.n_initial_splits)
+            eem_dataset_quenched = eem_dataset.filter_by_index(self.kw_bot, None, inplace=False)
+            for subset in initial_sub_eem_datasets_unquenched:
+                pos = [eem_dataset_unquenched.index.index(idx) for idx in subset.index]
+                quenched_index = [eem_dataset_quenched.index[idx] for idx in pos]
+                sub_eem_dataset_quenched = eem_dataset.filter_by_index(None, quenched_index, inplace=False)
+                subset.sort_by_index()
+                sub_eem_dataset_quenched.sort_by_index()
+                initial_sub_eem_datasets.append(combine_eem_datasets([subset, sub_eem_dataset_quenched]))
+
+        for i, random_m in enumerate(initial_sub_eem_datasets):
+            sub_datasets_n[i + 1] = random_m
+
+        for n in range(self.max_iter):
+
+            # -------Eliminate sub_datasets having EEMs less than the number of ranks--------
+            cluster_label_to_remove = []
+            for cluster_label, sub_dataset_i in sub_datasets_n.items():
+                if self.elimination == 'default' and sub_dataset_i.eem_stack.shape[0] <= self.base_model.n_components:
+                    cluster_label_to_remove.append(cluster_label)
+                elif isinstance(self.elimination, int):
+                    if self.elimination <= max(self.base_model.n_components, self.elimination):
+                        cluster_label_to_remove.append(cluster_label)
+            for l in cluster_label_to_remove:
+                sub_datasets_n.pop(l)
+
+            # -------The estimation step-------
+            cluster_specific_models_new = estimation(sub_datasets_n)
+            cluster_specific_models_new = align_components_by_components(
+                cluster_specific_models_new,
+                {f'component {i + 1}': unified_model.components[i] for i in range(unified_model.components.shape[0])},
+            )
+
+            # -------The maximization step--------
+            sub_datasets_n, cluster_labels, fitting_errors = maximization(cluster_specific_models_new)
+            label_history.append(cluster_labels)
+            error_history.append(fitting_errors)
+
+            # -------Detect convergence---------
+            if 0 < n < self.max_iter - 1:
+                if np.array_equal(label_history[-1], label_history[-2]):
+                    break
+                if len(cluster_specific_models_old) == len(cluster_specific_models_new):
+                    if model_similarity(cluster_specific_models_new, cluster_specific_models_old) > 1 - self.tol:
+                        break
+
+            cluster_specific_models_old = cluster_specific_models_new
+
+        label_history = pd.DataFrame(np.array(label_history).T, index=eem_dataset.index,
+                                     columns=['iter_{i}'.format(i=i + 1) for i in range(n + 1)])
+        error_history = pd.DataFrame(np.array(error_history).T, index=eem_dataset.index,
+                                     columns=['iter_{i}'.format(i=i + 1) for i in range(n + 1)])
+        self.label_history = [label_history]
+        self.error_history = [error_history]
+        self.unified_model = unified_model
+        self.labels = cluster_labels
+        self.eem_clusters = sub_datasets_n
+        self.cluster_specific_models = cluster_specific_models_new
+
+        return cluster_labels, label_history, error_history
+
+    def calculate_consensus(self, eem_dataset: EEMDataset, n_base_clusterings: int, subsampling_portion: float):
+        """
+        Run the clustering for many times and combine the output of each run to obtain an optimal clustering.
+
+        Parameters
+        ----------
+        eem_dataset: EEMDataset
+            EEM dataset.
+        n_base_clusterings: int
+            Number of base clustering.
+        subsampling_portion: float
+            The portion of EEMs remained after subsampling.
+
+        Returns
+        -------
+        self: object
+            The established K-PARAFACs model
+        """
+
+        n_samples = eem_dataset.eem_stack.shape[0]
+        co_label_matrix = np.zeros((n_samples, n_samples))
+        co_occurrence_matrix = np.zeros((n_samples, n_samples))
+
+        # ---------Repeat base clustering and generate consensus matrix---------
+
+        n = 0
+        label_history = []
+        error_history = []
+
+        if self.distance_metric == "quenching_coefficient":
+            eem_dataset_unquenched = eem_dataset.filter_by_index(self.kw_top, None, inplace=False)
+            eem_dataset_quenched = eem_dataset.filter_by_index(self.kw_bot, None, inplace=False)
+
+        while n < n_base_clusterings:
+
+            # ------Subsampling-------
+            if self.distance_metric == "reconstruction_error":
+                eem_dataset_n, selected_indices = eem_dataset.subsampling(portion=subsampling_portion, inplace=False)
+            elif self.distance_metric == "quenching_coefficient":
+                eem_dataset_new_uq, selected_indices_uq = eem_dataset_unquenched.subsampling(
+                    portion=subsampling_portion, inplace=False)
+                pos = [eem_dataset_unquenched.index.index(idx) for idx in eem_dataset_new_uq.index]
+                quenched_index = [eem_dataset_quenched.index[idx] for idx in pos]
+                eem_dataset_new_q = eem_dataset.filter_by_index(None, quenched_index, inplace=False)
+                eem_dataset_n = combine_eem_datasets([eem_dataset_new_uq, eem_dataset_new_q])
+                eem_dataset_n.sort_by_index()
+                selected_indices = [eem_dataset.index.index(idx) for idx in eem_dataset_n.index]
+            n_samples_new = eem_dataset_n.eem_stack.shape[0]
+
+            # ------Base clustering-------
+            cluster_labels_n, label_history_n, error_history_n = self.base_clustering(eem_dataset_n)
+            for j in range(n_samples_new):
+                for k in range(n_samples_new):
+                    co_occurrence_matrix[selected_indices[j], selected_indices[k]] += 1
+                    if cluster_labels_n[j] == cluster_labels_n[k]:
+                        co_label_matrix[selected_indices[j], selected_indices[k]] += 1
+            label_history.append(label_history_n)
+            error_history.append(error_history_n)
+
+            # ----check if counting_matrix contains 0, meaning that not all sample pairs have been included in the
+            # clustering. If this is the case, run more base clustering until all sample pairs are covered----
+            if n == n_base_clusterings - 1 and np.any(co_occurrence_matrix == 0):
+                warnings.warn(
+                    'Not all sample pairs are covered. One extra clustering will be executed.')
+            else:
+                n += 1
+
+        # ---------Obtain consensus matrix, distance matrix and linkage matrix----------
+        consensus_matrix = co_label_matrix / co_occurrence_matrix
+
+        self.n_runs = n_base_clusterings
+        self.subsampling_portion = subsampling_portion
+        self.label_history = label_history
+        self.error_history = error_history
+        self.consensus_matrix = consensus_matrix
+
+        return consensus_matrix, label_history, error_history
+
+    def hierarchical_clustering(self, eem_dataset, n_clusters, consensus_conversion_power=1):
+        """
+
+        Parameters
+        ----------
+        eem_dataset: EEMDataset
+            EEM dataset to cluster.
+        n_clusters: int
+            Number of clusters.
+        consensus_conversion_power: float
+            The factor adjusting the conversion from consensus matrix (M) to distance matrix (D) used for hierarchical
+            clustering. D_{i,j} = (1 - M_{i,j})^factor. This number influences the gradient of distance with respect
+            to consensus. A smaller number will lead to shaper increase of distance at consensus close to 1.
+
+        Returns
+        -------
+
+        """
+        if self.consensus_matrix is None:
+            raise ValueError('Consensus matrix is not defined.')
+        distance_matrix = (1 - self.consensus_matrix) ** consensus_conversion_power
+        linkage_matrix = linkage(squareform(distance_matrix), method='complete')
+        labels = fcluster(linkage_matrix, n_clusters, criterion='maxclust')
+
+        # Find the minimum threshold distance for forming k clusters
+        # max_d = 0
+        # for i in range(linkage_matrix.shape[0] - n_clusters + 1):
+        #     max_d = max(max_d, linkage_matrix[i, 2])
+
+        linkage_matrix_sorted = linkage_matrix[linkage_matrix[:, 2].argsort()[::-1]]
+        max_d = linkage_matrix_sorted[n_clusters - 2, 2]
+
+        self.threshold_r = max_d
+
+        sorted_indices = np.argsort(labels)
+        consensus_matrix_sorted = self.consensus_matrix[sorted_indices][:, sorted_indices]
+        if eem_dataset.index is not None:
+            eem_index_sorted = [eem_dataset.index[i] for i in sorted_indices]
+            self.index_sorted = eem_index_sorted
+        if eem_dataset.ref is not None:
+            eem_ref_sorted = eem_dataset.ref.iloc[sorted_indices, :]
+            self.ref_sorted = eem_ref_sorted
+        sc = silhouette_score(X=distance_matrix, labels=labels, metric='precomputed')
+        self.silhouette_score = sc
+        self.distance_matrix = distance_matrix
+        self.linkage_matrix = linkage_matrix
+        self.consensus_matrix_sorted = consensus_matrix_sorted
+
+        # ---------Get final clusters and cluster-specific models-------
+        clusters = {}
+        cluster_specific_models = {}
+        for j in set(list(labels)):
+            eem_stack_j = eem_dataset.eem_stack[np.where(labels == j)]
+            if eem_dataset.ref is not None:
+                ref_j = eem_dataset.ref.iloc[np.where(labels == j)]
+            else:
+                ref_j = None
+            if eem_dataset.index is not None:
+                index_j = [eem_dataset.index[k] for k, idx in enumerate(labels) if idx == j]
+            else:
+                index_j = None
+            cluster_j = [j] * eem_stack_j.shape[0]
+            clusters[j] = EEMDataset(eem_stack=eem_stack_j, ex_range=eem_dataset.ex_range,
+                                     em_range=eem_dataset.em_range, ref=ref_j, index=index_j, cluster=cluster_j)
+            model = copy.deepcopy(self.base_model)
+            # model = PARAFAC(rank=self.rank, non_negativity=self.non_negativity, init=self.init,
+            #                 tf_normalization=self.tf_normalization,
+            #                 loadings_normalization=self.loadings_normalization, sort_em=self.sort_em)
+            model.fit(clusters[j])
+            cluster_specific_models[j] = model
+
+        self.labels = labels
+        self.eem_clusters = clusters
+        self.cluster_specific_models = cluster_specific_models
+
+    def predict(self, eem_dataset: EEMDataset):
+        """
+        Fit the cluster-specific models to a given EEM dataset. Each EEM in the EEM dataset is fitted to the model that
+        produce the least RMSE.
+
+        Parameters
+        ----------
+        eem_dataset: EEMDataset
+            The EEM dataset to be predicted.
+
+        Returns
+        -------
+        best_model_label: pd.DataFrame
+            The best-fit model for every EEM.
+        score_all: pd.DataFrame
+            The score fitted with each cluster-specific model.
+        fmax_all: pd.DataFrame
+            The fmax fitted with each cluster-specific model.
+        sample_error: pd.DataFrame
+            The RMSE fitted with each cluster-specific model.
+        """
+
+        sample_error = []
+        score_all = []
+        fmax_all = []
+
+        for label, m in self.cluster_specific_models.items():
+            score_m, fmax_m, eem_stack_re_m = m.predict(eem_dataset)
+            res = m.eem_stack_train - eem_stack_re_m
+            n_pixels = m.eem_stack_train.shape[1] * m.eem_stack_train.shape[2]
+            rmse = sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels)
+            sample_error.append(rmse)
+            score_all.append(score_m)
+            fmax_all.append(fmax_m)
+
+        score_all = pd.DataFrame(np.array(score_all), index=eem_dataset.index,
+                                 columns=list(self.cluster_specific_models.keys()))
+        fmax_all = pd.DataFrame(np.array(fmax_all), index=eem_dataset.index,
+                                columns=list(self.cluster_specific_models.keys()))
+        best_model_idx = np.argmin(sample_error, axis=0)
+        # least_model_errors = np.min(sample_error, axis=0)
+        # score_opt = np.array([score_all[i, j] for j, i in enumerate(best_model_idx)])
+        # fmax_opt = np.array([fmax_all[i, j] for j, i in enumerate(best_model_idx)])
+        best_model_label = np.array([list(self.cluster_specific_models.keys())[idx] for idx in best_model_idx])
+        best_model_label = pd.DataFrame(best_model_label, index=eem_dataset.index, columns=['best-fit model'])
+        sample_error = pd.DataFrame(np.array(sample_error), index=eem_dataset.index,
+                                    columns=list(self.cluster_specific_models.keys()))
+
+        return best_model_label, score_all, fmax_all, sample_error
+
+
+class HED:
+    """
+    Parallel factor analysis (PARAFAC) model for EEM dataset.
+
+    Parameters
+    ----------
+    n_components: int
+        The number of components
+    non_negativity: bool
+        Whether to apply the non-negativity constraint
+    solver: str, {'mu', 'hals'}
+        Optimizer to for PARAFAC. 'mu' for multiplicative update optimizer, 'hals' for hierarchical alternating least
+        square. 'hals' can only be applied together with non-negativity contraint.
+    init: str or tensorly.CPTensor, {‘svd’, ‘random’, CPTensor}
+        Type of factor matrix initialization
+    tf_normalization: bool
+        Whether to normalize the EEMs by the total fluorescence in PARAFAC model establishment
+    loadings_normalization: str or None, {'sd', 'maximum', None}
+        Type of normalization applied to loadings. if 'sd' is passed, the standard deviation will be normalized
+        to 1. If 'maximum' is passed, the maximum will be normalized to 1. The scores will be adjusted accordingly.
+    sort_components_by_em: bool
+        Whether to sort components by emission peak position from lowest to highest. If False is passed, the
+        components will be sorted by the contribution to the total variance.
+
+    Attributes
+    ----------
+    score: pandas.DataFrame
+        Score table.
+    ex_loadings: pandas.DataFrame
+        Excitation loadings table.
+    em_loadings: pandas.DataFrame
+        Emission loadings table.
+    fmax: pandas.DataFrame
+        Fmax table.
+    components: np.ndarray
+        PARAFAC components.
+    cptensors: tensorly CPTensor
+        The output of PARAFAC in the form of tensorly CPTensor.
+    eem_stack_train: np.ndarray
+        EEMs used for PARAFAC model establishment.
+    eem_stack_reconstructed: np.ndarray
+        EEMs reconstructed by the established PARAFAC model.
+    ex_range: np.ndarray
+        Excitation wavelengths.
+    em_range: np.ndarray
+        Emission wavelengths.
+    """
+
+    def __init__(self, paraent_model, child_model):
+        return
+

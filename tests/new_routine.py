@@ -340,7 +340,7 @@ model = EEMNMF(
         **param
     )
 
-eem_dataset_clean, outlier_indices, outlier_indices_history = model.robust_fit(
+eem_dataset_clean, outlier_indices, outlier_indices_history = model.cv_outlier_detection(
     dataset_train, zscore_threshold=3, max_iter_outlier_removal=1, n_splits=6)
 
 # model.gamma_H = 3
