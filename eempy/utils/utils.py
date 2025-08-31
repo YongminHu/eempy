@@ -137,3 +137,52 @@ def apply_2D_laplacian(h_k, L_ex, L_em, b, c):
     term_ex = L_ex.dot(Hmat)
     term_em = Hmat.dot(L_em.T)
     return (term_ex + term_em).ravel()
+
+
+def random_split_columns(arr, splits_dict, random_state=42):
+    """
+    Splits specified columns of a NumPy array into n_splits random components,
+    preserving the original column order. Each set of split values replaces the
+    original column and sums row-wise to the original value.
+
+    Parameters:
+    arr (np.ndarray): 2D array of shape (n_samples, n_features).
+    columns (list): List of column indices to split.
+    n_splits (int): Number of splits per column.
+    seed (int, optional): Random seed for reproducibility.
+
+    Returns:
+    np.ndarray: Modified array with split columns in original positions.
+    """
+    rng = np.random.default_rng(random_state)
+    arr = np.asarray(arr)
+    n_rows, n_cols = arr.shape
+    splits_dict = dict(sorted(splits_dict.items()))
+    result_cols = []
+    current_col = 0
+    for col, n in splits_dict.items():
+        if n <= 1:
+            n = 1
+        # Append untouched columns before this split column
+        while current_col < col:
+            result_cols.append(arr[:, current_col][:, np.newaxis])
+            current_col += 1
+
+        # Split the column
+        col_vals = arr[:, col]
+        rand_fracs = rng.random((n_rows, n))
+        rand_fracs /= rand_fracs.sum(axis=1, keepdims=True)
+        split_vals = rand_fracs * col_vals[:, np.newaxis]
+
+        # Append split columns
+        for i in range(n):
+            result_cols.append(split_vals[:, i][:, np.newaxis])
+
+        current_col += 1  # Skip the original column
+
+    # Append remaining untouched columns
+    while current_col < n_cols:
+        result_cols.append(arr[:, current_col][:, np.newaxis])
+        current_col += 1
+
+    return np.hstack(result_cols)
