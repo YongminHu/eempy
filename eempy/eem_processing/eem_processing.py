@@ -4955,11 +4955,9 @@ class HED:
         self.random_state = random_state
 
         # -----------Attributes-------------
-        self.eem_stack_unfolded = None
         self.fmax = None
         self.nnls_fmax = None
         self.components = None
-        self.reconstruction_error = None
         self.eem_stack_train = None
         self.eem_stack_reconstructed = None
         self.ex_range = None,
@@ -5008,5 +5006,15 @@ class HED:
             gamma_W=gamma_W,
         )
         model_child.fit(eem_dataset)
+        self.fmax = model_child.fmax
+        self.nnls_fmax = model_child.nnls_fmax
+        self.components = model_child.components
+        self.eem_stack_train = eem_dataset
+        self.eem_stack_reconstructed = model_child.eem_stack_reconstructed
+        self.ex_range = eem_dataset.ex_range
+        self.em_range = eem_dataset.em_range
+        self.beta = model_child.beta
+
+
 
 
