@@ -23,7 +23,7 @@ np.random.seed(42)
 eem_dataset_path = \
     "C:/PhD\Fluo-detect/_data/_greywater/2024_quenching/sample_276_ex_274_em_310_mfem_5_gaussian_rsu_rs_interpolated.json"
 eem_dataset = read_eem_dataset_from_json(eem_dataset_path)
-eem_dataset.median_filter(footprint=(5, 5), inplace=True)
+eem_dataset.median_filter(window_size=(5, 5), inplace=True)
 eem_dataset.cutting(ex_min=274, ex_max=500, em_min=312, em_max=500, inplace=True)
 # eem_dataset.raman_scattering_removal(width=15, interpolation_method='nan', copy=False)
 # eem_dataset.eem_stack = np.nan_to_num(eem_dataset.eem_stack, copy=True, nan=0)

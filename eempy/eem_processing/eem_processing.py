@@ -1188,13 +1188,13 @@ class EEMDataset:
             return eem_dataset_new
 
 
-    def median_filter(self, footprint=(3, 3), mode='reflect', inplace=True):
+    def median_filter(self, window_size=(3, 3), mode='reflect', inplace=True):
         """
         Apply median filtering to an EEM.
 
         Parameters
         ----------
-        footprint: tuple of two integers
+        window_size: tuple of two integers
             Gives the shape that is taken from the input array, at every element position, to define the input to the filter
             function.
         mode: str, {‘reflect’, ‘constant’, ‘nearest’, ‘mirror’, ‘wrap’}
@@ -1207,7 +1207,7 @@ class EEMDataset:
         eem_dataset_new: EEMDataset
             The processed EEM dataset.
         """
-        eem_stack_filtered = process_eem_stack(self.eem_stack, eem_median_filter, footprint=footprint, mode=mode)
+        eem_stack_filtered = process_eem_stack(self.eem_stack, eem_median_filter, window_size=window_size, mode=mode)
         if inplace:
             self.eem_stack = eem_stack_filtered
             return self

@@ -1328,7 +1328,7 @@ def on_build_eem_dataset(n_clicks,
 
     # Median filter
     if all([median_filter, median_filter_ex, median_filter_em, median_filter_mode]):
-        eem_dataset.median_filter(footprint=(median_filter_ex, median_filter_em), mode=median_filter_mode, inplace=True)
+        eem_dataset.median_filter(window_size=(median_filter_ex, median_filter_em), mode=median_filter_mode, inplace=True)
         steps_track += ["- Median filter\n"]
 
     # Raman scattering removal
