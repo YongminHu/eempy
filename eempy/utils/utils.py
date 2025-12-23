@@ -31,32 +31,6 @@ def dichotomy_search(nums, target):
             end = mid - 1
 
 
-# def euclidean_dist_for_tuple(t1, t2):
-#     dist = 0
-#     for x1, x2 in zip(t1, t2):
-#         dist += (x1 - x2) ** 2
-#     return dist ** 0.5
-#
-#
-# def matrix_dtype_to_uint8(m):
-#     m_r = np.copy(m)
-#     m_r[m_r < 0] = 0
-#     m_scaled = np.interp(m_r, (0, m_r.max()), (0, 255))
-#     m_scaled = m_scaled.astype(np.uint8)
-#     return m_scaled
-
-
-# def datetime_to_str(datetime_list, output=False, filename='timestamp.txt'):
-#     tsstr = [datetime_list[i].strftime("%Y-%m-%d-%H-%M") for i in range(len(datetime_list))]
-#     if output:
-#         file = open(filename, 'w')
-#         for fp in tsstr:
-#             file.write(str(fp))
-#             file.write('\n')
-#         file.close()
-#     return tsstr
-
-
 def dynamic_time_warping(x, y):
     # Create a cost matrix with initial values set to infinity
     cost_matrix = np.ones((len(x), len(y))) * np.inf
@@ -86,17 +60,6 @@ def dynamic_time_warping(x, y):
     return aligned_x, aligned_y
 
 
-# def flip_legend_order(items, ncol):
-#     return itertools.chain(*[items[i::ncol] for i in range(ncol)])
-#
-#
-# def get_indices_smallest_to_largest(l):
-#     indexed_list = [(value, index) for index, value in enumerate(l)]
-#     sorted_list = sorted(indexed_list, key=lambda x: x[0])
-#     indices = [index for _, index in sorted_list]
-#     return indices
-
-
 def str_string_to_list(input_string):
     try:
         # Split the input string by commas and remove any leading/trailing spaces
@@ -114,28 +77,6 @@ def num_string_to_list(input_string):
     except ValueError:
         # Handle invalid input (e.g., non-numeric characters)
         return None
-
-#
-# def second_difference_matrix(n):
-#     """n×n discrete 2nd-difference (Neumann) matrix."""
-#     e = np.ones(n)
-#     L = sp.diags([e, -2*e, e], offsets=[-1, 0, 1], shape=(n,n))
-#     L = L.tolil()
-#     # one-sided at boundaries
-#     L[0,0], L[0,1] = 1, -1
-#     L[-1,-1], L[-1,-2] = 1, -1
-#     return L.tocsr()
-#
-#
-# def apply_2D_laplacian(h_k, L_ex, L_em, b, c):
-#     """
-#     Apply (L_ex ⊗ I + I ⊗ L_em) to vector h_k of length b*c.
-#     """
-#     hk_arr = np.asarray(h_k)
-#     Hmat = hk_arr.reshape(b, c)
-#     term_ex = L_ex.dot(Hmat)
-#     term_em = Hmat.dot(L_em.T)
-#     return (term_ex + term_em).ravel()
 
 
 def random_split_columns(arr, splits_dict, random_state=42):
@@ -185,15 +126,6 @@ def random_split_columns(arr, splits_dict, random_state=42):
         current_col += 1
 
     return np.hstack(result_cols)
-
-
-def masked_unfolding_dot_khatri_rao(tensor, factors, mode, mask):
-    masked_tensor = tl.tensor(tensor * mask, dtype=float)
-    return tl.dot(unfold(masked_tensor, mode), tl.tenalg.khatri_rao(factors[1], skip_matrix=mode))
-
-
-def masked_tensor_norm_error(tensor, reconstruction, mask):
-    return tl.norm((tensor - reconstruction) * mask)
 
 
 def eem_stack_to_2d(eem_stack):

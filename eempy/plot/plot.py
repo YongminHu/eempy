@@ -615,7 +615,7 @@ def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()
         return fig
 
 
-def plot_fmax(table, component_labels=None, display=True, yaxis_title='Fmax', labels=None):
+def plot_score(table, component_labels=None, display=True, yaxis_title='Fmax', labels=None):
     color_map_components = px.colors.qualitative.Plotly
     if labels is not None:
         color_map_clusters = px.colors.qualitative.Dark24
