@@ -1,8 +1,7 @@
 """Solver routines for excitation–emission matrix (EEM) decomposition.
 
-This module provides numerical solvers used to decompose an EEM stack into a
-small number of non-negative components using matrix (NMF) and tensor (CP/PARAFAC)
-factorization models.
+This module provides numerical solvers used to decompose an EEM stack into a small number of non-negative components
+using matrix (NMF) and tensor (CP/PARAFAC) factorization models.
 
 Implemented features include:
 - HALS/ALS-style NNLS updates for NMF and CP factors,
@@ -31,9 +30,8 @@ def masked_unfolding_dot_khatri_rao(tensor, factors, mode, mask):
     """
     Compute a masked unfolded tensor times the Khatri–Rao product (MTTKRP).
 
-    This is a helper for masked CP/PARAFAC updates. It first applies an elementwise
-    mask to the tensor (typically 0/1), unfolds the masked tensor along `mode`, and
-    right-multiplies by the Khatri–Rao product of the other factor matrices.
+    This is a helper for PARAFAC updates with mask. It first applies an elementwise mask to the tensor, unfolds the
+    masked tensor along `mode`, and right-multiplies by the Khatri–Rao product of the other factor matrices.
 
     Parameters
     ----------
@@ -81,15 +79,14 @@ def unfolded_eem_stack_initialization(M, rank, method='nndsvd'):
     """
     Initialize non-negative matrix factors from an unfolded EEM stack.
 
-    Given a non-negative matrix `M` (typically an unfolding of a 3D EEM stack),
-    this routine produces an initialization `(W, H)` suitable for NMF / HALS updates.
+    Given a non-negative matrix `M` (typically an unfolding of a 3D EEM stack), this routine produces an
+    initialization `(U, V)` suitable for NMF / HALS updates.
 
     Supported initializations include:
-    - `ordinary_nmf` : scikit-learn NMF with NNDSVD init.
+    - `ordinary_nmf` : U, V generated through scikit-learn NMF with NNDSVD init.
     - `svd` : absolute-value SVD-based factors (non-negative by clipping).
-    - `nndsvd`, `nndsvda`, `nndsvdar` : NNDSVD variants (Boutsidis & Gallopoulos),
-      where zeros are kept (`nndsvd`), filled with the mean (`nndsvda`), or filled
-      with small random values (`nndsvdar`).
+    - `nndsvd`, `nndsvda`, `nndsvdar` : NNDSVD variants (Boutsidis & Gallopoulos), where zeros are kept (`nndsvd`),
+    filled with the mean (`nndsvda`), or filled with small random values (`nndsvdar`).
 
     Parameters
     ----------
@@ -102,16 +99,21 @@ def unfolded_eem_stack_initialization(M, rank, method='nndsvd'):
 
     Returns
     -------
-    W : np.ndarray, shape (m, rank)
+    U : np.ndarray, shape (m, rank)
         Left factor initialization.
-    H : np.ndarray, shape (rank, n)
+    V : np.ndarray, shape (rank, n)
         Right factor initialization.
+
+    References
+    -------
+    [1] Boutsidis, Christos, and Efstratios Gallopoulos. "SVD based initialization: A head start for nonnegative matrix
+    factorization." Pattern recognition 41.4 (2008): 1350-1362.
     """
     if method == 'ordinary_nmf':
         nmf_model = NMF(n_components=rank, init='nndsvd')
-        W = nmf_model.fit_transform(M)
-        H = nmf_model.components_
-        return W, H
+        U = nmf_model.fit_transform(M)
+        V = nmf_model.components_
+        return U, V
     # Step 1: Compute SVD of V
     U, S, VT = np.linalg.svd(M, full_matrices=False)  # SVD decomposition
 
@@ -121,15 +123,15 @@ def unfolded_eem_stack_initialization(M, rank, method='nndsvd'):
     VT_r = VT[:rank, :]
 
     if method == 'svd':
-        W = np.abs(U_r) * np.sqrt(S_r)[None, :]
-        H = np.sqrt(S_r)[:, None] * np.abs(VT_r)
-        W = np.clip(W, a_min=1e-6, a_max=None)
-        H = np.clip(H, a_min=1e-6, a_max=None)
+        U = np.abs(U_r) * np.sqrt(S_r)[None, :]
+        V = np.sqrt(S_r)[:, None] * np.abs(VT_r)
+        U = np.clip(U, a_min=1e-6, a_max=None)
+        V = np.clip(V, a_min=1e-6, a_max=None)
 
     else:
         # Step 3: Initialize W and H
-        W = np.zeros((M.shape[0], rank))
-        H = np.zeros((rank, M.shape[1]))
+        U = np.zeros((M.shape[0], rank))
+        V = np.zeros((rank, M.shape[1]))
 
         for k in range(rank):
             u_k = U_r[:, k]
@@ -147,23 +149,23 @@ def unfolded_eem_stack_initialization(M, rank, method='nndsvd'):
 
             # Assign components
             if u_norm_pos * v_norm_pos > 0:
-                W[:, k] = np.sqrt(S_r[k]) * (u_k_pos / u_norm_pos)
-                H[k, :] = np.sqrt(S_r[k]) * (v_k_pos / v_norm_pos)
+                U[:, k] = np.sqrt(S_r[k]) * (u_k_pos / u_norm_pos)
+                V[k, :] = np.sqrt(S_r[k]) * (v_k_pos / v_norm_pos)
             else:
-                W[:, k] = np.sqrt(S_r[k]) * (u_k_neg / np.linalg.norm(u_k_neg))
-                H[k, :] = np.sqrt(S_r[k]) * (v_k_neg / np.linalg.norm(v_k_neg))
+                U[:, k] = np.sqrt(S_r[k]) * (u_k_neg / np.linalg.norm(u_k_neg))
+                V[k, :] = np.sqrt(S_r[k]) * (v_k_neg / np.linalg.norm(v_k_neg))
 
         # Step 4: Handle zero entries
         if method == 'nndsvd':
             pass
         if method == 'nndsvda':
-            W[W == 0] = np.mean(M)
-            H[H == 0] = np.mean(M)
+            U[U == 0] = np.mean(M)
+            V[V == 0] = np.mean(M)
         if method == 'nndsvdar':
-            W[W == 0] = np.random.uniform(0, np.mean(M) / 100, W[W == 0].shape)
-            H[H == 0] = np.random.uniform(0, np.mean(M) / 100, H[H == 0].shape)
+            U[U == 0] = np.random.uniform(0, np.mean(M) / 100, U[U == 0].shape)
+            V[V == 0] = np.random.uniform(0, np.mean(M) / 100, V[V == 0].shape)
 
-    return W, H
+    return U, V
 
 
 def hals_prior_nnls(
@@ -182,22 +184,23 @@ def hals_prior_nnls(
     """
     HALS-style non-negative least squares update with optional priors and elastic-net.
 
-    This routine updates a factor matrix `V` (shape `(rank, n_features)`) in a
-    least-squares subproblem of the form used in NMF and CP-ALS/HALS:
+    This routine updates a factor matrix `V` (with shape `(rank, n_features)`) in a least-squares subproblem in NMF and
+    PARAFAC:
 
         min_{V >= 0}  1/2 || UtM - UtU @ V ||_F^2
-                     + sum_k (gamma_k/2) ||mask_k * (V_k - p_k)||_2^2
-                     + alpha * [ l1_ratio * ||V||_1 + (1 - l1_ratio)/2 * ||V||_F^2 ]
+                      + sum_k (gamma_k/2) ||mask_k * (V_k - p_k)||_2^2
+                      + alpha * [ l1_ratio * ||V||_1 + (1 - l1_ratio)/2 * ||V||_F^2 ]
 
     where:
-    - `UtM` corresponds to UᵀM (or a mode-wise MTTKRP in CP),
+    - `UtM` corresponds to UᵀM (or a mode-wise MTTKRP in PARAFAC),
     - `UtU` corresponds to UᵀU (Gram matrix),
-    - `prior_dict[k] = p_k` is an optional per-component prior vector for row `k`,
-      with NaNs allowed to indicate "no prior" at specific entries,
-    - `gamma` can be a scalar applied to all prior components or a dict `{k: gamma_k}`.
+    - `prior_dict[k] = p_k` is an optional per-component prior vector for row `k`, with NaNs allowed to indicate "no
+    prior" at specific entries,
+    - `gamma` can be a scalar applied to all prior components or a dict `{k: gamma_k}` to specify gamma values for
+    different priors.
 
-    The update is performed row-by-row (FastHALS residual update), and can keep
-    selected components fixed (useful when seeding or freezing known spectra).
+    The update is performed row-by-row (FastHALS residual update), and can keep selected components fixed (useful
+    when seeding or freezing known spectra).
 
     Parameters
     ----------
@@ -206,18 +209,17 @@ def hals_prior_nnls(
     UtU : np.ndarray, shape (rank, rank)
         Gram matrix term (e.g., UᵀU).
     prior_dict : dict[int, array-like], optional
-        Mapping from component index `k` to a prior vector of length `n`. NaNs are
-        treated as "no prior" for those entries.
+        Mapping from component index `k` to a prior vector of length `n`. NaNs are treated as "no prior" for those
+        entries.
     gamma : float or dict[int, float], optional
-        Prior strength. If a float is provided, it is applied to all keys in
-        `prior_dict`. If a dict is provided, strengths are component-specific.
+        Prior strength. If a float is provided, it is applied to all keys in `prior_dict`. If a dict is provided,
+        strengths are component-specific.
     alpha : float, optional
         Overall elastic-net strength (0 disables elastic-net).
     l1_ratio : float, optional
         Elastic-net mixing parameter in [0, 1]. 0 = pure L2, 1 = pure L1.
     V : np.ndarray, shape (rank, n), optional
-        Initial value for `V`. If None, a least-squares solution is computed and
-        clipped to be positive.
+        Initial value for `V`. If None, a least-squares solution is computed and clipped to be positive.
     max_iter : int, optional
         Maximum number of HALS iterations.
     tol : float, optional
@@ -331,10 +333,9 @@ def cp_hals_prior(
         mask=None,
 ):
     """
-    Non-negative CP/PARAFAC decomposition for EEM stacks using HALS with priors and masking.
+    Non-negative PARAFAC decomposition for EEM stacks using HALS with optional priors and masking.
 
-    This solver factorizes a 3-way tensor `X` (typically an excitation–emission matrix
-    stack with shape `(n_samples, n_ex, n_em)`) into non-negative CP factors:
+    This solver factorizes a 3-way tensor `X` into non-negative PARAFAC factors:
 
         X ≈ [[A, B, C]]
 
@@ -347,10 +348,8 @@ def cp_hals_prior(
     - Elementwise masking (for ignoring NaNs or predefined regions).
     - Quadratic priors on any factor (A/B/C), with NaNs allowed to skip entries.
     - Elastic-net regularization on any factor (L1/L2 mix).
-    - A ratio constraint on paired rows of A: A[idx_top] ≈ beta * A[idx_bot],
-      controlled by `lam` and estimated per component (`beta`).
-    - Component alignment to reference components using the Hungarian algorithm
-      (`prior_ref_components`).
+    - A ratio constraint on paired rows of A: A[idx_top] ≈ beta * A[idx_bot], controlled by `lam` and estimated per
+    component (`beta`).
 
     Parameters
     ----------
@@ -372,8 +371,8 @@ def cp_hals_prior(
     gamma_C : float or dict[int, float], optional
         Prior weight(s) for `C`.
     prior_ref_components : dict[int, array-like], optional
-        Reference components used to permute factors for consistent component order.
-        Each value should be a flattened (J*K,) reference spectrum (e.g., outer(B,C)).
+        Reference components used to permute factors for consistent component order. Each value should be a
+        flattened (J*K,) reference spectrum (e.g., outer(B,C)).
     alpha_A : float, optional
         Elastic-net strength for `A`.
     alpha_B : float, optional
@@ -418,8 +417,7 @@ def cp_hals_prior(
     C : np.ndarray, shape (K, rank)
         Emission factor loadings.
     beta : np.ndarray or None, shape (rank,)
-        Estimated per-component ratio between paired sample rows when the ratio
-        penalty is enabled; otherwise None.
+        Estimated per-component ratio between paired sample rows when the ratio penalty is enabled; otherwise None.
     """
     # Ensure tensor
     X = tl.tensor(tensor, dtype=float)
@@ -648,12 +646,12 @@ def replace_factor_with_prior(factors, prior, replaced_mode, replaced_rank="best
     """
     Replace a single component in a two-factor decomposition with a prior vector.
 
-    This helper is primarily used for matrix factorization models (e.g., NMF on an
-    unfolded EEM or a component matrix) where `factors` contains two factor matrices.
-    It can (i) select which component to replace by maximizing correlation with the
-    prior ("best-fit"), (ii) directly replace a specified component, and (iii)
-    optionally project the prior to the other factor to keep the reconstruction
-    consistent.
+    This helper is primarily used for NMF/PARAFAC initialization, where a loading is replaced by a prior vector. This
+    is particularly useful when the user has prior knowledge of some of the factors while keeping other unknown
+    factors initialized via standard methods. It can (i) select which component to replace by maximizing correlation
+    with the prior ("best-fit"), (ii) directly replace a specified component, and (iii) optionally project the prior
+    to the other factor to keep the reconstruction consistent. E.g., when replacing a loading in one mode,
+    the corresponding loading in the other mode is updated via a non-negative least-squares projection.
 
     Notes
     -----
@@ -665,20 +663,19 @@ def replace_factor_with_prior(factors, prior, replaced_mode, replaced_rank="best
     Parameters
     ----------
     factors : list[np.ndarray]
-        Factor matrices for a rank-`r` matrix model. Expected shapes are
-        `[F0, F1]` where `F0.shape = (m, r)` and `F1.shape = (n, r)`.
+        Factor matrices for a rank-`r` matrix model. Expected shapes are `[F0, F1]` where `F0.shape = (m,
+        r)` and `F1.shape = (n, r)`.
     prior : array-like, shape (m,) or (n,)
         Prior vector to insert into the selected component of `factors[replaced_mode]`.
     replaced_mode : int
         Which factor to modify: 0 or 1.
     replaced_rank : int or {"best-fit"}, optional
-        Component index to replace. If "best-fit", the component with the highest
-        Pearson correlation to `prior` is replaced (excluding `frozen_rank`).
+        Component index to replace. If "best-fit", the component with the highest Pearson correlation to `prior` is
+        replaced (excluding `frozen_rank`).
     frozen_rank : int or None, optional
         Component index that must not be replaced (useful when one component is fixed).
     project_prior : bool, optional
-        If True, also update the complementary factor column by projecting the prior
-        onto the residual (requires `X`).
+        If True, also update the complementary factor column by projecting the prior onto the residual (requires `X`).
     X : np.ndarray, optional
         Data matrix being factorized, shape (m, n). Required if `project_prior=True`.
     show_replaced_rank : bool, optional
@@ -740,9 +737,8 @@ def hals_column_with_ratio(
     """
     HALS-style update for one column with a paired-row ratio penalty.
 
-    This update is designed for sample-mode factors (e.g., `W` in NMF or `A` in CP)
-    when the dataset contains paired samples (top/bottom) that are expected to follow
-    a component-wise ratio:
+    This update is designed for sample-mode factors (e.g., `W` in NMF or `A` in PARAFAC) when the dataset contains
+    paired samples (top/bottom) that are expected to follow a component-wise ratio:
 
         w[top_i] ≈ beta_k * w[bot_i]
 
@@ -760,8 +756,8 @@ def hals_column_with_ratio(
     Rk : np.ndarray, shape (m,)
         Current HALS residual for component `k` (with the k-th contribution restored).
     hk_norm2 : float
-        Squared norm of the corresponding component in the other factor(s)
-        (i.e., the diagonal element `d` of the Gram matrix).
+        Squared norm of the corresponding component in the other factor(s) (i.e., the diagonal element `d` of the
+        Gram matrix).
     beta_k : float
         Current ratio estimate for component `k`.
     lam : float
@@ -845,13 +841,12 @@ def update_beta(
     """
     Estimate per-component ratios between paired sample rows.
 
-    Given a concentration / score matrix `W` and paired row indices (`idx_top`, `idx_bot`),
-    this function estimates a ratio `beta[j]` for each component `j` such that:
+    Given a factor matrix `W` and paired row indices (`idx_top`, `idx_bot`), this function estimates a ratio
+     `beta[j]` for each component `j` such that:
 
         W[idx_top, j] ≈ beta[j] * W[idx_bot, j]
 
-    The least-squares solution is computed independently per component and then
-    clamped to a user-provided interval.
+    The least-squares solution is computed independently per component and then clamped to a user-provided interval.
 
     Parameters
     ----------
@@ -930,16 +925,15 @@ def nmf_hals_prior(
         random_state=None
 ):
     """
-    Non-negative matrix factorization (NMF) with HALS updates, priors, and optional EEM rank-1 components.
+    Non-negative matrix factorization (NMF) using HALS with optional priors and regularizations.
 
     This solver decomposes a non-negative matrix `X` into:
 
         X ≈ W @ H
 
-    where `W` (m × rank) contains sample scores / concentrations and `H` (rank × n)
-    contains component spectra/features. It is designed for EEM decomposition where
-    `X` can be an unfolded EEM stack and where components may be constrained by
-    priors or by a paired-sample ratio constraint.
+    where `W` (m × rank) contains sample scores / concentrations and `H` (rank × n) contains component
+    spectra/features. It is designed for EEM decomposition where `X` can be an unfolded EEM stack and where
+    components may be constrained by priors or by a paired-sample ratio constraint.
 
     Supported options include:
     - Quadratic priors on `W` and/or `H` (NaNs skip entries).
@@ -983,9 +977,9 @@ def nmf_hals_prior(
     l1_ratio : float, optional
         Elastic-net mixing parameter in [0, 1].
     idx_top : sequence[int], optional
-        Row indices in `W` for the paired "top/original" samples.
+        Row indices in `W` for the paired "top" samples.
     idx_bot : sequence[int], optional
-        Row indices in `W` for the paired "bottom/perturbed" samples.
+        Row indices in `W` for the paired "bottom" samples.
     lam : float or dict[int, float], optional
         Ratio-penalty weight(s). Enable ratio constraint when provided together
         with `idx_top` and `idx_bot`.
