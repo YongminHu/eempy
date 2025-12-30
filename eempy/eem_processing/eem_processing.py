@@ -2302,7 +2302,7 @@ class PARAFAC:
     """
     Parallel factor analysis (PARAFAC) model for an excitation–emission matrix (EEM) dataset.
 
-    This class fits a low-rank CP/PARAFAC decomposition to a 3D EEM stack with optional constraints and
+    This class fits a low-rank PARAFAC decomposition to a 3D EEM stack with optional constraints and
     regularization.
 
     Parameters
