@@ -168,7 +168,7 @@ def unfolded_eem_stack_initialization(M, rank, method='nndsvd'):
     return U, V
 
 
-def hals_prior_nnls(
+def hals_nnls(
         UtM,
         UtU,
         prior_dict=None,
@@ -305,7 +305,7 @@ def hals_prior_nnls(
     return V
 
 
-def cp_hals_prior(
+def parafac_with_prior_hals(
         tensor,
         rank,
         prior_dict_A=None,
@@ -314,7 +314,7 @@ def cp_hals_prior(
         gamma_A=0,
         gamma_B=0,
         gamma_C=0,
-        prior_ref_components=None,
+        ref_components=None,
         alpha_A=0,
         alpha_B=0,
         alpha_C=0,
@@ -345,7 +345,7 @@ def cp_hals_prior(
     - `C` (n_em × rank) contains emission loadings.
 
     Optional features supported by this implementation:
-    - Elementwise masking (for ignoring NaNs or predefined regions).
+    - Sparse elementwise masking.
     - Quadratic priors on any factor (A/B/C), with NaNs allowed to skip entries.
     - Elastic-net regularization on any factor (L1/L2 mix).
     - A ratio constraint on paired rows of A: A[idx_top] ≈ beta * A[idx_bot], controlled by `lam` and estimated per
@@ -370,7 +370,7 @@ def cp_hals_prior(
         Prior weight(s) for `B`.
     gamma_C : float or dict[int, float], optional
         Prior weight(s) for `C`.
-    prior_ref_components : dict[int, array-like], optional
+    ref_components : dict[int, array-like], optional
         Reference components used to permute factors for consistent component order. Each value should be a
         flattened (J*K,) reference spectrum (e.g., outer(B,C)).
     alpha_A : float, optional
@@ -463,13 +463,13 @@ def cp_hals_prior(
         prior_dict_C = {}
     if prior_dict_A is None:
         prior_dict_A = {}
-    elif prior_ref_components is not None:
+    elif ref_components is not None:
         H = np.zeros([rank, B.shape[0] * C.shape[0]])
         for r in range(rank):
             component = np.array([B[:, r]]).T.dot(np.array([C[:, r]]))
             H[r, :] = component.reshape(-1)
-        prior_keys = list(prior_ref_components.keys())
-        queries = np.array([prior_ref_components[k] for k in prior_keys])
+        prior_keys = list(ref_components.keys())
+        queries = np.array([ref_components[k] for k in prior_keys])
         cost_mat = cdist(queries, H, metric='correlation')
         # run Hungarian algorithm
         query_idx, h_idx = linear_sum_assignment(cost_mat)
@@ -513,7 +513,7 @@ def cp_hals_prior(
         UtU = (C.T @ C) * (A.T @ A)
         if np.isnan(UtU).any():
             print(f"UtU contains NaN in {iteration}")
-        B = hals_prior_nnls(
+        B = hals_nnls(
             UtM=UtM,
             UtU=UtU,
             prior_dict=prior_dict_B,
@@ -537,7 +537,7 @@ def cp_hals_prior(
         UtU = (B.T @ B) * (A.T @ A)  # shape (rank, rank)
         if np.isnan(UtU).any():
             print(f"UtU contains NaN in {iteration}")
-        C = hals_prior_nnls(
+        C = hals_nnls(
             UtM=UtM,
             UtU=UtU,
             prior_dict=prior_dict_C,
@@ -564,7 +564,7 @@ def cp_hals_prior(
                     if j != k:
                         Rk -= UtU[k, j] * A[:, j]
                 d = UtU[k, k]
-                A[:, k] = hals_column_with_ratio(
+                A[:, k] = update_column_in_hals(
                     Rk=Rk,
                     hk_norm2=d,
                     beta_k=beta[k],
@@ -580,7 +580,7 @@ def cp_hals_prior(
                 )
 
             # --- Beta‐step (closed form) ---
-            beta = update_beta(A, idx_top=idx_top, idx_bot=idx_bot, eps=eps)
+            beta = update_beta_in_hals(A, idx_top=idx_top, idx_bot=idx_bot, eps=eps)
 
         else:
             # Update A:
@@ -590,7 +590,7 @@ def cp_hals_prior(
             UtU = (C.T @ C) * (B.T @ B)
             if np.isnan(UtU).any():
                 print(f"UtU contains NaN in {iteration}")
-            A = hals_prior_nnls(
+            A = hals_nnls(
                 UtM=UtM,
                 UtU=UtU,
                 prior_dict=prior_dict_A,
@@ -613,13 +613,13 @@ def cp_hals_prior(
             break
         prev_error = err
 
-    if prior_ref_components is not None:
+    if ref_components is not None:
         H = np.zeros([rank, B.shape[0] * C.shape[0]])
         for r in range(rank):
             component = np.array([B[:, r]]).T.dot(np.array([C[:, r]]))
             H[r, :] = component.reshape(-1)
-        prior_keys = list(prior_ref_components.keys())
-        queries = np.array([prior_ref_components[k] for k in prior_keys])
+        prior_keys = list(ref_components.keys())
+        queries = np.array([ref_components[k] for k in prior_keys])
         cost_mat = cdist(queries, H, metric='correlation')
         # run Hungarian algorithm
         query_idx, h_idx = linear_sum_assignment(cost_mat)
@@ -720,7 +720,7 @@ def replace_factor_with_prior(factors, prior, replaced_mode, replaced_rank="best
         return factors
 
 
-def hals_column_with_ratio(
+def update_column_in_hals(
         Rk,
         hk_norm2,
         beta_k,
@@ -831,7 +831,7 @@ def hals_column_with_ratio(
     return w_new
 
 
-def update_beta(
+def update_beta_in_hals(
         W: np.ndarray,
         idx_top,
         idx_bot,
@@ -890,7 +890,7 @@ def update_beta(
     return np.clip(beta, beta_min, beta_max)
 
 
-def nmf_hals_prior(
+def nmf_with_prior_hals(
         X,
         rank,
         prior_dict_H=None,
@@ -898,7 +898,7 @@ def nmf_hals_prior(
         prior_dict_A=None,
         prior_dict_B=None,
         prior_dict_C=None,
-        prior_ref_components=None,
+        ref_components=None,
         gamma_W=0,
         gamma_H=0,
         gamma_A=0,
@@ -960,7 +960,7 @@ def nmf_hals_prior(
         Priors for CP excitation factor `B` when using rank-1 components.
     prior_dict_C : dict[int, array-like], optional
         Priors for CP emission factor `C` when using rank-1 components.
-    prior_ref_components : dict[int, array-like], optional
+    ref_components : dict[int, array-like], optional
         Reference components used to permute the solution for consistent ordering.
     gamma_W : float or dict[int, float], optional
         Prior weight(s) for `W`.
@@ -1044,9 +1044,9 @@ def nmf_hals_prior(
         raise ValueError(f"Unknown init {init}")
 
     # Default empty priors
-    if prior_ref_components is not None:
-        prior_keys = list(prior_ref_components.keys())
-        queries = np.array([prior_ref_components[k] for k in prior_keys])
+    if ref_components is not None:
+        prior_keys = list(ref_components.keys())
+        queries = np.array([ref_components[k] for k in prior_keys])
         cost_mat = cdist(queries, H, metric='correlation')
         # run Hungarian algorithm
         query_idx, h_idx = linear_sum_assignment(cost_mat)
@@ -1136,7 +1136,7 @@ def nmf_hals_prior(
     def one_step_nmf(X0, W0, H0, beta0, prior_dict_W0, prior_dict_H0, fixed_components_specific):
         UtM_H = tl.dot(tl.transpose(W0), X0)
         UtU_H = tl.dot(tl.transpose(W0), W0)
-        H0 = hals_prior_nnls(
+        H0 = hals_nnls(
             UtM=UtM_H,
             UtU=UtU_H,
             prior_dict=prior_dict_H0,
@@ -1160,7 +1160,7 @@ def nmf_hals_prior(
                     if j != k:
                         Rk -= UtU_W[k, j] * W0[:, j]
                 d = UtU_W[k, k]
-                W0[:, k] = hals_column_with_ratio(
+                W0[:, k] = update_column_in_hals(
                     Rk=Rk,
                     hk_norm2=d,
                     beta_k=beta0[k],
@@ -1175,12 +1175,12 @@ def nmf_hals_prior(
                     eps=eps
                 )
             # --- Beta‐step (closed form) ---
-            beta0 = update_beta(W0, idx_top=idx_top, idx_bot=idx_bot, eps=eps)
+            beta0 = update_beta_in_hals(W0, idx_top=idx_top, idx_bot=idx_bot, eps=eps)
         else:
             # Update W (columns) via HALS on W^T
             UtM_W = tl.dot(H0, tl.transpose(X0))
             UtU_W = tl.dot(H0, tl.transpose(H0))
-            W0t = hals_prior_nnls(
+            W0t = hals_nnls(
                 UtM=UtM_W,
                 UtU=UtU_W,
                 prior_dict=prior_dict_W0,
@@ -1202,7 +1202,7 @@ def nmf_hals_prior(
         # Update B:
         UtM = unfolding_dot_khatri_rao(M, (None, [A0, B0, C0]), 1).T
         UtU = (C0.T @ C0) * (A0.T @ A0)
-        B0 = hals_prior_nnls(
+        B0 = hals_nnls(
             UtM=UtM,
             UtU=UtU,
             prior_dict=prior_dict_B0,
@@ -1220,7 +1220,7 @@ def nmf_hals_prior(
         # Update C:
         UtM = unfolding_dot_khatri_rao(M, (None, [A0, B0, C0]), 2).T
         UtU = (B0.T @ B0) * (A0.T @ A0)  # shape (rank, rank)
-        C0 = hals_prior_nnls(
+        C0 = hals_nnls(
             UtM=UtM,
             UtU=UtU,
             prior_dict=prior_dict_C0,
@@ -1245,7 +1245,7 @@ def nmf_hals_prior(
                     if j != k:
                         Rk -= UtU[k, j] * A0[:, j]
                 d = UtU[k, k]
-                A0[:, k] = hals_column_with_ratio(
+                A0[:, k] = update_column_in_hals(
                     Rk=Rk,
                     hk_norm2=d,
                     beta_k=beta0[k],
@@ -1261,13 +1261,13 @@ def nmf_hals_prior(
                 )
 
             # --- Beta‐step (closed form) ---
-            beta0 = update_beta(A0, idx_top=idx_top, idx_bot=idx_bot, eps=eps)
+            beta0 = update_beta_in_hals(A0, idx_top=idx_top, idx_bot=idx_bot, eps=eps)
 
         else:
             # Update A:
             UtM = unfolding_dot_khatri_rao(M, (None, [A0, B0, C0]), 0).T
             UtU = (C0.T @ C0) * (B0.T @ B0)
-            A0 = hals_prior_nnls(
+            A0 = hals_nnls(
                 UtM=UtM,
                 UtU=UtU,
                 prior_dict=prior_dict_A0,
@@ -1326,9 +1326,9 @@ def nmf_hals_prior(
         H = H_final
         W = W_final
 
-    if prior_ref_components is not None:
-        prior_keys = list(prior_ref_components.keys())
-        queries = np.array([prior_ref_components[k] for k in prior_keys])
+    if ref_components is not None:
+        prior_keys = list(ref_components.keys())
+        queries = np.array([ref_components[k] for k in prior_keys])
         cost_mat = cdist(queries, H, metric='correlation')
         # run Hungarian algorithm
         query_idx, h_idx = linear_sum_assignment(cost_mat)
