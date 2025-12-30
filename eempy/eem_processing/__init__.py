@@ -3,6 +3,6 @@ from .eemnmf import *
 from .hed import *
 from .kmethod import *
 from .parafac import *
-from .preprocessing import *
+from .basic import *
 from .validation import *
 

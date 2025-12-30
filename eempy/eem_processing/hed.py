@@ -1,5 +1,5 @@
-
-from eempy.eem_processing.eemnmf import *
+from .eemnmf import EEMNMF
+from .basic import random_split_columns
 
 class HED:
     """

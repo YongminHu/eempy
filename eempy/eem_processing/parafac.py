@@ -1,9 +1,18 @@
+import numpy as np
+import pandas as pd
+import tensorly as tl
+
+from scipy import stats
+from typing import Optional
 
 from tensorly.decomposition import parafac, non_negative_parafac
 from scipy.sparse.linalg import ArpackError
 from tlviz.model_evaluation import core_consistency
 from tlviz.outliers import compute_leverage
-from eempy.eem_processing.eem_dataset import *
+from eempy.solver import parafac_with_prior_hals, update_beta_in_hals, solve_W
+from .eem_dataset import EEMDataset
+from .basic import eems_fit_components, eem_stack_to_2d
+
 
 class PARAFAC:
     """

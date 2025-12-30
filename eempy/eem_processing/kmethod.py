@@ -1,8 +1,16 @@
+import numpy as np
+import pandas as pd
+
+import copy
+import warnings
+
 from math import sqrt
 from sklearn.metrics import silhouette_score
 from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.spatial.distance import squareform
-from eempy.eem_processing.eem_dataset import *
+from .eem_dataset import EEMDataset, combine_eem_datasets
+from .basic import component_similarity, align_components_by_components
+
 
 class KMethod:
     """

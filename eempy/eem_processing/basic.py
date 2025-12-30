@@ -4,39 +4,22 @@ Author: Yongmin Hu (yongminhu@outlook.com)
 Last update: 2025-12
 """
 
-# from statsmodels import robust
 from eempy.utils import *
 import scipy.stats as stats
-# import random
 import pandas as pd
 import numpy as np
-# import itertools
-# import string
 import warnings
-# import copy
-# import json
-# import tensorly as tl
 from eempy.solver import *
-# from math import sqrt
-# from sklearn.metrics import mean_squared_error, silhouette_score
-# from sklearn.decomposition import NMF
 from sklearn.linear_model import LinearRegression
 from scipy.ndimage import gaussian_filter, median_filter
 from scipy.interpolate import RegularGridInterpolator, interp1d, griddata
-# from scipy.cluster.hierarchy import linkage, fcluster
-# from scipy.spatial.distance import squareform
-# from scipy.sparse.linalg import ArpackError
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
-# from tensorly.decomposition import parafac, non_negative_parafac
 from tensorly.tenalg import unfolding_dot_khatri_rao
-# from tlviz.model_evaluation import core_consistency
-# from tlviz.outliers import compute_leverage
 from tlviz.factor_tools import permute_cp_tensor
-# from pandas.plotting import register_matplotlib_converters
 from typing import Optional
-from eempy.eem_processing.parafac import *
-from eempy.eem_processing.eemnmf import *
+from .parafac import PARAFAC
+from .eemnmf import EEMNMF
 
 
 def process_eem_stack(eem_stack, f, **kwargs):
