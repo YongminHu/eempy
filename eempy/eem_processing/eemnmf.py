@@ -11,135 +11,169 @@ from eempy.solver import nmf_with_prior_hals, solve_W
 
 class EEMNMF:
     """
-    Non-negative matrix factorization (NMF) model for Excitation–Emission Matrix (EEM) datasets.
+    Non-negative matrix factorization (NMF) model for an excitation–emission matrix (EEM) dataset.
 
-    This model decomposes an EEM dataset into a set of non-negative components and non-negative
-    sample scores. The input EEM stack is unfolded into a 2D matrix with shape
-    (n_samples, n_pixels), where n_pixels = n_ex_wavelengths * n_em_wavelengths.
+    This class fits a low-rank NMF decomposition to a 3D EEM stack by unfolding it into a 2D non-negative matrix
+    with shape (n_samples, n_pixels) and factorizing it into:
+        - A non-negative sample score matrix W with shape (n_samples, n_components).
+        - A non-negative component matrix H with shape (n_components, n_pixels), where n_pixels = n_ex * n_em`in the
+        unfolded representation.
 
-    The fitted NMF components are reshaped back to EEM shape (n_components, n_ex_wavelengths,
-    n_em_wavelengths). Component amplitudes are reported as Fmax values using (i) the NMF score
-    matrix and (ii) a non-negative least squares (NNLS) refit of each EEM using the extracted
-    components.
+    The fitted NMF components are reshaped back to EEM form with shape (n_components, n_ex, n_em). Component
+    amplitudes are reported as Fmax-like values using:
+        - ``fmax`` : scores from the NMF factorization, rescaled to account for component normalization.
+        - ``nnls_fmax`` : scores refit by non-negative least squares (NNLS) against the extracted components,
+        which can differ slightly from ``fmax`` due to the non-exact NMF reconstruction and/or constraints.
+
+    Optional regularization / constraints (solver-dependent) include:
+        - Non-negativity (always enforced by this model).
+        - Elastic-net regularization on ``W`` and/or ``H`` (L1/L2 mix).
+        - Quadratic priors on ``W`` and/or ``H`` (controlled by ``prior_dict_W``, ``prior_dict_H`` and
+          ``gamma_W``, ``gamma_H``), with NaNs allowed to skip entries. This is useful when fitted scores
+          or spectral components are desired to be close (but not necessarily identical) to prior knowledge.
+          For example, if a component’s concentration is known for some samples, a prior vector of length
+          n_samples can be passed with real values for known samples and NaN for unknown samples.
+        - A ratio constraint on paired rows of ``W``: ``W[idx_top] ≈ beta * W[idx_bot]``. This is useful when
+          the ratios of component amplitudes between two sets of samples are desired to be constant. For example,
+          if each sample is measured both unquenched and quenched using a fixed quencher dosage, then for a given
+          chemically consistent component the ratio between unquenched and quenched amplitudes may be approximately
+          constant across samples (Hu et al., ES&T, 2025). In this case, passing the unquenched and quenched sample
+          indices to ``idx_top`` and ``idx_bot`` encourages a constant ratio. ``lam`` controls the strength of this
+          regularization.
 
     Parameters
     ----------
     n_components : int
-        Number of components to extract.
-    solver : str, {"cd", "mu", "hals"}, default="cd"
-        NMF solver.
-        - "cd": Coordinate Descent solver (scikit-learn).
-        - "mu": Multiplicative Update solver (scikit-learn).
-        - "hals": Hierarchical Alternating Least Squares solver with optional priors/regularization.
-    init : str, default="nndsvda"
-        Initialization method. Passed to the selected solver.
-    custom_init : object, optional
-        Custom initialization used by the HALS solver when ``init="custom"``.
-    fixed_components : object, optional
-        Components to hold fixed during HALS updates (solver-specific behavior).
-    beta_loss: str, {"frobenius", "kullback-leibler", "itakura-saito"}, default="frobenius"
-        Beta divergence used by the "mu" solver. Ignored by "cd" and "hals".
-    alpha_sample: float, default=0
-        Strength of elastic-net regularization on the sample score matrix (W).
-    alpha_component: float, default=0
-        Strength of elastic-net regularization on the component matrix (H).
-    l1_ratio: float, default=1
-        Mixing ratio between L1 and L2 penalties for elastic-net regularization.
-        - 0 corresponds to pure L2 penalty
-        - 1 corresponds to pure L1 penalty
-    prior_dict_W: dict, optional
-        Prior information for sample scores (W). Keys are component indices (int) and values are
-        1D arrays of length n_samples. Only supported by the "hals" solver.
-    prior_dict_H: dict, optional
-        Prior information for components (H). Keys are component indices (int) and values are
-        1D arrays of length n_pixels. Only supported by the "hals" solver.
-    prior_dict_A: dict, optional
-        Additional prior mapping used by the HALS solver (solver-specific).
-    prior_dict_B: dict, optional
-        Additional prior mapping used by the HALS solver (solver-specific).
-    prior_dict_C: dict, optional
-        Additional prior mapping used by the HALS solver (solver-specific).
-    gamma_W: float, default=0
-        Strength of prior regularization on W for the "hals" solver.
-    gamma_H: float, default=0
-        Strength of prior regularization on H for the "hals" solver.
-    gamma_A: float, default=0
-        Strength of additional prior regularization term A for the "hals" solver.
-    gamma_B: float, default=0
-        Strength of additional prior regularization term B for the "hals" solver.
-    gamma_C: float, default=0
-        Strength of additional prior regularization term C for the "hals" solver.
-    ref_components: object, optional
-        Reference components used by the HALS solver (solver-specific behavior).
-    idx_top: list, optional
-        Indices of samples used as numerators in ratio regularization (HALS solver only).
-    idx_bot: list, optional
-        Indices of samples used as denominators in ratio regularization (HALS solver only).
-    kw_top: str, optional
-        Keyword used to automatically populate ``idx_top`` from ``eem_dataset.index`` during fitting.
-    kw_bot: str, optional
-        Keyword used to automatically populate ``idx_bot`` from ``eem_dataset.index`` during fitting.
-    lam: float, default=0
-        Strength of ratio regularization on W (HALS solver only).
-    fit_rank_one: bool, default=False
-        Whether to enable a rank-one component constraint/penalty in the HALS solver (solver-specific).
-    normalization: None or str, {"pixel_std"}, default=None
-        Optional preprocessing applied to the unfolded data matrix X before factorization.
-        - None: no normalization
-        - "pixel_std": divide each pixel (feature) by its standard deviation across samples.
-    sort_components_by_em: bool, default=True
-        If True, components are reordered by the emission peak position (lowest to highest emission
-        wavelength index). If False, component order follows the solver output.
-    max_iter_als: int, default=100
+        Number of NMF components (rank of the factorization).
+    solver : {'cd', 'mu', 'hals'}, default 'cd'
+        Optimization algorithm used to fit NMF.
+        - ``'cd'``: Coordinate Descent solver (scikit-learn ``decomposition.NMF``).
+        - ``'mu'``: Multiplicative Updates solver (scikit-learn ``decomposition.NMF``).
+        - ``'hals'``: Hierarchical Alternating Least Squares solver with optional priors/regularization
+          (``eempy.solver.nmf_with_prior_hals``).
+    init : str, default 'nndsvda'
+        Initialization strategy passed to the selected solver.
+        Common options include ``'random'``, ``'nndsvd'``, ``'nndsvda'``, ``'nndsvdar'`` (solver-dependent).
+        For HALS, a custom initialization can be provided via ``custom_init`` when supported.
+    custom_init : optional
+        Custom initialization passed to the HALS solver (when supported by the backend implementation).
+    fixed_components : optional
+        Component(s) to keep fixed during fitting (backend-specific behavior).
+    beta_loss : {'frobenius', 'kullback-leibler', 'itakura-saito'}, default 'frobenius'
+        Beta divergence used by the ``'mu'`` solver. Ignored by ``'cd'`` and ``'hals'``.
+    alpha_sample : float, default 0
+        Regularization strength applied to the sample-mode factor matrix ``W`` (backend-specific).
+        For scikit-learn, this maps to ``alpha_W``.
+    alpha_component : float, default 0
+        Regularization strength applied to the component matrix ``H`` (backend-specific).
+        For scikit-learn, this maps to ``alpha_H``.
+    l1_ratio : float, default 1
+        Elastic-net mixing parameter used by the backend (``1`` corresponds to L1 only; ``0`` to L2 only).
+    prior_dict_W : dict, optional
+        Prior information for the sample-mode factor matrix ``W`` (HALS solver only).
+        Keys are component indices (int); values are 1D arrays of length ``n_samples``.
+        Use NaNs to indicate unknown entries that should not contribute to the penalty.
+    prior_dict_H : dict, optional
+        Prior information for the component matrix ``H`` (HALS solver only).
+        Keys are component indices (int); values are 1D arrays of length ``n_pixels``.
+        Use NaNs to indicate unknown entries that should not contribute to the penalty.
+    prior_dict_A : dict, optional
+        Additional prior mapping used by the HALS backend (backend-specific).
+    prior_dict_B : dict, optional
+        Additional prior mapping used by the HALS backend (backend-specific).
+    prior_dict_C : dict, optional
+        Additional prior mapping used by the HALS backend (backend-specific).
+    gamma_W : float, default 0
+        Additional prior/penalty strength for the sample-mode factor matrix ``W`` (HALS solver only).
+    gamma_H : float, default 0
+        Additional prior/penalty strength for the component matrix ``H`` (HALS solver only).
+    gamma_A : float, default 0
+        Additional prior/penalty strength for backend-specific prior term A (HALS solver only).
+    gamma_B : float, default 0
+        Additional prior/penalty strength for backend-specific prior term B (HALS solver only).
+    gamma_C : float, default 0
+        Additional prior/penalty strength for backend-specific prior term C (HALS solver only).
+    ref_components : optional
+        Reference component definitions used by the backend prior/regularization logic (backend-specific).
+    idx_top : list of int, optional
+        0-based integer positions of samples in eem_dataset used as the numerator ("top") group (e.g., [0, 1,
+        2]). An alternative approach is to provide ``kw_top`` and ``kw_bot`` to identify "top" and "bot" samples
+        by keywords in ``EEMDataset.index``.
+    idx_bot : list of int, optional
+        0-based integer positions of samples in eem_dataset used as the denominator ("bot") group (e.g., [3, 4,
+        5]). An alternative approach is to provide ``kw_top`` and ``kw_bot`` to identify "top" and "bot" samples
+        by keywords in ``EEMDataset.index``.
+    kw_top : str, optional
+        Keyword used to identify "top" samples from ``eem_dataset.index`` during fitting.
+        If provided together with ``idx_top``, indices are derived according to ``kw_top``.
+    kw_bot : str, optional
+        Keyword used to identify "bot" samples from ``eem_dataset.index`` during fitting.
+        If provided together with ``idx_bot``, indices are derived according to ``kw_bot``.
+    lam : float, default 0
+        Strength of ratio-based regularization between "top" and "bot" samples (HALS solver only).
+    fit_rank_one : bool, default False
+        Whether to enable a rank-one component constraint/penalty in the HALS backend (backend-specific).
+    normalization : {'pixel_std', None}, default None
+        Optional preprocessing applied to the unfolded data matrix before factorization.
+        - ``None``: no normalization.
+        - ``'pixel_std'``: divide each pixel (feature) by its standard deviation across samples.
+    sort_components_by_em : bool, default True
+        Whether to sort components by the emission peak position (ascending). If ``False``, components are
+        kept in the solver output order.
+    max_iter_als : int, default 100
         Maximum number of outer iterations for the HALS solver.
-    max_iter_nnls: int, default=500
-        Maximum number of NNLS iterations used inside the HALS solver.
-    tol: float, default=1e-5
+    max_iter_nnls : int, default 500
+        Maximum number of iterations for NNLS subproblems (when used by the backend).
+    tol : float, default 1e-5
         Convergence tolerance passed to the solver.
-    random_state: int, default=42
+    random_state : int, default 42
         Random seed used by solvers that support it.
 
     Attributes
     ----------
-    fmax: pandas.DataFrame
-        Component amplitudes (Fmax) computed from the NMF score matrix. Columns follow the
-        naming convention ``"component {i} NMF-Fmax"``.
-    nnls_fmax: pandas.DataFrame
-        Component amplitudes (Fmax) computed by refitting each EEM using NNLS with the fitted
-        components. Columns follow the naming convention ``"component {i} NNLS-Fmax"``.
-    components: np.ndarray
-        Fitted components with shape (n_components, n_ex_wavelengths, n_em_wavelengths). Each
-        component is normalized by its maximum value (peak intensity equals 1).
-    eem_stack_train: np.ndarray
-        The EEM stack used for fitting, with shape (n_samples, n_ex_wavelengths, n_em_wavelengths).
-    eem_stack_reconstructed: np.ndarray
-        The reconstructed EEM stack from the fitted model, with the same shape as ``eem_stack_train``.
-    eem_stack_unfolded: np.ndarray
-        The unfolded 2D matrix used by the solver, with shape (n_samples, n_pixels).
-    normalization_factor_std: np.ndarray or None
-        Per-pixel standard deviation used when ``normalization="pixel_std"``. Shape is (n_pixels,).
-        None if no pixel-wise standard-deviation normalization was applied.
-    normalization_factor_max: np.ndarray
+    fmax : pandas.DataFrame or None
+        Sample-mode component amplitudes computed from the fitted NMF ``W`` (and rescaling after component
+        normalization). Columns follow the naming convention ``"component {i} NMF-Fmax"``.
+    nnls_fmax : pandas.DataFrame or None
+        Component amplitudes computed by refitting each EEM using NNLS with the fitted components.
+        Columns follow the naming convention ``"component {i} NNLS-Fmax"``.
+    components : numpy.ndarray or None
+        Component EEMs with shape ``(n_components, n_ex, n_em)`` constructed from the unfolded ``H``.
+        Each component is normalized by its maximum value (peak intensity equals 1), and the scaling is
+        carried into ``fmax``.
+    eem_stack_train : numpy.ndarray or None
+        EEM stack used for model fitting, with shape ``(n_samples, n_ex, n_em)``.
+    eem_stack_reconstructed : numpy.ndarray or None
+        Reconstructed EEM stack from the fitted model, with shape ``(n_samples, n_ex, n_em)``.
+    eem_stack_unfolded : numpy.ndarray or None
+        Unfolded 2D matrix used by the solver, with shape ``(n_samples, n_pixels)``.
+    normalization_factor_std : numpy.ndarray or None
+        Per-pixel standard deviation used when ``normalization='pixel_std'``. Shape is ``(n_pixels,)``.
+        ``None`` if no pixel-wise standard-deviation normalization was applied.
+    normalization_factor_max : numpy.ndarray or None
         Per-component scaling factors (maximum value of each component in the unfolded space) used
-        to normalize "components" and rescale the reported Fmax values. Shape is (n_components,).
-    ex_range: np.ndarray or None
-        Excitation wavelength axis copied from the fitted dataset.
-    em_range: np.ndarray or None
-        Emission wavelength axis copied from the fitted dataset.
-    beta: np.ndarray or None
-        Optional per-component ratio parameter returned by the HALS solver with ratio regularization
-        (when applicable). None if not returned by the solver.
-    decomposer: object or None
-        Placeholder for an external decomposer object (e.g., scikit-learn NMF). Not populated in the
-        current implementation.
-    reconstruction_error: float or None
-        Placeholder for reconstruction error. Not populated in the current implementation.
-    objective_function_error: object or None
-        Placeholder for solver objective tracking. Not populated in the current implementation.
+        to normalize ``components`` and rescale reported amplitudes. Shape is ``(n_components,)``.
+    ex_range : numpy.ndarray or None
+        Excitation wavelength grid corresponding to ``components``.
+    em_range : numpy.ndarray or None
+        Emission wavelength grid corresponding to ``components``.
+    beta : numpy.ndarray or None
+        Component-wise ratio parameters used when ratio regularization / beta fitting is enabled
+        (backend-specific).
+    decomposer : object or None
+        Underlying solver object when using scikit-learn NMF (e.g., fitted ``sklearn.decomposition.NMF``).
+        May be ``None`` depending on the solver/backend implementation.
+    reconstruction_error : float or None
+        Reconstruction error if provided by the backend/solver; otherwise ``None``.
+    objective_function_error : object or None
+        Objective tracking information if provided by the backend/solver; otherwise ``None``.
 
     References
     ----------
-    [1] scikit-learn decomposition.NMF documentation (for "cd" and "mu" solvers).
+    [1]  scikit-learn documentation for ``sklearn.decomposition.NMF`` (Coordinate Descent and Multiplicative Updates).
+    [2]  Hu, Yongmin, Céline Jacquin, and Eberhard Morgenroth. "Fluorescence Quenching as a Diagnostic Tool for
+         Prediction Reliability Assessment and Anomaly Detection in EEM-Based Water Quality Monitoring."
+         Environmental Science & Technology 59.36 (2025): 19490-19501.
     """
     def __init__(
             self, n_components, solver='cd', init='nndsvda', custom_init=None, fixed_components=None,

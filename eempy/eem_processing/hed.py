@@ -4,6 +4,7 @@ from .basic import random_split_columns
 class HED:
     """
     Hierarchical EEM Decomposition (HED).
+
     Parameters
     ----------
     n_components: int

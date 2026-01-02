@@ -8,7 +8,7 @@ Implemented features include:
 - quadratic (Tikhonov) priors with NaN-masked entries,
 - elastic-net regularization (L1/L2 mix),
 - optional paired-sample ratio constraints on sample-mode scores,
-- elementwise masking to ignore missing or invalid tensor entries.
+- elementwise masking to ignore sparse invalid tensor entries.
 
 """
 

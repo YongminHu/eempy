@@ -18,23 +18,30 @@ class PARAFAC:
     """
     Parallel factor analysis (PARAFAC) model for an excitation–emission matrix (EEM) dataset.
 
+    This class fits a low-rank PARAFAC (CP) decomposition to a 3D EEM stack with shape ``(n_samples, n_ex,
+    n_em)`` by factorizing it into:
+        - A sample-mode score matrix ``A`` with shape ``(n_samples, n_components)``.
+        - An excitation-mode loading matrix ``B`` with shape ``(n_ex, n_components)``.
+        - An emission-mode loading matrix ``C`` with shape ``(n_em, n_components)``.
+
+    Each component r corresponds to a rank-1 outer product A[:, r] ⊗ B[:, r] ⊗ C[:, r], and the reconstructed
+    EEM stack is obtained by summing these rank-1 components over r = 1...n_components.
+
     This class fits a low-rank PARAFAC decomposition to a 3D EEM stack with optional regularization:
-    - Non-negativity
-    - Quadratic priors on any loading (controlled by ``prior_dict_sample``, ``prior_dict_ex``, ``prior_dict_em`` and
-    ``gamma_sample``, ``gamma_ex``, ``gamma_em``), with NaNs allowed to skip entries. This is useful when the
-    generated loadings are desired to be close (but not necessarily identical) to prior knowledge. For example,
-    if a fluorescent component's concentrations are known in some samples, a prior vector with the same length as
-    sample number can be passed, with real number representing known concentrations and NaN representing samples with
-    no knowledge.
-    - A ratio constraint on paired rows of A: A[idx_top] ≈ beta * A[idx_bot]. This is useful when the ratios of fmax
-    between two sets of samples are desired to be constant. For example, assume the EEMs are measured with
-    both the original sample and the sample quenched by a certain fluorescent quencher with a fixed dosage. In ideal
-    situation, the ratio of fmax between the unquenched and quenched sample in a certain component is a constant
-    across all samples if the component has a consistent chemical representation (Hu et al., 2025). In this case,
-    it is possible to pass the sample number of unquenched and quenched samples to ``idx_top`` and ``idx_bot``
-    respectively to encourage the fmax ratio to be a constant to seek for a more reasonable decomposition. ``lam``
-    controls the strength of the regularization.
-    - Elastic-net regularization on any factor (L1/L2 mix).
+        - Non-negativity
+        - Elastic-net regularization on any factor (L1/L2 mix).
+        - Quadratic priors on ``W`` and/or ``H`` (controlled by ``prior_dict_sample``, ``prior_dict_ex``,
+          ``prior_dict_em and ``gamma_sample``, ``gamma_ex`` and ``gamma_em), with NaNs allowed to skip entries. This is
+          useful when fitted scores or spectral components are desired to be close (but not necessarily identical) to
+          prior knowledge. For example, if a component’s concentration is known for some samples, a prior vector of
+          length n_samples can be passed with real values for known samples and NaN for unknown samples.
+        - A ratio constraint on paired rows of ``W``: ``W[idx_top] ≈ beta * W[idx_bot]``. This is useful when
+          the ratios of component amplitudes between two sets of samples are desired to be constant. For example,
+          if each sample is measured both unquenched and quenched using a fixed quencher dosage, then for a given
+          chemically consistent component the ratio between unquenched and quenched amplitudes may be approximately
+          constant across samples (Hu et al., ES&T, 2025). In this case, passing the unquenched and quenched sample
+          indices to ``idx_top`` and ``idx_bot`` encourages a constant ratio. ``lam`` controls the strength of this
+          regularization.
 
     Parameters
     ----------
@@ -108,7 +115,8 @@ class PARAFAC:
     random_state : int or numpy.random.RandomState, optional
         Random seed or RNG used for reproducible initialization (when supported).
     mask : array-like, optional
-        Mask array for missing values (backend-specific). When provided, masked entries are ignored in fitting.
+        A ideally sparse mask array for missing values (backend-specific). When provided, masked entries are ignored in
+        fitting.
 
     Attributes
     ----------
@@ -145,7 +153,6 @@ class PARAFAC:
     [2]  Hu, Yongmin, Céline Jacquin, and Eberhard Morgenroth. "Fluorescence Quenching as a Diagnostic Tool for
     Prediction Reliability Assessment and Anomaly Detection in EEM-Based Water Quality Monitoring." Environmental
     Science & Technology 59.36 (2025): 19490-19501.
-
     """
     def __init__(self, n_components, non_negativity=True, solver='hals', init='svd', custom_init=None, fixed_components=None,
                  tf_normalization=False, loadings_normalization: Optional[str] = 'maximum', sort_components_by_em=True,

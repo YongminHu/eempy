@@ -14,54 +14,101 @@ from .basic import component_similarity, align_components_by_components
 
 class KMethod:
     """
-    Conduct K-method (e.g., K-PARAFACs, K-NMFs, depending on the base model type), an EEM clustering algorithm aiming
-    to minimize the general reconstruction error. The key hypothesis behind K-method is that fitting EEMs with varied
-    underlying chemical compositions using the same component representations (e.g., a unified set of PARAFAC or NMF
-    components) could lead to a large reconstruction error. In contrast, samples with similar chemical composition
-    can be incorporated into the same PARAFAC/NMF model with small reconstruction error (i.e., the root mean-squared
-    error (RMSE) between the original EEM and its reconstruction derived from loadings and scores). if samples can be
-    appropriately clustered by their chemical compositions, then the PARAFAC models established on individual
-    clusters, i.e., the cluster-specific PARAFAC/NMF models, should exhibit reduced reconstruction error compared to the
-    unified PARAFAC/NMF model. Based on this hypothesis, K-method is proposed to search for an optimal clustering
-    strategy so that the overall reconstruction error of cluster-specific PARAFAC/NMF models is minimized.
+    K-method (e.g., K-PARAFACs or K-NMFs) for EEM clustering by minimizing reconstruction error (Hu et al.,
+    Water Research, 2025).
+
+    This class implements the K-method family of clustering algorithms for excitation–emission matrix (EEM) datasets.
+    The key hypothesis is that fitting EEMs with high chemical composition variability using a single, unified set of
+    components (e.g., one PARAFAC or NMF model) can lead to over-generalized component formation and large
+    reconstruction error. In contrast, EEMs sharing similar chemical compositions can be clustered and represented by
+    cluster-specific component sets, resulting in a number of unique component sets that better capture the
+    variability in chemical composition between clusters and reduce overall reconstruction error.
+
+    Based on this hypothesis, K-method searches for a clustering strategy that minimizes the overall reconstruction
+    error by iterating between:
+    - **Estimation**: fit a base decomposition model (``base_model``) separately on each current cluster to obtain
+      cluster-specific models.
+    - **Maximization / Assignment**: assign each sample to the cluster whose model yields the smallest distance
+      (e.g., reconstruction RMSE), forming updated clusters.
+
+    Repeating this procedure yields cluster-specific PARAFAC/NMF models that (ideally) reconstruct the dataset better
+    than a single unified model.
+
+    In addition, K-method can be run multiple times with subsampling to form a **consensus matrix** and then derive a
+    final clustering using hierarchical clustering on a distance matrix computed from consensus values.
 
     Parameters
-    -----------
+    ----------
+    base_model : object
+        Base decomposition model used within each cluster (e.g., an instance of ``PARAFAC`` or ``EEMNMF``). Before
+        passing to ``KMethod``, the base model should be properly configured (e.g., number of components,
+        regularizations to be implemented, etc.).
     n_initial_splits : int
-        Number of splits in clustering initialization (the first time that the EEM dataset is divided).
-    max_iter : int
-        Maximum number of iterations in a single run of base clustering.
-    tol : float
-        Tolerance in regard to the average Tucker's congruence between the cluster-specific PARAFAC models
-        of two consecutive iterations to declare convergence. If the Tucker's congruence > 1-tol, then convergence is
-        confirmed.
-    elimination : 'default' or int
-        The minimum number of EEMs in each cluster. During optimization, clusters with EEMs less than the specified
-        number would be eliminated. If 'default' is passed, then the number is set to be the same as the number of
-        components.
+        Number of splits used in initialization (the first partition of the dataset before iterative refinement).
+    distance_metric : {'reconstruction_error', 'reconstruction_error_with_beta', 'quenching_coefficient'}, default 'reconstruction_error'
+        Criterion used for assignment in the maximization step.
+        - ``'reconstruction_error'``: assign each sample to the model with the smallest per-sample RMSE.
+        - ``'reconstruction_error_with_beta'``: like reconstruction error, but pairs samples into top/bot groups and
+          uses beta-based reconstruction (requires ``kw_top`` and ``kw_bot`` and a base model that supports beta logic).
+        - ``'quenching_coefficient'``: assign samples based on similarity of estimated quenching coefficients derived
+          from paired top/bot samples (requires ``kw_top`` and ``kw_bot``).
+    max_iter : int, default 20
+        Maximum number of K-method iterations in a single base clustering run.
+    tol : float, default 0.001
+        Convergence tolerance based on similarity between cluster-specific models of two consecutive iterations.
+        If the average Tucker’s congruence (or component similarity proxy) exceeds ``1 - tol``, convergence is declared.
+    elimination : {'default'} or int, default 'default'
+        Minimum allowed cluster size during optimization. Clusters with fewer samples than the threshold are removed.
+        - ``'default'``: use ``base_model.n_components`` as the minimum cluster size.
+        - ``int``: explicit minimum cluster size.
+    kw_top : str, optional
+        Keyword used to identify "top" samples from ``eem_dataset.index`` when a paired-top/bot distance metric is used.
+        Samples are selected by substring matching against entries of ``eem_dataset.index``.
+    kw_bot : str, optional
+        Keyword used to identify "bot" samples from ``eem_dataset.index`` when a paired-top/bot distance metric is used.
+        Samples are selected by substring matching against entries of ``eem_dataset.index``.
 
     Attributes
-    ------------
-    unified_model : PARAFAC
-        Unified PARAFAC model.
-    label_history : list
-        A list of cluster labels after each run of clustering.
-    error_history : list
-        A list of average RMSE over all pixels after each run of clustering.
-    labels : np.ndarray
-        Final cluster labels.
-    eem_clusters : dict
-        EEM clusters.
-    cluster_specific_models : dict
-        Cluster-specific PARAFAC models.
-    consensus_matrix : np.ndarray
-        Consensus matrix.
-    consensus_matrix_sorted : np.ndarray
-        Sorted consensus matrix.
+    ----------
+    unified_model : object or None
+        Unified model fitted once on the full dataset (a deep copy of ``base_model``). Used as a reference for
+        aligning components and for some distance calculations.
+    label_history : list or None
+        History of cluster assignments. For base clustering runs, this is typically a list containing a DataFrame
+        with per-sample labels across iterations.
+    error_history : list or None
+        History of per-sample distances/errors (e.g., RMSE) across iterations, typically stored as DataFrames.
+    silhouette_score : float or None
+        Silhouette score computed on the final distance matrix during hierarchical clustering (when available).
+    labels : numpy.ndarray or None
+        Final cluster labels for each sample. Labels are cluster IDs returned by hierarchical clustering
+        (typically 1..K), or by base clustering when used directly.
+    index_sorted : list or None
+        Dataset index reordered by the final hierarchical clustering labels (when available).
+    ref_sorted : pandas.DataFrame or None
+        Reference table reordered by the final hierarchical clustering labels (when available).
+    threshold_r : float or None
+        Distance threshold used for hierarchical clustering cut (derived from the linkage matrix).
+    eem_clusters : dict or None
+        Mapping from cluster label to an ``EEMDataset`` containing the EEMs assigned to that cluster.
+    cluster_specific_models : dict or None
+        Mapping from cluster label to the fitted cluster-specific model (deep copies of ``base_model`` fitted on each
+        cluster).
+    consensus_matrix : numpy.ndarray or None
+        Consensus matrix ``M`` with shape ``(n_samples, n_samples)``, where ``M[i, j]`` is the fraction of base runs
+        in which sample i and j co-occur in the same cluster.
+    distance_matrix : numpy.ndarray or None
+        Distance matrix derived from consensus, typically ``D[i, j] = (1 - M[i, j])**p`` (see
+        ``consensus_conversion_power``).
+    linkage_matrix : numpy.ndarray or None
+        Hierarchical clustering linkage matrix computed from the consensus-derived distance matrix.
+    consensus_matrix_sorted : numpy.ndarray or None
+        Consensus matrix reordered by the final cluster labels for visualization.
 
-    References ------------
-    [1] Hu, Yongmin, Eberhard Morgenroth, and Céline Jacquin. "Online monitoring of greywater reuse system using
-    excitation-emission matrix (EEM) and K-PARAFACs." Water Research 268 (2025): 122604.
+    References
+    ----------
+    [1]  Hu, Yongmin, Eberhard Morgenroth, and Céline Jacquin. "Online monitoring of greywater reuse system using
+         excitation-emission matrix (EEM) and K-PARAFACs." Water Research 268 (2025): 122604.
     """
     def __init__(self, base_model, n_initial_splits, distance_metric="reconstruction_error", max_iter=20, tol=0.001,
                  elimination='default', kw_top=None, kw_bot=None):
