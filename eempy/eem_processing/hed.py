@@ -33,6 +33,7 @@ class HED:
     normalization: str, {'pixel_std'}:
         The normalization of EEMs before conducting NMF. 'pixel_std' normalizes the intensities of each pixel across
         all samples by standard deviation.
+
     Attributes
     ----------
     fmax: pandas.DataFrame

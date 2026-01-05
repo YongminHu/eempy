@@ -530,11 +530,5 @@ def read_parafac_models(datdir, kw):
     return parafac_results
 
 
-# def get_timestamp_from_filename(filename, ts_format='%Y-%m-%d-%H-%M-%S', ts_start_position=0, ts_end_position=19):
-#     ts_string = filename[ts_start_position:ts_end_position]
-#     ts = datetime.strptime(ts_string, ts_format)
-#     return ts
-
-
-def str_to_datetime(ts_string, ts_format='%Y-%m-%d-%H-%M-%S'):
-    return datetime.strptime(ts_string, ts_format)
+# def str_to_datetime(ts_string, ts_format='%Y-%m-%d-%H-%M-%S'):
+#     return datetime.strptime(ts_string, ts_format)

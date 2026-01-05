@@ -724,8 +724,6 @@ def eems_fit_components(eem_stack, components, fit_intercept=False, positive=Tru
     return score_sample, fmax_sample, eem_stack_pred
 
 
-
-
 def loadings_similarity(loadings1: pd.DataFrame, loadings2: pd.DataFrame, wavelength_alignment=False, dtw=False):
     """
     Calculate the Tucker's congruence between each pair of components of two loadings (of excitation or emission).

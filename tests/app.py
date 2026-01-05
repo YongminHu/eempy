@@ -1,12 +1,9 @@
-import math
+import copy
 import os.path
 
 import dash
-import json
 import pickle
 
-import numpy as np
-import pandas as pd
 from dash import dcc, html, ctx
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
@@ -14,15 +11,16 @@ import plotly.graph_objects as go
 import plotly.express as px
 from scipy.stats import pearsonr
 
-from eempy.plot import plot_eem, plot_abs, plot_loadings, plot_score
+from eempy.plot import (plot_eem, plot_abs, plot_loadings, plot_fmax, plot_dendrogram, plot_reconstruction_error,
+                        plot_error)
 from eempy.read_data import *
 from eempy.eem_processing import *
 from eempy.utils import str_string_to_list, num_string_to_list
 
 app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
-colors = ['red', 'blue', 'orange', 'purple', 'cyan', 'green', 'pink', 'brown', 'black']
-
-
+colors = px.colors.qualitative.Plotly
+marker_shapes = ['circle', 'square', 'diamond', 'cross', 'x', 'triangle-up', 'triangle-down', 'triangle-left',
+                 'triangle-right', 'triangle-ne', 'triangle-se', 'triangle-sw', 'triangle-nw']
 
 # -----------Page #0: Homepage
 
@@ -46,8 +44,6 @@ homepage = html.Div([
         ]
     )
 ])
-
-
 
 # -----------Page #1: EEM pre-processing--------------
 
@@ -807,7 +803,8 @@ card_built_eem_dataset = dbc.Card(
                 dbc.Row(
                     dcc.Input(id='path-reference', type='text',
                               placeholder='Please enter the reference file path (optional)',
-                              style={'width': '97%', 'height': '30px'}, debounce=True),
+                              value=None,
+                              style={'width': '97%', 'height': '30px'}, debounce=False),
                     justify="center"
                 ),
                 dbc.Row([
@@ -846,13 +843,13 @@ card_eem_dataset_downloading = dbc.Card(
                 dbc.Row(
                     dcc.Input(id='folder-path-export-eem-dataset', type='text',
                               placeholder='Please enter the output folder path...',
-                              style={'width': '97%', 'height': '30px'}, debounce=True),
+                              style={'width': '97%', 'height': '30px'}, debounce=False),
                     justify="center"
                 ),
                 dbc.Row(
                     dcc.Input(id='filename-export-eem-dataset', type='text',
                               placeholder='Please enter the output filename (without extension)...',
-                              style={'width': '97%', 'height': '30px'}, debounce=True),
+                              style={'width': '97%', 'height': '30px'}, debounce=False),
                     justify="center"
                 ),
                 dbc.Row([
@@ -891,7 +888,7 @@ card_eem_dataset_downloading = dbc.Card(
 
 #   -------------Layout of page #1
 
-page1 = html.Div([
+page_eem_processing = html.Div([
     dbc.Row(
         [
             dbc.Col(
@@ -1071,7 +1068,7 @@ def update_eem_plot(folder_path, file_name_sample, graph_options,
 
         # Median filter
         if all([median_filter, median_filter_window_ex, median_filter_window_em, median_filter_mode]):
-            intensity = eem_median_filter(intensity, footprint=(median_filter_window_ex, median_filter_window_em),
+            intensity = eem_median_filter(intensity, window_size=(median_filter_window_ex, median_filter_window_em),
                                           mode=median_filter_mode)
 
         # Raman scattering removal
@@ -1251,7 +1248,7 @@ def on_build_eem_dataset(n_clicks,
         return None, error_message, "Build"
 
     steps_track = []
-    if reference_path is not None:
+    if reference_path is not None and reference_path != []:
         if os.path.exists(reference_path):
             if reference_path.endswith('.csv'):
                 refs_from_file = pd.read_csv(reference_path, index_col=0, header=0)
@@ -1282,7 +1279,7 @@ def on_build_eem_dataset(n_clicks,
                         'occurs also when index starting/ending positions are not specified.'), "build"
                 refs = refs_from_file
         else:
-            return None, ('Error: No such file or directory: ' + reference_path), "build"
+            return None, ('Error: No such file or directory: ' + reference_path), "Build"
     else:
         refs = None
 
@@ -1297,7 +1294,7 @@ def on_build_eem_dataset(n_clicks,
     if any([np.min(ex_range) != ex_range_min, np.max(ex_range) != ex_range_max,
             np.min(em_range) != em_range_min, np.max(em_range) != em_range_max]):
         eem_dataset.cutting(ex_min=ex_range_min, ex_max=ex_range_max,
-                            em_min=em_range_min, em_max=em_range_max, copy=False)
+                            em_min=em_range_min, em_max=em_range_max, inplace=True)
         steps_track += "- EEM cutting \n"
 
     # RSU normalization
@@ -1314,7 +1311,7 @@ def on_build_eem_dataset(n_clicks,
                                         em_range_blank=em_range_blank, from_blank=True,
                                         ex_target=su_ex,
                                         bandwidth=su_em_width, rsu_standard=su_normalization_factor,
-                                        copy=False)
+                                        inplace=True)
         steps_track += ["- Raman scattering unit normalization\n"]
 
     # IFE correction
@@ -1326,18 +1323,18 @@ def on_build_eem_dataset(n_clicks,
             custom_filename_list=file_name_abs_list, wavelength_alignment=True if align_exem else False,
             interpolation_method='linear'
         )
-        eem_dataset.ife_correction(absorbance=abs_stack, ex_range_abs=ex_range_abs, copy=False)
+        eem_dataset.ife_correction(absorbance=abs_stack, ex_range_abs=ex_range_abs, inplace=True)
         steps_track += ["- Inner filter effect correction\n"]
 
     # Median filter
     if all([median_filter, median_filter_ex, median_filter_em, median_filter_mode]):
-        eem_dataset.median_filter(footprint=(median_filter_ex, median_filter_em), mode=median_filter_mode, copy=False)
+        eem_dataset.median_filter(window_size=(median_filter_ex, median_filter_em), mode=median_filter_mode, inplace=True)
         steps_track += ["- Median filter\n"]
 
     # Raman scattering removal
     if all([raman, raman_method, raman_width, raman_dimension]):
         eem_dataset.raman_scattering_removal(interpolation_method=raman_method, width=raman_width,
-                                             interpolation_dimension=raman_dimension, copy=False)
+                                             interpolation_dimension=raman_dimension, inplace=True)
         steps_track += ["- Raman scattering removal\n"]
 
     # Rayleigh scattering removal
@@ -1348,12 +1345,12 @@ def on_build_eem_dataset(n_clicks,
                                                 interpolation_method_o2=rayleigh_o2_method,
                                                 interpolation_dimension_o1=rayleigh_o1_dimension,
                                                 interpolation_dimension_o2=rayleigh_o2_dimension,
-                                                copy=False)
+                                                inplace=True)
         steps_track += ["- Rayleigh scattering removal\n"]
 
     # Gaussian smoothing
     if all([gaussian, gaussian_sigma, gaussian_truncate]):
-        eem_dataset.gaussian_filter(sigma=gaussian_sigma, truncate=gaussian_truncate, copy=False)
+        eem_dataset.gaussian_filter(sigma=gaussian_sigma, truncate=gaussian_truncate, inplace=True)
         steps_track += ["- Gaussian smoothing\n"]
 
     # convert eem_dataset to a dict whose values are json serializable
@@ -1363,7 +1360,8 @@ def on_build_eem_dataset(n_clicks,
         'ex_range': eem_dataset.ex_range.tolist(),
         'em_range': eem_dataset.em_range.tolist(),
         'index': eem_dataset.index,
-        'ref': [refs.columns.tolist()] + refs.values.tolist() if eem_dataset.ref is not None else None
+        'ref': [refs.columns.tolist()] + refs.values.tolist() if eem_dataset.ref is not None else None,
+        'cluster': None,
     }
 
     return eem_dataset_json_dict, dbc.Label(steps_track, style={'whiteSpace': 'pre'}), "Build"
@@ -1403,7 +1401,1684 @@ def on_export_eem_dataset(n_clicks_export, n_clicks_build, eem_dataset_json_dict
     return ["EEM dataset exported."], "Export"
 
 
-# -----------Page #2: PARAFAC--------------
+# -----------Page #2: Peak picking--------------
+
+#   -------------Setting up the dbc cards
+
+#       -----------------dbc card for peak-picking parameters
+card_pp_param = dbc.Card(
+    dbc.CardBody(
+        [
+            html.H5("Import EEM dataset for model establishment", className="card-title"),
+            html.Div(
+                [
+                    dbc.Stack(
+                        [
+                            dbc.Row(
+                                dcc.Input(id='pp-eem-dataset-establishment-path-input', type='text', value=None,
+                                          placeholder='Please enter the eem dataset path (.json and .pkl are supported).'
+                                                      ' If empty, the model built in "eem pre-processing" '
+                                                      'would be used',
+                                          style={'width': '97%', 'height': '30px'}, debounce=True),
+                                justify="center"
+                            ),
+                            dbc.Row([
+                                dbc.Col(
+                                    html.Div([],
+                                             id='pp-eem-dataset-establishment-message', style={'width': '80vw'}),
+                                    width={"size": 12, "offset": 0}
+                                )
+                            ]),
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Index mandatory keywords"), width={'size': 2}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='pp-establishment-index-kw-mandatory', type='text',
+                                                  placeholder='',
+                                                  style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
+                                        width={"offset": 0, "size": 2}
+                                    ),
+                                    dbc.Col(
+                                        dbc.Label("Index optional keywords"), width={'size': 2, 'offset': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='pp-establishment-index-kw-optional', type='text',
+                                                  placeholder='',
+                                                  style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
+                                        width={"offset": 0, "size": 2}
+                                    )
+                                ]
+                            ),
+                        ],
+                        gap=2
+                    )
+                ]
+            ),
+            html.H5("Parameters selection", className="card-title"),
+            html.Div(
+                [
+                    dbc.Stack(
+                        [
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Excitation wavelength"), width={'size': 2}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='pp-excitation', type='number',
+                                                  placeholder='nm',
+                                                  style={'width': '250px', 'height': '30px'}, debounce=True),
+                                        width={'size': 2}
+                                    ),
+
+                                    dbc.Col(
+                                        dbc.Label("Emission wavelength"), width={'size': 2, 'offset': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='pp-emission', type='number',
+                                                  placeholder='nm',
+                                                  style={'width': '250px', 'height': '30px'}, debounce=True),
+                                        width={'size': 1}
+                                    ),
+                                ]
+                            ),
+
+                            dbc.Row(
+                                dbc.Col(
+                                    dbc.Button([dbc.Spinner(size="sm", id='build-pp-spinner')],
+                                               id='build-pp-model', className='col-2')
+                                )
+                            )
+                        ],
+                        gap=2
+                    )
+
+                ]
+            ),
+        ]
+    ),
+    className='w-100'
+)
+
+
+page_peak_picking = html.Div([
+    dbc.Stack(
+        [
+            dbc.Row(
+                card_pp_param
+            ),
+            dbc.Row(
+                dcc.Tabs(
+                    id='pp-results',
+                    children=[
+                        dcc.Tab(label='Intensities', id='pp-intensities'),
+                        dcc.Tab(
+                            children=[
+                                html.Div(
+                                    [
+                                        dbc.Card(
+                                            dbc.Stack(
+                                                [
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dbc.Label("Select reference variable"),
+                                                                width={'size': 1, 'offset': 1}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[],
+                                                                    id='pp-establishment-corr-ref-selection'
+                                                                ),
+                                                                width={'size': 2}
+                                                            ),
+                                                        ]
+                                                    ),
+
+                                                    dbc.Row([
+                                                        dcc.Graph(id='pp-establishment-corr-graph',
+                                                                  # config={'responsive': 'auto'},
+                                                                  style={'width': '45vw', 'height': '60vh'}
+                                                                  ),
+                                                    ]),
+
+                                                    dbc.Row(
+                                                        html.Div([],
+                                                                 id='pp-establishment-corr-table')
+                                                    ),
+
+                                                ],
+                                                gap=2, style={"margin": "20px"}
+                                            )
+                                        )
+                                    ],
+                                    style={'width': '90vw'},
+                                )
+                            ],
+                            label='Correlations', id='pp-establishment-corr'
+                        ),
+                        dcc.Tab(
+                            children=[
+                                html.Div(
+                                    [
+                                        dbc.Card(
+                                            dbc.Stack(
+                                                [
+                                                    html.H5("Import EEM dataset to be predicted"),
+                                                    dbc.Row(
+                                                        dcc.Input(id='pp-eem-dataset-predict-path-input',
+                                                                  type='text',
+                                                                  placeholder='Please enter the eem dataset path (.json'
+                                                                              ' and .pkl are supported).',
+                                                                  style={'width': '97%', 'height': '30px'},
+                                                                  debounce=True),
+                                                        justify="center"
+                                                    ),
+                                                    dbc.Row([
+                                                        dbc.Col(
+                                                            html.Div([],
+                                                                     id='pp-eem-dataset-predict-message',
+                                                                     style={'width': '1000px'}),
+                                                            width={"size": 12, "offset": 0}
+                                                        )
+                                                    ]),
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dbc.Label("Index mandatory keywords"), width={'size': 2}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Input(id='pp-test-index-kw-mandatory',
+                                                                          type='text',
+                                                                          placeholder='',
+                                                                          style={'width': '100%', 'height': '30px'},
+                                                                          debounce=True, value=''),
+                                                                width={"offset": 0, "size": 2}
+                                                            ),
+                                                            dbc.Col(
+                                                                dbc.Label("Index optional keywords"),
+                                                                width={'size': 2, 'offset': 1}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Input(id='pp-test-index-kw-optional',
+                                                                          type='text',
+                                                                          placeholder='',
+                                                                          style={'width': '100%', 'height': '30px'},
+                                                                          debounce=True, value=''),
+                                                                width={"offset": 0, "size": 2}
+                                                            )
+                                                        ]
+                                                    ),
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dbc.Button(
+                                                                    [dbc.Spinner(size="sm",
+                                                                                 id='pp-predict-spinner')],
+                                                                    id='predict-pp-model', className='col-2')
+                                                            )
+                                                        ]
+                                                    )
+                                                ],
+                                                gap=2, style={"margin": "20px"}
+                                            ),
+                                        ),
+                                        dbc.Card(
+                                            [
+                                                dbc.Tabs(children=[
+
+                                                    dcc.Tab(
+                                                        label='Intensities',
+                                                        children=[],
+                                                        id='pp-test-intensities'
+                                                    ),
+                                                    dcc.Tab(
+                                                        label='Error',
+                                                        children=[],
+                                                        id='pp-test-error'
+                                                    ),
+                                                    dcc.Tab(
+                                                        label='Prediction of reference',
+                                                        children=[
+                                                            dbc.Stack(
+                                                                [
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Col(
+                                                                                dbc.Label("Select reference variable"),
+                                                                                width={'size': 2, 'offset': 0}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[],
+                                                                                    id='pp-test-pred-ref-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[
+                                                                                        {
+                                                                                            'label': 'Linear least squares',
+                                                                                            'value': 'linear_least_squares'},
+                                                                                    ],
+                                                                                    id='pp-test-pred-model'
+                                                                                       '-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+                                                                        ]
+                                                                    ),
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Row([
+                                                                                dcc.Graph(
+                                                                                    id='pp-test-pred-graph',
+                                                                                    # config={'responsive': 'auto'},
+                                                                                    config={'autosizable': False},
+                                                                                    style={'width': 1700, 'height': 800}
+                                                                                ),
+                                                                            ]),
+
+                                                                            dbc.Row(
+                                                                                html.Div(
+                                                                                    children=[],
+                                                                                    id='pp-test-pred-table'
+                                                                                )
+                                                                            ),
+                                                                        ]
+                                                                    )
+                                                                ],
+                                                                gap=3, style={"margin": "20px"}
+                                                            ),
+                                                        ],
+                                                    ),
+                                                    dcc.Tab(
+                                                        label='Correlations',
+                                                        children=[
+                                                            dbc.Stack(
+                                                                [
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Col(
+                                                                                dbc.Label("Select indicator"),
+                                                                                width={'size': 2, 'offset': 0}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[
+                                                                                        {'label': 'Intensities',
+                                                                                         'value': 'Intensities'},
+                                                                                    ],
+                                                                                    id='pp-test-corr-indicator-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+
+                                                                            dbc.Col(
+                                                                                dbc.Label("Select reference variable"),
+                                                                                width={'size': 2, 'offset': 2}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[],
+                                                                                    id='pp-test-corr-ref-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+                                                                        ]
+                                                                    ),
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Row([
+                                                                                dcc.Graph(
+                                                                                    id='pp-test-corr-graph',
+                                                                                    # config={'responsive': 'auto'},
+                                                                                    style={'width': '700',
+                                                                                           'height': '900'}
+                                                                                ),
+                                                                            ]),
+
+                                                                            dbc.Row(
+                                                                                html.Div(
+                                                                                    children=[],
+                                                                                    id='pp-test-corr-table'
+                                                                                )
+                                                                            ),
+                                                                        ]
+                                                                    )
+                                                                ],
+                                                                gap=3, style={"margin": "20px"}
+                                                            ),
+                                                        ],
+                                                    ),
+                                                ],
+                                                    persistence=True,
+                                                    persistence_type='session'),
+
+                                            ],
+                                        )
+                                    ],
+                                    style={'width': '90vw'},
+                                )
+                            ],
+                            label='Predict', id='pp-predict'
+                        )
+                    ],
+                    # style={
+                    #     'width': '100%'
+                    # },
+                    vertical=True
+                )
+            ),
+        ],
+        gap=3
+    )
+
+])
+
+@app.callback(
+    [
+        Output('pp-eem-dataset-establishment-message', 'children'),
+        Output('pp-intensities', 'children'),
+        Output('build-pp-spinner', 'children'),
+        Output('pp-establishment-corr-ref-selection', 'options'),
+        Output('pp-establishment-corr-ref-selection', 'value'),
+        Output('pp-test-pred-ref-selection', 'options'),
+        Output('pp-test-pred-ref-selection', 'value'),
+        Output('pp-model', 'data'),
+    ],
+    [
+        Input('build-pp-model', 'n_clicks'),
+        State('eem-graph-options', 'value'),
+        State('pp-eem-dataset-establishment-path-input', 'value'),
+        State('pp-establishment-index-kw-mandatory', 'value'),
+        State('pp-establishment-index-kw-optional', 'value'),
+        State('pp-excitation', 'value'),
+        State('pp-emission', 'value'),
+        State('eem-dataset', 'data')
+    ]
+)
+def on_build_pp_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, ex_target, em_target,
+                      eem_dataset_dict):
+    if n_clicks is None:
+        return None, None, 'Build model', [], None, [], None, None
+    if not path_establishment:
+        if eem_dataset_dict is None:
+            message = (
+                'Error: No built EEM dataset detected. Please build an EEM dataset first in "EEM pre-processing" '
+                'section, or import an EEM dataset from file.')
+            return None, None, 'Build model', [], None, [], None, None
+        eem_dataset_establishment = EEMDataset(
+            eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+                                in eem_dataset_dict['eem_stack']]),
+            ex_range=np.array(eem_dataset_dict['ex_range']),
+            em_range=np.array(eem_dataset_dict['em_range']),
+            index=eem_dataset_dict['index'],
+            ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0],
+                             index=eem_dataset_dict['index'])
+            if eem_dataset_dict['ref'] is not None else None,
+        )
+    else:
+        if not os.path.exists(path_establishment):
+            message = ('Error: No such file or directory: ' + path_establishment)
+            return message, None, 'Build model', [], None, [], None, None
+        else:
+            _, file_extension = os.path.splitext(path_establishment)
+
+            if file_extension == '.json':
+                with open(path_establishment, 'r') as file:
+                    eem_dataset_dict = json.load(file)
+            elif file_extension == '.pkl':
+                with open(path_establishment, 'rb') as file:
+                    eem_dataset_dict = pickle.load(file)
+            else:
+                raise ValueError("Unsupported file extension: {}".format(file_extension))
+            eem_dataset_establishment = EEMDataset(
+                eem_stack=np.array(
+                    [[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+                     in eem_dataset_dict['eem_stack']]),
+                ex_range=np.array(eem_dataset_dict['ex_range']),
+                em_range=np.array(eem_dataset_dict['em_range']),
+                index=eem_dataset_dict['index'],
+                ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0],
+                                 index=eem_dataset_dict['index'])
+                if eem_dataset_dict['ref'] is not None else None,
+            )
+    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
+    kw_optional = str_string_to_list(kw_optional) if kw_optional else None
+    eem_dataset_establishment.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional,
+                                              inplace=True)
+
+    pp_model = {}
+    intensities_tabs = dbc.Card([])
+
+    if eem_dataset_establishment.ref is not None:
+        valid_ref = eem_dataset_establishment.ref.columns[~eem_dataset_establishment.ref.isna().all()].tolist()
+    else:
+        valid_ref = None
+
+    fi, ex_actual, em_actual = eem_dataset_establishment.peak_picking(ex=ex_target, em=em_target)
+    fi_name = f'Intensity (ex={ex_actual} nm, em={em_actual} nm)'
+
+    pp_fit_params = {}
+    if eem_dataset_establishment.ref is not None:
+        for ref_var in valid_ref:
+            x = eem_dataset_establishment.ref[ref_var]
+            stats = []
+            nan_rows = x[x.isna()].index
+            x = x.drop(nan_rows)
+            if x.shape[0] < 1:
+                continue
+            y = fi.squeeze()
+            y = y.drop(nan_rows)
+            x_reshaped = np.array(x).reshape(-1, 1)
+            lm = LinearRegression().fit(x_reshaped, y)
+            r_squared = lm.score(x_reshaped, y)
+            intercept = lm.intercept_
+            slope = lm.coef_[0]
+            pearson_corr, pearson_p = pearsonr(x, y)
+            stats.append([fi_name, slope, intercept, r_squared, pearson_corr, pearson_p])
+            pp_fit_params[ref_var] = stats
+
+        pp_model = {
+            'intensities': [fi.columns.tolist()] + fi.values.tolist(),
+            'index': eem_dataset_establishment.index,
+            'ref': [eem_dataset_establishment.ref.columns.tolist()] + eem_dataset_establishment.ref.values.tolist()
+            if eem_dataset_establishment.ref is not None else None,
+            'ex_actual': ex_actual,
+            'em_actual': em_actual,
+            'fitting_params': pp_fit_params
+        }
+
+    # fmax
+    intensities_tabs.children.append(
+        html.Div([
+            dbc.Row(
+                [
+                    dbc.Col(
+                        [
+                            dcc.Graph(figure=plot_fmax(fi,
+                                                       display=False,
+                                                       yaxis_title=fi_name
+                                                       ),
+                                      config={'autosizable': False},
+                                      style={'width': 1700, 'height': 800}
+                                      )
+                        ]
+                    )
+                ]
+            ),
+
+            dbc.Row(
+                [
+                    dbc.Col(
+                        [
+                            dbc.Table.from_dataframe(fi,
+                                                     bordered=True, hover=True, index=True)
+                        ]
+                    )
+                ]
+            )
+        ]),
+    )
+
+    ref_options = [{'label': var, 'value': var} for var in valid_ref] if \
+        (eem_dataset_establishment.ref is not None) else None
+
+    return None, intensities_tabs, 'Build model', ref_options, None, ref_options, None, pp_model
+
+
+# -----------Analyze correlations between score/Fmax and reference variables in model establishment
+
+@app.callback(
+    [
+        Output('pp-establishment-corr-graph', 'figure'),  # size, intervals?
+        Output('pp-establishment-corr-table', 'children'),
+    ],
+    [
+        Input('pp-establishment-corr-ref-selection', 'value'),
+        State('pp-model', 'data')
+    ]
+)
+def on_pp_establishment_correlations(ref_var, pp_model):
+    if all([ref_var, pp_model]):
+        ref_df = pd.DataFrame(pp_model['ref'][1:], columns=pp_model['ref'][0],
+                              index=pp_model['index'])
+        intensities_df = pd.DataFrame(pp_model['intensities'][1:], columns=pp_model['intensities'][0],
+                               index=pp_model['index'])
+        ref_df = pd.concat([ref_df, intensities_df], axis=1)
+        var = ref_df[ref_var]
+        fig = go.Figure()
+
+        stats = pp_model['fitting_params']
+
+        x = var
+        y = intensities_df.iloc[:, 0]
+        nan_rows = x[x.isna()].index
+        x = x.drop(nan_rows)
+        y = y.drop(nan_rows)
+        if x.shape[0] < 1:
+            return go.Figure(), None
+        fig.add_trace(go.Scatter(x=x, y=y, mode='markers', name=stats[ref_var][0][0], text=[i for i in x.index],
+                                 marker=dict(color=colors[0]), hoverinfo='text+x+y'))
+        fig.add_trace(go.Scatter(x=np.array([x.min(), x.max()]),
+                                 y=stats[ref_var][0][1] * np.array([x.min(), x.max()]) + stats[ref_var][0][2],
+                                 mode='lines', name=f'{stats[ref_var][0][0]}-Linear Regression Line',
+                                 line=dict(dash='dash', color=colors[0])))
+        fig.update_xaxes(title_text=ref_var)
+        fig.update_yaxes(title_text='Intensity')
+
+        tbl = pd.DataFrame(
+            stats[ref_var],
+            columns=['Variable', 'slope', 'intercept', 'R²', 'Pearson Correlation', 'Pearson p-value']
+        )
+        tbl = dbc.Table.from_dataframe(tbl, bordered=True, hover=True, index=False)
+        return fig, tbl
+    else:
+        return go.Figure(), None
+
+
+# -----------Fit a test EEM dataset using the established Linear model
+@app.callback(
+    [
+        Output('pp-eem-dataset-predict-message', 'children'),  # size, intervals?
+        Output('pp-test-intensities', 'children'),
+        Output('pp-test-error', 'children'),
+        Output('pp-test-corr-indicator-selection', 'options'),
+        Output('pp-test-corr-indicator-selection', 'value'),
+        Output('pp-test-corr-ref-selection', 'options'),
+        Output('pp-test-corr-ref-selection', 'value'),
+        Output('pp-predict-spinner', 'children'),
+        Output('pp-test-results', 'data'),
+    ],
+    [
+        Input('predict-pp-model', 'n_clicks'),
+        State('pp-eem-dataset-predict-path-input', 'value'),
+        State('pp-test-index-kw-mandatory', 'value'),
+        State('pp-test-index-kw-optional', 'value'),
+        State('pp-model', 'data')
+    ]
+)
+def on_pp_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, pp_model):
+    if n_clicks is None:
+        return None, None, None, [], None, [], None, 'predict', None
+    if path_predict is None:
+        return None, None, None, [], None, [], None, 'predict', None
+    if not os.path.exists(path_predict):
+        message = ('Error: No such file: ' + path_predict)
+        return message, None, None, [], None, [], None, 'predict', None
+    else:
+        _, file_extension = os.path.splitext(path_predict)
+
+        if file_extension == '.json':
+            with open(path_predict, 'r') as file:
+                eem_dataset_dict = json.load(file)
+        elif file_extension == '.pkl':
+            with open(path_predict, 'rb') as file:
+                eem_dataset_dict = pickle.load(file)
+        else:
+            raise ValueError("Unsupported file extension: {}".format(file_extension))
+        eem_dataset_predict = EEMDataset(
+            eem_stack=np.array(
+                [[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+                 in eem_dataset_dict['eem_stack']]),
+            ex_range=np.array(eem_dataset_dict['ex_range']),
+            em_range=np.array(eem_dataset_dict['em_range']),
+            index=eem_dataset_dict['index'],
+            ref=pd.DataFrame(eem_dataset_dict['ref'][1:], index=eem_dataset_dict['index'],
+                             columns=eem_dataset_dict['ref'][0]) if eem_dataset_dict['ref'] is not None else None,
+        )
+    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
+    kw_optional = str_string_to_list(kw_optional) if kw_optional else None
+    eem_dataset_predict.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, inplace=True)
+
+    if eem_dataset_predict.ref is not None:
+        valid_ref = eem_dataset_predict.ref.columns[~eem_dataset_predict.ref.isna().all()].tolist()
+    else:
+        valid_ref = None
+
+    fi_test, ex_actual_test, em_actual_test = eem_dataset_predict.peak_picking(ex=pp_model['ex_actual'], em=pp_model['em_actual'])
+
+    pred = {}
+    if eem_dataset_predict.ref is not None:
+        for ref_var in valid_ref:
+            if ref_var in pp_model['fitting_params'].keys():
+                params = pp_model['fitting_params'][ref_var]
+                pred_sample = fi_test.copy()
+                pred_r = fi_test.iloc[:, 0] - params[0][2]
+                pred_r = pred_r / params[0][1]
+                pred_sample.iloc[:,0] = pred_r
+                pred[ref_var] = [pred_sample.columns.tolist()] + pred_sample.values.tolist()
+            else:
+                pred[ref_var] = None
+
+    intensities_tab = html.Div([
+        dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        dcc.Graph(figure=plot_fmax(fi_test,
+                                                   display=False,
+                                                   yaxis_title='Intensities of test dataset'
+                                                   ),
+                                  config={'autosizable': False},
+                                  style={'width': 1700, 'height': 800}
+                                  )
+                    ]
+                )
+            ]
+        ),
+        dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        dbc.Table.from_dataframe(fi_test,
+                                                 bordered=True, hover=True, index=True
+                                                 )
+                    ]
+                ),
+            ]
+        ),
+    ])
+
+    error_tab = html.Div(children=[])
+
+    if eem_dataset_predict.ref is not None:
+        indicator_options = [
+            {'label': 'Intensities of test dataset', 'value': 'Intensities of test dataset'},
+            {'label': 'Prediction of reference', 'value': 'Prediction of reference'}
+        ]
+    else:
+        indicator_options = [
+            {'label': 'Intensities of test dataset', 'value': 'Intensities of test dataset'}
+        ]
+
+    ref_options = [{'label': var, 'value': var} for var in eem_dataset_predict.ref.columns]
+
+    test_results = {
+        'Intensities of test dataset': [fi_test.columns.tolist()] + fi_test.values.tolist(),
+        'Prediction of reference': pred,
+        'ref': [eem_dataset_predict.ref.columns.tolist()] + eem_dataset_predict.ref.values.tolist()
+        if eem_dataset_predict.ref is not None else None,
+        'index': eem_dataset_predict.index
+    }
+
+    return None, intensities_tab, error_tab, indicator_options, None, ref_options, None, 'predict', test_results
+
+
+# -----------Predict the corresponding reference variables for the test EEM datasets using the model fitted in the model
+#            establishment step
+@app.callback(
+    [
+        Output('pp-test-pred-graph', 'figure'),  # size, intervals?
+        Output('pp-test-pred-table', 'children'),
+    ],
+    [
+        Input('predict-pp-model', 'n_clicks'),
+        Input('pp-test-pred-ref-selection', 'value'),
+        State('pp-test-results', 'data'),
+    ]
+)
+def on_pp_test_predict_reference(n_clicks, ref_var, pp_test_results):
+    if all([ref_var, pp_test_results]):
+        pred = pp_test_results['Prediction of reference'][ref_var]
+        pred = pd.DataFrame(pred[1:], columns=pred[0], index=pp_test_results['index'])
+        fig = plot_fmax(pred, display=False, yaxis_title=ref_var)
+        if pp_test_results['ref'] is not None:
+            ref = pd.DataFrame(pp_test_results['ref'][1:], columns=pp_test_results['ref'][0],
+                               index=pp_test_results['index'])
+            true_value = ref[ref_var]
+            nan_rows = true_value[true_value.isna()].index
+            true_value = true_value.drop(nan_rows)
+            pred_overlap = pred.drop(nan_rows)
+            fig.add_trace(go.Scatter(x=true_value.index, y=true_value.values, mode='markers',
+                                     marker=dict(color='black', size=5),
+                                     name='True value'))
+            rmse_results = []
+            for f_col in pred.columns:
+                rmse = sqrt(sum((true_value.values - pred_overlap[f_col]) ** 2) / len(true_value.values))
+                rmse_results.append(rmse)
+            tbl = html.Div(
+                [
+                    dbc.Row(
+                        dbc.Table.from_dataframe(pd.DataFrame([rmse_results], columns=pred.columns,
+                                                              index=pd.Index(['RMSE'], name='Error metric')),
+                                                 bordered=True, hover=True, index=True)
+                    ),
+                    dbc.Row(
+                        dbc.Table.from_dataframe(pd.concat([pred, ref[ref_var]], axis=1),
+                                                 bordered=True, hover=True, index=True)
+                    )
+                ]
+            )
+        else:
+            tbl = dbc.Table.from_dataframe(pred, bordered=True, hover=True, index=True)
+        return fig, tbl
+    else:
+        return go.Figure(), None
+
+
+# -----------Analyze correlations between Fmax and reference variables in model testing
+@app.callback(
+    [
+        Output('pp-test-corr-graph', 'figure'),  # size, intervals?
+        Output('pp-test-corr-table', 'children'),
+    ],
+    [
+        Input('pp-test-corr-indicator-selection', 'value'),
+        Input('pp-test-corr-ref-selection', 'value'),
+        State('pp-test-results', 'data'),
+    ]
+)
+def on_pp_test_correlations(indicator, ref_var, pp_test_results):
+    if all([indicator, ref_var, pp_test_results]):
+        ref_df = pd.DataFrame(pp_test_results['ref'][1:], columns=pp_test_results['ref'][0],
+                              index=pp_test_results['index'])
+        var = ref_df[ref_var]
+        if indicator != 'Prediction of reference':
+            pp_var = pd.DataFrame(pp_test_results[indicator][1:], columns=pp_test_results[indicator][0],
+                                       index=pp_test_results['index'])
+        else:
+            if pp_test_results[indicator][ref_var] is not None:
+                pp_var = pd.DataFrame(pp_test_results[indicator][ref_var][1:],
+                                           columns=pp_test_results[indicator][ref_var][0],
+                                           index=pp_test_results['index'])
+            else:
+                return go.Figure(), None
+        fig = go.Figure()
+        stats = []
+        for i, col in enumerate(pp_var.columns):
+            x = var
+            y = pp_var[col]
+            nan_rows = x[x.isna()].index
+            x = x.drop(nan_rows)
+            y = y.drop(nan_rows)
+            if x.shape[0] < 1:
+                return go.Figure(), None
+            x_reshaped = np.array(x).reshape(-1, 1)
+            lm = LinearRegression().fit(x_reshaped, y)
+            predictions = lm.predict(x_reshaped)
+            fig.add_trace(go.Scatter(x=x, y=y, mode='markers', name=col, text=[i for i in x.index],
+                                     hoverinfo='text+x+y', marker=dict(color=colors[i % 10])))
+            fig.add_trace(go.Scatter(x=x, y=predictions, mode='lines', name=f'{col} fit',
+                                     line=dict(dash='dash', color=colors[i % 10])))
+            r_squared = lm.score(x_reshaped, y)
+            intercept = lm.intercept_
+            slope = lm.coef_[0]
+            pearson_corr, pearson_p = pearsonr(x, y)
+            stats.append([col, slope, intercept, r_squared, pearson_corr, pearson_p])
+
+        fig.update_xaxes(title_text=ref_var)
+        fig.update_yaxes(title_text="Prediction of " + ref_var if indicator == 'Prediction of reference' else indicator)
+
+        tbl = pd.DataFrame(
+            stats,
+            columns=['Variable', 'slope', 'intercept', 'R²', 'Pearson Correlation', 'Pearson p-value']
+        )
+        tbl = dbc.Table.from_dataframe(tbl, bordered=True, hover=True, index=False)
+        return fig, tbl
+    else:
+        return go.Figure(), None
+
+
+
+# -----------Page #3: Regional integration--------------
+
+#   -------------Setting up the dbc cards
+
+#       -----------------dbc card for regional-integration parameters
+
+card_ri_param = dbc.Card(
+    dbc.CardBody(
+        [
+            html.H5("Import EEM dataset for model establishment", className="card-title"),
+            html.Div(
+                [
+                    dbc.Stack(
+                        [
+                            dbc.Row(
+                                dcc.Input(id='ri-eem-dataset-establishment-path-input', type='text', value=None,
+                                          placeholder='Please enter the eem dataset path (.json and .pkl are supported).'
+                                                      ' If empty, the model built in "eem pre-processing" '
+                                                      'would be used',
+                                          style={'width': '97%', 'height': '30px'}, debounce=True),
+                                justify="center"
+                            ),
+                            dbc.Row([
+                                dbc.Col(
+                                    html.Div([],
+                                             id='ri-eem-dataset-establishment-message', style={'width': '80vw'}),
+                                    width={"size": 12, "offset": 0}
+                                )
+                            ]),
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Index mandatory keywords"), width={'size': 2}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='ri-establishment-index-kw-mandatory', type='text',
+                                                  placeholder='',
+                                                  style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
+                                        width={"offset": 0, "size": 2}
+                                    ),
+                                    dbc.Col(
+                                        dbc.Label("Index optional keywords"), width={'size': 2, 'offset': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='ri-establishment-index-kw-optional', type='text',
+                                                  placeholder='',
+                                                  style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
+                                        width={"offset": 0, "size": 2}
+                                    )
+                                ]
+                            ),
+                        ],
+                        gap=2
+                    )
+                ]
+            ),
+            html.H5("Parameters selection", className="card-title"),
+            html.Div(
+                [
+                    dbc.Stack(
+                        [
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Ex range min"), width={'size': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='ri-ex-min', type='number',
+                                                  placeholder='nm',
+                                                  style={'width': '100px', 'height': '30px'}, debounce=True),
+                                        width={'size': 2}
+                                    ),
+
+                                    dbc.Col(
+                                        dbc.Label("Ex range max"), width={'size': 1, 'offset': 0}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='ri-ex-max', type='number',
+                                                  placeholder='nm',
+                                                  style={'width': '100px', 'height': '30px'}, debounce=True),
+                                        width={'size': 2}
+                                    ),
+                                    dbc.Col(
+                                        dbc.Label("Em range min"), width={'size': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='ri-em-min', type='number',
+                                                  placeholder='nm',
+                                                  style={'width': '100px', 'height': '30px'}, debounce=True),
+                                        width={'size': 2}
+                                    ),
+
+                                    dbc.Col(
+                                        dbc.Label("Em range max"), width={'size': 1, 'offset': 0}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='ri-em-max', type='number',
+                                                  placeholder='nm',
+                                                  style={'width': '100px', 'height': '30px'}, debounce=True),
+                                        width={'size': 2}
+                                    ),
+                                ]
+                            ),
+
+                            dbc.Row(
+                                dbc.Col(
+                                    dbc.Button([dbc.Spinner(size="sm", id='build-ri-spinner')],
+                                               id='build-ri-model', className='col-2')
+                                )
+                            )
+                        ],
+                        gap=2
+                    )
+
+                ]
+            ),
+        ]
+    ),
+    className='w-100'
+)
+
+
+page_regional_integration = html.Div([
+    dbc.Stack(
+        [
+            dbc.Row(
+                card_ri_param
+            ),
+            dbc.Row(
+                dcc.Tabs(
+                    id='ri-results',
+                    children=[
+                        dcc.Tab(label='Intensities', id='ri-intensities'),
+                        dcc.Tab(
+                            children=[
+                                html.Div(
+                                    [
+                                        dbc.Card(
+                                            dbc.Stack(
+                                                [
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dbc.Label("Select reference variable"),
+                                                                width={'size': 1, 'offset': 1}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[],
+                                                                    id='ri-establishment-corr-ref-selection'
+                                                                ),
+                                                                width={'size': 2}
+                                                            ),
+                                                        ]
+                                                    ),
+
+                                                    dbc.Row([
+                                                        dcc.Graph(id='ri-establishment-corr-graph',
+                                                                  # config={'responsive': 'auto'},
+                                                                  style={'width': '45vw', 'height': '60vh'}
+                                                                  ),
+                                                    ]),
+
+                                                    dbc.Row(
+                                                        html.Div([],
+                                                                 id='ri-establishment-corr-table')
+                                                    ),
+
+                                                ],
+                                                gap=2, style={"margin": "20px"}
+                                            )
+                                        )
+                                    ],
+                                    style={'width': '90vw'},
+                                )
+                            ],
+                            label='Correlations', id='ri-establishment-corr'
+                        ),
+                        dcc.Tab(
+                            children=[
+                                html.Div(
+                                    [
+                                        dbc.Card(
+                                            dbc.Stack(
+                                                [
+                                                    html.H5("Import EEM dataset to be predicted"),
+                                                    dbc.Row(
+                                                        dcc.Input(id='ri-eem-dataset-predict-path-input',
+                                                                  type='text',
+                                                                  placeholder='Please enter the eem dataset path (.json'
+                                                                              ' and .pkl are supported).',
+                                                                  style={'width': '97%', 'height': '30px'},
+                                                                  debounce=True),
+                                                        justify="center"
+                                                    ),
+                                                    dbc.Row([
+                                                        dbc.Col(
+                                                            html.Div([],
+                                                                     id='ri-eem-dataset-predict-message',
+                                                                     style={'width': '1000px'}),
+                                                            width={"size": 12, "offset": 0}
+                                                        )
+                                                    ]),
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dbc.Label("Index mandatory keywords"), width={'size': 2}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Input(id='ri-test-index-kw-mandatory',
+                                                                          type='text',
+                                                                          placeholder='',
+                                                                          style={'width': '100%', 'height': '30px'},
+                                                                          debounce=True, value=''),
+                                                                width={"offset": 0, "size": 2}
+                                                            ),
+                                                            dbc.Col(
+                                                                dbc.Label("Index optional keywords"),
+                                                                width={'size': 2, 'offset': 1}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Input(id='ri-test-index-kw-optional',
+                                                                          type='text',
+                                                                          placeholder='',
+                                                                          style={'width': '100%', 'height': '30px'},
+                                                                          debounce=True, value=''),
+                                                                width={"offset": 0, "size": 2}
+                                                            )
+                                                        ]
+                                                    ),
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dbc.Button(
+                                                                    [dbc.Spinner(size="sm",
+                                                                                 id='ri-predict-spinner')],
+                                                                    id='predict-ri-model', className='col-2')
+                                                            )
+                                                        ]
+                                                    )
+                                                ],
+                                                gap=2, style={"margin": "20px"}
+                                            ),
+                                        ),
+                                        dbc.Card(
+                                            [
+                                                dbc.Tabs(children=[
+
+                                                    dcc.Tab(
+                                                        label='Intensities',
+                                                        children=[],
+                                                        id='ri-test-intensities'
+                                                    ),
+                                                    dcc.Tab(
+                                                        label='Error',
+                                                        children=[],
+                                                        id='ri-test-error'
+                                                    ),
+                                                    dcc.Tab(
+                                                        label='Prediction of reference',
+                                                        children=[
+                                                            dbc.Stack(
+                                                                [
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Col(
+                                                                                dbc.Label("Select reference variable"),
+                                                                                width={'size': 2, 'offset': 0}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[],
+                                                                                    id='ri-test-pred-ref-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[
+                                                                                        {
+                                                                                            'label': 'Linear least squares',
+                                                                                            'value': 'linear_least_squares'},
+                                                                                    ],
+                                                                                    id='ri-test-pred-model'
+                                                                                       '-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+                                                                        ]
+                                                                    ),
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Row([
+                                                                                dcc.Graph(
+                                                                                    id='ri-test-pred-graph',
+                                                                                    # config={'responsive': 'auto'},
+                                                                                    config={'autosizable': False},
+                                                                                    style={'width': 1700, 'height': 800}
+                                                                                ),
+                                                                            ]),
+
+                                                                            dbc.Row(
+                                                                                html.Div(
+                                                                                    children=[],
+                                                                                    id='ri-test-pred-table'
+                                                                                )
+                                                                            ),
+                                                                        ]
+                                                                    )
+                                                                ],
+                                                                gap=3, style={"margin": "20px"}
+                                                            ),
+                                                        ],
+                                                    ),
+                                                    dcc.Tab(
+                                                        label='Correlations',
+                                                        children=[
+                                                            dbc.Stack(
+                                                                [
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Col(
+                                                                                dbc.Label("Select indicator"),
+                                                                                width={'size': 2, 'offset': 0}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[
+                                                                                        {'label': 'Intensities',
+                                                                                         'value': 'Intensities'},
+                                                                                    ],
+                                                                                    id='ri-test-corr-indicator-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+
+                                                                            dbc.Col(
+                                                                                dbc.Label("Select reference variable"),
+                                                                                width={'size': 2, 'offset': 2}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[],
+                                                                                    id='ri-test-corr-ref-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+                                                                        ]
+                                                                    ),
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Row([
+                                                                                dcc.Graph(
+                                                                                    id='ri-test-corr-graph',
+                                                                                    # config={'responsive': 'auto'},
+                                                                                    style={'width': '700',
+                                                                                           'height': '900'}
+                                                                                ),
+                                                                            ]),
+
+                                                                            dbc.Row(
+                                                                                html.Div(
+                                                                                    children=[],
+                                                                                    id='ri-test-corr-table'
+                                                                                )
+                                                                            ),
+                                                                        ]
+                                                                    )
+                                                                ],
+                                                                gap=3, style={"margin": "20px"}
+                                                            ),
+                                                        ],
+                                                    ),
+                                                ],
+                                                    persistence=True,
+                                                    persistence_type='session'),
+
+                                            ],
+                                        )
+                                    ],
+                                    style={'width': '90vw'},
+                                )
+                            ],
+                            label='Predict', id='ri-predict'
+                        )
+                    ],
+                    # style={
+                    #     'width': '100%'
+                    # },
+                    vertical=True
+                )
+            ),
+        ],
+        gap=3
+    )
+
+])
+
+@app.callback(
+    [
+        Output('ri-eem-dataset-establishment-message', 'children'),
+        Output('ri-intensities', 'children'),
+        Output('build-ri-spinner', 'children'),
+        Output('ri-establishment-corr-ref-selection', 'options'),
+        Output('ri-establishment-corr-ref-selection', 'value'),
+        Output('ri-test-pred-ref-selection', 'options'),
+        Output('ri-test-pred-ref-selection', 'value'),
+        Output('ri-model', 'data'),
+    ],
+    [
+        Input('build-ri-model', 'n_clicks'),
+        State('eem-graph-options', 'value'),
+        State('ri-eem-dataset-establishment-path-input', 'value'),
+        State('ri-establishment-index-kw-mandatory', 'value'),
+        State('ri-establishment-index-kw-optional', 'value'),
+        State('ri-ex-min', 'value'),
+        State('ri-ex-max', 'value'),
+        State('ri-em-min', 'value'),
+        State('ri-em-max', 'value'),
+        State('eem-dataset', 'data')
+    ]
+)
+def on_build_ri_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, ex_min, ex_max,
+                      em_min, em_max, eem_dataset_dict):
+    if n_clicks is None:
+        return None, None, 'Build model', [], None, [], None, None
+    if not path_establishment:
+        if eem_dataset_dict is None:
+            message = (
+                'Error: No built EEM dataset detected. Please build an EEM dataset first in "EEM pre-processing" '
+                'section, or import an EEM dataset from file.')
+            return None, None, 'Build model', [], None, [], None, None
+        eem_dataset_establishment = EEMDataset(
+            eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+                                in eem_dataset_dict['eem_stack']]),
+            ex_range=np.array(eem_dataset_dict['ex_range']),
+            em_range=np.array(eem_dataset_dict['em_range']),
+            index=eem_dataset_dict['index'],
+            ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0],
+                             index=eem_dataset_dict['index'])
+            if eem_dataset_dict['ref'] is not None else None,
+        )
+    else:
+        if not os.path.exists(path_establishment):
+            message = ('Error: No such file or directory: ' + path_establishment)
+            return message, None, 'Build model', [], None, [], None, None
+        else:
+            _, file_extension = os.path.splitext(path_establishment)
+
+            if file_extension == '.json':
+                with open(path_establishment, 'r') as file:
+                    eem_dataset_dict = json.load(file)
+            elif file_extension == '.pkl':
+                with open(path_establishment, 'rb') as file:
+                    eem_dataset_dict = pickle.load(file)
+            else:
+                raise ValueError("Unsupported file extension: {}".format(file_extension))
+            eem_dataset_establishment = EEMDataset(
+                eem_stack=np.array(
+                    [[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+                     in eem_dataset_dict['eem_stack']]),
+                ex_range=np.array(eem_dataset_dict['ex_range']),
+                em_range=np.array(eem_dataset_dict['em_range']),
+                index=eem_dataset_dict['index'],
+                ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0],
+                                 index=eem_dataset_dict['index'])
+                if eem_dataset_dict['ref'] is not None else None,
+            )
+    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
+    kw_optional = str_string_to_list(kw_optional) if kw_optional else None
+    eem_dataset_establishment.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional,
+                                              inplace=True)
+
+    ri_model = {}
+    intensities_tabs = dbc.Card([])
+
+    if eem_dataset_establishment.ref is not None:
+        valid_ref = eem_dataset_establishment.ref.columns[~eem_dataset_establishment.ref.isna().all()].tolist()
+    else:
+        valid_ref = None
+
+    ri = eem_dataset_establishment.regional_integration(ex_min=ex_min, ex_max=ex_max,
+                                                        em_min=em_min, em_max=em_max)
+    ri_name = f'RI (ex=[{ex_min}, {ex_max}] nm, em=[{em_min}, {em_max}] nm)'
+
+    ri_fit_params = {}
+    if eem_dataset_establishment.ref is not None:
+        for ref_var in valid_ref:
+            x = eem_dataset_establishment.ref[ref_var]
+            stats = []
+            nan_rows = x[x.isna()].index
+            x = x.drop(nan_rows)
+            if x.shape[0] < 1:
+                continue
+            y = ri.squeeze()
+            y = y.drop(nan_rows)
+            x_reshaped = np.array(x).reshape(-1, 1)
+            lm = LinearRegression().fit(x_reshaped, y)
+            r_squared = lm.score(x_reshaped, y)
+            intercept = lm.intercept_
+            slope = lm.coef_[0]
+            pearson_corr, pearson_p = pearsonr(x, y)
+            stats.append([ri_name, slope, intercept, r_squared, pearson_corr, pearson_p])
+            ri_fit_params[ref_var] = stats
+
+        ri_model = {
+            'intensities': [ri.columns.tolist()] + ri.values.tolist(),
+            'index': eem_dataset_establishment.index,
+            'ref': [eem_dataset_establishment.ref.columns.tolist()] + eem_dataset_establishment.ref.values.tolist()
+            if eem_dataset_establishment.ref is not None else None,
+            'ex_min': ex_min,
+            'ex_max': ex_max,
+            'em_min': em_min,
+            'em_max': em_max,
+            'fitting_params': ri_fit_params
+        }
+
+        # fmax
+    intensities_tabs.children.append(
+        html.Div([
+            dbc.Row(
+                [
+                    dbc.Col(
+                        [
+                            dcc.Graph(figure=plot_fmax(ri,
+                                                       display=False,
+                                                       yaxis_title=ri_name
+                                                       ),
+                                      config={'autosizable': False},
+                                      style={'width': 1700, 'height': 800}
+                                      )
+                        ]
+                    )
+                ]
+            ),
+
+            dbc.Row(
+                [
+                    dbc.Col(
+                        [
+                            dbc.Table.from_dataframe(ri,
+                                                     bordered=True, hover=True, index=True)
+                        ]
+                    )
+                ]
+            )
+        ]),
+    )
+
+    ref_options = [{'label': var, 'value': var} for var in valid_ref] if \
+        (eem_dataset_establishment.ref is not None) else None
+
+    return None, intensities_tabs, 'Build model', ref_options, None, ref_options, None, ri_model
+
+
+# -----------Analyze correlations between score/Fmax and reference variables in model establishment
+
+@app.callback(
+    [
+        Output('ri-establishment-corr-graph', 'figure'),  # size, intervals?
+        Output('ri-establishment-corr-table', 'children'),
+    ],
+    [
+        Input('ri-establishment-corr-ref-selection', 'value'),
+        State('ri-model', 'data')
+    ]
+)
+def on_ri_establishment_correlations(ref_var, ri_model):
+    if all([ref_var, ri_model]):
+        ref_df = pd.DataFrame(ri_model['ref'][1:], columns=ri_model['ref'][0],
+                              index=ri_model['index'])
+        intensities_df = pd.DataFrame(ri_model['intensities'][1:], columns=ri_model['intensities'][0],
+                               index=ri_model['index'])
+        ref_df = pd.concat([ref_df, intensities_df], axis=1)
+        var = ref_df[ref_var]
+        fig = go.Figure()
+
+        stats = ri_model['fitting_params']
+
+        x = var
+        y = intensities_df.iloc[:, 0]
+        nan_rows = x[x.isna()].index
+        x = x.drop(nan_rows)
+        y = y.drop(nan_rows)
+        if x.shape[0] < 1:
+            return go.Figure(), None
+        fig.add_trace(go.Scatter(x=x, y=y, mode='markers', name=stats[ref_var][0][0], text=[i for i in x.index],
+                                 marker=dict(color=colors[0]), hoverinfo='text+x+y'))
+        fig.add_trace(go.Scatter(x=np.array([x.min(), x.max()]),
+                                 y=stats[ref_var][0][1] * np.array([x.min(), x.max()]) + stats[ref_var][0][2],
+                                 mode='lines', name=f'{stats[ref_var][0][0]}-Linear Regression Line',
+                                 line=dict(dash='dash', color=colors[0])))
+        fig.update_xaxes(title_text=ref_var)
+        fig.update_yaxes(title_text='Intensity')
+
+        tbl = pd.DataFrame(
+            stats[ref_var],
+            columns=['Variable', 'slope', 'intercept', 'R²', 'Pearson Correlation', 'Pearson p-value']
+        )
+        tbl = dbc.Table.from_dataframe(tbl, bordered=True, hover=True, index=False)
+        return fig, tbl
+    else:
+        return go.Figure(), None
+
+
+# -----------Fit a test EEM dataset using the established RFI model
+@app.callback(
+    [
+        Output('ri-eem-dataset-predict-message', 'children'),  # size, intervals?
+        Output('ri-test-intensities', 'children'),
+        Output('ri-test-error', 'children'),
+        Output('ri-test-corr-indicator-selection', 'options'),
+        Output('ri-test-corr-indicator-selection', 'value'),
+        Output('ri-test-corr-ref-selection', 'options'),
+        Output('ri-test-corr-ref-selection', 'value'),
+        Output('ri-predict-spinner', 'children'),
+        Output('ri-test-results', 'data'),
+    ],
+    [
+        Input('predict-ri-model', 'n_clicks'),
+        State('ri-eem-dataset-predict-path-input', 'value'),
+        State('ri-test-index-kw-mandatory', 'value'),
+        State('ri-test-index-kw-optional', 'value'),
+        State('ri-model', 'data')
+    ]
+)
+def on_ri_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, ri_model):
+    if n_clicks is None:
+        return None, None, None, [], None, [], None, 'predict', None
+    if path_predict is None:
+        return None, None, None, [], None, [], None, 'predict', None
+    if not os.path.exists(path_predict):
+        message = ('Error: No such file: ' + path_predict)
+        return message, None, None, [], None, [], None, 'predict', None
+    else:
+        _, file_extension = os.path.splitext(path_predict)
+
+        if file_extension == '.json':
+            with open(path_predict, 'r') as file:
+                eem_dataset_dict = json.load(file)
+        elif file_extension == '.pkl':
+            with open(path_predict, 'rb') as file:
+                eem_dataset_dict = pickle.load(file)
+        else:
+            raise ValueError("Unsupported file extension: {}".format(file_extension))
+        eem_dataset_predict = EEMDataset(
+            eem_stack=np.array(
+                [[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+                 in eem_dataset_dict['eem_stack']]),
+            ex_range=np.array(eem_dataset_dict['ex_range']),
+            em_range=np.array(eem_dataset_dict['em_range']),
+            index=eem_dataset_dict['index'],
+            ref=pd.DataFrame(eem_dataset_dict['ref'][1:], index=eem_dataset_dict['index'],
+                             columns=eem_dataset_dict['ref'][0]) if eem_dataset_dict['ref'] is not None else None,
+        )
+    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
+    kw_optional = str_string_to_list(kw_optional) if kw_optional else None
+    eem_dataset_predict.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, inplace=True)
+
+    if eem_dataset_predict.ref is not None:
+        valid_ref = eem_dataset_predict.ref.columns[~eem_dataset_predict.ref.isna().all()].tolist()
+    else:
+        valid_ref = None
+
+    ri_test = eem_dataset_predict.regional_integration(
+        ex_min=ri_model['ex_min'], ex_max=ri_model['ex_max'],
+        em_min=ri_model['em_min'], em_max=ri_model['em_max']
+    )
+
+    pred = {}
+    if eem_dataset_predict.ref is not None:
+        for ref_var in valid_ref:
+            if ref_var in ri_model['fitting_params'].keys():
+                params = ri_model['fitting_params'][ref_var]
+                pred_sample = ri_test.copy()
+                pred_r = ri_test.iloc[:, 0] - params[0][2]
+                pred_r = pred_r / params[0][1]
+                pred_sample.iloc[:,0] = pred_r
+                pred[ref_var] = [pred_sample.columns.tolist()] + pred_sample.values.tolist()
+            else:
+                pred[ref_var] = None
+
+    intensities_tab = html.Div([
+        dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        dcc.Graph(figure=plot_fmax(ri_test,
+                                                   display=False,
+                                                   yaxis_title='Intensities of test dataset'
+                                                   ),
+                                  config={'autosizable': False},
+                                  style={'width': 1700, 'height': 800}
+                                  )
+                    ]
+                )
+            ]
+        ),
+        dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        dbc.Table.from_dataframe(ri_test,
+                                                 bordered=True, hover=True, index=True
+                                                 )
+                    ]
+                ),
+            ]
+        ),
+    ])
+
+    error_tab = html.Div(children=[])
+
+    if eem_dataset_predict.ref is not None:
+        indicator_options = [
+            {'label': 'RI of test dataset', 'value': 'RI of test dataset'},
+            {'label': 'Prediction of reference', 'value': 'Prediction of reference'}
+        ]
+    else:
+        indicator_options = [
+            {'label': 'RI of test dataset', 'value': 'RI of test dataset'}
+        ]
+
+    ref_options = [{'label': var, 'value': var} for var in eem_dataset_predict.ref.columns]
+
+    test_results = {
+        'RI of test dataset': [ri_test.columns.tolist()] + ri_test.values.tolist(),
+        'Prediction of reference': pred,
+        'ref': [eem_dataset_predict.ref.columns.tolist()] + eem_dataset_predict.ref.values.tolist()
+        if eem_dataset_predict.ref is not None else None,
+        'index': eem_dataset_predict.index
+    }
+
+    return None, intensities_tab, error_tab, indicator_options, None, ref_options, None, 'predict', test_results
+
+
+# -----------Predict the corresponding reference variables for the test EEM datasets using the model fitted in the model
+#            establishment step
+@app.callback(
+    [
+        Output('ri-test-pred-graph', 'figure'),  # size, intervals?
+        Output('ri-test-pred-table', 'children'),
+    ],
+    [
+        Input('predict-ri-model', 'n_clicks'),
+        Input('ri-test-pred-ref-selection', 'value'),
+        State('ri-test-results', 'data'),
+    ]
+)
+def on_ri_test_predict_reference(n_clicks, ref_var, ri_test_results):
+    if all([ref_var, ri_test_results]):
+        pred = ri_test_results['Prediction of reference'][ref_var]
+        pred = pd.DataFrame(pred[1:], columns=pred[0], index=ri_test_results['index'])
+        fig = plot_fmax(pred, display=False, yaxis_title=ref_var)
+        if ri_test_results['ref'] is not None:
+            ref = pd.DataFrame(ri_test_results['ref'][1:], columns=ri_test_results['ref'][0],
+                               index=ri_test_results['index'])
+            true_value = ref[ref_var]
+            nan_rows = true_value[true_value.isna()].index
+            true_value = true_value.drop(nan_rows)
+            pred_overlap = pred.drop(nan_rows)
+            fig.add_trace(go.Scatter(x=true_value.index, y=true_value.values, mode='markers',
+                                     marker=dict(color='black', size=5),
+                                     name='True value'))
+            rmse_results = []
+            for f_col in pred.columns:
+                rmse = sqrt(sum((true_value.values - pred_overlap[f_col]) ** 2) / len(true_value.values))
+                rmse_results.append(rmse)
+            tbl = html.Div(
+                [
+                    dbc.Row(
+                        dbc.Table.from_dataframe(pd.DataFrame([rmse_results], columns=pred.columns,
+                                                              index=pd.Index(['RMSE'], name='Error metric')),
+                                                 bordered=True, hover=True, index=True)
+                    ),
+                    dbc.Row(
+                        dbc.Table.from_dataframe(pd.concat([pred, ref[ref_var]], axis=1),
+                                                 bordered=True, hover=True, index=True)
+                    )
+                ]
+            )
+        else:
+            tbl = dbc.Table.from_dataframe(pred, bordered=True, hover=True, index=True)
+        return fig, tbl
+    else:
+        return go.Figure(), None
+
+
+# -----------Analyze correlations between Fmax and reference variables in model testing
+@app.callback(
+    [
+        Output('ri-test-corr-graph', 'figure'),  # size, intervals?
+        Output('ri-test-corr-table', 'children'),
+    ],
+    [
+        Input('ri-test-corr-indicator-selection', 'value'),
+        Input('ri-test-corr-ref-selection', 'value'),
+        State('ri-test-results', 'data'),
+    ]
+)
+def on_ri_test_correlations(indicator, ref_var, ri_test_results):
+    if all([indicator, ref_var, ri_test_results]):
+        ref_df = pd.DataFrame(ri_test_results['ref'][1:], columns=ri_test_results['ref'][0],
+                              index=ri_test_results['index'])
+        var = ref_df[ref_var]
+        if indicator != 'Prediction of reference':
+            ri_var = pd.DataFrame(ri_test_results[indicator][1:], columns=ri_test_results[indicator][0],
+                                       index=ri_test_results['index'])
+        else:
+            if ri_test_results[indicator][ref_var] is not None:
+                ri_var = pd.DataFrame(ri_test_results[indicator][ref_var][1:],
+                                           columns=ri_test_results[indicator][ref_var][0],
+                                           index=ri_test_results['index'])
+            else:
+                return go.Figure(), None
+        fig = go.Figure()
+        stats = []
+        for i, col in enumerate(ri_var.columns):
+            x = var
+            y = ri_var[col]
+            nan_rows = x[x.isna()].index
+            x = x.drop(nan_rows)
+            y = y.drop(nan_rows)
+            if x.shape[0] < 1:
+                return go.Figure(), None
+            x_reshaped = np.array(x).reshape(-1, 1)
+            lm = LinearRegression().fit(x_reshaped, y)
+            predictions = lm.predict(x_reshaped)
+            fig.add_trace(go.Scatter(x=x, y=y, mode='markers', name=col, text=[i for i in x.index],
+                                     hoverinfo='text+x+y', marker=dict(color=colors[i % 10])))
+            fig.add_trace(go.Scatter(x=x, y=predictions, mode='lines', name=f'{col} fit',
+                                     line=dict(dash='dash', color=colors[i % 10])))
+            r_squared = lm.score(x_reshaped, y)
+            intercept = lm.intercept_
+            slope = lm.coef_[0]
+            pearson_corr, pearson_p = pearsonr(x, y)
+            stats.append([col, slope, intercept, r_squared, pearson_corr, pearson_p])
+
+        fig.update_xaxes(title_text=ref_var)
+        fig.update_yaxes(title_text="Prediction of " + ref_var if indicator == 'Prediction of reference' else indicator)
+
+        tbl = pd.DataFrame(
+            stats,
+            columns=['Variable', 'slope', 'intercept', 'R²', 'Pearson Correlation', 'Pearson p-value']
+        )
+        tbl = dbc.Table.from_dataframe(tbl, bordered=True, hover=True, index=False)
+        return fig, tbl
+    else:
+        return go.Figure(), None
+
+
+
+
+# -----------Page #4: PARAFAC--------------
 
 #   -------------Setting up the dbc cards
 
@@ -1513,11 +3188,24 @@ card_parafac_param = dbc.Card(
                             ),
                             dbc.Row([
                                 dbc.Col(
+                                    dbc.Label("Solver"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Dropdown(
+                                        options=[
+                                            {'label': 'Multiplicative update', 'value': 'mu'},
+                                            {'label': 'Hierarchical ALS', 'value': 'hals'},
+                                        ],
+                                        id='parafac-solver', value='hals'),
+                                    width={'size': 2}
+                                ),
+                                dbc.Col(
                                     dbc.Label("Validations"), width={'size': 1}
                                 ),
                                 dbc.Col(
                                     dcc.Dropdown(
                                         options=[
+                                            {'label': 'Variance explained', 'value': 'variance_explained'},
                                             {'label': 'Core consistency', 'value': 'core_consistency'},
                                             {'label': 'Leverage', 'value': 'leverage'},
                                             {'label': 'Split-half validation', 'value': 'split_half'},
@@ -1525,6 +3213,7 @@ card_parafac_param = dbc.Card(
                                         multi=True, id='parafac-validations', value=[]),
                                     width={'size': 4}
                                 ),
+
                             ]),
                             dbc.Row(
                                 dbc.Col(
@@ -1543,9 +3232,9 @@ card_parafac_param = dbc.Card(
     className='w-100'
 )
 
-#   -------------Layout of page #2
+#   -------------Layout of page parafac------------
 
-page2 = html.Div([
+page_parafac = html.Div([
     dbc.Stack(
         [
             dbc.Row(
@@ -1557,8 +3246,9 @@ page2 = html.Div([
                     children=[
                         dcc.Tab(label='ex/em loadings', id='parafac-loadings'),
                         dcc.Tab(label='Components', id='parafac-components'),
-                        dcc.Tab(label='Scores', id='parafac-scores'),
                         dcc.Tab(label='Fmax', id='parafac-fmax'),
+                        dcc.Tab(label='Reconstruction error', id='parafac-establishment-reconstruction-error'),
+                        dcc.Tab(label='Variance explained', id='parafac-variance-explained'),
                         dcc.Tab(label='Core consistency', id='parafac-core-consistency'),
                         dcc.Tab(label='Leverage', id='parafac-leverage'),
                         dcc.Tab(label='Split-half validation', id='parafac-split-half'),
@@ -1589,7 +3279,7 @@ page2 = html.Div([
                                                             dbc.Col(
                                                                 dcc.Dropdown(
                                                                     options=[
-                                                                        {'label': 'Score', 'value': 'Score'},
+                                                                        # {'label': 'Score', 'value': 'Score'},
                                                                         {'label': 'Fmax', 'value': 'Fmax'}
                                                                     ],
                                                                     id='parafac-establishment-corr-indicator-selection'
@@ -1707,11 +3397,11 @@ page2 = html.Div([
                                         dbc.Card(
                                             [
                                                 dbc.Tabs(children=[
-                                                    dcc.Tab(
-                                                        label='Score',
-                                                        children=[],
-                                                        id='parafac-test-score'
-                                                    ),
+                                                    # dcc.Tab(
+                                                    #     label='Score',
+                                                    #     children=[],
+                                                    #     id='parafac-test-score'
+                                                    # ),
                                                     dcc.Tab(
                                                         label='Fmax',
                                                         children=[],
@@ -1798,8 +3488,8 @@ page2 = html.Div([
                                                                             dbc.Col(
                                                                                 dcc.Dropdown(
                                                                                     options=[
-                                                                                        {'label': 'Score',
-                                                                                         'value': 'Score'},
+                                                                                        # {'label': 'Score',
+                                                                                        #  'value': 'Score'},
                                                                                         {'label': 'Fmax',
                                                                                          'value': 'Fmax'},
                                                                                     ],
@@ -1879,16 +3569,18 @@ page2 = html.Div([
         Output('parafac-eem-dataset-establishment-message', 'children'),
         Output('parafac-loadings', 'children'),
         Output('parafac-components', 'children'),
-        Output('parafac-scores', 'children'),
+        # Output('parafac-scores', 'children'),
         Output('parafac-fmax', 'children'),
+        Output('parafac-establishment-reconstruction-error', 'children'),
+        Output('parafac-variance-explained', 'children'),
         Output('parafac-core-consistency', 'children'),
         Output('parafac-leverage', 'children'),
         Output('parafac-split-half', 'children'),
         Output('build-parafac-spinner', 'children'),
         Output('parafac-establishment-corr-model-selection', 'options'),
         Output('parafac-establishment-corr-model-selection', 'value'),
-        Output('parafac-establishment-corr-ref-selection', 'options'),
-        Output('parafac-establishment-corr-ref-selection', 'value'),
+        # Output('parafac-establishment-corr-ref-selection', 'options'),
+        # Output('parafac-establishment-corr-ref-selection', 'value'),
         Output('parafac-test-model-selection', 'options'),
         Output('parafac-test-model-selection', 'value'),
         Output('parafac-test-pred-ref-selection', 'options'),
@@ -1905,22 +3597,22 @@ page2 = html.Div([
         State('parafac-init-method', 'value'),
         State('parafac-nn-checkbox', 'value'),
         State('parafac-tf-checkbox', 'value'),
+        State('parafac-solver', 'value'),
         State('parafac-validations', 'value'),
         State('eem-dataset', 'data')
     ]
 )
 def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, rank, init, nn,
-                           tf, validations, eem_dataset_dict):
+                           tf, optimizer, validations, eem_dataset_dict):
     if n_clicks is None:
-        return (None, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, [], None,
+        return (None, None, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None,
                 None)
     if not path_establishment:
         if eem_dataset_dict is None:
             message = (
                 'Error: No built EEM dataset detected. Please build an EEM dataset first in "EEM pre-processing" '
                 'section, or import an EEM dataset from file.')
-            return (message, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, [],
-                    None, None)
+            return (message, None, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, None)
         eem_dataset_establishment = EEMDataset(
             eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
                                 in eem_dataset_dict['eem_stack']]),
@@ -1934,8 +3626,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
     else:
         if not os.path.exists(path_establishment):
             message = ('Error: No such file or directory: ' + path_establishment)
-            return (message, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, [],
-                    None, None)
+            return (message, None, None, None, None, None, None, None, None, 'Build model', [], None, [], None, [], None, None)
         else:
             _, file_extension = os.path.splitext(path_establishment)
 
@@ -1958,10 +3649,10 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                  index=eem_dataset_dict['index'])
                 if eem_dataset_dict['ref'] is not None else None,
             )
-    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
-    kw_optional = str_string_to_list(kw_optional) if kw_optional else []
+    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
+    kw_optional = str_string_to_list(kw_optional) if kw_optional else None
     eem_dataset_establishment.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional,
-                                              copy=False)
+                                              inplace=True)
 
     rank_list = num_string_to_list(rank)
     parafac_models = {}
@@ -1969,10 +3660,13 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
     components_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     scores_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     fmax_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    reconstruction_error_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    variance_explained_tabs = dbc.Card(children=[])
     core_consistency_tabs = dbc.Card(children=[])
     leverage_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     split_half_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     cc = []
+    ve = []
 
     if eem_dataset_establishment.ref is not None:
         valid_ref = eem_dataset_establishment.ref.columns[~eem_dataset_establishment.ref.isna().all()].tolist()
@@ -1980,15 +3674,15 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
         valid_ref = None
 
     for r in rank_list:
-        parafac_r = PARAFAC(rank=r, init=init, non_negativity=True if 'non_negative' in nn else False,
-                            tf_normalization=True if 'tf_normalization' in tf else False,
-                            sort_em=True)
+        parafac_r = PARAFAC(n_components=r, init=init, non_negativity=True if 'non_negative' in nn else False,
+                            tf_normalization=True if 'tf_normalization' in tf else False, solver=optimizer,
+                            sort_components_by_em=True, loadings_normalization='maximum')
         parafac_r.fit(eem_dataset_establishment)
         parafac_fit_params_r = {}
         if eem_dataset_establishment.ref is not None:
             for ref_var in valid_ref:
                 x = eem_dataset_establishment.ref[ref_var]
-                parafac_var = parafac_r.fmax
+                parafac_var = parafac_r.nnls_fmax
                 stats = []
                 nan_rows = x[x.isna()].index
                 x = x.drop(nan_rows)
@@ -2005,11 +3699,30 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                     pearson_corr, pearson_p = pearsonr(x, y)
                     stats.append([f_col, slope, intercept, r_squared, pearson_corr, pearson_p])
                 parafac_fit_params_r[ref_var] = stats
+        for c_var in parafac_r.nnls_fmax.columns:
+            x = parafac_r.nnls_fmax[c_var]
+            parafac_var = parafac_r.nnls_fmax
+            stats = []
+            nan_rows = x[x.isna()].index
+            x = x.drop(nan_rows)
+            if x.shape[0] < 1:
+                continue
+            for f_col in parafac_var.columns:
+                y = parafac_var[f_col]
+                y = y.drop(nan_rows)
+                x_reshaped = np.array(x).reshape(-1, 1)
+                lm = LinearRegression().fit(x_reshaped, y)
+                r_squared = lm.score(x_reshaped, y)
+                intercept = lm.intercept_
+                slope = lm.coef_[0]
+                pearson_corr, pearson_p = pearsonr(x, y)
+                stats.append([f_col, slope, intercept, r_squared, pearson_corr, pearson_p])
+            parafac_fit_params_r[c_var] = stats
         parafac_models[r] = {
             'components': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
                            sublist in parafac_r.components.tolist()],
-            'Score': [parafac_r.score.columns.tolist()] + parafac_r.score.values.tolist(),
-            'Fmax': [parafac_r.fmax.columns.tolist()] + parafac_r.fmax.values.tolist(),
+            'score': [parafac_r.score.columns.tolist()] + parafac_r.score.values.tolist(),
+            'Fmax': [parafac_r.nnls_fmax.columns.tolist()] + parafac_r.nnls_fmax.values.tolist(),
             'index': eem_dataset_establishment.index,
             'ref': [eem_dataset_establishment.ref.columns.tolist()] + eem_dataset_establishment.ref.values.tolist()
             if eem_dataset_establishment.ref is not None else None,
@@ -2029,7 +3742,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                     dbc.Col(
                                         [
                                             dcc.Graph(figure=plot_loadings({f'{r}-component': parafac_r},
-                                                                           plot_tool='plotly', n_cols=3,
+                                                                           plot_tool='plotly', n_cols=4,
                                                                            display=False),
                                                       config={'autosizable': False}
                                                       )
@@ -2078,121 +3791,109 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                 [
                                     dbc.Col(
                                         dcc.Graph(
-                                            figure=plot_eem(parafac_r.components[3 * i],
+                                            figure=plot_eem(parafac_r.components[4 * i],
                                                             ex_range=parafac_r.ex_range,
                                                             em_range=parafac_r.em_range,
                                                             vmin=0 if np.min(
-                                                                parafac_r.components[3 * i]) > -1e-3 else None,
+                                                                parafac_r.components[4 * i]) > -1e-3 else None,
                                                             vmax=None,
                                                             auto_intensity_range=False,
                                                             plot_tool='plotly',
                                                             display=False,
                                                             figure_size=(5, 3.5),
-                                                            label_font_size=14,
+                                                            axis_label_font_size=14,
                                                             cbar_font_size=12,
                                                             title_font_size=16,
-                                                            title=f'C{3 * i + 1}',
+                                                            title=f'C{4 * i + 1}',
                                                             fix_aspect_ratio=True if 'aspect_one' in eem_graph_options else False,
                                                             rotate=True if 'rotate' in eem_graph_options else False,
-                                                            ) if 3 * i + 1 <= r else go.Figure(
+                                                            ) if 4 * i + 1 <= r else go.Figure(
                                                 layout={'width': 400, 'height': 300}),
                                             style={'width': '500', 'height': '500'}
                                         ),
-                                        width={'size': 4},
+                                        width={'size': 3},
                                     ),
 
                                     dbc.Col(
                                         dcc.Graph(
-                                            figure=plot_eem(parafac_r.components[3 * i + 1],
+                                            figure=plot_eem(parafac_r.components[4 * i + 1],
                                                             ex_range=parafac_r.ex_range,
                                                             em_range=parafac_r.em_range,
                                                             vmin=0 if np.min(
                                                                 parafac_r.components[
-                                                                    3 * i + 1]) > -1e-3 else None,
+                                                                    4 * i + 1]) > -1e-3 else None,
                                                             vmax=None,
                                                             auto_intensity_range=False,
                                                             plot_tool='plotly',
                                                             display=False,
                                                             figure_size=(5, 3.5),
-                                                            label_font_size=14,
+                                                            axis_label_font_size=14,
                                                             cbar_font_size=12,
                                                             title_font_size=16,
-                                                            title=f'C{3 * i + 2}',
+                                                            title=f'C{4 * i + 2}',
                                                             fix_aspect_ratio=True if 'aspect_one' in eem_graph_options else False,
                                                             rotate=True if 'rotate' in eem_graph_options else False,
-                                                            ) if 3 * i + 2 <= r else go.Figure(
+                                                            ) if 4 * i + 2 <= r else go.Figure(
                                                 layout={'width': 400, 'height': 300}),
                                             style={'width': '500', 'height': '500'}
                                         ),
-                                        width={'size': 4},
+                                        width={'size': 3},
                                     ),
 
                                     dbc.Col(
                                         dcc.Graph(
-                                            figure=plot_eem(parafac_r.components[3 * i + 2],
+                                            figure=plot_eem(parafac_r.components[4 * i + 2],
                                                             ex_range=parafac_r.ex_range,
                                                             em_range=parafac_r.em_range,
                                                             vmin=0 if np.min(
                                                                 parafac_r.components[
-                                                                    3 * i + 2]) > -1e-3 else None,
+                                                                    4 * i + 2]) > -1e-3 else None,
                                                             vmax=None,
                                                             auto_intensity_range=False,
                                                             plot_tool='plotly',
                                                             display=False,
                                                             figure_size=(5, 3.5),
-                                                            label_font_size=14,
+                                                            axis_label_font_size=14,
                                                             cbar_font_size=12,
                                                             title_font_size=16,
-                                                            title=f'C{3 * i + 3}',
+                                                            title=f'C{4 * i + 3}',
                                                             fix_aspect_ratio=True if 'aspect_one' in eem_graph_options else False,
                                                             rotate=True if 'rotate' in eem_graph_options else False,
-                                                            ) if 3 * i + 3 <= r else go.Figure(),
+                                                            ) if 4 * i + 3 <= r else go.Figure(),
                                             style={'width': '500', 'height': '500'}
                                         ),
-                                        width={'size': 4},
+                                        width={'size': 3},
+                                    ),
+
+                                    dbc.Col(
+                                        dcc.Graph(
+                                            figure=plot_eem(parafac_r.components[4 * i + 3],
+                                                            ex_range=parafac_r.ex_range,
+                                                            em_range=parafac_r.em_range,
+                                                            vmin=0 if np.min(
+                                                                parafac_r.components[
+                                                                    4 * i + 3]) > -1e-3 else None,
+                                                            vmax=None,
+                                                            auto_intensity_range=False,
+                                                            plot_tool='plotly',
+                                                            display=False,
+                                                            figure_size=(5, 3.5),
+                                                            axis_label_font_size=14,
+                                                            cbar_font_size=12,
+                                                            title_font_size=16,
+                                                            title=f'C{4 * i + 4}',
+                                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options else False,
+                                                            rotate=True if 'rotate' in eem_graph_options else False,
+                                                            ) if 4 * i + 4 <= r else go.Figure(),
+                                            style={'width': '500', 'height': '500'}
+                                        ),
+                                        width={'size': 3},
                                     ),
                                 ]
                             ) for i in range(n_rows)
                         ],
                         style={'width': '90vw'}
                     ),
-                    style={'padding': '0', 'line-width': '100%'},
-                    selected_style={'padding': '0', 'line-width': '100%'}
-                    )
-        )
-
-        # scores
-        scores_tabs.children[0].children.append(
-            dcc.Tab(label=f'{r}-component',
-                    children=[
-                        html.Div([
-                            dbc.Row(
-                                [
-                                    dbc.Col(
-                                        [
-                                            dcc.Graph(figure=plot_score(parafac_r.score,
-                                                                        display=False
-                                                                        ),
-                                                      config={'autosizable': False},
-                                                      style={'width': 1700, 'height': 800}
-                                                      )
-                                        ]
-                                    )
-                                ]
-                            ),
-
-                            dbc.Row(
-                                [
-                                    dbc.Col(
-                                        [
-                                            dbc.Table.from_dataframe(parafac_r.score,
-                                                                     bordered=True, hover=True, index=True)
-                                        ]
-                                    )
-                                ]
-                            )
-                        ]),
-                    ],
                     style={'padding': '0', 'line-width': '100%'},
                     selected_style={'padding': '0', 'line-width': '100%'}
                     )
@@ -2207,10 +3908,10 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                 [
                                     dbc.Col(
                                         [
-                                            dcc.Graph(figure=plot_score(parafac_r.fmax,
-                                                                        display=False,
-                                                                        yaxis_title='Fmax'
-                                                                        ),
+                                            dcc.Graph(figure=plot_fmax(parafac_r.nnls_fmax,
+                                                                       display=False,
+                                                                       yaxis_title='Fmax'
+                                                                       ),
                                                       config={'autosizable': False},
                                                       style={'width': 1700, 'height': 800}
                                                       )
@@ -2223,7 +3924,7 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                                 [
                                     dbc.Col(
                                         [
-                                            dbc.Table.from_dataframe(parafac_r.fmax,
+                                            dbc.Table.from_dataframe(parafac_r.nnls_fmax,
                                                                      bordered=True, hover=True, index=True)
                                         ]
                                     )
@@ -2235,6 +3936,47 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                     selected_style={'padding': '0', 'line-width': '100%'}
                     )
         )
+
+        # scores
+        reconstruction_error_tabs.children[0].children.append(
+            dcc.Tab(label=f'{r}-component',
+                    children=[
+                        html.Div([
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dcc.Graph(figure=plot_error(parafac_r.sample_rmse(),
+                                                                       display=False
+                                                                       ),
+                                                      config={'autosizable': False},
+                                                      style={'width': 1700, 'height': 800}
+                                                      )
+                                        ]
+                                    )
+                                ]
+                            ),
+
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dbc.Table.from_dataframe(parafac_r.sample_rmse(),
+                                                                     bordered=True, hover=True, index=True)
+                                        ]
+                                    )
+                                ]
+                            )
+                        ]),
+                    ],
+                    style={'padding': '0', 'line-width': '100%'},
+                    selected_style={'padding': '0', 'line-width': '100%'}
+                    )
+        )
+
+        # variance explained
+        if 'variance_explained' in validations:
+            ve.append(parafac_r.variance_explained())
 
         # core consistency
         if 'core_consistency' in validations:
@@ -2342,12 +4084,11 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
             )
 
         if 'split_half' in validations:
-            split_validation = SplitValidation(rank=r,
-                                               non_negativity=True if 'non_negative' in nn else False,
-                                               tf_normalization=True if 'tf_normalization' in tf else False)
+            model_sv = copy.deepcopy(parafac_r)
+            split_validation = SplitValidation(base_model=model_sv)
             split_validation.fit(eem_dataset_establishment)
             subset_specific_models = split_validation.subset_specific_models
-            similarities_ex, similarities_em = split_validation.compare()
+            similarities_ex, similarities_em = split_validation.compare_parafac_loadings()
             split_half_tabs.children[0].children.append(
                 dcc.Tab(label=f'{r}-component',
                         children=[
@@ -2400,6 +4141,43 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
                         )
             )
 
+    if 'variance_explained' in validations:
+        ve_table = pd.DataFrame({'Number of components': rank_list, 'Variance explained': ve})
+        variance_explained_tabs.children.append(
+            html.Div([
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                dcc.Graph(
+                                    figure=px.line(
+                                        x=ve_table['Number of components'],
+                                        y=ve_table['Variance explained'],
+                                        markers=True,
+                                        labels={'x': 'Number of components', 'y': 'Core consistency'},
+                                    ),
+                                    config={'autosizable': False},
+                                )
+                            ]
+                        )
+                    ]
+                ),
+
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                dbc.Table.from_dataframe(ve_table,
+                                                         bordered=True, hover=True,
+                                                         )
+                            ]
+                        ),
+                    ]
+                ),
+            ]),
+        )
+
+
     if 'core_consistency' in validations:
         cc_table = pd.DataFrame({'Number of components': rank_list, 'Core consistency': cc})
         core_consistency_tabs.children.append(
@@ -2436,13 +4214,33 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
             ]),
         )
 
-    model_options = [{'label': 'component {r}'.format(r=r), 'value': r} for r in parafac_models.keys()]
-    ref_options = [{'label': var, 'value': var} for var in valid_ref] if (
-            eem_dataset_establishment.ref is not None) else []
+    model_options = [{'label': '{r}-component'.format(r=r), 'value': r} for r in parafac_models.keys()]
+    ref_options = [{'label': var, 'value': var} for var in valid_ref] if \
+        (eem_dataset_establishment.ref is not None) else None
 
-    return (None, loadings_tabs, components_tabs, scores_tabs, fmax_tabs, core_consistency_tabs, leverage_tabs,
-            split_half_tabs, 'Build model', model_options, None, ref_options, None, model_options, None, ref_options,
-            None, parafac_models)
+    return (None, loadings_tabs, components_tabs, fmax_tabs, reconstruction_error_tabs, variance_explained_tabs,
+            core_consistency_tabs, leverage_tabs, split_half_tabs, 'Build model', model_options, None, model_options,
+            None, ref_options, None, parafac_models)
+
+
+# -----------Update reference selection dropdown
+
+@app.callback(
+    [
+        Output('parafac-establishment-corr-ref-selection', 'options'),
+        Output('parafac-establishment-corr-ref-selection', 'value'),
+    ],
+    [
+        Input('parafac-establishment-corr-model-selection', 'value'),
+        State('parafac-models', 'data')
+    ]
+)
+def update_parafac_reference_dropdown_by_selected_model(r, parafac_model):
+    if all([r, parafac_model]):
+        options = list(parafac_model[str(r)]['fitting_params'].keys())
+        return options, None
+    else:
+        return [], None
 
 
 # -----------Analyze correlations between score/Fmax and reference variables in model establishment
@@ -2461,8 +4259,12 @@ def on_build_parafac_model(n_clicks, eem_graph_options, path_establishment, kw_m
 )
 def on_parafac_establishment_correlations(r, indicator, ref_var, parafac_models):
     if all([r, indicator, ref_var, parafac_models]):
+        ## future fix: make it work for model without external ref
         ref_df = pd.DataFrame(parafac_models[str(r)]['ref'][1:], columns=parafac_models[str(r)]['ref'][0],
                               index=parafac_models[str(r)]['index'])
+        fmax_df = pd.DataFrame(parafac_models[str(r)]['Fmax'][1:], columns=parafac_models[str(r)]['Fmax'][0],
+                               index=parafac_models[str(r)]['index'])
+        ref_df = pd.concat([ref_df, fmax_df], axis=1)
         var = ref_df[ref_var]
         parafac_var = pd.DataFrame(parafac_models[str(r)][indicator][1:], columns=parafac_models[str(r)][indicator][0],
                                    index=parafac_models[str(r)]['index'])
@@ -2501,7 +4303,7 @@ def on_parafac_establishment_correlations(r, indicator, ref_var, parafac_models)
 @app.callback(
     [
         Output('parafac-eem-dataset-predict-message', 'children'),  # size, intervals?
-        Output('parafac-test-score', 'children'),
+        # Output('parafac-test-score', 'children'),
         Output('parafac-test-fmax', 'children'),
         Output('parafac-test-error', 'children'),
         Output('parafac-test-corr-ref-selection', 'options'),
@@ -2522,15 +4324,15 @@ def on_parafac_establishment_correlations(r, indicator, ref_var, parafac_models)
 )
 def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, model_r, parafac_models):
     if n_clicks is None:
-        return (None, None, None, None, [], None,
-                [{'label': 'Score', 'value': 'Score'}, {'label': 'Fmax', 'value': 'Fmax'}], None, 'predict', None)
+        return (None, None, None, [], None,
+                [{'label': 'Fmax', 'value': 'Fmax'}], None, 'predict', None)
     if path_predict is None:
-        return (None, None, None, None, [], None,
-                [{'label': 'Score', 'value': 'Score'}, {'label': 'Fmax', 'value': 'Fmax'}], None, 'predict', None)
+        return (None, None, None, [], None,
+                [{'label': 'Fmax', 'value': 'Fmax'}], None, 'predict', None)
     if not os.path.exists(path_predict):
         message = ('Error: No such file: ' + path_predict)
-        return (message, None, None, None, [], None,
-                [{'label': 'Score', 'value': 'Score'}, {'label': 'Fmax', 'value': 'Fmax'}], None, 'predict', None)
+        return (message, None, None, [], None,
+                [{'label': 'Fmax', 'value': 'Fmax'}], None, 'predict', None)
     else:
         _, file_extension = os.path.splitext(path_predict)
 
@@ -2552,9 +4354,9 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
             ref=pd.DataFrame(eem_dataset_dict['ref'][1:], index=eem_dataset_dict['index'],
                              columns=eem_dataset_dict['ref'][0]) if eem_dataset_dict['ref'] is not None else None,
         )
-    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
-    kw_optional = str_string_to_list(kw_optional) if kw_optional else []
-    eem_dataset_predict.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, copy=False)
+    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
+    kw_optional = str_string_to_list(kw_optional) if kw_optional else None
+    eem_dataset_predict.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, inplace=True)
 
     if eem_dataset_predict.ref is not None:
         valid_ref = eem_dataset_predict.ref.columns[~eem_dataset_predict.ref.isna().all()].tolist()
@@ -2600,9 +4402,9 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
             [
                 dbc.Col(
                     [
-                        dcc.Graph(figure=plot_score(score_sample,
-                                                    display=False
-                                                    ),
+                        dcc.Graph(figure=plot_fmax(score_sample,
+                                                   display=False
+                                                   ),
                                   config={'autosizable': False},
                                   style={'width': 1700, 'height': 800}
                                   )
@@ -2628,9 +4430,9 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
             [
                 dbc.Col(
                     [
-                        dcc.Graph(figure=plot_score(fmax_sample,
-                                                    display=False
-                                                    ),
+                        dcc.Graph(figure=plot_fmax(fmax_sample,
+                                                   display=False
+                                                   ),
                                   config={'autosizable': False},
                                   style={'width': 1700, 'height': 800}
                                   )
@@ -2654,11 +4456,16 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
     error_tab = html.Div(children=[])
 
     if eem_dataset_predict.ref is not None:
-        indicator_options = [{'label': 'Score', 'value': 'Score'},
-                             {'label': 'Fmax', 'value': 'Fmax'},
-                             {'label': 'Prediction of reference', 'value': 'Prediction of reference'}]
+        indicator_options = [
+            # {'label': 'Score', 'value': 'Score'},
+            {'label': 'Fmax', 'value': 'Fmax'},
+            {'label': 'Prediction of reference', 'value': 'Prediction of reference'}
+        ]
     else:
-        indicator_options = [{'label': 'Score', 'value': 'Score'}, {'label': 'Fmax', 'value': 'Fmax'}]
+        indicator_options = [
+            # {'label': 'Score', 'value': 'Score'},
+            {'label': 'Fmax', 'value': 'Fmax'}
+        ]
 
     ref_options = [{'label': var, 'value': var} for var in eem_dataset_predict.ref.columns]
 
@@ -2671,7 +4478,7 @@ def on_parafac_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, mod
         'index': eem_dataset_predict.index
     }
 
-    return (None, score_tab, fmax_tab, error_tab, ref_options, None,
+    return (None, fmax_tab, error_tab, ref_options, None,
             indicator_options, None, 'predict', test_results)
 
 
@@ -2693,7 +4500,7 @@ def on_parafac_test_predict_reference(n_clicks, ref_var, pred_model, parafac_tes
     if all([ref_var, pred_model, parafac_test_results]):
         pred = parafac_test_results['Prediction of reference'][ref_var]
         pred = pd.DataFrame(pred[1:], columns=pred[0], index=parafac_test_results['index'])
-        fig = plot_score(pred, display=False, yaxis_title=ref_var)
+        fig = plot_fmax(pred, display=False, yaxis_title=ref_var)
         if parafac_test_results['ref'] is not None:
             ref = pd.DataFrame(parafac_test_results['ref'][1:], columns=parafac_test_results['ref'][0],
                                index=parafac_test_results['index'])
@@ -2728,7 +4535,7 @@ def on_parafac_test_predict_reference(n_clicks, ref_var, pred_model, parafac_tes
         return go.Figure(), None
 
 
-# -----------Analyze correlations between score/Fmax and reference variables in model testing
+# -----------Analyze correlations between Fmax and reference variables in model testing
 @app.callback(
     [
         Output('parafac-test-corr-graph', 'figure'),  # size, intervals?
@@ -2791,16 +4598,7 @@ def on_parafac_test_correlations(indicator, ref_var, parafac_test_results):
         return go.Figure(), None
 
 
-# -----------Page #3: K-PARAFACs--------------
-
-#   -------------Setting up the dbc cards
-
-#   -------------Layout of page #2
-
-#   -------------Callbacks of page #2
-
-
-# -----------Page #4: NMF--------------
+# -----------Page #3: NMF--------------
 
 #   -------------Setting up the dbc cards
 card_nmf_param = dbc.Card(
@@ -2832,7 +4630,8 @@ card_nmf_param = dbc.Card(
                                         dbc.Label("Index mandatory keywords"), width={'size': 1}
                                     ),
                                     dbc.Col(
-                                        dcc.Input(id='nmf-sample-kw-mandatory', type='text', placeholder='',
+                                        dcc.Input(id='nmf-establishment-index-kw-mandatory', type='text',
+                                                  placeholder='',
                                                   style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
                                         width={"offset": 0, "size": 2}
                                     ),
@@ -2840,7 +4639,7 @@ card_nmf_param = dbc.Card(
                                         dbc.Label("Index optional keywords"), width={'size': 1, 'offset': 1}
                                     ),
                                     dbc.Col(
-                                        dcc.Input(id='nmf-sample-kw-optional', type='text', placeholder='',
+                                        dcc.Input(id='nmf-establishment-index-kw-optional', type='text', placeholder='',
                                                   style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
                                         width={"offset": 0, "size": 2}
                                     )
@@ -2864,10 +4663,26 @@ card_nmf_param = dbc.Card(
                                     ),
                                     dbc.Col(
                                         dcc.Dropdown(options=[
-                                            {'label': 'Coordinate Descent solver', 'value': 'cd'},
-                                            {'label': 'Multiplicative Update solver', 'value': 'mu'}
+                                            {'label': 'Coordinate Descent', 'value': 'cd'},
+                                            {'label': 'Multiplicative Update', 'value': 'mu'},
+                                            {'label': 'Hierarchical ALS', 'value': 'hals'},
                                         ],
-                                            value='cd', style={'width': '300px'}, id='nmf-solver'
+                                            value='hals', style={'width': '300px'}, id='nmf-solver'
+                                        ),
+                                        width={'size': 2}
+                                    ),
+
+                                    dbc.Col(
+                                        dbc.Label("Initialization"), width={'size': 1, 'offset': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Dropdown(options=[
+                                            {'label': 'random', 'value': 'random'},
+                                            {'label': 'nndsvd', 'value': 'nndsvd'},
+                                            {'label': 'nndsvda', 'value': 'nndsvda'},
+                                            {'label': 'nndsvdar', 'value': 'nndsvdar'},
+                                        ],
+                                            value='nndsvda', style={'width': '100px'}, id='nmf-init'
                                         ),
                                         width={'size': 2}
                                     ),
@@ -2879,8 +4694,9 @@ card_nmf_param = dbc.Card(
                                                                 'value': 'pixel_std'}],
                                                       id='nmf-normalization-checkbox', switch=True, value=['pixel_std']
                                                       ),
-                                        width={"size": 2, 'offset': 1}
+                                        width={"size": 2, 'offset': 0}
                                     ),
+
                                 ]
                             ),
                             dbc.Row([
@@ -2917,12 +4733,33 @@ card_nmf_param = dbc.Card(
 
                             dbc.Row([
                                 dbc.Col(
+                                    dbc.Label("max_iter_als"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='nmf-max-iter-als', type='number',
+                                              # placeholder='Multiple values possible, e.g., 3, 4',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=500),
+                                    width={'size': 2},
+                                ),
+
+                                dbc.Col(
+                                    dbc.Label("max_iter_nnls"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='nmf-max-iter-nnls', type='number',
+                                              # placeholder='Multiple values possible, e.g., 3, 4',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=200),
+                                    width={'size': 3},
+                                ),
+                            ]),
+
+                            dbc.Row([
+                                dbc.Col(
                                     dbc.Label("Validations"), width={'size': 1}
                                 ),
                                 dbc.Col(
                                     dcc.Dropdown(
                                         options=[
-                                            {'label': 'Residual', 'value': 'leverage'},
                                             {'label': 'Split-half validation', 'value': 'split_half'},
                                         ],
                                         multi=True, id='nmf-validations', value=[]),
@@ -2947,9 +4784,9 @@ card_nmf_param = dbc.Card(
     className='w-100'
 )
 
-#   -------------Layout of page #4
+#   -------------Layout of page #3
 
-page4 = html.Div([
+page_nmf = html.Div([
     dbc.Stack(
         [
             dbc.Row(
@@ -2961,7 +4798,7 @@ page4 = html.Div([
                     children=[
                         dcc.Tab(label='Components', id='nmf-components'),
                         dcc.Tab(label='Fmax', id='nmf-fmax'),
-                        dcc.Tab(label='Residual', id='nmf-residual'),
+                        dcc.Tab(label='Reconstruction error', id='nmf-establishment-reconstruction-error'),
                         dcc.Tab(label='Split-half validation', id='nmf-split-half'),
                         dcc.Tab(
                             children=[
@@ -2990,7 +4827,8 @@ page4 = html.Div([
                                                             dbc.Col(
                                                                 dcc.Dropdown(
                                                                     options=[
-                                                                        {'label': 'Fmax', 'value': 'Fmax'}
+                                                                        {'label': 'NMF-Fmax', 'value': 'NMF-Fmax'},
+                                                                        {'label': 'NNLS-Fmax', 'value': 'NNLS-Fmax'}
                                                                     ],
                                                                     id='nmf-establishment-corr-indicator-selection'
                                                                 ),
@@ -3193,10 +5031,10 @@ page4 = html.Div([
                                                                             dbc.Col(
                                                                                 dcc.Dropdown(
                                                                                     options=[
-                                                                                        {'label': 'Score',
-                                                                                         'value': 'Score'},
-                                                                                        {'label': 'Fmax',
-                                                                                         'value': 'Fmax'},
+                                                                                        {'label': 'NMF-Fmax',
+                                                                                         'value': 'NMF-Fmax'},
+                                                                                        {'label': 'NNLS-Fmax',
+                                                                                         'value': 'NNLS-Fmax'},
                                                                                     ],
                                                                                     id='nmf-test-corr-indicator-selection'
                                                                                 ),
@@ -3265,7 +5103,7 @@ page4 = html.Div([
 ])
 
 
-#   -------------Callbacks of page #4
+#   -------------Callbacks of page #3
 
 #   -------------Establish NMF model
 
@@ -3274,13 +5112,13 @@ page4 = html.Div([
         Output('nmf-eem-dataset-establishment-message', 'children'),
         Output('nmf-components', 'children'),
         Output('nmf-fmax', 'children'),
-        Output('nmf-residual', 'children'),
+        Output('nmf-establishment-reconstruction-error', 'children'),
         Output('nmf-split-half', 'children'),
         Output('nmf-spinner', 'children'),
         Output('nmf-establishment-corr-model-selection', 'options'),
         Output('nmf-establishment-corr-model-selection', 'value'),
-        Output('nmf-establishment-corr-ref-selection', 'options'),
-        Output('nmf-establishment-corr-ref-selection', 'value'),
+        # Output('nmf-establishment-corr-ref-selection', 'options'),
+        # Output('nmf-establishment-corr-ref-selection', 'value'),
         Output('nmf-test-pred-ref-selection', 'options'),
         Output('nmf-test-pred-ref-selection', 'value'),
         Output('nmf-test-model-selection', 'options'),
@@ -3291,28 +5129,31 @@ page4 = html.Div([
         Input('build-nmf-model', 'n_clicks'),
         State('eem-graph-options', 'value'),
         State('nmf-eem-dataset-establishment-path-input', 'value'),
-        State('nmf-sample-kw-mandatory', 'value'),
-        State('nmf-sample-kw-optional', 'value'),
+        State('nmf-establishment-index-kw-mandatory', 'value'),
+        State('nmf-establishment-index-kw-optional', 'value'),
         State('nmf-rank', 'value'),
         State('nmf-solver', 'value'),
+        State('nmf-init', 'value'),
         State('nmf-normalization-checkbox', 'value'),
         State('nmf-alpha-w', 'value'),
         State('nmf-alpha-h', 'value'),
         State('nmf-l1-ratio', 'value'),
+        State('nmf-max-iter-als', 'value'),
+        State('nmf-max-iter-nnls', 'value'),
         State('nmf-validations', 'value'),
         State('eem-dataset', 'data')
     ]
 )
-def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, rank, solver,
-                       normalization, alpha_w, alpha_h, l1_ratio, validations, eem_dataset_dict):
+def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, rank, solver, init,
+                       normalization, alpha_w, alpha_h, l1_ratio, n_iter_als, n_iter_nnls, validations, eem_dataset_dict):
     if n_clicks is None:
-        return None, None, None, None, None, 'Build model', [], None, [], None, [], None, [], None, None
+        return None, None, None, None, None, 'Build model', [], None, [], None, [], None, None
     if not path_establishment:
         if eem_dataset_dict is None:
             message = (
                 'Error: No built EEM dataset detected. Please build an EEM dataset first in "EEM pre-processing" '
                 'section, or import an EEM dataset from file.')
-            return message, None, None, None, None, 'Build model', [], None, [], None, [], None, [], None, None
+            return message, None, None, None, None, 'Build model', [], None, [], None, [], None, None
         eem_dataset_establishment = EEMDataset(
             eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
                                 in eem_dataset_dict['eem_stack']]),
@@ -3326,7 +5167,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
     else:
         if not os.path.exists(path_establishment):
             message = ('Error: No such file or directory: ' + path_establishment)
-            return message, None, None, None, None, 'Build model', [], None, [], None, [], None, [], None, None
+            return message, None, None, None, None, 'Build model', [], None, [], None, [], None, None
         else:
             _, file_extension = os.path.splitext(path_establishment)
 
@@ -3349,15 +5190,15 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                  index=eem_dataset_dict['index'])
                 if eem_dataset_dict['ref'] is not None else None,
             )
-    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
-    kw_optional = str_string_to_list(kw_optional) if kw_optional else []
+    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
+    kw_optional = str_string_to_list(kw_optional) if kw_optional else None
     eem_dataset_establishment.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional,
-                                              copy=False)
+                                              inplace=True)
     rank_list = num_string_to_list(rank)
     nmf_models = {}
     components_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     fmax_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
-    residual_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    reconstruction_error_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
     split_half_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
 
     if eem_dataset_establishment.ref is not None:
@@ -3367,8 +5208,9 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
 
     for r in rank_list:
         nmf_r = EEMNMF(
-            n_components=r, solver=solver, normalization=normalization[0], alpha_H=alpha_h, alpha_W=alpha_w,
-            l1_ratio=l1_ratio
+            n_components=r, solver=solver, init=init, normalization=normalization[0] if normalization else None,
+            alpha_component=alpha_h, alpha_sample=alpha_w, l1_ratio=l1_ratio, max_iter_als=n_iter_als,
+            max_iter_nnls=n_iter_nnls,
         )
         nmf_r.fit(eem_dataset_establishment)
         nmf_fit_params_r = {}
@@ -3376,7 +5218,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
             for ref_var in valid_ref:
                 x = eem_dataset_establishment.ref[ref_var]
                 stats = []
-                nmf_var = nmf_r.nnls_score
+                nmf_var = nmf_r.nnls_fmax
                 nan_rows = x[x.isna()].index
                 x = x.drop(nan_rows)
                 if x.shape[0] < 1:
@@ -3392,10 +5234,30 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                     pearson_corr, pearson_p = pearsonr(x, y)
                     stats.append([f_col, slope, intercept, r_squared, pearson_corr, pearson_p])
                 nmf_fit_params_r[ref_var] = stats
+        for c_var in nmf_r.nnls_fmax.columns:
+            x = nmf_r.nnls_fmax[c_var]
+            parafac_var = nmf_r.nnls_fmax
+            stats = []
+            nan_rows = x[x.isna()].index
+            x = x.drop(nan_rows)
+            if x.shape[0] < 1:
+                continue
+            for f_col in parafac_var.columns:
+                y = parafac_var[f_col]
+                y = y.drop(nan_rows)
+                x_reshaped = np.array(x).reshape(-1, 1)
+                lm = LinearRegression().fit(x_reshaped, y)
+                r_squared = lm.score(x_reshaped, y)
+                intercept = lm.intercept_
+                slope = lm.coef_[0]
+                pearson_corr, pearson_p = pearsonr(x, y)
+                stats.append([f_col, slope, intercept, r_squared, pearson_corr, pearson_p])
+            nmf_fit_params_r[c_var] = stats
         nmf_models[r] = {
             'components': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
                            sublist in nmf_r.components.tolist()],
-            'Fmax': [nmf_r.nnls_score.columns.tolist()] + nmf_r.nnls_score.values.tolist(),
+            'NNLS-Fmax': [nmf_r.nnls_fmax.columns.tolist()] + nmf_r.nnls_fmax.values.tolist(),
+            'NMF-Fmax': [nmf_r.fmax.columns.tolist()] + nmf_r.fmax.values.tolist(),
             'index': eem_dataset_establishment.index,
             'ref': [eem_dataset_establishment.ref.columns.tolist()] + eem_dataset_establishment.ref.values.tolist()
             if eem_dataset_establishment.ref is not None else None,
@@ -3416,81 +5278,107 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                 [
                                     dbc.Col(
                                         dcc.Graph(
-                                            figure=plot_eem(nmf_r.components[3 * i],
+                                            figure=plot_eem(nmf_r.components[4 * i],
                                                             ex_range=eem_dataset_establishment.ex_range,
                                                             em_range=eem_dataset_establishment.em_range,
                                                             vmin=0 if np.min(
-                                                                nmf_r.components[3 * i]) > -1e-3 else None,
+                                                                nmf_r.components[4 * i]) > -1e-3 else None,
                                                             vmax=None,
                                                             auto_intensity_range=False,
                                                             plot_tool='plotly',
                                                             display=False,
                                                             figure_size=(5, 3.5),
-                                                            label_font_size=14,
+                                                            axis_label_font_size=14,
                                                             cbar_font_size=12,
                                                             title_font_size=16,
-                                                            title=f'C{3 * i + 1}',
+                                                            title=f'C{4 * i + 1}',
                                                             fix_aspect_ratio=True if 'aspect_one' in eem_graph_options
                                                             else False,
                                                             rotate=True if 'rotate' in eem_graph_options else False,
-                                                            ) if 3 * i + 1 <= r else go.Figure(
+                                                            ) if 4 * i + 1 <= r else go.Figure(
                                                 layout={'width': 400, 'height': 300}),
                                             style={'width': '500', 'height': '500'}
                                         ),
-                                        width={'size': 4},
+                                        width={'size': 3},
                                     ),
 
                                     dbc.Col(
                                         dcc.Graph(
-                                            figure=plot_eem(nmf_r.components[3 * i + 1],
+                                            figure=plot_eem(nmf_r.components[4 * i + 1],
                                                             ex_range=eem_dataset_establishment.ex_range,
                                                             em_range=eem_dataset_establishment.em_range,
                                                             vmin=0 if np.min(
                                                                 nmf_r.components[
-                                                                    3 * i + 1]) > -1e-3 else None,
+                                                                    4 * i + 1]) > -1e-3 else None,
                                                             vmax=None,
                                                             auto_intensity_range=False,
                                                             plot_tool='plotly',
                                                             display=False,
                                                             figure_size=(5, 3.5),
-                                                            label_font_size=14,
+                                                            axis_label_font_size=14,
                                                             cbar_font_size=12,
                                                             title_font_size=16,
-                                                            title=f'C{3 * i + 2}',
+                                                            title=f'C{4 * i + 2}',
                                                             fix_aspect_ratio=True if 'aspect_one' in eem_graph_options
                                                             else False,
                                                             rotate=True if 'rotate' in eem_graph_options else False,
-                                                            ) if 3 * i + 2 <= r else go.Figure(
+                                                            ) if 4 * i + 2 <= r else go.Figure(
                                                 layout={'width': 400, 'height': 300}),
                                             style={'width': '500', 'height': '500'}
                                         ),
-                                        width={'size': 4},
+                                        width={'size': 3},
                                     ),
 
                                     dbc.Col(
                                         dcc.Graph(
-                                            figure=plot_eem(nmf_r.components[3 * i + 2],
+                                            figure=plot_eem(nmf_r.components[4 * i + 2],
                                                             ex_range=eem_dataset_establishment.ex_range,
                                                             em_range=eem_dataset_establishment.em_range,
                                                             vmin=0 if np.min(
                                                                 nmf_r.components[
-                                                                    3 * i + 2]) > -1e-3 else None,
+                                                                    4 * i + 2]) > -1e-3 else None,
                                                             vmax=None,
                                                             auto_intensity_range=False,
                                                             plot_tool='plotly',
                                                             display=False,
                                                             figure_size=(5, 3.5),
-                                                            label_font_size=14,
+                                                            axis_label_font_size=14,
                                                             cbar_font_size=12,
                                                             title_font_size=16,
-                                                            title=f'C{3 * i + 3}',
+                                                            title=f'C{4 * i + 3}',
                                                             fix_aspect_ratio=True if 'aspect_one' in eem_graph_options
                                                             else False,
                                                             rotate=True if 'rotate' in eem_graph_options else False,
-                                                            ) if 3 * i + 3 <= r else go.Figure(),
+                                                            ) if 4 * i + 3 <= r else go.Figure(),
                                             style={'width': '500', 'height': '500'}
                                         ),
-                                        width={'size': 4},
+                                        width={'size': 3},
+                                    ),
+
+                                    dbc.Col(
+                                        dcc.Graph(
+                                            figure=plot_eem(nmf_r.components[4 * i + 3],
+                                                            ex_range=eem_dataset_establishment.ex_range,
+                                                            em_range=eem_dataset_establishment.em_range,
+                                                            vmin=0 if np.min(
+                                                                nmf_r.components[
+                                                                    4 * i + 3]) > -1e-3 else None,
+                                                            vmax=None,
+                                                            auto_intensity_range=False,
+                                                            plot_tool='plotly',
+                                                            display=False,
+                                                            figure_size=(5, 3.5),
+                                                            axis_label_font_size=14,
+                                                            cbar_font_size=12,
+                                                            title_font_size=16,
+                                                            title=f'C{4 * i + 4}',
+                                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options
+                                                            else False,
+                                                            rotate=True if 'rotate' in eem_graph_options else False,
+                                                            ) if 4 * i + 4 <= r else go.Figure(),
+                                            style={'width': '500', 'height': '500'}
+                                        ),
+                                        width={'size': 3},
                                     ),
                                 ]
                             ) for i in range(n_rows)
@@ -3511,9 +5399,9 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                 [
                                     dbc.Col(
                                         [
-                                            dcc.Graph(figure=plot_score(nmf_r.nnls_score,
-                                                                        display=False
-                                                                        ),
+                                            dcc.Graph(figure=plot_fmax(nmf_r.fmax,
+                                                                       display=False
+                                                                       ),
                                                       config={'autosizable': False},
                                                       style={'width': 1700, 'height': 800}
                                                       )
@@ -3526,7 +5414,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                 [
                                     dbc.Col(
                                         [
-                                            dbc.Table.from_dataframe(nmf_r.nnls_score,
+                                            dbc.Table.from_dataframe(nmf_r.fmax,
                                                                      bordered=True, hover=True, index=True)
                                         ]
                                     )
@@ -3537,9 +5425,9 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                 [
                                     dbc.Col(
                                         [
-                                            dcc.Graph(figure=plot_score(nmf_r.nmf_score,
-                                                                        display=False
-                                                                        ),
+                                            dcc.Graph(figure=plot_fmax(nmf_r.nnls_fmax,
+                                                                       display=False
+                                                                       ),
                                                       config={'autosizable': False},
                                                       style={'width': 1700, 'height': 800}
                                                       )
@@ -3552,7 +5440,7 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                                 [
                                     dbc.Col(
                                         [
-                                            dbc.Table.from_dataframe(nmf_r.nmf_score,
+                                            dbc.Table.from_dataframe(nmf_r.nnls_fmax,
                                                                      bordered=True, hover=True, index=True)
                                         ]
                                     )
@@ -3565,12 +5453,115 @@ def on_build_nmf_model(n_clicks, eem_graph_options, path_establishment, kw_manda
                     )
         )
 
-    model_options = [{'label': 'component {r}'.format(r=r), 'value': r} for r in nmf_models.keys()]
+        reconstruction_error_tabs.children[0].children.append(
+            dcc.Tab(label=f'{r}-component',
+                    children=[
+                        html.Div([
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dcc.Graph(figure=plot_error(nmf_r.sample_rmse(),
+                                                                        display=False
+                                                                        ),
+                                                      config={'autosizable': False},
+                                                      style={'width': 1700, 'height': 800}
+                                                      )
+                                        ]
+                                    )
+                                ]
+                            ),
+
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dbc.Table.from_dataframe(nmf_r.sample_rmse(),
+                                                                     bordered=True, hover=True, index=True)
+                                        ]
+                                    )
+                                ]
+                            ),
+                        ]),
+                    ],
+                    style={'padding': '0', 'line-width': '100%'},
+                    selected_style={'padding': '0', 'line-width': '100%'}
+                    )
+        )
+
+        if 'split_half' in validations:
+            model_sv = copy.deepcopy(nmf_r)
+            split_validation = SplitValidation(base_model=model_sv)
+            split_validation.fit(eem_dataset_establishment)
+            subset_specific_models = split_validation.subset_specific_models
+            similarities_components = split_validation.compare_components()
+            split_half_tabs.children[0].children.append(
+                dcc.Tab(label=f'{r}-component',
+                        children=[
+                            html.Div([
+                                # dbc.Row(
+                                #     [
+                                #         dbc.Col(
+                                #             [
+                                #                 dcc.Graph(
+                                #                     figure=plot_loadings(subset_specific_models,
+                                #                                          n_cols=3,
+                                #                                          plot_tool='plotly',
+                                #                                          display=False,
+                                #                                          legend_pad=0.2),
+                                #                     config={'autosizable': False},
+                                #                 )
+                                #             ]
+                                #         )
+                                #     ]
+                                # ),
+
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            [
+                                                dbc.Table.from_dataframe(similarities_components,
+                                                                         bordered=True, hover=True, index=True,
+                                                                         )
+                                            ]
+                                        ),
+                                    ]
+                                ),
+
+                            ]),
+                        ],
+                        style={'padding': '0', 'line-width': '100%'},
+                        selected_style={'padding': '0', 'line-width': '100%'}
+                        )
+            )
+
+
+    model_options = [{'label': '{r}-component'.format(r=r), 'value': r} for r in nmf_models.keys()]
     ref_options = [{'label': var, 'value': var} for var in valid_ref] if (
             eem_dataset_establishment.ref is not None) else []
 
-    return (None, components_tabs, fmax_tabs, residual_tabs, split_half_tabs, 'Build model', model_options, None,
-            ref_options, None, ref_options, None, model_options, None, nmf_models)
+    return (None, components_tabs, fmax_tabs, reconstruction_error_tabs, split_half_tabs, 'Build model', model_options, None,
+            ref_options, None, model_options, None, nmf_models)
+
+
+# -----------Update reference selection dropdown
+
+@app.callback(
+    [
+        Output('nmf-establishment-corr-ref-selection', 'options'),
+        Output('nmf-establishment-corr-ref-selection', 'value'),
+    ],
+    [
+        Input('nmf-establishment-corr-model-selection', 'value'),
+        State('nmf-models', 'data')
+    ]
+)
+def update_nmf_reference_dropdown_by_selected_model(r, nmf_model):
+    if all([r, nmf_model]):
+        options = list(nmf_model[str(r)]['fitting_params'].keys())
+        return options, None
+    else:
+        return [], None
 
 
 # -----------Analyze correlations between score/Fmax and reference variables in model establishment
@@ -3591,6 +5582,11 @@ def on_nmf_establishment_correlations(r, indicator, ref_var, nmf_models):
     if all([r, indicator, ref_var, nmf_models]):
         ref_df = pd.DataFrame(nmf_models[str(r)]['ref'][1:], columns=nmf_models[str(r)]['ref'][0],
                               index=nmf_models[str(r)]['index'])
+        nnls_fmax_df = pd.DataFrame(nmf_models[str(r)]['NNLS-Fmax'][1:], columns=nmf_models[str(r)]['NNLS-Fmax'][0],
+                                    index=nmf_models[str(r)]['index'])
+        nmf_fmax_df = pd.DataFrame(nmf_models[str(r)]['NMF-Fmax'][1:], columns=nmf_models[str(r)]['NMF-Fmax'][0],
+                                   index=nmf_models[str(r)]['index'])
+        ref_df = pd.concat([ref_df, nnls_fmax_df, nmf_fmax_df], axis=1)
         var = ref_df[ref_var]
         nmf_var = pd.DataFrame(nmf_models[str(r)][indicator][1:], columns=nmf_models[str(r)][indicator][0],
                                index=nmf_models[str(r)]['index'])
@@ -3679,9 +5675,9 @@ def on_nmf_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, model_r
             ref=pd.DataFrame(eem_dataset_dict['ref'][1:], index=eem_dataset_dict['index'],
                              columns=eem_dataset_dict['ref'][0]) if eem_dataset_dict['ref'] is not None else None,
         )
-    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else []
-    kw_optional = str_string_to_list(kw_optional) if kw_optional else []
-    eem_dataset_predict.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, copy=False)
+    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
+    kw_optional = str_string_to_list(kw_optional) if kw_optional else None
+    eem_dataset_predict.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, inplace=True)
 
     if eem_dataset_predict.ref is not None:
         valid_ref = eem_dataset_predict.ref.columns[~eem_dataset_predict.ref.isna().all()].tolist()
@@ -3724,9 +5720,9 @@ def on_nmf_prediction(n_clicks, path_predict, kw_mandatory, kw_optional, model_r
             [
                 dbc.Col(
                     [
-                        dcc.Graph(figure=plot_score(fmax_sample,
-                                                    display=False
-                                                    ),
+                        dcc.Graph(figure=plot_fmax(fmax_sample,
+                                                   display=False
+                                                   ),
                                   config={'autosizable': False},
                                   style={'width': 1700, 'height': 800}
                                   )
@@ -3787,7 +5783,7 @@ def on_nmf_predict_reference_test(n_clicks, ref_var, pred_model, nmf_test_result
     if all([ref_var, pred_model, nmf_test_results]):
         pred = nmf_test_results['Prediction of reference'][ref_var]
         pred = pd.DataFrame(pred[1:], columns=pred[0], index=nmf_test_results['index'])
-        fig = plot_score(pred, display=False, yaxis_title=ref_var)
+        fig = plot_fmax(pred, display=False, yaxis_title=ref_var)
         if nmf_test_results['ref'] is not None:
             ref = pd.DataFrame(nmf_test_results['ref'][1:], columns=nmf_test_results['ref'][0],
                                index=nmf_test_results['index'])
@@ -3833,20 +5829,19 @@ def on_nmf_predict_reference_test(n_clicks, ref_var, pred_model, nmf_test_result
         State('nmf-test-results', 'data'),
     ]
 )
-def on_nmf_establishment_correlations(indicator, ref_var, nmf_test_results):
+def on_nmf_test_correlations(indicator, ref_var, nmf_test_results):
     if all([indicator, ref_var, nmf_test_results]):
         ref_df = pd.DataFrame(nmf_test_results['ref'][1:], columns=nmf_test_results['ref'][0],
                               index=nmf_test_results['index'])
         var = ref_df[ref_var]
-
         if indicator != 'Prediction of reference':
             nmf_var = pd.DataFrame(nmf_test_results[indicator][1:], columns=nmf_test_results[indicator][0],
-                                       index=nmf_test_results['index'])
+                                   index=nmf_test_results['index'])
         else:
             if nmf_test_results[indicator][ref_var] is not None:
                 nmf_var = pd.DataFrame(nmf_test_results[indicator][ref_var][1:],
-                                           columns=nmf_test_results[indicator][ref_var][0],
-                                           index=nmf_test_results['index'])
+                                       columns=nmf_test_results[indicator][ref_var][0],
+                                       index=nmf_test_results['index'])
             else:
                 return go.Figure(), None
 
@@ -3886,6 +5881,1510 @@ def on_nmf_establishment_correlations(indicator, ref_var, nmf_test_results):
         return go.Figure(), None
 
 
+# -----------Page #4: K-method--------------
+
+#   -------------Setting up the dbc cards
+
+card_kmethod_param1 = dbc.Card(
+    dbc.CardBody(
+        [
+            html.H5("Step 1: calculate consensus", className="card-title"),
+            html.H6("Parameters selection", className="card-title"),
+            html.Div(
+                [
+                    dbc.Stack(
+                        [
+                            dbc.Row(
+                                dcc.Input(id='kmethod-eem-dataset-establishment-path-input', type='text', value=None,
+                                          placeholder='Please enter the eem dataset path (.json and .pkl are supported).'
+                                                      ' If empty, the model built in "eem pre-processing" '
+                                                      'would be used',
+                                          style={'width': '97%', 'height': '30px'}, debounce=True),
+                                justify="center"
+                            ),
+                            dbc.Row(
+                                dbc.Checklist(options=[{'label': html.Span("Read clustering output from the file",
+                                                                           style={"font-size": 15,
+                                                                                  "padding-left": 10}),
+                                                        'value': True}],
+                                              id='kmethod-cluster-from-file-checkbox', switch=True, value=[True]
+                                              ),
+                            ),
+                            dbc.Row([
+                                dbc.Col(
+                                    html.Div([],
+                                             id='kmethod-eem-dataset-establishment-message', style={'width': '80vw'}),
+                                    width={"size": 12, "offset": 0}
+                                )
+                            ]),
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Index mandatory keywords"), width={'size': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='kmethod-establishment-index-kw-mandatory', type='text',
+                                                  placeholder='',
+                                                  style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
+                                        width={"offset": 0, "size": 2}
+                                    ),
+                                    dbc.Col(
+                                        dbc.Label("Index optional keywords"), width={'size': 1, 'offset': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='kmethod-establishment-index-kw-optional', type='text',
+                                                  placeholder='',
+                                                  style={'width': '100%', 'height': '30px'}, debounce=True, value=''),
+                                        width={"offset": 0, "size": 2}
+                                    )
+                                ]
+                            ),
+
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Base model"), width={'size': 1, 'offset': 0}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Dropdown(options=[
+                                            {'label': 'PARAFAC', 'value': 'parafac'},
+                                            {'label': 'NMF', 'value': 'nmf'}
+                                        ],
+                                            value=None, style={'width': '300px'}, id='kmethod-base-model'
+                                        ),
+                                        width={'size': 2}
+                                    ),
+                                    dbc.Col(
+                                        html.Div([],
+                                                 id='kmethod-base-model-message',
+                                                 style={'width': '80vw'}),
+                                        width={"size": 8, "offset": 1}
+                                    )
+                                ]
+                            ),
+
+                            dbc.Row([
+                                dbc.Col(
+                                    dbc.Label("Num. components"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='kmethod-rank', type='number',
+                                              placeholder='Please enter only one number',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0),
+                                    width={'size': 1},
+                                ),
+                                dbc.Col(
+                                    dbc.Label("Number of initial splits"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='kmethod-num-init-splits', type='number',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0),
+                                    width={'size': 1},
+                                ),
+                                dbc.Col(
+                                    dbc.Label("Number of base clustering runs"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='kmethod-num-base-clusterings', type='number',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0),
+                                    width={'size': 1},
+                                ),
+                                dbc.Col(
+                                    dbc.Label("Maximum iterations for one time base clustering"),
+                                    width={'size': 2}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='kmethod-num-iterations', type='number',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=10),
+                                    width={'size': 1},
+                                ),
+                            ]
+                            ),
+
+                            dbc.Row([
+
+                                dbc.Col(
+                                    dbc.Label("Convergence tolerance"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='kmethod-convergence-tolerance', type='number',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0.01),
+                                    width={'size': 1},
+                                ),
+                                dbc.Col(
+                                    dbc.Label("Elimination"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='kmethod-elimination', type='text',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True,
+                                              value='default'),
+                                    width={'size': 1},
+                                ),
+                                dbc.Col(
+                                    dbc.Label("Subsampling portion"),
+                                    width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Input(id='kmethod-subsampling-portion', type='number',
+                                              style={'width': '100px', 'height': '30px'}, debounce=True, value=0.8),
+                                    width={'size': 1},
+                                ),
+                            ]
+                            ),
+
+                            dbc.Row(
+                                dbc.Col(
+                                    dbc.Button([dbc.Spinner(size="sm", id='kmethod-step1-spinner')],
+                                               id='build-kmethod-consensus', className='col-2')
+                                )
+                            )
+                        ],
+                        gap=2
+                    )
+
+                ]
+            ),
+        ]
+    ),
+    className='w-100'
+)
+
+card_kmethod_param2 = dbc.Card(
+    dbc.CardBody(
+        [
+            html.H5("Step 2: clustering", className="card-title"),
+            html.H6("Parameters selection", className="card-title"),
+            html.Div(
+                [
+                    dbc.Stack(
+                        [
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Number of final clusters"), width={'size': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='kmethod-num-final-clusters', type='text',
+                                                  placeholder='Multiple values possible, e.g., 3, 4',
+                                                  style={'width': '250px', 'height': '30px'}, debounce=True),
+                                        width={"offset": 0, "size": 3}
+                                    ),
+                                    dbc.Col(
+                                        dbc.Label("Consensus conversion factor"), width={'size': 1}
+                                    ),
+                                    dbc.Col(
+                                        dcc.Input(id='kmethod-consensus-conversion', type='number', value=1,
+                                                  style={'width': '250px', 'height': '30px'}, debounce=True),
+                                        width={"offset": 0, "size": 1}
+                                    ),
+                                ]
+                            ),
+
+                            dbc.Row([
+                                dbc.Col(
+                                    dbc.Label("Validations"), width={'size': 1}
+                                ),
+                                dbc.Col(
+                                    dcc.Dropdown(
+                                        options=[{'label': 'silhouette score', 'value': 'silhouette_score'},
+                                                 {'label': 'reconstruction error reduction', 'value': 'RER'}],
+                                        multi=True, id='kmethod-validations', value=['silhouette_score', 'RER']),
+                                    width={'size': 4}
+                                ),
+                            ]),
+
+                            dbc.Row(
+                                dbc.Col(
+                                    dbc.Button([dbc.Spinner(size="sm", id='kmethod-step2-spinner')],
+                                               id='build-kmethod-clustering', className='col-2')
+                                )
+                            )
+                        ],
+                        gap=2
+                    )
+                ]
+            ),
+        ]
+    ),
+    className='w-100'
+)
+
+#   -------------Layout of page #3
+
+page_kmethod = html.Div([
+    dbc.Stack(
+        [
+            dbc.Row(
+                card_kmethod_param1
+            ),
+            dbc.Row(
+                dcc.Tabs(
+                    id='kmethod-results1',
+                    children=[
+                        dcc.Tab(label='Consensus matrix', id='kmethod-consensus-matrix'),
+                        dcc.Tab(label='Label history', id='kmethod-label-history'),
+                        dcc.Tab(label='Error history', id='kmethod-error-history'),
+                    ],
+                    vertical=True
+                )
+            ),
+            dbc.Row(
+                card_kmethod_param2
+            ),
+            dbc.Row(
+                dcc.Tabs(
+                    id='kmethod-results2',
+                    children=[
+                        dcc.Tab(label='Dendrogram', id='kmethod-dendrogram'),
+                        dcc.Tab(label='Sorted consensus matrix', id='kmethod-sorted-consensus-matrix'),
+                        dcc.Tab(label='Silhouette score', id='kmethod-silhouette-score'),
+                        dcc.Tab(label='Reconstruction error reduction', id='kmethod-reconstruction-error-reduction'),
+                        dcc.Tab(
+                            children=[
+                                html.Div(
+                                    [
+                                        dbc.Card(
+                                            dbc.Stack(
+                                                [
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dbc.Label("Select K-method model"),
+                                                                width={'size': 1, 'offset': 0}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[],
+                                                                    id='kmethod-establishment-components-model-selection'
+                                                                ),
+                                                                width={'size': 2}
+                                                            ),
+                                                            dbc.Col(
+                                                                dbc.Label("Select cluster"),
+                                                                width={'size': 1, 'offset': 1}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[],
+                                                                    id='kmethod-establishment-components-cluster-selection'
+                                                                ),
+                                                                width={'size': 2}
+                                                            ),
+                                                        ]
+                                                    ),
+
+                                                    dbc.Row([
+                                                        # dcc.Graph(id='kmethod-establishment-components-graph',
+                                                        #           # config={'responsive': 'auto'},
+                                                        #           style={'width': '45vw', 'height': '60vh'}
+                                                        #           ),
+                                                        html.Div(
+                                                            children=[], id='kmethod-establishment-components-graph',
+                                                            style={'width': '45vw', 'height': '60vh'}
+                                                        )
+                                                    ]),
+                                                ],
+                                                gap=2, style={"margin": "20px"}
+                                            )
+                                        )
+                                    ],
+                                    style={'width': '90vw'},
+                                )
+                            ],
+                            label='Components', id='kmethod-components'
+                        ),
+                        dcc.Tab(label='Fmax', id='kmethod-fmax'),
+                        dcc.Tab(
+                            children=[
+                                html.Div(
+                                    [
+                                        dbc.Card(
+                                            dbc.Stack(
+                                                [
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dbc.Label("Select K-method model"),
+                                                                width={'size': 1, 'offset': 0}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[],
+                                                                    id='kmethod-establishment-corr-model-selection'
+                                                                ),
+                                                                width={'size': 2}
+                                                            ),
+                                                            dbc.Col(
+                                                                dbc.Label("Select indicator"),
+                                                                width={'size': 1, 'offset': 1}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[
+                                                                        {'label': 'Fmax', 'value': 'Fmax'}
+                                                                    ],
+                                                                    id='kmethod-establishment-corr-indicator-selection'
+                                                                ),
+                                                                width={'size': 2}
+                                                            ),
+                                                            dbc.Col(
+                                                                dbc.Label("Select reference variable"),
+                                                                width={'size': 1, 'offset': 1}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[],
+                                                                    id='kmethod-establishment-corr-ref-selection'
+                                                                ),
+                                                                width={'size': 2}
+                                                            ),
+                                                        ]
+                                                    ),
+
+                                                    dbc.Row([
+                                                        dcc.Graph(id='kmethod-establishment-corr-graph',
+                                                                  # config={'responsive': 'auto'},
+                                                                  style={'width': '45vw', 'height': '60vh'}
+                                                                  ),
+                                                    ]),
+
+                                                    dbc.Row(
+                                                        html.Div([],
+                                                                 id='kmethod-establishment-corr-table')
+                                                    ),
+
+                                                ],
+                                                gap=2, style={"margin": "20px"}
+                                            )
+                                        )
+                                    ],
+                                    style={'width': '90vw'},
+                                )
+                            ],
+                            label='Correlations', id='kmethod-establishment-corr'
+                        ),
+                        dcc.Tab(
+                            children=[
+                                html.Div(
+                                    [
+                                        dbc.Card(
+                                            dbc.Stack(
+                                                [
+                                                    html.H5("Import EEM dataset to be predicted"),
+                                                    dbc.Row(
+                                                        dcc.Input(id='kmethod-eem-dataset-predict-path-input',
+                                                                  type='text',
+                                                                  placeholder='Please enter the eem dataset path (.json'
+                                                                              ' and .pkl are supported).',
+                                                                  style={'width': '97%', 'height': '30px'},
+                                                                  debounce=True),
+                                                        justify="center"
+                                                    ),
+                                                    dbc.Row([
+                                                        dbc.Col(
+                                                            html.Div([],
+                                                                     id='kmethod-eem-dataset-predict-message',
+                                                                     style={'width': '1000px'}),
+                                                            width={"size": 12, "offset": 0}
+                                                        )
+                                                    ]),
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dbc.Label("Index mandatory keywords"), width={'size': 2}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Input(id='kmethod-test-index-kw-mandatory',
+                                                                          type='text',
+                                                                          placeholder='',
+                                                                          style={'width': '100%', 'height': '30px'},
+                                                                          debounce=True, value=''),
+                                                                width={"offset": 0, "size": 2}
+                                                            ),
+                                                            dbc.Col(
+                                                                dbc.Label("Index optional keywords"),
+                                                                width={'size': 2, 'offset': 1}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Input(id='kmethod-test-index-kw-optional',
+                                                                          type='text',
+                                                                          placeholder='',
+                                                                          style={'width': '100%', 'height': '30px'},
+                                                                          debounce=True, value=''),
+                                                                width={"offset": 0, "size": 2}
+                                                            )
+                                                        ]
+                                                    ),
+                                                    html.H5("Select established model"),
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[], id='kmethod-test-model-selection'
+                                                                )
+                                                            ),
+                                                            dbc.Col(
+                                                                dbc.Button(
+                                                                    [dbc.Spinner(size="sm",
+                                                                                 id='kmethod-predict-spinner')],
+                                                                    id='predict-kmethod-model', className='col-2')
+                                                            )
+                                                        ]
+                                                    )
+                                                ],
+                                                gap=2, style={"margin": "20px"}
+                                            ),
+                                        ),
+                                        dbc.Card(
+                                            [
+                                                dbc.Tabs(children=[
+                                                    dcc.Tab(
+                                                        label='Fmax',
+                                                        children=[],
+                                                        id='kmethod-test-fmax'
+                                                    ),
+                                                    dcc.Tab(
+                                                        label='Reconstruction error',
+                                                        children=[],
+                                                        id='kmethod-test-error'
+                                                    ),
+                                                    dcc.Tab(
+                                                        label='Prediction of reference',
+                                                        children=[
+                                                            dbc.Stack(
+                                                                [
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Col(
+                                                                                dbc.Label("Select reference variable"),
+                                                                                width={'size': 2, 'offset': 0}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[],
+                                                                                    id='kmethod-test-pred-ref-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dbc.Label(
+                                                                                    "Select model to fit reference "
+                                                                                    "variable with fmax"),
+                                                                                width={'size': 2, 'offset': 2}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[
+                                                                                        {
+                                                                                            'label': 'Linear least squares',
+                                                                                            'value': 'linear_least_squares'},
+                                                                                    ],
+                                                                                    id='kmethod-test-pred-model'
+                                                                                       '-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+                                                                        ]
+                                                                    ),
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Row([
+                                                                                dcc.Graph(
+                                                                                    id='kmethod-test-pred-graph',
+                                                                                    # config={'responsive': 'auto'},
+                                                                                    config={'autosizable': False},
+                                                                                    style={'width': 1700, 'height': 800}
+                                                                                ),
+                                                                            ]),
+
+                                                                            dbc.Row(
+                                                                                html.Div(
+                                                                                    children=[],
+                                                                                    id='kmethod-test-pred-table'
+                                                                                )
+                                                                            ),
+                                                                        ]
+                                                                    )
+                                                                ],
+                                                                gap=3, style={"margin": "20px"}
+                                                            ),
+                                                        ],
+                                                    ),
+                                                    dcc.Tab(
+                                                        label='Correlations',
+                                                        children=[
+                                                            dbc.Stack(
+                                                                [
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Col(
+                                                                                dbc.Label("Select indicator"),
+                                                                                width={'size': 2, 'offset': 0}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[
+                                                                                        # {'label': 'Score',
+                                                                                        #  'value': 'Score'},
+                                                                                        {'label': 'Fmax',
+                                                                                         'value': 'Fmax'},
+                                                                                    ],
+                                                                                    id='kmethod-test-corr-indicator-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dbc.Label("Select reference variable"),
+                                                                                width={'size': 2, 'offset': 2}
+                                                                            ),
+                                                                            dbc.Col(
+                                                                                dcc.Dropdown(
+                                                                                    options=[],
+                                                                                    id='kmethod-test-corr-ref-selection'
+                                                                                ),
+                                                                                width={'size': 2}
+                                                                            ),
+                                                                        ]
+                                                                    ),
+                                                                    dbc.Row(
+                                                                        [
+                                                                            dbc.Row([
+                                                                                dcc.Graph(
+                                                                                    id='kmethod-test-corr-graph',
+                                                                                    # config={'responsive': 'auto'},
+                                                                                    style={'width': '700',
+                                                                                           'height': '900'}
+                                                                                ),
+                                                                            ]),
+
+                                                                            dbc.Row(
+                                                                                html.Div(
+                                                                                    children=[],
+                                                                                    id='kmethod-test-corr-table'
+                                                                                )
+                                                                            ),
+                                                                        ]
+                                                                    )
+                                                                ],
+                                                                gap=3, style={"margin": "20px"}
+                                                            ),
+                                                        ],
+                                                    ),
+                                                ],
+                                                    persistence=True,
+                                                    persistence_type='session'),
+
+                                            ],
+                                        )
+                                    ],
+                                    style={'width': '90vw'},
+                                )
+                            ],
+                            label='Predict', id='kmethod-predict'
+                        ),
+                        dcc.Tab(
+                            children=[
+                                html.Div(
+                                    [
+                                        dbc.Card(
+                                            dbc.Stack(
+                                                [
+                                                    dbc.Row(
+                                                        [
+                                                            dbc.Col(
+                                                                dbc.Label("Select K-method model"),
+                                                                width={'size': 1, 'offset': 0}
+                                                            ),
+                                                            dbc.Col(
+                                                                dcc.Dropdown(
+                                                                    options=[],
+                                                                    id='kmethod-cluster-export-model-selection'
+                                                                ),
+                                                                width={'size': 2}
+                                                            ),
+                                                        ]
+                                                    ),
+                                                ],
+                                                gap=2, style={"margin": "20px"}
+                                            )
+                                        )
+                                    ],
+                                    style={'width': '90vw'},
+                                )
+                            ],
+                            label='Export', id='kmethod-cluster-export'
+                        ),
+                    ],
+                    # style={
+                    #     'width': '100%'
+                    # },
+                    vertical=True
+                )
+            ),
+        ],
+        gap=3
+    )
+
+])
+
+
+#   -------------Callbacks of page #4
+
+#       ---------------Step 1: Calculate consensus
+
+@app.callback(
+    [
+        Output('kmethod-base-model-message', 'children')
+    ],
+    [
+        Input('kmethod-base-model', 'value')
+    ]
+)
+def on_kmethod_base_clustering_message(base_clustering):
+    if base_clustering == 'parafac':
+        message = ['Parameters "initialization", "non negativity" and "total fluorescence normalization" '
+                   'are set in tab "PARAFAC".']
+    elif base_clustering == 'nmf':
+        message = ['Parameters "Initialization", "solver", "normalization" and "alpha_w", "alpha_h", "l1_ratio" are set in tab "NMF".']
+    else:
+        message = [None]
+    return message
+
+
+@app.callback(
+    [
+        Output('kmethod-eem-dataset-establishment-message', 'children'),
+        Output('kmethod-consensus-matrix', 'children'),
+        Output('kmethod-error-history', 'children'),
+        Output('kmethod-step1-spinner', 'children'),
+        Output('kmethod-consensus-matrix-data', 'data'),
+        Output('kmethod-eem-dataset-establish', 'data'),
+        Output('kmethod-base-clustering-parameters', 'data')
+    ],
+    [
+        Input('build-kmethod-consensus', 'n_clicks'),
+        State('eem-graph-options', 'value'),
+        State('kmethod-eem-dataset-establishment-path-input', 'value'),
+        State('kmethod-establishment-index-kw-mandatory', 'value'),
+        State('kmethod-establishment-index-kw-optional', 'value'),
+        State('kmethod-cluster-from-file-checkbox', 'value'),
+        State('kmethod-rank', 'value'),
+        State('kmethod-base-model', 'value'),
+        State('kmethod-num-init-splits', 'value'),
+        State('kmethod-num-base-clusterings', 'value'),
+        State('kmethod-num-iterations', 'value'),
+        State('kmethod-convergence-tolerance', 'value'),
+        State('kmethod-elimination', 'value'),
+        State('kmethod-subsampling-portion', 'value'),
+        State('parafac-init-method', 'value'),
+        State('parafac-nn-checkbox', 'value'),
+        State('parafac-tf-checkbox', 'value'),
+        State('nmf-solver', 'value'),
+        State('nmf-init', 'value'),
+        State('nmf-normalization-checkbox', 'value'),
+        State('nmf-alpha-w', 'value'),
+        State('nmf-alpha-h', 'value'),
+        State('nmf-l1-ratio', 'value'),
+        State('eem-dataset', 'data')
+    ]
+)
+def on_build_consensus(n_clicks, eem_graph_options, path_establishment, kw_mandatory, kw_optional, cluster_from_file,
+                       rank, base_clustering, n_init_splits, n_base_clusterings, n_iterations, tol, elimination,
+                       subsampling_portion,
+                       parafac_init, parafac_nn, parafac_tf,
+                       nmf_solver, nmf_init, nmf_normalization, nmf_alpha_w, nmf_alpha_h, nmf_l1_ratio,
+                       eem_dataset_dict):
+    if n_clicks is None:
+        return None, None, None, 'Calculate consensus', None, None, None
+    if not path_establishment:
+        if eem_dataset_dict is None:
+            message = (
+                'Error: No built EEM dataset detected. Please build an EEM dataset first in "EEM pre-processing" '
+                'section, or import an EEM dataset from file.')
+            return message, None, None, 'Calculate consensus', None, None, None
+        eem_dataset_establishment = EEMDataset(
+            eem_stack=np.array([[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+                                in eem_dataset_dict['eem_stack']]),
+            ex_range=np.array(eem_dataset_dict['ex_range']),
+            em_range=np.array(eem_dataset_dict['em_range']),
+            index=eem_dataset_dict['index'],
+            ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0],
+                             index=eem_dataset_dict['index']) if eem_dataset_dict['ref'] is not None else None,
+            cluster=eem_dataset_dict['cluster']
+        )
+    else:
+        if not os.path.exists(path_establishment):
+            message = ('Error: No such file or directory: ' + path_establishment)
+            return message, None, None, 'Calculate consensus', None, None, None
+        else:
+            _, file_extension = os.path.splitext(path_establishment)
+
+            if file_extension == '.json':
+                with open(path_establishment, 'r') as file:
+                    eem_dataset_dict = json.load(file)
+            elif file_extension == '.pkl':
+                with open(path_establishment, 'rb') as file:
+                    eem_dataset_dict = pickle.load(file)
+            else:
+                raise ValueError("Unsupported file extension: {}".format(file_extension))
+            eem_dataset_establishment = EEMDataset(
+                eem_stack=np.array(
+                    [[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+                     in eem_dataset_dict['eem_stack']]),
+                ex_range=np.array(eem_dataset_dict['ex_range']),
+                em_range=np.array(eem_dataset_dict['em_range']),
+                index=eem_dataset_dict['index'],
+                ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0],
+                                 index=eem_dataset_dict['index']) if eem_dataset_dict['ref'] is not None else None,
+                cluster=eem_dataset_dict['cluster']
+            )
+    kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
+    kw_optional = str_string_to_list(kw_optional) if kw_optional else None
+    eem_dataset_establishment.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional,
+                                              inplace=True)
+
+    eem_dataset_establishment_json_dict = {
+        'eem_stack': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for sublist in
+                      eem_dataset_establishment.eem_stack.tolist()],
+        'ex_range': eem_dataset_establishment.ex_range.tolist(),
+        'em_range': eem_dataset_establishment.em_range.tolist(),
+        'index': eem_dataset_establishment.index,
+        'ref': [eem_dataset_establishment.ref.columns.tolist()] + eem_dataset_establishment.ref.values.tolist()
+        if eem_dataset_establishment.ref is not None else None,
+        'cluster': None,
+    }
+
+    if base_clustering == 'parafac':
+        base_clustering_parameters = {
+            'n_components': rank, 'init': parafac_init,
+            'non_negativity': True if 'non_negative' in parafac_nn else False,
+            'tf_normalization': True if 'tf_normalization' in parafac_tf else False,
+            'sort_components_by_em': True
+        }
+        base_model = PARAFAC(**base_clustering_parameters)
+    elif base_clustering == 'nmf':
+        base_clustering_parameters = {
+            'n_components': rank, 'solver': nmf_solver, 'init': nmf_init,
+            'normalization': nmf_normalization[0],
+            'alpha_H': nmf_alpha_h, 'alpha_W': nmf_alpha_w, 'l1_ratio': nmf_l1_ratio
+        }
+        base_model = EEMNMF(**base_clustering_parameters)
+
+    kmethod = KMethod(base_model=base_model, n_initial_splits=n_init_splits, max_iter=n_iterations, tol=tol,
+                      elimination=elimination, distance_metric="reconstruction_error", kw_top="B1C1", kw_bot="B1C2")
+    consensus_matrix, _, error_history = kmethod.calculate_consensus(eem_dataset_establishment, n_base_clusterings,
+                                                                     subsampling_portion)
+    consensus_matrix_tabs = dbc.Card(children=[])
+    error_history_tabs = dbc.Card(children=[])
+
+    fig_consensus_matrix = go.Figure(
+        data=go.Heatmap(
+            z=consensus_matrix,
+            x=eem_dataset_establishment.index if eem_dataset_establishment.index
+            else [i for i in range(consensus_matrix.shape[1])],
+            y=eem_dataset_establishment.index if eem_dataset_establishment.index
+            else [i for i in range(consensus_matrix.shape[0])],
+            colorscale='reds',
+            hoverongaps=False,
+            hovertemplate='sample1: %{y}<br>sample2: %{x}<br>consensus coefficient: %{z}<extra></extra>'
+        )
+    )
+    fig_consensus_matrix.update_layout(yaxis=dict(scaleanchor="x", scaleratio=1))
+
+    consensus_matrix_tabs.children.append(
+        html.Div([
+            dbc.Row(
+                [
+                    dbc.Col(
+                        [
+                            dcc.Graph(
+                                figure=fig_consensus_matrix,
+                                config={'autosizable': False},
+                                style={'width': '40vw',
+                                       'height': '70vh'}
+                            )
+                        ]
+                    )
+                ]
+            ),
+        ]),
+    )
+
+    error_means = [df.mean(axis=0) for df in error_history]
+    error_means = pd.concat(error_means, axis=1).T
+    error_means.columns = [f'iteration {i + 1}' for i in range(error_means.shape[1])]
+    error_means.index = [f'base clustering {i + 1}' for i in range(len(error_history))]
+    error_means_melted = error_means.melt(var_name='Column', value_name='Value')
+
+    fig_error = px.box(error_means_melted, x='Column', y='Value', points='all')
+    fig_error.update_layout(
+        xaxis_title='Iterations',
+        yaxis_title='Error'
+    )
+
+    error_history_tabs.children.append(
+        html.Div([
+            dbc.Row(
+                [
+                    dbc.Col(
+                        [
+                            dcc.Graph(
+                                figure=fig_error
+                            )
+                        ]
+                    )
+                ]
+            ),
+            dbc.Row(
+                [
+                    dbc.Col(
+                        [
+                            dbc.Table.from_dataframe(error_means,
+                                                     bordered=True, hover=True, index=True,
+
+                                                     )
+                        ]
+                    )
+                ]
+            )
+        ])
+    )
+
+    return (None, consensus_matrix_tabs, error_history_tabs, 'Calculate consensus', consensus_matrix.tolist(),
+            eem_dataset_establishment_json_dict, base_clustering_parameters)
+
+
+#   -----------------Step 2: Hierarchical clustering
+
+@app.callback(
+    [
+        Output('kmethod-dendrogram', 'children'),
+        Output('kmethod-sorted-consensus-matrix', 'children'),
+        Output('kmethod-silhouette-score', 'children'),
+        Output('kmethod-reconstruction-error-reduction', 'children'),
+        Output('kmethod-fmax', 'children'),
+        Output('kmethod-step2-spinner', 'children'),
+        Output('kmethod-establishment-components-model-selection', 'options'),
+        Output('kmethod-establishment-components-model-selection', 'value'),
+        # Output('kmethod-establishment-components-cluster-selection', 'options'),
+        # Output('kmethod-establishment-components-cluster-selection', 'value'),
+        Output('kmethod-establishment-corr-model-selection', 'options'),
+        Output('kmethod-establishment-corr-model-selection', 'value'),
+        Output('kmethod-establishment-corr-indicator-selection', 'options'),
+        Output('kmethod-establishment-corr-indicator-selection', 'value'),
+        # Output('kmethod-establishment-corr-ref-selection', 'options'),
+        # Output('kmethod-establishment-corr-ref-selection', 'value'),
+        Output('kmethod-test-model-selection', 'options'),
+        Output('kmethod-test-model-selection', 'value'),
+        Output('kmethod-test-pred-ref-selection', 'options'),
+        Output('kmethod-test-pred-ref-selection', 'value'),
+        Output('kmethod-models', 'data')
+    ],
+    [
+        Input('build-kmethod-clustering', 'n_clicks'),
+        State('kmethod-base-model', 'value'),
+        State('kmethod-num-final-clusters', 'value'),
+        State('kmethod-consensus-conversion', 'value'),
+        State('kmethod-validations', 'value'),
+        State('kmethod-consensus-matrix-data', 'data'),
+        State('kmethod-eem-dataset-establish', 'data'),
+        State('kmethod-base-clustering-parameters', 'data')
+    ]
+)
+def on_hierarchical_clustering(n_clicks, base_clustering, n_final_clusters, conversion, validations,
+                               consensus_matrix, eem_dataset_establish_dict, base_clustering_parameters):
+    if n_clicks is None:
+        return None, None, None, None, None, 'Clustering', [], None, [], None, [], None, [], None, [], None, None
+    else:
+        if eem_dataset_establish_dict is None:
+            return None, None, None, None, None, 'Clustering', [], None, [], None, [], None, [], None, [], None, None
+        else:
+            eem_dataset_establish = EEMDataset(
+                eem_stack=np.array(
+                    [[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
+                     in eem_dataset_establish_dict['eem_stack']]),
+                ex_range=np.array(eem_dataset_establish_dict['ex_range']),
+                em_range=np.array(eem_dataset_establish_dict['em_range']),
+                index=eem_dataset_establish_dict['index'],
+                ref=pd.DataFrame(eem_dataset_establish_dict['ref'][1:],
+                                 columns=eem_dataset_establish_dict['ref'][0],
+                                 index=eem_dataset_establish_dict['index'])
+                if eem_dataset_establish_dict['ref'] is not None else None,
+                cluster=eem_dataset_establish_dict['cluster']
+            )
+
+    n_clusters_list = num_string_to_list(n_final_clusters)
+    kmethod_fit_params = {}
+
+    if eem_dataset_establish.ref is not None:
+        valid_ref = eem_dataset_establish.ref.columns[~eem_dataset_establish.ref.isna().all()].tolist()
+    else:
+        valid_ref = []
+
+    if base_clustering == 'parafac':
+        base_model = PARAFAC(**base_clustering_parameters)
+        unified_model = PARAFAC(**base_clustering_parameters)
+    elif base_clustering == 'nmf':
+        base_model = EEMNMF(**base_clustering_parameters)
+        unified_model = EEMNMF(**base_clustering_parameters)
+
+    unified_model.fit(eem_dataset_establish)
+
+    dendrogram_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    sorted_consensus_matrix_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    silhouette_score_tabs = dbc.Card([])
+    reconstruction_error_reduction_tabs = dbc.Card(
+        [dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    fmax_establishment_tabs = dbc.Card([dbc.Tabs(children=[], persistence=True, persistence_type='session')])
+    slt = []
+    kmethod_models = {}
+
+    for k in n_clusters_list:
+        kmethod = KMethod(base_model=base_model, n_initial_splits=None)
+        kmethod.consensus_matrix = np.array(consensus_matrix)
+        try:
+            kmethod.hierarchical_clustering(eem_dataset_establish, k, conversion)
+        except ValueError:
+            continue
+        cluster_specific_models = kmethod.cluster_specific_models
+        eem_clusters = kmethod.eem_clusters
+        cluster_labels_combined = []
+        for sub_dataset in eem_clusters.values():
+            cluster_labels_combined += sub_dataset.cluster
+
+        fmax_combined = pd.concat([model.nnls_fmax for model in cluster_specific_models.values()], axis=0)
+        fmax_combined_sorted = fmax_combined.sort_index()
+        cluster_labels_combined_sorted = [x for _, x in sorted(zip(fmax_combined.index, cluster_labels_combined))]
+        fig_fmax = plot_fmax(table=fmax_combined_sorted, display=False, labels=cluster_labels_combined_sorted)
+        fmax_combined_sorted['Cluster'] = cluster_labels_combined_sorted
+
+        kmethod_fit_params_k = {}
+
+        if base_clustering == 'parafac':
+            component_names = unified_model.nnls_fmax.columns.tolist()
+        elif base_clustering == 'nmf':
+            component_names = unified_model.nnls_fmax.columns.tolist()
+        for ref_var in valid_ref + component_names:
+            kmethod_fit_params_k[ref_var] = []
+
+        if eem_dataset_establish.ref is not None:
+            for i in range(k):
+                cluster_specific_model = kmethod.cluster_specific_models[i + 1]
+                eem_cluster = kmethod.eem_clusters[i + 1]
+                valid_ref_cluster = eem_cluster.ref.columns[~eem_cluster.ref.isna().all()].tolist()
+                for ref_var in valid_ref_cluster:
+                    stats = []
+                    x = eem_cluster.ref[ref_var]
+                    if base_clustering == 'parafac':
+                        model_var = copy.copy(cluster_specific_model.nnls_fmax)
+                    elif base_clustering == 'nmf':
+                        model_var = copy.copy(cluster_specific_model.nnls_fmax)
+                    model_var.columns = [f'Cluster {i + 1}-' + col for col in model_var.columns]
+                    nan_rows = x[x.isna()].index
+                    x = x.drop(nan_rows)
+                    if x.shape[0] <= 1:
+                        continue
+                    for f_col in model_var.columns:
+                        y = model_var[f_col]
+                        y = y.drop(nan_rows)
+                        x_reshaped = np.array(x).reshape(-1, 1)
+                        lm = LinearRegression().fit(x_reshaped, y)
+                        r_squared = lm.score(x_reshaped, y)
+                        intercept = lm.intercept_
+                        slope = lm.coef_[0]
+                        pearson_corr, pearson_p = pearsonr(x, y)
+                        stats.append([f_col, slope, intercept, r_squared, pearson_corr, pearson_p])
+                    kmethod_fit_params_k[ref_var] = kmethod_fit_params_k[ref_var] + stats
+
+                for c_var in component_names:
+                    if base_clustering == 'parafac':
+                        x = cluster_specific_model.nnls_fmax[c_var]
+                        model_var = cluster_specific_model.nnls_fmax
+                    elif base_clustering == 'nmf':
+                        x = cluster_specific_model.nnls_fmax[c_var]
+                        model_var = cluster_specific_model.nnls_fmax
+                    stats = []
+                    nan_rows = x[x.isna()].index
+                    x = x.drop(nan_rows)
+                    if x.shape[0] <= 1:
+                        continue
+                    for f_col in model_var.columns:
+                        y = model_var[f_col]
+                        y = y.drop(nan_rows)
+                        x_reshaped = np.array(x).reshape(-1, 1)
+                        lm = LinearRegression().fit(x_reshaped, y)
+                        r_squared = lm.score(x_reshaped, y)
+                        intercept = lm.intercept_
+                        slope = lm.coef_[0]
+                        pearson_corr, pearson_p = pearsonr(x, y)
+                        stats.append([f_col, slope, intercept, r_squared, pearson_corr, pearson_p])
+                    kmethod_fit_params_k[c_var] = kmethod_fit_params_k[c_var] + stats
+
+        fig_dendrogram = plot_dendrogram(kmethod.linkage_matrix, kmethod.threshold_r,
+                                         eem_dataset_establish_dict['index'])
+        dendrogram_tabs.children[0].children.append(
+            dcc.Tab(label=f'{k}-cluster',
+                    children=[
+                        html.Div([
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dcc.Graph(
+                                                figure=fig_dendrogram,
+                                                config={'autosizable': False},
+                                                style={'width': '50vw',
+                                                       'height': '70vh'}
+                                            )
+                                        ]
+                                    )
+                                ]
+                            ),
+                        ]),
+                    ],
+                    style={'padding': '0', 'line-width': '100%'},
+                    selected_style={'padding': '0', 'line-width': '100%'}
+                    )
+        )
+
+        fig_sorted_consensus_matrix = go.Figure(
+            data=go.Heatmap(
+                z=kmethod.consensus_matrix_sorted,
+                x=kmethod.index_sorted if eem_dataset_establish.index
+                else [i for i in range(consensus_matrix.shape[1])],
+                y=kmethod.index_sorted if eem_dataset_establish.index
+                else [i for i in range(consensus_matrix.shape[0])],
+                colorscale='reds',
+                hoverongaps=False,
+                hovertemplate='sample1: %{y}<br>sample2: %{x}<br>consensus coefficient: %{z}<extra></extra>'
+            )
+        )
+        for j in range(max(kmethod.labels)):
+            idx = np.where(np.sort(kmethod.labels) == j + 1)[0]
+            fig_sorted_consensus_matrix.add_shape(type="rect", x0=min(idx), y0=min(idx),
+                                                  x1=min(idx) + len(idx), y1=min(idx) + len(idx),
+                                                  line=dict(color="black", width=3),
+                                                  )
+        fig_sorted_consensus_matrix.update_layout(yaxis=dict(scaleanchor="x", scaleratio=1))
+
+        sorted_consensus_matrix_tabs.children[0].children.append(
+            dcc.Tab(
+                label=f'{k}-cluster',
+                children=[
+                    html.Div([
+                        dbc.Row(
+                            [
+                                dbc.Col(
+                                    [
+                                        dcc.Graph(
+                                            figure=fig_sorted_consensus_matrix,
+                                            config={'autosizable': False},
+                                            style={'width': '50vw',
+                                                   'height': '70vh'}
+                                        )
+                                    ]
+                                )
+                            ]
+                        ),
+                    ]),
+                ],
+                style={'padding': '0', 'line-width': '100%'},
+                selected_style={'padding': '0', 'line-width': '100%'}
+            )
+        )
+
+        if 'silhouette_score' in validations:
+            slt.append(kmethod.silhouette_score)
+
+        if 'RER' in validations:
+            rmse_combined = pd.concat([model.sample_rmse() for model in cluster_specific_models.values()], axis=0)
+            rmse_combined_sorted = rmse_combined.sort_index()
+            rmse_combined_sorted = pd.concat([rmse_combined_sorted, unified_model.sample_rmse()], axis=1)
+            rmse_combined_sorted.columns = ['RMSE with cluster-specific models', 'RMSE with unified model']
+            rmse_combined_sorted['RMSE reduction (%)'] = (
+                    100 * (1 - (rmse_combined_sorted.iloc[:, 0] / rmse_combined_sorted.iloc[:, 1])))
+            fig_rer = plot_reconstruction_error(
+                rmse_combined_sorted, display=False, bar_col_name='RMSE reduction (%)',
+                labels=cluster_labels_combined_sorted
+            )
+            rmse_combined_sorted['Cluster'] = cluster_labels_combined_sorted
+
+            reconstruction_error_reduction_tabs.children[0].children.append(
+                dcc.Tab(label=f'{k}-cluster',
+                        children=[
+                            html.Div([
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            [
+                                                dcc.Graph(figure=fig_rer,
+                                                          style={'width': '80vw',
+                                                                 'height': '70vh'}
+                                                          )
+                                            ]
+                                        )
+                                    ]
+                                ),
+
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            [
+                                                dbc.Table.from_dataframe(rmse_combined_sorted,
+                                                                         bordered=True, hover=True, index=True)
+                                            ]
+                                        )
+                                    ]
+                                )
+                            ]),
+                        ],
+                        style={'padding': '0', 'line-width': '100%'},
+                        selected_style={'padding': '0', 'line-width': '100%'}
+                        )
+            )
+
+        fmax_establishment_tabs.children[0].children.append(
+            dcc.Tab(label=f'{k}-cluster',
+                    children=[
+                        html.Div([
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dcc.Graph(figure=fig_fmax,
+                                                      style={'width': '80vw',
+                                                             'height': '70vh'}
+                                                      )
+                                        ]
+                                    )
+                                ]
+                            ),
+
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        [
+                                            dbc.Table.from_dataframe(fmax_combined_sorted,
+                                                                     bordered=True, hover=True, index=True)
+                                        ]
+                                    )
+                                ]
+                            )
+                        ]),
+                    ],
+                    style={'padding': '0', 'line-width': '100%'},
+                    selected_style={'padding': '0', 'line-width': '100%'}
+                    )
+        )
+
+        kmethod_models_n = {}
+        for i in range(k):
+            cluster_specific_model = kmethod.cluster_specific_models[i + 1]
+            eem_cluster = kmethod.eem_clusters[i + 1]
+            if base_clustering == 'parafac':
+                kmethod_models_n[i+1] = {
+                    'components': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
+                                   sublist in cluster_specific_model.components.tolist()],
+                    'Fmax': [
+                                cluster_specific_model.nnls_fmax.columns.tolist()] + cluster_specific_model.nnls_fmax.values.tolist(),
+                    'index': eem_cluster.index,
+                    'ref': [eem_cluster.ref.columns.tolist()] + eem_cluster.ref.values.tolist()
+                    if eem_cluster.ref is not None else None,
+                    'fitting_params': kmethod_fit_params_k
+                }
+            elif base_clustering == 'nmf':
+                kmethod_models_n[i+1] = {
+                    'components': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
+                                   sublist in cluster_specific_model.components.tolist()],
+                    'NNLS_Fmax': [
+                                     cluster_specific_model.nnls_fmax.columns.tolist()] + cluster_specific_model.nnls_fmax.values.tolist(),
+                    'nmf_Fmax': [
+                                    cluster_specific_model.nnls_fmax.columns.tolist()] + cluster_specific_model.nnls_fmax.values.tolist(),
+                    'index': eem_cluster.index,
+                    'ref': [eem_cluster.ref.columns.tolist()] + eem_cluster.ref.values.tolist()
+                    if eem_cluster.ref is not None else None,
+                    'fitting_params': kmethod_fit_params_k
+                }
+
+        kmethod_models[k] = kmethod_models_n
+
+    if 'silhouette_score' in validations:
+        slt_table = pd.DataFrame({'Number of clusters': list(kmethod_models.keys()), 'Silhouette score': slt})
+        silhouette_score_tabs.children.append(
+            html.Div([
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                dcc.Graph(
+                                    figure=px.line(
+                                        x=slt_table['Number of clusters'],
+                                        y=slt_table['Silhouette score'],
+                                        markers=True,
+                                        labels={'x': 'Number of cluster', 'y': 'Silhouette score'},
+                                    ),
+                                    config={'autosizable': False},
+                                )
+                            ]
+                        )
+                    ]
+                ),
+
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                dbc.Table.from_dataframe(slt_table,
+                                                         bordered=True, hover=True,
+                                                         )
+                            ]
+                        ),
+                    ]
+                ),
+            ]),
+        )
+
+    model_options = [{'label': '{r}-cluster'.format(r=r), 'value': r} for r in kmethod_models.keys()]
+    ref_options = [{'label': var, 'value': var} for var in valid_ref] if \
+        (eem_dataset_establish.ref is not None) else None
+
+    if base_clustering == 'parafac':
+        indicator_options = ['Fmax']
+    elif base_clustering == 'nmf':
+        indicator_options = ['NNLS-Fmax', 'NMF-Fmax']
+
+    return (dendrogram_tabs, sorted_consensus_matrix_tabs, silhouette_score_tabs, reconstruction_error_reduction_tabs,
+            fmax_establishment_tabs, 'Clustering', model_options, None, model_options, None, indicator_options, None,
+            model_options, None, ref_options, None, kmethod_models)
+
+
+# ---------Update cluster dropdown in components section-------------
+@app.callback(
+    [
+        Output('kmethod-establishment-components-cluster-selection', 'options'),
+        Output('kmethod-establishment-components-cluster-selection', 'value'),
+    ],
+    [
+        Input('kmethod-establishment-components-model-selection', 'value')
+    ]
+)
+def on_update_kmethod_component_cluster_list(k):
+    if k is not None:
+        options = [{'label': f'Cluster {n + 1}', 'value': n + 1} for n in range(int(k))]
+        return options, None
+    else:
+        return [], None
+
+
+# ---------Update reference dropdown in correlation section-----------
+@app.callback(
+    [
+        Output('kmethod-establishment-corr-ref-selection', 'options'),
+        Output('kmethod-establishment-corr-ref-selection', 'value'),
+    ],
+    [
+        Input('kmethod-establishment-corr-model-selection', 'value'),
+        State('kmethod-models', 'data')
+    ]
+)
+def update_reference_dropdown_by_selected_model(k, model):
+    if all([k, model]):
+        options = []
+        for c in list(model[str(k)].values()):
+            options += list(c['fitting_params'].keys())
+        options = list(set(options))
+        options = sorted(options)
+        return options, None
+    else:
+        return [], None
+
+
+# ---------Plot components-----------
+@app.callback(
+    [
+        Output('kmethod-establishment-components-graph', 'children')
+    ],
+    [
+        Input('kmethod-establishment-components-model-selection', 'value'),
+        Input('kmethod-establishment-components-cluster-selection', 'value'),
+        State('eem-graph-options', 'value'),
+        State('kmethod-models', 'data'),
+        State('kmethod-eem-dataset-establish', 'data'),
+    ],
+)
+def on_plot_kmethod_components(k, cluster_i, eem_graph_options, kmethod_models, eem_dataset_establish):
+    if all([k, cluster_i, kmethod_models, eem_dataset_establish]):
+        ex_range = np.array(eem_dataset_establish['ex_range'])
+        em_range = np.array(eem_dataset_establish['em_range'])
+        cluster_model = kmethod_models[str(k)][str(cluster_i)]
+        r = len(cluster_model['components'])
+        n_rows = (r - 1) // 3 + 1
+        graphs = [
+            dbc.Row(
+                [
+                    dbc.Col(
+                        dcc.Graph(
+                            figure=plot_eem(np.array(cluster_model['components'][3 * i]),
+                                            ex_range=ex_range,
+                                            em_range=em_range,
+                                            vmin=0 if np.min(
+                                                cluster_model['components'][3 * i]) > -1e-3 else None,
+                                            vmax=None,
+                                            auto_intensity_range=False,
+                                            plot_tool='plotly',
+                                            display=False,
+                                            figure_size=(5, 3.5),
+                                            axis_label_font_size=14,
+                                            cbar_font_size=12,
+                                            title_font_size=16,
+                                            title=f'C{3 * i + 1}',
+                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options
+                                            else False,
+                                            rotate=True if 'rotate' in eem_graph_options else False,
+                                            ) if 3 * i + 1 <= r else go.Figure(
+                                layout={'width': 400, 'height': 300}),
+                            # style={'width': '30vw'}
+                        ),
+                        width={'size': 4},
+                    ),
+
+                    dbc.Col(
+                        dcc.Graph(
+                            figure=plot_eem(np.array(cluster_model['components'][3 * i + 1]),
+                                            ex_range=ex_range,
+                                            em_range=em_range,
+                                            vmin=0 if np.min(
+                                                cluster_model['components'][
+                                                    3 * i + 1]) > -1e-3 else None,
+                                            vmax=None,
+                                            auto_intensity_range=False,
+                                            plot_tool='plotly',
+                                            display=False,
+                                            figure_size=(5, 3.5),
+                                            axis_label_font_size=14,
+                                            cbar_font_size=12,
+                                            title_font_size=16,
+                                            title=f'C{3 * i + 2}',
+                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options
+                                            else False,
+                                            rotate=True if 'rotate' in eem_graph_options else False,
+                                            ) if 3 * i + 2 <= r else go.Figure(
+                                layout={'width': 400, 'height': 300}),
+                            # style={'width': '30vw'}
+                        ),
+                        width={'size': 4},
+                    ),
+
+                    dbc.Col(
+                        dcc.Graph(
+                            figure=plot_eem(np.array(cluster_model['components'][3 * i + 2]),
+                                            ex_range=ex_range,
+                                            em_range=em_range,
+                                            vmin=0 if np.min(
+                                                cluster_model['components'][
+                                                    3 * i + 2]) > -1e-3 else None,
+                                            vmax=None,
+                                            auto_intensity_range=False,
+                                            plot_tool='plotly',
+                                            display=False,
+                                            figure_size=(5, 3.5),
+                                            axis_label_font_size=14,
+                                            cbar_font_size=12,
+                                            title_font_size=16,
+                                            title=f'C{3 * i + 3}',
+                                            fix_aspect_ratio=True if 'aspect_one' in eem_graph_options
+                                            else False,
+                                            rotate=True if 'rotate' in eem_graph_options else False,
+                                            ) if 3 * i + 3 <= r else go.Figure(),
+                            # style={'width': '30vw'}
+                        ),
+                        width={'size': 4},
+                    ),
+                ], style={'width': '90vw'}
+            ) for i in range(n_rows)
+        ]
+        return [graphs]
+    else:
+        return [None]
+
+
+# -----------Analyze correlations between Fmax and reference variables in model establishment
+
+@app.callback(
+    [
+        Output('kmethod-establishment-corr-graph', 'figure'),
+        Output('kmethod-establishment-corr-table', 'children'),
+    ],
+    [
+        Input('kmethod-establishment-corr-model-selection', 'value'),
+        Input('kmethod-establishment-corr-indicator-selection', 'value'),
+        Input('kmethod-establishment-corr-ref-selection', 'value'),
+        State('kmethod-models', 'data')
+    ]
+)
+def on_kmethod_establishment_correlations(k, indicator, ref_var, kmethod_models):
+    if all([k, indicator, ref_var, kmethod_models]):
+        fig = go.Figure()
+        for n in range(1, k + 1):
+            cluster_specific_model = kmethod_models[str(k)][str(n)]
+            r = len(cluster_specific_model['components'])
+            ref_df = pd.DataFrame(cluster_specific_model['ref'][1:], columns=cluster_specific_model['ref'][0],
+                                  index=cluster_specific_model['index'])
+            if 'NNLS_Fmax' in list(cluster_specific_model.keys()):
+                nnls_fmax_df = pd.DataFrame(cluster_specific_model['NNLS-Fmax'][1:],
+                                            columns=cluster_specific_model['NNLS-Fmax'][0],
+                                            index=cluster_specific_model['index'])
+                nmf_fmax_df = pd.DataFrame(cluster_specific_model['NMF-Fmax'][1:],
+                                           columns=cluster_specific_model['NMF-Fmax'][0],
+                                           index=cluster_specific_model['index'])
+                fmax_df = pd.concat([nnls_fmax_df, nmf_fmax_df], axis=1)
+            elif 'Fmax' in list(cluster_specific_model.keys()):
+                fmax_df = pd.DataFrame(cluster_specific_model['Fmax'][1:],
+                                       columns=cluster_specific_model['Fmax'][0],
+                                       index=cluster_specific_model['index'])
+
+            ref_df = pd.concat([ref_df, fmax_df], axis=1)
+            reference_variable = ref_df[ref_var]
+            fluorescence_indicators = pd.DataFrame(cluster_specific_model[indicator][1:],
+                                                   columns=cluster_specific_model[indicator][0],
+                                                   index=cluster_specific_model['index'])
+
+            stats_k = cluster_specific_model['fitting_params']
+
+            for i, col in enumerate(fluorescence_indicators.columns):
+                x = reference_variable
+                y = fluorescence_indicators[col]
+                nan_rows = x[x.isna()].index
+                x = x.drop(nan_rows)
+                y = y.drop(nan_rows)
+                if x.shape[0] < 1:
+                    return go.Figure(), None
+                fig.add_trace(go.Scatter(x=x, y=y, mode='markers',
+                                         name=f'Cluster {n}-{col}',
+                                         text=[i for i in x.index],
+                                         marker=dict(color=colors[i % len(colors)],
+                                                     symbol=marker_shapes[n % len(marker_shapes)]),
+                                         hoverinfo='text+x+y'))
+                fig.add_trace(go.Scatter(x=np.array([x.min(), x.max()]),
+                                         y=stats_k[ref_var][r*n-r+i][1] * np.array([x.min(), x.max()]) + stats_k[ref_var][r*n-r+i][2],
+                                         mode='lines', name=f'Cluster {n}-{col}-Linear Regression Line',
+                                         line=dict(dash='dash', color=colors[i % len(colors)])))
+            fig.update_xaxes(title_text=ref_var)
+            fig.update_yaxes(title_text=indicator)
+
+
+        fig.update_layout(legend=dict(y=-0.3, x=0.5, xanchor='center', yanchor='top'))
+
+        tbl = pd.DataFrame(
+            stats_k[ref_var],
+            columns=['Variable', 'slope', 'intercept', 'R²', 'Pearson Correlation', 'Pearson p-value']
+        )
+        tbl = dbc.Table.from_dataframe(tbl, bordered=True, hover=True, index=False)
+        return fig, tbl
+    else:
+        return go.Figure(), None
+
+
 # -----------Setup the sidebar-----------------
 
 content = html.Div(
@@ -3899,10 +7398,12 @@ content = html.Div(
             id='tabs-content',
             children=[
                 dcc.Tab(label='Homepage', id='homepage', children=html.P(homepage)),
-                dcc.Tab(label='EEM pre-processing', id='eem-pre-processing', children=html.P(page1)),
-                dcc.Tab(label='PARAFAC', id='parafac', children=html.P(page2)),
-                dcc.Tab(label='K-PARAFACs', id='k-parafacs', children=html.P('Development in progress')),
-                dcc.Tab(label='NMF', id='nmf', children=html.P(page4)),
+                dcc.Tab(label='EEM pre-processing', id='eem-pre-processing', children=html.P(page_eem_processing)),
+                dcc.Tab(label='Peak picking', id='eem-peak-picking', children=html.P(page_peak_picking)),
+                dcc.Tab(label='Regional integration', id='eem-regional-integration', children=html.P(page_regional_integration)),
+                dcc.Tab(label='PARAFAC', id='parafac', children=html.P(page_parafac)),
+                dcc.Tab(label='NMF', id='nmf', children=html.P(page_nmf)),
+                dcc.Tab(label='K-method', id='kmethod', children=html.P(page_kmethod)),
             ],
             # value="homepage",
             # persistence=True,
@@ -3916,9 +7417,17 @@ def serve_layout():
     return html.Div([
         dcc.Store(id='pre-processed-eem'),
         dcc.Store(id='eem-dataset'),
+        dcc.Store(id='pp-model'),
+        dcc.Store(id='pp-test-results'),
+        dcc.Store(id='ri-model'),
+        dcc.Store(id='ri-test-results'),
         dcc.Store(id='parafac-models'),
         dcc.Store(id='parafac-test-results'),
-        dcc.Store(id='k-parafacs-models'),
+        dcc.Store(id='kmethod-consensus-matrix-data'),
+        dcc.Store(id='kmethod-eem-dataset-establish'),
+        dcc.Store(id='kmethod-base-clustering-parameters'),
+        dcc.Store(id='kmethod-models'),
+        dcc.Store(id='kmethod-test-results'),
         dcc.Store(id='nmf-models'),
         dcc.Store(id='nmf-test-results'),
         content])
@@ -3927,4 +7436,4 @@ def serve_layout():
 app.layout = serve_layout
 
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    app.run(debug=False)

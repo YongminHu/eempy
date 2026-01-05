@@ -1,4 +1,3 @@
-
 import numpy as np
 import pandas as pd
 
@@ -13,20 +12,20 @@ from scipy.interpolate import interp1d
 from sklearn.linear_model import LinearRegression
 from eempy.utils import dichotomy_search
 from .basic import (
-process_eem_stack,
-eem_threshold_masking,
-eem_gaussian_filter,
-eem_region_masking,
-eem_median_filter,
-eem_cutting,
-eem_nan_imputing,
-eem_raman_normalization,
-eems_tf_normalization,
-eem_rayleigh_scattering_removal,
-eem_raman_scattering_removal,
-eem_ife_correction,
-eem_interpolation,
-eem_regional_integration,
+    process_eem_stack,
+    eem_threshold_masking,
+    eem_gaussian_filter,
+    eem_region_masking,
+    eem_median_filter,
+    eem_cutting,
+    eem_nan_imputing,
+    eem_raman_normalization,
+    eems_tf_normalization,
+    eem_rayleigh_scattering_removal,
+    eem_raman_scattering_removal,
+    eem_ife_correction,
+    eem_interpolation,
+    eem_regional_integration,
 )
 
 
@@ -56,6 +55,7 @@ class EEMDataset:
         The number of elements in the list should equal the number
         of samples in the eem_stack (with the same sample order).
     """
+
     def __init__(self, eem_stack: np.ndarray, ex_range: np.ndarray, em_range: np.ndarray,
                  index: Optional[list] = None, ref: Optional[pd.DataFrame] = None, cluster: Optional[list] = None):
         # ------------------parameters--------------------
@@ -67,6 +67,7 @@ class EEMDataset:
         self.index = index
         self.cluster = cluster
         self.extent = (self.em_range.min(), self.em_range.max(), self.ex_range.min(), self.ex_range.max())
+
     # --------------------EEM dataset features--------------------
     def zscore(self):
         """
@@ -79,7 +80,6 @@ class EEMDataset:
         zscore = stats.zscore(self.eem_stack, axis=0)
         return zscore
 
-
     def mean(self):
         """
         Calculate mean of each pixel over all samples.
@@ -90,7 +90,6 @@ class EEMDataset:
         """
         mean = np.mean(self.eem_stack, axis=0)
         return mean
-
 
     def variance(self):
         """
@@ -103,7 +102,6 @@ class EEMDataset:
         variance = np.var(self.eem_stack, axis=0)
         return variance
 
-
     def std(self):
         """
         Calculate standard deviation of each pixel over all samples.
@@ -114,7 +112,6 @@ class EEMDataset:
         """
         return np.std(self.eem_stack, axis=0)
 
-
     def total_fluorescence(self):
         """
         Calculate total fluorescence of each sample.
@@ -124,7 +121,6 @@ class EEMDataset:
         tf: np.ndarray
         """
         return self.eem_stack.sum(axis=(1, 2))
-
 
     def regional_integration(self, ex_min, ex_max, em_min, em_max):
         """
@@ -155,7 +151,6 @@ class EEMDataset:
         else:
             ri = pd.DataFrame(integrations, index=np.arange(integrations.shape[0]), columns=[ri_name])
         return ri
-
 
     def peak_picking(self, ex, em):
         """
@@ -189,7 +184,6 @@ class EEMDataset:
             fi = pd.DataFrame(fi, index=np.arange(fi.shape[0]), columns=[fi_name])
         return fi, ex_actual, em_actual
 
-
     def hix(self):
         """
         Calculate the humification index (HIX).
@@ -212,7 +206,6 @@ class EEMDataset:
         else:
             raise ValueError("The ranges of excitation or emission wavelengths do not support the calculation.")
 
-
     def bix(self):
         """
         Calculate the biological index (BIX).
@@ -232,7 +225,6 @@ class EEMDataset:
             return pd.DataFrame(bix, index=self.index, columns=['BIX'])
         else:
             raise ValueError("The ranges of excitation or emission wavelengths do not support the calculation.")
-
 
     def fi(self):
         """        Compute the fluorescence index (FI) for each sample.
@@ -254,7 +246,6 @@ class EEMDataset:
             return pd.DataFrame(fi, index=self.index, columns=['BIX'])
         else:
             raise ValueError("The ranges of excitation or emission wavelengths do not support the calculation.")
-
 
     def aqy(self, abs_stack, ex_range_abs, target_ex=None):
         """
@@ -286,7 +277,6 @@ class EEMDataset:
             return aqy
         else:
             return aqy[f'AQY (ex = {target_ex} nm)']
-
 
     def correlation(self, variables, fit_intercept=True):
         """
@@ -368,7 +358,6 @@ class EEMDataset:
             eem_dataset_new.eem_stack = eem_stack_masked
             return eem_dataset_new
 
-
     def gaussian_filter(self, sigma=1, truncate=3, inplace=True):
         """
         Apply Gaussian filtering to every EEM in the dataset.
@@ -395,7 +384,6 @@ class EEMDataset:
             eem_dataset_new = copy.deepcopy(self)
             eem_dataset_new.eem_stack = eem_stack_filtered
             return eem_dataset_new
-
 
     def median_filter(self, window_size=(3, 3), mode='reflect', inplace=True):
         """
@@ -424,7 +412,6 @@ class EEMDataset:
             eem_dataset_new = copy.deepcopy(self)
             eem_dataset_new.eem_stack = eem_stack_filtered
             return eem_dataset_new
-
 
     def region_masking(self, ex_min, ex_max, em_min, em_max, fill_value='nan', inplace=True):
         """
@@ -462,7 +449,6 @@ class EEMDataset:
             eem_dataset_new = copy.deepcopy(self)
             eem_dataset_new.eem_stack = eem_stack_masked
             return eem_dataset_new
-
 
     def cutting(self, ex_min, ex_max, em_min, em_max, inplace=True):
         """
@@ -504,7 +490,6 @@ class EEMDataset:
             eem_dataset_new.em_range = new_ranges[0][1]
             return eem_dataset_new
 
-
     def nan_imputing(self, method='linear', fill_value='linear_ex', inplace=True):
         """
         Impute NaN pixels in every EEM in the dataset.
@@ -532,7 +517,6 @@ class EEMDataset:
             eem_dataset_new = copy.deepcopy(self)
             eem_dataset_new.eem_stack = eem_stack_imputed
             return eem_dataset_new
-
 
     def raman_normalization(self, ex_range_blank=None, em_range_blank=None, blank=None, from_blank=False,
                             integration_time=1, ex_target=350, bandwidth=5,
@@ -584,7 +568,6 @@ class EEMDataset:
             eem_dataset_new.eem_stack = eem_stack_normalized
             return eem_dataset_new
 
-
     def tf_normalization(self, inplace=True):
         """
         Normalize every EEM by its total fluorescence. Each sample is divided by its total fluorescence, normalized
@@ -610,7 +593,6 @@ class EEMDataset:
             eem_dataset_new = copy.deepcopy(self)
             eem_dataset_new.eem_stack = eem_stack_normalized
             return eem_dataset_new, weights
-
 
     def raman_scattering_removal(self, width=5, interpolation_method='linear', interpolation_dimension='2d',
                                  inplace=True, recover_original_nan=True):
@@ -649,7 +631,6 @@ class EEMDataset:
             eem_dataset_new = copy.deepcopy(self)
             eem_dataset_new.eem_stack = eem_stack_masked
             return eem_dataset_new
-
 
     def rayleigh_scattering_removal(self, width_o1=15, width_o2=15, interpolation_dimension_o1='2d',
                                     interpolation_dimension_o2='2d', interpolation_method_o1='zero',
@@ -699,7 +680,6 @@ class EEMDataset:
             eem_dataset_new.eem_stack = eem_stack_masked
             return eem_dataset_new
 
-
     def ife_correction(self, absorbance, ex_range_abs, inplace=True):
         """
         Apply inner filter effect (IFE) correction to every EEM using absorbance spectra.
@@ -730,7 +710,6 @@ class EEMDataset:
             eem_dataset_new = copy.deepcopy(self)
             eem_dataset_new.eem_stack = eem_stack_corrected
             return eem_dataset_new
-
 
     def interpolation(self, ex_range_new, em_range_new, method, inplace=True):
         """
@@ -768,7 +747,6 @@ class EEMDataset:
             eem_dataset_new.ex_range = ex_range_new
             eem_dataset_new.em_range = em_range_new
             return eem_dataset_new
-
 
     def splitting(self, n_split, rule: str = 'random', random_state=None,
                   kw_top=None, kw_bot=None, idx_top=None, idx_bot=None):
@@ -845,7 +823,6 @@ class EEMDataset:
             subset_list.append(m)
         return subset_list
 
-
     def subsampling(self, portion=0.8, inplace=True):
         """
         Randomly select a portion of the EEM.
@@ -893,7 +870,6 @@ class EEMDataset:
             eem_dataset_sub.cluster = cluster_new
             return eem_dataset_sub.sort_by_index(inplace=True), sorted(selected_indices)
 
-
     def sort_by_index(self, inplace=True):
         """
         Sort the sample order of eem_stack, index and reference (if exists) by the index.
@@ -926,7 +902,6 @@ class EEMDataset:
             if self.cluster is not None:
                 eem_dataset_new.cluster = [self.cluster[i] for i in sorted_indices]
             return eem_dataset_new
-
 
     def filter_by_index(self, mandatory_keywords, optional_keywords, inplace=True):
         """
@@ -991,7 +966,6 @@ class EEMDataset:
             eem_dataset_new.cluster = cluster_filtered
             return eem_dataset_new
 
-
     def filter_by_cluster(self, cluster_names, inplace=True):
         """
         Select the samples belong to certain cluster(s).
@@ -1038,7 +1012,6 @@ class EEMDataset:
             eem_dataset_new.ref = ref_filtered
             eem_dataset_new.cluster = cluster_filtered
             return eem_dataset_new
-
 
     def to_json(self, filepath=None):
         eem_dataset_json_dict = {
@@ -1099,4 +1072,3 @@ def combine_eem_datasets(list_eem_datasets):
     eem_dataset_combined = EEMDataset(eem_stack=eem_stack_combined, ex_range=ex_range_0, em_range=em_range_0,
                                       ref=ref_combined, index=index_combined, cluster=cluster_combined)
     return eem_dataset_combined
-
