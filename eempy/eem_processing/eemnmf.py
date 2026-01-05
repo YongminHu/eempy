@@ -95,20 +95,21 @@ class EEMNMF:
         Additional prior/penalty strength for backend-specific prior term C (HALS solver only).
     ref_components : optional
         Reference component definitions used by the backend prior/regularization logic (backend-specific).
+    kw_top : str, optional
+        Keyword used to identify "top" EEM from ``eem_dataset.index`` during fitting. "Top" and "bot"
+        EEMs are assumed to be paired one-to-one and aligned by selection order (first "top" ↔ first "bot", etc.).
+        A recommended naming convention is "a_sharing_sample_name" + "kw_top" or "kw_bot" for the quenched and
+        unquenched EEM derived from the same original sample, so the pair differs only by ``kw_top``/``kw_bot`` and
+        alignment is preserved when selecting by keywords. An alternative approach is to provide ``idx_top`` and
+        ``idx_bot`` to directly specify "top" and "bot" EEMs by positions.
+    kw_bot : str, optional
+        Keyword used to identify "bot" EEM from ``eem_dataset.index`` during fitting.
     idx_top : list of int, optional
         0-based integer positions of samples in eem_dataset used as the numerator ("top") group (e.g., [0, 1,
-        2]). An alternative approach is to provide ``kw_top`` and ``kw_bot`` to identify "top" and "bot" samples
-        by keywords in ``EEMDataset.index``.
+        2]).
     idx_bot : list of int, optional
         0-based integer positions of samples in eem_dataset used as the denominator ("bot") group (e.g., [3, 4,
-        5]). An alternative approach is to provide ``kw_top`` and ``kw_bot`` to identify "top" and "bot" samples
-        by keywords in ``EEMDataset.index``.
-    kw_top : str, optional
-        Keyword used to identify "top" samples from ``eem_dataset.index`` during fitting.
-        If provided together with ``idx_top``, indices are derived according to ``kw_top``.
-    kw_bot : str, optional
-        Keyword used to identify "bot" samples from ``eem_dataset.index`` during fitting.
-        If provided together with ``idx_bot``, indices are derived according to ``kw_bot``.
+        5]).
     lam : float, default 0
         Strength of ratio-based regularization between "top" and "bot" samples (HALS solver only).
     fit_rank_one : bool, default False

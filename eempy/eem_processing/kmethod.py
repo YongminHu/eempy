@@ -3,6 +3,7 @@ import pandas as pd
 
 import copy
 import warnings
+from typing import Optional, Union
 
 from math import sqrt
 from sklearn.metrics import silhouette_score
@@ -10,6 +11,8 @@ from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.spatial.distance import squareform
 from .eem_dataset import EEMDataset, combine_eem_datasets
 from .basic import component_similarity, align_components_by_components
+from .parafac import PARAFAC
+from .eemnmf import EEMNMF
 
 
 class KMethod:
@@ -28,8 +31,8 @@ class KMethod:
     error by iterating between:
     - **Estimation**: fit a base decomposition model (``base_model``) separately on each current cluster to obtain
       cluster-specific models.
-    - **Maximization / Assignment**: assign each sample to the cluster whose model yields the smallest distance
-      (e.g., reconstruction RMSE), forming updated clusters.
+    - **Assignment**: assign each sample to the cluster whose model yields the smallest distance (e.g.,
+      reconstruction RMSE), forming updated clusters.
 
     Repeating this procedure yields cluster-specific PARAFAC/NMF models that (ideally) reconstruct the dataset better
     than a single unified model.
@@ -49,7 +52,8 @@ class KMethod:
         Criterion used for assignment in the maximization step.
         - ``'reconstruction_error'``: assign each sample to the model with the smallest per-sample RMSE.
         - ``'reconstruction_error_with_beta'``: like reconstruction error, but pairs samples into top/bot groups and
-          uses beta-based reconstruction (requires ``kw_top`` and ``kw_bot`` and a base model that supports beta logic).
+          uses beta-based reconstruction that forces fmax ratios between paired samples equal to the beta values across
+          all samples (requires ``kw_top``, ``kw_bot`` in ``base_model``).
         - ``'quenching_coefficient'``: assign samples based on similarity of estimated quenching coefficients derived
           from paired top/bot samples (requires ``kw_top`` and ``kw_bot``).
     max_iter : int, default 20
@@ -61,12 +65,6 @@ class KMethod:
         Minimum allowed cluster size during optimization. Clusters with fewer samples than the threshold are removed.
         - ``'default'``: use ``base_model.n_components`` as the minimum cluster size.
         - ``int``: explicit minimum cluster size.
-    kw_top : str, optional
-        Keyword used to identify "top" samples from ``eem_dataset.index`` when a paired-top/bot distance metric is used.
-        Samples are selected by substring matching against entries of ``eem_dataset.index``.
-    kw_bot : str, optional
-        Keyword used to identify "bot" samples from ``eem_dataset.index`` when a paired-top/bot distance metric is used.
-        Samples are selected by substring matching against entries of ``eem_dataset.index``.
 
     Attributes
     ----------
@@ -110,8 +108,16 @@ class KMethod:
     [1]  Hu, Yongmin, Eberhard Morgenroth, and Céline Jacquin. "Online monitoring of greywater reuse system using
          excitation-emission matrix (EEM) and K-PARAFACs." Water Research 268 (2025): 122604.
     """
-    def __init__(self, base_model, n_initial_splits, distance_metric="reconstruction_error", max_iter=20, tol=0.001,
-                 elimination='default', kw_top=None, kw_bot=None):
+
+    def __init__(
+            self,
+            base_model: Union[PARAFAC, EEMNMF],
+            n_initial_splits,
+            distance_metric="reconstruction_error",
+            max_iter=20,
+            tol=0.001,
+            elimination='default'
+    ):
         # -----------Parameters-------------
         self.base_model = base_model
         self.n_initial_splits = n_initial_splits
@@ -119,13 +125,13 @@ class KMethod:
         self.max_iter = max_iter
         self.tol = tol
         self.elimination = elimination
-        self.kw_top = kw_top
-        self.kw_bot = kw_bot
         self.subsampling_portion = None
         self.n_runs = None
         self.consensus_conversion_power = None
         # ----------Attributes-------------
         self.unified_model = None
+        self.kw_top = None
+        self.kw_bot = None
         self.label_history = None
         self.error_history = None
         self.silhouette_score = None
@@ -139,7 +145,6 @@ class KMethod:
         self.distance_matrix = None
         self.linkage_matrix = None
         self.consensus_matrix_sorted = None
-
 
     def base_clustering(self, eem_dataset: EEMDataset):
         """
@@ -160,6 +165,10 @@ class KMethod:
         # -------Generate a unified model as reference for ordering components--------
         unified_model = copy.deepcopy(self.base_model)
         unified_model.fit(eem_dataset)
+        # -------Identify kw_top and kw_bot positions (if applicable)--------
+        self.kw_top = self.base_model.kw_top
+        self.kw_bot = self.base_model.kw_bot
+
         # -------Define functions for estimation and maximization steps-------
         def get_quenching_coef(fmax_tot, kw_o, kw_q):
             fmax_original = fmax_tot[fmax_tot.index.str.contains(kw_o)]
@@ -168,6 +177,7 @@ class KMethod:
             fmax_ratio[fmax_ratio.index.str.contains(kw_o)] = fmax_original.to_numpy() / fmax_quenched.to_numpy()
             fmax_ratio[fmax_ratio.index.str.contains(kw_q)] = fmax_original.to_numpy() / fmax_quenched.to_numpy()
             return fmax_ratio.to_numpy()
+
         def estimation(sub_datasets: dict):
             models = {}
             for label, d in sub_datasets.items():
@@ -175,6 +185,7 @@ class KMethod:
                 model.fit(d)
                 models[label] = model
             return models
+
         def maximization(models: dict):
             sample_error = []
             sub_datasets = {}
@@ -300,7 +311,6 @@ class KMethod:
         self.cluster_specific_models = cluster_specific_models_new
         return cluster_labels, label_history, error_history
 
-
     def calculate_consensus(self, eem_dataset: EEMDataset, n_base_clusterings: int, subsampling_portion: float):
         """
         Run the clustering for many times and combine the output of each run to obtain an optimal clustering.
@@ -366,7 +376,6 @@ class KMethod:
         self.consensus_matrix = consensus_matrix
         return consensus_matrix, label_history, error_history
 
-
     def hierarchical_clustering(self, eem_dataset, n_clusters, consensus_conversion_power=1):
         """
         Parameters
@@ -428,7 +437,6 @@ class KMethod:
         self.labels = labels
         self.eem_clusters = clusters
         self.cluster_specific_models = cluster_specific_models
-
 
     def predict(self, eem_dataset: EEMDataset):
         """

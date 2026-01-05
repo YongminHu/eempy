@@ -30,12 +30,12 @@ class PARAFAC:
     This class fits a low-rank PARAFAC decomposition to a 3D EEM stack with optional regularization:
         - Non-negativity
         - Elastic-net regularization on any factor (L1/L2 mix).
-        - Quadratic priors on ``W`` and/or ``H`` (controlled by ``prior_dict_sample``, ``prior_dict_ex``,
+        - Quadratic priors on ``A``, ``B``, and/or ``C`` (controlled by ``prior_dict_sample``, ``prior_dict_ex``,
           ``prior_dict_em and ``gamma_sample``, ``gamma_ex`` and ``gamma_em), with NaNs allowed to skip entries. This is
           useful when fitted scores or spectral components are desired to be close (but not necessarily identical) to
           prior knowledge. For example, if a component’s concentration is known for some samples, a prior vector of
           length n_samples can be passed with real values for known samples and NaN for unknown samples.
-        - A ratio constraint on paired rows of ``W``: ``W[idx_top] ≈ beta * W[idx_bot]``. This is useful when
+        - A ratio constraint on paired rows of ``A``: ``A[idx_top] ≈ beta * A[idx_bot]``. This is useful when
           the ratios of component amplitudes between two sets of samples are desired to be constant. For example,
           if each sample is measured both unquenched and quenched using a fixed quencher dosage, then for a given
           chemically consistent component the ratio between unquenched and quenched amplitudes may be approximately
@@ -96,14 +96,21 @@ class PARAFAC:
         Additional prior/penalty strength for the emission-mode factor matrix (backend-specific).
     ref_components : optional
         Reference component definitions used by the backend prior/regularization logic (backend-specific).
-    idx_top : list of int, optional
-        Indices of samples used as the numerator ("top") group for ratio-based regularization.
-    idx_bot : list of int, optional
-        Indices of samples used as the denominator ("bot") group for ratio-based regularization.
     kw_top : str, optional
-        Keyword used to identify "top" samples from ``eem_dataset.index`` during fitting.
+        Keyword used to identify "top" EEM from ``eem_dataset.index`` during fitting. "Top" and "bot"
+        EEMs are assumed to be paired one-to-one and aligned by selection order (first "top" ↔ first "bot", etc.).
+        A recommended naming convention is "a_sharing_sample_name" + "kw_top" or "kw_bot" for the quenched and
+        unquenched EEM derived from the same original sample, so the pair differs only by ``kw_top``/``kw_bot`` and
+        alignment is preserved when selecting by keywords. An alternative approach is to provide ``idx_top`` and
+        ``idx_bot`` to directly specify "top" and "bot" EEMs by positions.
     kw_bot : str, optional
-        Keyword used to identify "bot" samples from ``eem_dataset.index`` during fitting.
+        Keyword used to identify "bot" EEM from ``eem_dataset.index`` during fitting.
+    idx_top : list of int, optional
+        0-based integer positions of samples in eem_dataset used as the numerator ("top") group (e.g., [0, 1,
+        2]).
+    idx_bot : list of int, optional
+        0-based integer positions of samples in eem_dataset used as the denominator ("bot") group (e.g., [3, 4,
+        5]).
     lam : float, default 0
         Strength of ratio-based regularization between "top" and "bot" samples (backend-specific).
     max_iter_als : int, default 100
