@@ -9,7 +9,6 @@ import scipy.stats as stats
 import pandas as pd
 import numpy as np
 import warnings
-from eempy.solver import *
 from sklearn.linear_model import LinearRegression
 from scipy.ndimage import gaussian_filter, median_filter
 from scipy.interpolate import RegularGridInterpolator, interp1d, griddata
@@ -18,8 +17,6 @@ from scipy.spatial.distance import cdist
 from tensorly.tenalg import unfolding_dot_khatri_rao
 from tlviz.factor_tools import permute_cp_tensor
 from typing import Optional
-from .parafac import PARAFAC
-from .eemnmf import EEMNMF
 
 
 def process_eem_stack(eem_stack, f, **kwargs):
@@ -891,30 +888,17 @@ def align_components_by_components(models_dict: dict, components_ref: dict):
         component_labels_var = [0] * len(permutation)
         for i, nc in enumerate(permutation):
             component_labels_var[nc] = component_labels_ref_extended[i]
-        #
-        # # Generate new labels
-        # component_labels_var = [component_labels_ref[j] for j in matched_index]
-        # if len(permutation) < comp.shape[0]:
-        #     unmatched = list(set(range(comp.shape[0])) - set(permutation))
-        #     component_labels_var += [f"O{i + 1}" for i in range(len(unmatched))]
-        #     permutation += unmatched
-        if isinstance(model, PARAFAC):
-            model.score.columns, model.ex_loadings.columns, model.em_loadings.columns, model.nnls_fmax.columns = (
-                    [component_labels_var] * 4)
-            model.score = model.score.iloc[:, permutation]
-            model.ex_loadings = model.ex_loadings.iloc[:, permutation]
-            model.em_loadings = model.em_loadings.iloc[:, permutation]
-            model.nnls_fmax = model.nnls_fmax.iloc[:, permutation]
-            model.components = model.components[permutation, :, :]
-            model.cptensor = permute_cp_tensor(model.cptensors, permutation)
-            model.beta = model.beta[permutation] if model.beta is not None else None
-        elif isinstance(model, EEMNMF):
-            model.fmax.columns, model.nnls_fmax.columns = (
+        model.fmax.columns, model.nnls_fmax.columns = (
+                [component_labels_var] * 2)
+        model.fmax = model.fmax.iloc[:, permutation]
+        model.nnls_fmax = model.nnls_fmax.iloc[:, permutation]
+        model.components = model.components[permutation, :, :]
+        model.beta = model.beta[permutation] if model.beta is not None else None
+        if getattr(model, 'ex_loadings', None) and getattr(model, 'em_loadings', None):
+            model.ex_loadings.columns, model.em_loadings.columns = (
                     [component_labels_var] * 2)
-            model.fmax = model.fmax.iloc[:, permutation]
-            model.nnls_fmax = model.nnls_fmax.iloc[:, permutation]
-            model.components = model.components[permutation, :, :]
-            model.beta = model.beta[permutation] if model.beta is not None else None
+        if getattr(model, 'score', None):
+            model.score.columns = component_labels_var
         models_dict_new[model_label] = model
     return models_dict_new
 

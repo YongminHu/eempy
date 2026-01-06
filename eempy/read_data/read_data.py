@@ -14,8 +14,8 @@ import pandas as pd
 import json
 from datetime import datetime
 from typing import Union, Tuple, List
-from eempy.eem_processing import eem_interpolation, eem_cutting, process_eem_stack, EEMDataset
-from eempy.utils import dichotomy_search
+from ..eem_processing import eem_interpolation, eem_cutting, process_eem_stack, EEMDataset
+from ..utils import dichotomy_search
 from scipy.interpolate import interp1d
 
 

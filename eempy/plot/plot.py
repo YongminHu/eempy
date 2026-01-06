@@ -4,7 +4,6 @@ Author: Yongmin Hu (yongminhu@outlook.com)
 Last update: 2024-07-03
 """
 
-from eempy.utils import *
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats as stats
@@ -12,7 +11,7 @@ import pandas as pd
 import math
 import plotly.graph_objects as go
 import plotly.express as px
-from eempy.eem_processing import PARAFAC
+from ..eem_processing import PARAFAC
 from plotly.subplots import make_subplots
 from sklearn.linear_model import LinearRegression
 from matplotlib.colors import LogNorm, TABLEAU_COLORS

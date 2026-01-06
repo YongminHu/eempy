@@ -14,7 +14,7 @@ Implemented features include:
 
 import numpy as np
 import tensorly as tl
-from eempy.eem_processing import process_eem_stack, eem_nan_imputing
+from ..eem_processing.basic import process_eem_stack, eem_nan_imputing
 from sklearn.decomposition import NMF
 from scipy.linalg import khatri_rao
 from scipy.stats import pearsonr

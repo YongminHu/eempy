@@ -10,7 +10,7 @@ from typing import Optional
 
 from scipy.interpolate import interp1d
 from sklearn.linear_model import LinearRegression
-from eempy.utils import dichotomy_search
+from ..utils import dichotomy_search
 from .basic import (
     process_eem_stack,
     eem_threshold_masking,
