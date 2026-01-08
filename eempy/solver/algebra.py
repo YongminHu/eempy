@@ -1,6 +1,7 @@
 import numpy as np
 import warnings
 
+
 def multi_matrices_khatri_rao(matrices, weights=None, skip_matrix=None, mask=None):
     """
     Khatri-Rao product of a list of matrices.

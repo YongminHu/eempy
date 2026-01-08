@@ -87,10 +87,31 @@ homepage = html.Div([
 
 #       -----------dbc card for Selecting working folder and choosing EEM for previewing
 
+help_icon = html.Span(
+    "?",
+    id="help-qm",
+    style={
+        "display": "inline-flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "width": "18px",
+        "height": "18px",
+        "borderRadius": "50%",
+        "backgroundColor": "#1e66ff",  # blue
+        "color": "white",
+        "fontSize": "12px",
+        "fontWeight": "700",
+        "lineHeight": "18px",
+        "cursor": "help",
+        "marginLeft": "6px",
+        "userSelect": "none",
+    },
+)
+
 card_selecting_files = dbc.Card(
     dbc.CardBody(
         [
-            html.H5("Select files", className="card-title"),
+            html.H5("Select files", className="fw-bold"),
             dbc.Stack(
                 [
                     dbc.Row(
@@ -100,7 +121,17 @@ card_selecting_files = dbc.Card(
                         justify="center"
                     ),
 
-                    html.H6("Data format"),
+                    html.Div(
+                        [
+                        html.H6("Data format", className="fw-bold"),
+                        help_icon,
+                        dbc.Tooltip(
+                            "This controls masking of intensities.",
+                            target="help-qm", placement="right"
+                        ),
+                        ],
+                        style={"display": "flex"}
+                    ),
 
                     dbc.Row([
                         dbc.Col(
@@ -134,7 +165,7 @@ card_selecting_files = dbc.Card(
                         ),
                     ]),
 
-                    html.H6("File filtering keywords"),
+                    html.H6("File filtering keywords", className="fw-bold"),
 
                     dbc.Row([
                         dbc.Col(
@@ -190,7 +221,7 @@ card_selecting_files = dbc.Card(
                         ),
                     ]),
 
-                    html.H6("Index extraction from filenames"),
+                    html.H6("Index extraction from filenames", className="fw-bold"),
 
                     dbc.Row([
 
@@ -7472,4 +7503,4 @@ def serve_layout():
 app.layout = serve_layout
 
 if __name__ == '__main__':
-    app.run(debug=False)
+    app.run(debug=True)
