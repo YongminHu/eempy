@@ -1,4 +1,5 @@
-"""Solver routines for excitation–emission matrix (EEM) decomposition.
+"""
+Solver routines for excitation–emission matrix (EEM) decomposition.
 
 This module provides numerical solvers used to decompose an EEM stack into a small number of non-negative components
 using matrix (NMF) and tensor (CP/PARAFAC) factorization models.
@@ -9,70 +10,23 @@ Implemented features include:
 - elastic-net regularization (L1/L2 mix),
 - optional paired-sample ratio constraints on sample-mode scores,
 - elementwise masking to ignore sparse invalid tensor entries.
-
 """
 
 import numpy as np
 import tensorly as tl
+import warnings
 from ..eem_processing.basic import process_eem_stack, eem_nan_imputing
 from sklearn.decomposition import NMF
-from scipy.linalg import khatri_rao
 from scipy.stats import pearsonr
 from scipy.optimize import linear_sum_assignment, nnls
 from scipy.spatial.distance import cdist
 from tensorly.decomposition import non_negative_parafac_hals
 from tensorly.cp_tensor import cp_to_tensor
-from tensorly.tenalg import unfolding_dot_khatri_rao
-from tensorly.base import unfold
-
-
-def masked_unfolding_dot_khatri_rao(tensor, factors, mode, mask):
-    """
-    Compute a masked unfolded tensor times the Khatri–Rao product (MTTKRP).
-
-    This is a helper for PARAFAC updates with mask. It first applies an elementwise mask to the tensor, unfolds the
-    masked tensor along `mode`, and right-multiplies by the Khatri–Rao product of the other factor matrices.
-
-    Parameters
-    ----------
-    tensor : array-like, shape (I, J, K)
-        Input 3-way tensor (e.g., an EEM stack) to be decomposed.
-    factors : tuple or list
-        CP factors in the TensorLy format `(weights, [A, B, C])` or simply the list
-        `[A, B, C]`, where each factor has shape `(dimension, rank)`.
-    mode : int
-        Unfolding mode (0, 1, or 2).
-    mask : array-like, shape (I, J, K)
-        Elementwise mask (1 = keep / valid entry, 0 = ignore entry).
-
-    Returns
-    -------
-    mttkrp : tensorly.tensor or np.ndarray, shape (tensor.shape[mode], rank)
-        The masked MTTKRP matrix used in HALS/ALS updates.
-    """
-    masked_tensor = tl.tensor(tensor * mask, dtype=float)
-    return tl.dot(unfold(masked_tensor, mode), tl.tenalg.khatri_rao(factors[1], skip_matrix=mode))
-
-
-def masked_tensor_norm_error(tensor, reconstruction, mask):
-    """
-    Compute the reconstruction error on observed (masked) entries.
-
-    Parameters
-    ----------
-    tensor : array-like
-        Original tensor.
-    reconstruction : array-like
-        Reconstructed tensor of the same shape as `tensor`.
-    mask : array-like
-        Elementwise mask (1 = keep / valid entry, 0 = ignore entry).
-
-    Returns
-    -------
-    error : float
-        Frobenius norm of `(tensor - reconstruction) * mask`.
-    """
-    return tl.norm((tensor - reconstruction) * mask)
+from .algebra import (
+    masked_tensor_norm_error,
+    multi_matrices_khatri_rao,
+    calculate_mttkrp
+)
 
 
 def unfolded_eem_stack_initialization(M, rank, method='nndsvd'):
@@ -105,7 +59,7 @@ def unfolded_eem_stack_initialization(M, rank, method='nndsvd'):
         Right factor initialization.
 
     References
-    -------
+    ----------
     [1] Boutsidis, Christos, and Efstratios Gallopoulos. "SVD based initialization: A head start for nonnegative matrix
     factorization." Pattern recognition 41.4 (2008): 1350-1362.
     """
@@ -507,7 +461,7 @@ def parafac_with_prior_hals(
     prev_error = masked_tensor_norm_error(X, cp_to_tensor((None, [A, B, C])), mask)
     for iteration in range(max_iter_als):
         # Update B:
-        UtM = masked_unfolding_dot_khatri_rao(X, (None, [A, B, C]), 1, mask).T
+        UtM = calculate_mttkrp(X, (None, [A, B, C]), 1, mask).T
         if np.isnan(UtM).any():
             print(f"UtM contains NaN in {iteration}")
         UtU = (C.T @ C) * (A.T @ A)
@@ -531,7 +485,7 @@ def parafac_with_prior_hals(
             print(f"B contains NaN in {iteration}")
 
         # Update C:
-        UtM = masked_unfolding_dot_khatri_rao(X, (None, [A, B, C]), 2, mask).T
+        UtM = calculate_mttkrp(X, (None, [A, B, C]), 2, mask).T
         if np.isnan(UtM).any():
             print(f"UtM contains NaN in {iteration}")
         UtU = (B.T @ B) * (A.T @ A)  # shape (rank, rank)
@@ -556,7 +510,7 @@ def parafac_with_prior_hals(
 
         if lam is not None and idx_top is not None and idx_bot is not None:
             # --- Update W via ratio-aware HALS columns ---
-            UtM = masked_unfolding_dot_khatri_rao(X, (None, [A, B, C]), 0, mask).T
+            UtM = calculate_mttkrp(X, (None, [A, B, C]), 0, mask).T
             UtU = (C.T @ C) * (B.T @ B)
             for k in range(rank):
                 Rk = UtM[k].copy()
@@ -584,7 +538,7 @@ def parafac_with_prior_hals(
 
         else:
             # Update A:
-            UtM = masked_unfolding_dot_khatri_rao(X, (None, [A, B, C]), 0, mask).T
+            UtM = calculate_mttkrp(X, (None, [A, B, C]), 0, mask).T
             if np.isnan(UtM).any():
                 print(f"UtM contains NaN in {iteration}")
             UtU = (C.T @ C) * (B.T @ B)
@@ -1036,7 +990,7 @@ def nmf_with_prior_hals(
             random_state=random_state
         )
         W = factors_init[0]
-        H = khatri_rao(factors_init[1], factors_init[2]).T
+        H = multi_matrices_khatri_rao([factors_init[1], factors_init[2]]).T
         # H = np.array([np.outer(factors_init[1][:, r], factors_init[2][:, r]).flatten() for r in range(rank)])
     elif init == 'custom':
         W, H = custom_init
@@ -1200,7 +1154,7 @@ def nmf_with_prior_hals(
 
         M = X0.reshape((m, component_shape[0], component_shape[1]))
         # Update B:
-        UtM = unfolding_dot_khatri_rao(M, (None, [A0, B0, C0]), 1).T
+        UtM = calculate_mttkrp(M, (None, [A0, B0, C0]), 1).T
         UtU = (C0.T @ C0) * (A0.T @ A0)
         B0 = hals_nnls(
             UtM=UtM,
@@ -1218,7 +1172,7 @@ def nmf_with_prior_hals(
         B0 = B0.T
 
         # Update C:
-        UtM = unfolding_dot_khatri_rao(M, (None, [A0, B0, C0]), 2).T
+        UtM = calculate_mttkrp(M, (None, [A0, B0, C0]), 2).T
         UtU = (B0.T @ B0) * (A0.T @ A0)  # shape (rank, rank)
         C0 = hals_nnls(
             UtM=UtM,
@@ -1237,7 +1191,7 @@ def nmf_with_prior_hals(
 
         if lam is not None and idx_top is not None and idx_bot is not None:
             # --- Update W via ratio-aware HALS columns ---
-            UtM = unfolding_dot_khatri_rao(M, (None, [A0, B0, C0]), 0).T
+            UtM = calculate_mttkrp(M, (None, [A0, B0, C0]), 0).T
             UtU = (C0.T @ C0) * (B0.T @ B0)
             for k in range(A0.shape[1]):
                 Rk = UtM[k].copy()
@@ -1265,7 +1219,7 @@ def nmf_with_prior_hals(
 
         else:
             # Update A:
-            UtM = unfolding_dot_khatri_rao(M, (None, [A0, B0, C0]), 0).T
+            UtM = calculate_mttkrp(M, (None, [A0, B0, C0]), 0).T
             UtU = (C0.T @ C0) * (B0.T @ B0)
             A0 = hals_nnls(
                 UtM=UtM,

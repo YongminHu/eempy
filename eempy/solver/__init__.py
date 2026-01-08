@@ -1,5 +1,10 @@
-from .solver import (
-    masked_unfolding_dot_khatri_rao,
+from .algebra import (
+    multi_matrices_khatri_rao,
+    unfold_by_mode,
+    calculate_mttkrp,
+    masked_tensor_norm_error
+)
+from .core import (
     masked_tensor_norm_error,
     unfolded_eem_stack_initialization,
     hals_nnls,
