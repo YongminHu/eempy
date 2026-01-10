@@ -86,11 +86,7 @@ homepage = html.Div([
 #   -------------Setting up the dbc cards
 
 #       -----------dbc card for Selecting working folder and choosing EEM for previewing
-
-help_icon = html.Span(
-    "?",
-    id="help-qm",
-    style={
+help_icon_style = {
         "display": "inline-flex",
         "alignItems": "center",
         "justifyContent": "center",
@@ -105,8 +101,8 @@ help_icon = html.Span(
         "cursor": "help",
         "marginLeft": "6px",
         "userSelect": "none",
-    },
-)
+    }
+
 
 card_selecting_files = dbc.Card(
     dbc.CardBody(
@@ -124,10 +120,12 @@ card_selecting_files = dbc.Card(
                     html.Div(
                         [
                         html.H6("Data format", className="fw-bold"),
-                        help_icon,
-                        dbc.Tooltip(
-                            "This controls masking of intensities.",
-                            target="help-qm", placement="right"
+                        html.Span("?", id="help-data-format", style=help_icon_style),
+                        dbc.Popover(
+                            [dbc.PopoverHeader("Help"), dbc.PopoverBody("Reserve for help message")],
+                            target="help-qm",
+                            trigger="legacy",
+                            placement="right",
                         ),
                         ],
                         style={"display": "flex"}
@@ -264,12 +262,18 @@ card_selecting_files = dbc.Card(
         className="w-100")
 )
 
+# @app.callback(Output("help-pop", "is_open"), Input("help-qm", "n_clicks"), State("help-pop", "is_open"))
+# def toggle_pop(n, is_open):
+#     if n:
+#         return not is_open
+#     return is_open
+
 #       -----------dbc card for EEM display
 
 card_eem_display = dbc.Card(
     dbc.CardBody(
         [
-            html.H5("Data preview", className="card-title"),
+            html.H5("Data preview", className="fw-bold"),
             html.Div(
                 [
                     dbc.Row(
@@ -320,7 +324,7 @@ card_range_selection = dbc.Card(
         [
             dbc.Stack(
                 [
-                    html.H5("Ex/Em/intensity ranges"),
+                    html.H5("Ex/Em/intensity ranges", className="fw-bold"),
                     html.H6("Excitation wavelength", className="card-title"),
                     html.Div(
                         [
@@ -437,7 +441,8 @@ card_su = dbc.Card(
                         [
                             dbc.Col(
                                 [
-                                    html.H5("Raman scattering unit (RSU) normalization from blank"),
+                                    html.H5("Raman scattering unit (RSU) normalization from blank",
+                                            className="fw-bold"),
                                 ],
                                 width={'size': 10}),
                             dbc.Col([
@@ -514,7 +519,7 @@ card_ife = dbc.Card(
                         [
                             dbc.Col(
                                 [
-                                    html.H5("Inner filter effect correction"),
+                                    html.H5("Inner filter effect correction", className="fw-bold"),
                                 ],
                                 width={'size': 10}),
                             dbc.Col([
@@ -554,7 +559,7 @@ card_raman = dbc.Card(
                         [
                             dbc.Col(
                                 [
-                                    html.H5("Raman scattering removal"),
+                                    html.H5("Raman scattering removal", className="fw-bold"),
                                 ],
                                 width={'size': 10}),
                             dbc.Col([
@@ -620,7 +625,7 @@ card_rayleigh = dbc.Card(
                         [
                             dbc.Col(
                                 [
-                                    html.H5("Rayleigh scattering removal"),
+                                    html.H5("Rayleigh scattering removal", className="fw-bold"),
                                 ],
                                 width={'size': 10}),
                             dbc.Col([
@@ -745,7 +750,7 @@ card_smoothing = dbc.Card(
                         [
                             dbc.Col(
                                 [
-                                    html.H5("Gaussian Smoothing"),
+                                    html.H5("Gaussian Smoothing", className="fw-bold"),
                                 ],
                                 width={'size': 10}),
                             dbc.Col([
@@ -798,7 +803,7 @@ card_median_filter = dbc.Card(
                         [
                             dbc.Col(
                                 [
-                                    html.H5("Median filter"),
+                                    html.H5("Median filter", className="fw-bold"),
                                 ],
                                 width={'size': 10}),
                             dbc.Col([
@@ -865,7 +870,7 @@ card_median_filter = dbc.Card(
 card_built_eem_dataset = dbc.Card(
     dbc.CardBody(
         [
-            html.H5("Build EEM dataset", className="card-title"),
+            html.H5("Build EEM dataset", className="fw-bold"),
             dbc.Stack([
                 dbc.Row(
                     dcc.Input(id='path-reference', type='text',
@@ -905,7 +910,7 @@ card_built_eem_dataset = dbc.Card(
 card_eem_dataset_downloading = dbc.Card(
     dbc.CardBody(
         [
-            html.H5("Export Processed EEM Dataset", className="card-title"),
+            html.H5("Export Processed EEM Dataset", className="fw-bold"),
             dbc.Stack([
                 dbc.Row(
                     dcc.Input(id='folder-path-export-eem-dataset', type='text',
