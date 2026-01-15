@@ -20,6 +20,7 @@ import plotly.express as px
 
 from dash import dcc, html, ctx
 from dash.dependencies import Input, Output, State
+import dash_bootstrap_components as dbc
 
 from scipy.stats import pearsonr
 from sklearn.linear_model import LinearRegression

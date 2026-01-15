@@ -5175,7 +5175,7 @@ page_nmf = html.Div([
 ])
 
 
-#   -------------Callbacks of page #3
+#   -------------Callbacks of page #5
 
 #   -------------Establish NMF model
 
@@ -5953,7 +5953,7 @@ def on_nmf_test_correlations(indicator, ref_var, nmf_test_results):
         return go.Figure(), None
 
 
-# -----------Page #4: K-method--------------
+# -----------Page #6: K-method--------------
 
 #   -------------Setting up the dbc cards
 
@@ -6181,7 +6181,7 @@ card_kmethod_param2 = dbc.Card(
     className='w-100'
 )
 
-#   -------------Layout of page #3
+#   -------------Layout of page #6
 
 page_kmethod = html.Div([
     dbc.Stack(
@@ -6600,7 +6600,7 @@ page_kmethod = html.Div([
 ])
 
 
-#   -------------Callbacks of page #4
+#   -------------Callbacks of page #6
 
 #       ---------------Step 1: Calculate consensus
 
