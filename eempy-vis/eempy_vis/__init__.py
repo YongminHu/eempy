@@ -1,11 +1,11 @@
 """
 Legacy alias module.
 
-Use ``eem_app.__init__`` (``eem_app/__init__.py``) for package initialization.
+Use ``eempy_vis.__init__`` (``eempy_vis/__init__.py``) for package initialization.
 This module re-exports common symbols for convenience.
 """
 
-from .config import (EXTERNAL_STYLESHEETS, PLOTLY_COLORS, MARKER_SHAPES, HELP_ICON_STYLE, ROW_FLEX_STYLE,
+from .config import (EXTERNAL_STYLESHEETS, COLORS, MARKER_SHAPES, HELP_ICON_STYLE, ROW_FLEX_STYLE,
                      SECTION_TITLE_STYLE, CARD_STYLE, SMALL_TEXT_STYLE)
 from .ids import IDS, ID_TO_CONST, CONST_TO_ID
 from .serialization import (

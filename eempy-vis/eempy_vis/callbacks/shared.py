@@ -62,5 +62,5 @@ from eempy.utils import (
     num_string_to_list,
 )
 
-# Shared visual defaults (pulled from eem_app.config)
+# Shared visual defaults (pulled from eempy_vis.config)
 from ..eem_app import PLOTLY_COLORS as colors, MARKER_SHAPES as marker_shapes

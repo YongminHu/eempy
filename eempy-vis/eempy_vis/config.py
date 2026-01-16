@@ -13,7 +13,7 @@ import plotly.express as px
 EXTERNAL_STYLESHEETS = [dbc.themes.BOOTSTRAP]
 
 # Default qualitative color cycle used across plots
-PLOTLY_COLORS = px.colors.qualitative.Plotly
+COLORS = px.colors.qualitative.Plotly
 
 # Default marker shapes used for multi-series scatter plots
 MARKER_SHAPES = ['circle', 'square', 'diamond', 'cross', 'x', 'triangle-up', 'triangle-down', 'triangle-left',

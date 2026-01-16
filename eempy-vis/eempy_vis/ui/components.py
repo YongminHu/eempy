@@ -11,7 +11,7 @@ from typing import Any, Optional, Sequence, Union
 from dash import dcc, html
 import dash_bootstrap_components as dbc
 
-from ..eem_app import HELP_ICON_STYLE, ROW_FLEX_STYLE
+from ..eempy_vis import HELP_ICON_STYLE, ROW_FLEX_STYLE
 
 
 def help_icon(
