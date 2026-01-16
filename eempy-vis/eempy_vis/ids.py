@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+
 @dataclass(frozen=True)
 class IDS:
     """All component IDs used in the app."""
@@ -313,6 +314,7 @@ class IDS:
     TABS_CONTENT: str = "tabs-content"
     TIMESTAMP_CHECKBOX: str = "timestamp-checkbox"
     TIMESTAMP_FORMAT: str = "timestamp-format"
+
 
 # Useful mappings
 ID_TO_CONST = {

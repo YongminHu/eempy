@@ -290,7 +290,7 @@ card_kmethod_param2 = dbc.Card(
 
 #   -------------Layout of page #6
 
-page_kmethod = html.Div([
+layout = html.Div([
     dbc.Stack(
         [
             dbc.Row(card_kmethod_param1),

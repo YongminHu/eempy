@@ -1,7 +1,8 @@
 from dash import Dash
 
 from .config import EXTERNAL_STYLESHEETS
-from ..layouts import preprocessing, parafac, nmf, kmethod, peak_picking
+from .callbacks.register import register_all_callbacks
+from .layouts.root import build_shell_layout
 
 def create_app():
     app = Dash(
@@ -10,12 +11,8 @@ def create_app():
         suppress_callback_exceptions=True,
     )
 
-    # Register callbacks page-by-page
-    preprocessing.register_callbacks(app)
-    parafac.register_callbacks(app)
-    nmf.register_callbacks(app)
-    kmethod.register_callbacks(app)
-    peak_picking.register_callbacks(app)
-    # ...
+    app.layout = build_shell_layout()
+
+    register_all_callbacks(app)
 
     return app

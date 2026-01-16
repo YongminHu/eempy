@@ -152,7 +152,7 @@ card_ri_param = dbc.Card(
 )
 
 
-page_regional_integration = html.Div(
+layout = html.Div(
     [
         dbc.Stack(
             [
