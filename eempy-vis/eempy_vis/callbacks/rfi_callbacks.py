@@ -3,6 +3,7 @@ from .shared import *
 from dash import Input, Output, State
 from ..ids import IDS
 from ..config import COLORS
+from ..serialization import eem_dataset_from_serializable
 
 
 def register_callbacks(app):
@@ -86,24 +87,7 @@ def register_callbacks(app):
                 else:
                     raise ValueError("Unsupported file extension: {}".format(file_extension))
 
-                eem_dataset_establishment = EEMDataset(
-                    eem_stack=np.array(
-                        [
-                            [[np.nan if x is None else x for x in subsublist] for subsublist in sublist]
-                            for sublist in eem_dataset_dict["eem_stack"]
-                        ]
-                    ),
-                    ex_range=np.array(eem_dataset_dict["ex_range"]),
-                    em_range=np.array(eem_dataset_dict["em_range"]),
-                    index=eem_dataset_dict["index"],
-                    ref=pd.DataFrame(
-                        eem_dataset_dict["ref"][1:],
-                        columns=eem_dataset_dict["ref"][0],
-                        index=eem_dataset_dict["index"],
-                    )
-                    if eem_dataset_dict["ref"] is not None
-                    else None,
-                )
+                eem_dataset_establishment = eem_dataset_from_serializable(eem_dataset_dict)
 
         kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
         kw_optional = str_string_to_list(kw_optional) if kw_optional else None
@@ -284,24 +268,7 @@ def register_callbacks(app):
         else:
             raise ValueError("Unsupported file extension: {}".format(file_extension))
 
-        eem_dataset_predict = EEMDataset(
-            eem_stack=np.array(
-                [
-                    [[np.nan if x is None else x for x in subsublist] for subsublist in sublist]
-                    for sublist in eem_dataset_dict["eem_stack"]
-                ]
-            ),
-            ex_range=np.array(eem_dataset_dict["ex_range"]),
-            em_range=np.array(eem_dataset_dict["em_range"]),
-            index=eem_dataset_dict["index"],
-            ref=pd.DataFrame(
-                eem_dataset_dict["ref"][1:],
-                index=eem_dataset_dict["index"],
-                columns=eem_dataset_dict["ref"][0],
-            )
-            if eem_dataset_dict["ref"] is not None
-            else None,
-        )
+        eem_dataset_predict = eem_dataset_from_serializable(eem_dataset_dict)
 
         kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
         kw_optional = str_string_to_list(kw_optional) if kw_optional else None

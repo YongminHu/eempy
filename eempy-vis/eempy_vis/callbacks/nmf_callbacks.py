@@ -157,7 +157,7 @@ def register_callbacks(app):
                 'components': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
                                sublist in nmf_r.components.tolist()],
                 'NNLS-Fmax': [nmf_r.nnls_fmax.columns.tolist()] + nmf_r.nnls_fmax.values.tolist(),
-                'NMF-Fmax': [nmf_r.fmax.columns.tolist()] + nmf_r.fmax.values.tolist(),
+                'Fmax': [nmf_r.fmax.columns.tolist()] + nmf_r.fmax.values.tolist(),
                 'index': eem_dataset_establishment.index,
                 'ref': [eem_dataset_establishment.ref.columns.tolist()] + eem_dataset_establishment.ref.values.tolist()
                 if eem_dataset_establishment.ref is not None else None,
@@ -484,7 +484,7 @@ def register_callbacks(app):
                                   index=nmf_models[str(r)]['index'])
             nnls_fmax_df = pd.DataFrame(nmf_models[str(r)]['NNLS-Fmax'][1:], columns=nmf_models[str(r)]['NNLS-Fmax'][0],
                                         index=nmf_models[str(r)]['index'])
-            nmf_fmax_df = pd.DataFrame(nmf_models[str(r)]['NMF-Fmax'][1:], columns=nmf_models[str(r)]['NMF-Fmax'][0],
+            nmf_fmax_df = pd.DataFrame(nmf_models[str(r)]['Fmax'][1:], columns=nmf_models[str(r)]['Fmax'][0],
                                        index=nmf_models[str(r)]['index'])
             ref_df = pd.concat([ref_df, nnls_fmax_df, nmf_fmax_df], axis=1)
             var = ref_df[ref_var]

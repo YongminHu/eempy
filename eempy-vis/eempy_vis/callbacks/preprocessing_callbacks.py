@@ -1,5 +1,6 @@
 from .shared import *
 from ..ids import IDS
+from ..serialization import eem_dataset_to_serializable, eem_dataset_from_serializable
 
 
 def register_callbacks(app):
@@ -543,17 +544,7 @@ def register_callbacks(app):
             eem_dataset.gaussian_filter(sigma=gaussian_sigma, truncate=gaussian_truncate, inplace=True)
             steps_track += ["- Gaussian smoothing\n"]
 
-        eem_dataset_json_dict = {
-            "eem_stack": [
-                [[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist]
-                for sublist in eem_dataset.eem_stack.tolist()
-            ],
-            "ex_range": eem_dataset.ex_range.tolist(),
-            "em_range": eem_dataset.em_range.tolist(),
-            "index": eem_dataset.index,
-            "ref": [refs.columns.tolist()] + refs.values.tolist() if eem_dataset.ref is not None else None,
-            "cluster": None,
-        }
+        eem_dataset_json_dict = eem_dataset_to_serializable(eem_dataset)
 
         return eem_dataset_json_dict, dbc.Label(steps_track, style={"whiteSpace": "pre"}), "Build"
 

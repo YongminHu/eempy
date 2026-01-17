@@ -1,6 +1,7 @@
 from .shared import *
 from ..config import COLORS
 from ..ids import IDS
+from ..serialization import eem_dataset_from_serializable
 
 def register_callbacks(app):
     #   -------------Callbacks of page #2
@@ -11,7 +12,6 @@ def register_callbacks(app):
             Output(IDS.PARAFAC_EEM_DATASET_ESTABLISHMENT_MESSAGE, 'children'),
             Output(IDS.PARAFAC_LOADINGS, 'children'),
             Output(IDS.PARAFAC_COMPONENTS, 'children'),
-            # Output(IDS.PARAFAC_SCORES, 'children'),
             Output(IDS.PARAFAC_FMAX, 'children'),
             Output(IDS.PARAFAC_ESTABLISHMENT_RECONSTRUCTION_ERROR, 'children'),
             Output(IDS.PARAFAC_VARIANCE_EXPLAINED, 'children'),
@@ -21,8 +21,6 @@ def register_callbacks(app):
             Output(IDS.BUILD_PARAFAC_SPINNER, 'children'),
             Output(IDS.PARAFAC_ESTABLISHMENT_CORR_MODEL_SELECTION, 'options'),
             Output(IDS.PARAFAC_ESTABLISHMENT_CORR_MODEL_SELECTION, 'value'),
-            # Output(IDS.PARAFAC_ESTABLISHMENT_CORR_REF_SELECTION, 'options'),
-            # Output(IDS.PARAFAC_ESTABLISHMENT_CORR_REF_SELECTION, 'value'),
             Output(IDS.PARAFAC_TEST_MODEL_SELECTION, 'options'),
             Output(IDS.PARAFAC_TEST_MODEL_SELECTION, 'value'),
             Output(IDS.PARAFAC_TEST_PRED_REF_SELECTION, 'options'),
@@ -79,17 +77,7 @@ def register_callbacks(app):
                         eem_dataset_dict = pickle.load(file)
                 else:
                     raise ValueError("Unsupported file extension: {}".format(file_extension))
-                eem_dataset_establishment = EEMDataset(
-                    eem_stack=np.array(
-                        [[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
-                         in eem_dataset_dict['eem_stack']]),
-                    ex_range=np.array(eem_dataset_dict['ex_range']),
-                    em_range=np.array(eem_dataset_dict['em_range']),
-                    index=eem_dataset_dict['index'],
-                    ref=pd.DataFrame(eem_dataset_dict['ref'][1:], columns=eem_dataset_dict['ref'][0],
-                                     index=eem_dataset_dict['index'])
-                    if eem_dataset_dict['ref'] is not None else None,
-                )
+                eem_dataset_establishment = eem_dataset_from_serializable(eem_dataset_dict)
         kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
         kw_optional = str_string_to_list(kw_optional) if kw_optional else None
         eem_dataset_establishment.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional,
@@ -159,11 +147,13 @@ def register_callbacks(app):
                     pearson_corr, pearson_p = pearsonr(x, y)
                     stats.append([f_col, slope, intercept, r_squared, pearson_corr, pearson_p])
                 parafac_fit_params_r[c_var] = stats
+
             parafac_models[r] = {
                 'components': [[[None if np.isnan(x) else x for x in subsublist] for subsublist in sublist] for
                                sublist in parafac_r.components.tolist()],
                 'score': [parafac_r.score.columns.tolist()] + parafac_r.score.values.tolist(),
-                'Fmax': [parafac_r.nnls_fmax.columns.tolist()] + parafac_r.nnls_fmax.values.tolist(),
+                'Fmax': [parafac_r.fmax.columns.tolist()] + parafac_r.fmax.values.tolist(),
+                'NNLS_Fmax': [parafac_r.nnls_fmax.columns.tolist()] + parafac_r.nnls_fmax.values.tolist(),
                 'index': eem_dataset_establishment.index,
                 'ref': [eem_dataset_establishment.ref.columns.tolist()] + eem_dataset_establishment.ref.values.tolist()
                 if eem_dataset_establishment.ref is not None else None,
@@ -785,16 +775,7 @@ def register_callbacks(app):
                     eem_dataset_dict = pickle.load(file)
             else:
                 raise ValueError("Unsupported file extension: {}".format(file_extension))
-            eem_dataset_predict = EEMDataset(
-                eem_stack=np.array(
-                    [[[np.nan if x is None else x for x in subsublist] for subsublist in sublist] for sublist
-                     in eem_dataset_dict['eem_stack']]),
-                ex_range=np.array(eem_dataset_dict['ex_range']),
-                em_range=np.array(eem_dataset_dict['em_range']),
-                index=eem_dataset_dict['index'],
-                ref=pd.DataFrame(eem_dataset_dict['ref'][1:], index=eem_dataset_dict['index'],
-                                 columns=eem_dataset_dict['ref'][0]) if eem_dataset_dict['ref'] is not None else None,
-            )
+            eem_dataset_predict = eem_dataset_from_serializable(eem_dataset_dict)
         kw_mandatory = str_string_to_list(kw_mandatory) if kw_mandatory else None
         kw_optional = str_string_to_list(kw_optional) if kw_optional else None
         eem_dataset_predict.filter_by_index(mandatory_keywords=kw_mandatory, optional_keywords=kw_optional, inplace=True)

@@ -13,8 +13,6 @@ from .serialization import (
     jsonable_to_ndarray,
     df_to_header_rows,
     header_rows_to_df,
-    eem_dataset_to_store,
-    eem_dataset_from_store,
-    model_payload_to_store,
-    model_payload_from_store,
+    eem_dataset_to_serializable,
+    eem_dataset_from_serializable,
 )
