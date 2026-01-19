@@ -17,6 +17,126 @@ from sklearn.linear_model import LinearRegression
 from matplotlib.colors import LogNorm, TABLEAU_COLORS
 from matplotlib.lines import Line2D
 import plotly.figure_factory as ff
+import warnings
+
+
+# Helper utilities for plot_eem optimization
+def _validate_and_prepare_inputs(intensity, ex_range, em_range, scale_type, rotate):
+    """Validate basic shapes and values and return a cleaned copy of intensity.
+
+    Raises ValueError for mismatches or invalid values (e.g. non-positive for log scale).
+    """
+    # Basic type checks
+    if not isinstance(intensity, np.ndarray):
+        intensity = np.asarray(intensity)
+    if intensity.ndim != 2:
+        raise ValueError("intensity must be a 2-D array (n_ex x n_em)")
+
+    if len(ex_range) != intensity.shape[0] and len(ex_range) != intensity.shape[1]:
+        # allow either orientation depending on rotate; we'll check exact match below
+        pass
+
+    # Ensure ex_range and em_range are 1-D
+    ex_range = np.asarray(ex_range)
+    em_range = np.asarray(em_range)
+    if ex_range.ndim != 1 or em_range.ndim != 1:
+        raise ValueError("ex_range and em_range must be 1-D arrays")
+
+    # Check dimension consistency depending on rotate flag
+    if not rotate:
+        if ex_range.shape[0] != intensity.shape[0]:
+            raise ValueError("ex_range length must equal intensity.shape[0] when rotate=False")
+        if em_range.shape[0] != intensity.shape[1]:
+            raise ValueError("em_range length must equal intensity.shape[1] when rotate=False")
+    else:
+        # when rotated we expect x=ex on horizontal axis -> intensity will be transposed for display
+        if ex_range.shape[0] != intensity.shape[1]:
+            raise ValueError("ex_range length must equal intensity.shape[1] when rotate=True")
+        if em_range.shape[0] != intensity.shape[0]:
+            raise ValueError("em_range length must equal intensity.shape[0] when rotate=True")
+
+    # Copy to avoid mutating caller arrays
+    intensity = intensity.astype(float, copy=True)
+
+    # NaN handling: keep NaNs (imshow/plotly will handle) but warn if all values are NaN
+    if not np.isfinite(intensity).any():
+        raise ValueError("intensity contains no finite values")
+
+    # For log scale, ensure positive finite values exist
+    if scale_type == 'log':
+        finite_vals = intensity[np.isfinite(intensity)]
+        if (finite_vals <= 0).any():
+            raise ValueError("log scale requested but intensity contains non-positive values; consider using linear scale or removing/offsetting non-positive values")
+
+    return intensity, ex_range, em_range
+
+
+def _normalize_vmin_vmax(intensity, vmin, vmax, auto_intensity_range, scale_type):
+    """Return (vmin, vmax) where None means autoscale; for log scale both must be >0.
+    If auto_intensity_range is True, compute from finite values.
+    """
+    finite = intensity[np.isfinite(intensity)]
+    if auto_intensity_range:
+        if finite.size == 0:
+            raise ValueError("intensity has no finite values to autoscale from")
+        vmin_calc = float(np.nanmin(finite))
+        vmax_calc = float(np.nanmax(finite))
+        vmin = vmin_calc
+        vmax = vmax_calc
+    else:
+        # allow vmin or vmax to be None -> compute from data
+        if vmin is None:
+            vmin = float(np.nanmin(finite))
+        if vmax is None:
+            vmax = float(np.nanmax(finite))
+
+    if not np.isfinite(vmin) or not np.isfinite(vmax):
+        raise ValueError("computed vmin/vmax are not finite")
+
+    if vmin >= vmax:
+        # allow tiny expansion
+        if abs(vmax - vmin) < 1e-12:
+            # expand by small eps
+            eps = max(1e-12, abs(vmin) * 1e-6)
+            vmin = vmin - eps
+            vmax = vmax + eps
+        else:
+            raise ValueError("vmin must be strictly less than vmax")
+
+    if scale_type == 'log' and vmin <= 0:
+        raise ValueError("vmin must be > 0 for log scale; computed vmin={}".format(vmin))
+
+    return float(vmin), float(vmax)
+
+
+def _compute_colorbar_ticks(vmin, vmax, n_ticks=5, scale_type='linear'):
+    """Compute tick locations (and tick text for plotly log) for linear or log scale.
+    Returns tick_locs, tick_text (tick_text may be None for linear).
+    """
+    if scale_type == 'log':
+        # Use base-10 ticks
+        if vmin <= 0:
+            raise ValueError("vmin must be > 0 for log scale ticks")
+        log_min = np.log10(vmin)
+        log_max = np.log10(vmax)
+        ticks = np.logspace(log_min, log_max, num=n_ticks, base=10.0)
+        tick_text = ["{:.3g}".format(t) for t in ticks]
+        return ticks, tick_text
+    else:
+        ticks = np.linspace(vmin, vmax, n_ticks)
+        return ticks, None
+
+
+def _prepare_image_for_display(intensity, rotate):
+    """Return an array suitable for imshow/plotly heatmap depending on rotate flag.
+    When rotate=False: we display as intensity with x=em (cols), y=ex (rows) origin='upper'.
+    When rotate=True: we want x=ex on horizontal axis -> transpose and flip so orientation matches old behavior.
+    """
+    if not rotate:
+        return intensity
+    else:
+        # old code used np.flipud(np.fliplr(intensity.T))
+        return np.flipud(np.fliplr(intensity.T))
 
 
 def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_type='linear', vmin=0, vmax=10000,
@@ -78,43 +198,51 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
     im: AxesImage object (if plot_tool == 'matplotlib')
     """
 
+    # Validate inputs and prepare arrays
+    intensity, ex_range, em_range = _validate_and_prepare_inputs(intensity, ex_range, em_range, scale_type, rotate)
+
+    # Normalize vmin/vmax. Allow vmin/vmax to be None when autoscaling is desired.
+    if auto_intensity_range:
+        vmin, vmax = _normalize_vmin_vmax(intensity, vmin=None, vmax=None, auto_intensity_range=True, scale_type=scale_type)
+    else:
+        vmin, vmax = _normalize_vmin_vmax(intensity, vmin=vmin, vmax=vmax, auto_intensity_range=False, scale_type=scale_type)
+
+    # compute ticks
+    try:
+        ticks, tick_text = _compute_colorbar_ticks(vmin, vmax, n_ticks=n_cbar_ticks, scale_type=scale_type)
+    except ValueError as e:
+        raise
+
+    # prepare image array depending on rotate
+    img = _prepare_image_for_display(intensity, rotate)
+
+    # Axis titles depending on rotate
+    x_label = 'Emission wavelength [nm]' if not rotate else 'Excitation wavelength [nm]'
+    y_label = 'Excitation wavelength [nm]' if not rotate else 'Emission wavelength [nm]'
+
     if plot_tool == 'matplotlib':
         fig, ax = plt.subplots(figsize=figure_size)
-        # font = {'size': label_font_size}
-        # plt.rc('font', **font)
-        # reset the axis direction
+
         if scale_type == 'log':
-            c_norm = LogNorm(vmin=vmin, vmax=vmax)
-            t_cbar = np.logspace(math.log(vmin), math.log(vmax), n_cbar_ticks)
+            norm = LogNorm(vmin=vmin, vmax=vmax)
         else:
-            c_norm = None
-            t_cbar = np.linspace(vmin, vmax, n_cbar_ticks)
-        if not rotate:
-            extent = (em_range.min(), em_range.max(), ex_range.min(), ex_range.max())
-            ax.set_ylim([ex_range[0], ex_range[-1]])
-        else:
-            extent = (ex_range.min(), ex_range.max(), em_range.min(), em_range.max())
-            ax.set_xlim([ex_range[0], ex_range[-1]])
-        ax.set_xlabel('Emission wavelength [nm]' if not rotate else 'Excitation wavelength [nm]', fontsize=axis_label_font_size)
-        ax.set_ylabel('Excitation wavelength [nm]' if not rotate else 'Emission wavelength [nm]', fontsize=axis_label_font_size)
+            norm = None
+
+        im = ax.imshow(img, cmap=cmap, interpolation='none', extent=(em_range.min(), em_range.max(), ex_range.min(), ex_range.max()) if not rotate else (ex_range.min(), ex_range.max(), em_range.min(), em_range.max()),
+                       origin='upper', aspect=1 if fix_aspect_ratio else None, vmin=None if auto_intensity_range else vmin, vmax=None if auto_intensity_range else vmax, norm=norm)
+
+        ax.set_xlabel(x_label, fontsize=axis_label_font_size)
+        ax.set_ylabel(y_label, fontsize=axis_label_font_size)
         ax.tick_params(labelsize=axis_ticks_font_size)
-        if not auto_intensity_range:
-            if scale_type == 'log':
-                im = ax.imshow(intensity if not rotate else np.flipud(np.fliplr(intensity.T)), cmap=cmap,
-                               interpolation='none', extent=extent, origin='upper',
-                               aspect=1 if fix_aspect_ratio else None, norm=c_norm)
-            else:
-                im = ax.imshow(intensity if not rotate else np.flipud(np.fliplr(intensity.T)), cmap=cmap,
-                               interpolation='none', extent=extent, vmin=vmin, vmax=vmax,
-                               origin='upper', aspect=1 if fix_aspect_ratio else None, norm=c_norm)
-        else:
-            im = ax.imshow(intensity if not rotate else np.flipud(np.fliplr(intensity.T)), cmap=cmap,
-                           interpolation='none', extent=extent, origin='upper',
-                           aspect=1 if fix_aspect_ratio else None)
+
         if cbar:
-            cbar = fig.colorbar(im, ax=ax, ticks=t_cbar, fraction=cbar_fraction, pad=0.06)
-            cbar.set_label(cbar_label, labelpad=2.5, fontsize=axis_label_font_size)
-            cbar.ax.tick_params(labelsize=cbar_font_size)
+            if scale_type == 'log':
+                # matplotlib will format ticks for LogNorm; use computed tick locations
+                cbar_obj = fig.colorbar(im, ax=ax, ticks=ticks, fraction=cbar_fraction, pad=0.06)
+            else:
+                cbar_obj = fig.colorbar(im, ax=ax, ticks=ticks, fraction=cbar_fraction, pad=0.06)
+            cbar_obj.set_label(cbar_label, labelpad=2.5, fontsize=axis_label_font_size)
+            cbar_obj.ax.tick_params(labelsize=cbar_font_size)
 
         if title:
             ax.set_title(title, pad=20, fontsize=title_font_size)
@@ -126,66 +254,32 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
         return fig, ax, im
 
     elif plot_tool == 'plotly':
-
+        # For plotly we cannot set a LogNorm directly; emulate by plotting log10 when scale_type == 'log'
         if scale_type == 'log':
-            vmin = np.min(intensity) if (not auto_intensity_range and vmax is None) else vmin
-            vmax = np.max(intensity) if (not auto_intensity_range and vmin is None) else vmax
-            t_cbar = np.logspace(math.log(vmin), math.log(vmax), n_cbar_ticks)
-            trace = go.Heatmap(z=np.log10(intensity) if not rotate else np.flipud(np.fliplr(np.log10(intensity).T)),
-                               x=em_range if not rotate else ex_range,
-                               y=ex_range[::-1] if not rotate else em_range[::-1],
-                               colorscale=cmap,
-                               zmin=vmin if not auto_intensity_range else None,
-                               zmax=vmax if not auto_intensity_range else None,
-                               colorbar=dict(title=cbar_label, tickvals=np.log10(t_cbar), ticktext=t_cbar,
-                                             tickfont=cbar_font_size) if not
-                               auto_intensity_range else dict(title=cbar_label, tickfont=cbar_font_size))
+            z = np.log10(intensity) if not rotate else np.flipud(np.fliplr(np.log10(intensity).T))
+            # For plotly colorbar ticks, use log ticks mapped to log10 space
+            colorbar = dict(title=cbar_label, tickvals=np.log10(ticks), ticktext=tick_text, tickfont=dict(size=cbar_font_size)) if not auto_intensity_range else dict(title=cbar_label, tickfont=dict(size=cbar_font_size))
+            trace = go.Heatmap(z=z, x=em_range if not rotate else ex_range, y=ex_range[::-1] if not rotate else em_range[::-1], colorscale=cmap, zmin=np.log10(vmin) if not auto_intensity_range else None, zmax=np.log10(vmax) if not auto_intensity_range else None, colorbar=colorbar)
+        else:
+            z = img
+            trace = go.Heatmap(z=z, x=em_range if not rotate else ex_range, y=ex_range[::-1] if not rotate else em_range[::-1], colorscale=cmap, zmin=vmin if not auto_intensity_range else None, zmax=vmax if not auto_intensity_range else None, colorbar=dict(title=cbar_label, tickfont=dict(size=cbar_font_size)) if not auto_intensity_range else dict(title=cbar_label, tickfont=dict(size=cbar_font_size)))
 
-        elif scale_type == 'linear':
-            trace = go.Heatmap(
-                z=intensity if not rotate else np.flipud(np.fliplr(intensity.T)),
-                x=em_range if not rotate else ex_range,
-                y=ex_range[::-1] if not rotate else em_range[::-1],
-                colorscale=cmap,
-                zmin=vmin if not auto_intensity_range else None,
-                zmax=vmax if not auto_intensity_range else None,
-                colorbar=dict(title=cbar_label,
-                              # tickvals=np.linspace(vmin, vmax, n_cbar_ticks),
-                              tickfont=dict(size=cbar_font_size)) if not auto_intensity_range
-                else dict(title=cbar_label,
-                          tickfont=dict(size=cbar_font_size)))
-
-        xaxis_title = 'Emission wavelength [nm]' if not rotate else 'Excitation wavelength [nm]'
-        yaxis_title = 'Excitation wavelength [nm]' if not rotate else 'Emission wavelength [nm]'
-        layout = go.Layout(
-            xaxis=dict(title=xaxis_title),
-            yaxis=dict(title=yaxis_title),
-            font=dict(size=axis_label_font_size),
-            # width=figure_size[0] * 100,
-            # height=figure_size[1] * 100 if not fix_aspect_ratio else None,
-            yaxis_scaleanchor="x" if fix_aspect_ratio else None,
-            # yaxis_constrain = 'domain',
-            xaxis_constrain='domain',
-            autosize=True,
-            xaxis_showgrid=False,
-            yaxis_showgrid=False,
-            xaxis_zeroline=False,
-            yaxis_zeroline=False
-        )
+        xaxis_title = x_label
+        yaxis_title = y_label
+        layout = go.Layout(xaxis=dict(title=xaxis_title), yaxis=dict(title=yaxis_title), font=dict(size=axis_label_font_size), yaxis_scaleanchor="x" if fix_aspect_ratio else None, xaxis_constrain='domain', autosize=True, xaxis_showgrid=False, yaxis_showgrid=False, xaxis_zeroline=False, yaxis_zeroline=False)
 
         fig = go.Figure(data=[trace], layout=layout)
 
         if title:
-            fig.update_layout(
-                title=dict(text=title, font=dict(size=title_font_size)),
-                margin=dict(pad=0.5),
-                title_x=0.45
-            )
+            fig.update_layout(title=dict(text=title, font=dict(size=title_font_size)), margin=dict(pad=0.5), title_x=0.45)
 
         if display:
             fig.show()
 
         return fig
+
+    else:
+        raise ValueError("plot_tool must be either 'matplotlib' or 'plotly'")
 
 
 def plot_eem_stack(
