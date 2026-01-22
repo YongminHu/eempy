@@ -1,0 +1,29 @@
+site_name: eempy
+site_description: Excitation-Emission Matrix (EEM) fluorescence analysis toolkit
+site_author: Yongmin Hu
+
+theme:
+  name: material
+  features:
+    - navigation.expand
+    - navigation.sections
+    - toc.follow
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: false
+            show_root_heading: true
+            show_signature_annotations: true
+            separate_signature: true
+            docstring_style: numpy
+
+nav:
+  - Home: index.md
+  - API Reference:
+      - eem_processing: api/eem_processing.md
+      - read_data: api/read_data.md
+      - plot: api/plot.md
