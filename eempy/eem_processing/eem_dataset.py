@@ -154,7 +154,7 @@ class EEMDataset:
 
     def peak_picking(self, ex, em):
         """
-        Return the fluorescence intensities at the location closest the given (ex, em)
+        Return the fluorescence intensities at the location closest to the given (ex, em).
 
         Parameters
         ----------
@@ -227,7 +227,8 @@ class EEMDataset:
             raise ValueError("The ranges of excitation or emission wavelengths do not support the calculation.")
 
     def fi(self):
-        """        Compute the fluorescence index (FI) for each sample.
+        """
+        Compute the fluorescence index (FI) for each sample.
 
         FI is computed as intensity(ex=370 nm, em=470 nm) divided by intensity(ex=370 nm, em=520 nm).
 
@@ -235,7 +236,8 @@ class EEMDataset:
         -------
         fi: pandas.DataFrame
             Fluorescence index values. Note: the current implementation labels the output column as "BIX" even though the
-            values correspond to FI."""
+            values correspond to FI.
+        """
         ex = 370
         em1 = 470
         em2 = 520
@@ -272,7 +274,7 @@ class EEMDataset:
             f1 = interp1d(ex_range_abs, abs, kind='linear', bounds_error=False, fill_value='extrapolate')
             abs_interpolated = f1(self.ex_range)
             aqy.append(np.sum(intensity, axis=1)[::-1] / abs_interpolated)
-        aqy = pd.DataFrame(aqy, index=self.index, columns=[f'AQY (ex = {l} nm)' for l in list(self.ex_range)])
+        aqy = pd.DataFrame(aqy, index=self.index, columns=[f'AQY (ex = {wavelength} nm)' for wavelength in list(self.ex_range)])
         if target_ex is None:
             return aqy
         else:
@@ -440,7 +442,7 @@ class EEMDataset:
         eem_stack_masked, _ = process_eem_stack(
             self.eem_stack, eem_region_masking, ex_range=self.ex_range,
             em_range=self.em_range, ex_min=ex_min, ex_max=ex_max, em_min=em_min,
-            em_max=em_max, fill_value=fill_value
+            em_max=em_max, fill=fill_value
         )
         if inplace:
             self.eem_stack = eem_stack_masked
@@ -554,11 +556,22 @@ class EEMDataset:
         eem_dataset_new: EEMDataset
             Raman-normalized EEM dataset.
         """
+        if from_blank and blank is None:
+            raise ValueError("blank must be provided when from_blank=True.")
+        kwargs = dict(
+            ex_range_blank=ex_range_blank,
+            em_range_blank=em_range_blank,
+            from_blank=from_blank,
+            integration_time=integration_time,
+            ex_target=ex_target,
+            bandwidth=bandwidth,
+            rsu_standard=rsu_standard,
+            manual_rsu=manual_rsu,
+        )
+        if blank is not None:
+            kwargs["blank"] = blank
         eem_stack_normalized, rsu = process_eem_stack(
-            self.eem_stack, eem_raman_normalization, ex_range_blank=ex_range_blank,
-            em_range_blank=em_range_blank, blank=blank, from_blank=from_blank,
-            integration_time=integration_time, ex_target=ex_target,
-            bandwidth=bandwidth, rsu_standard=rsu_standard, manual_rsu=manual_rsu
+            self.eem_stack, eem_raman_normalization, **kwargs
         )
         if inplace:
             self.eem_stack = eem_stack_normalized
@@ -947,11 +960,6 @@ class EEMDataset:
         index_filtered = [self.index[i] for i in sample_number_all_filtered]
         cluster_filtered = [self.cluster[i] for i in sample_number_all_filtered] if self.cluster is not None else None
         ref_filtered = self.ref.iloc[sample_number_all_filtered] if self.ref is not None else None
-        eem_dataset_filtered = EEMDataset(eem_stack_filtered,
-                                          ex_range=self.ex_range,
-                                          em_range=self.em_range,
-                                          index=index_filtered,
-                                          ref=ref_filtered)
         if inplace:
             self.eem_stack = eem_stack_filtered
             self.index = index_filtered
@@ -994,11 +1002,6 @@ class EEMDataset:
         index_filtered = [self.index[i] for i in sample_number_all_filtered]
         cluster_filtered = [self.cluster[i] for i in sample_number_all_filtered] if self.cluster is not None else None
         ref_filtered = self.ref.iloc[sample_number_all_filtered] if self.ref is not None else None
-        eem_dataset_filtered = EEMDataset(eem_stack_filtered,
-                                          ex_range=self.ex_range,
-                                          em_range=self.em_range,
-                                          index=index_filtered,
-                                          ref=ref_filtered)
         if inplace:
             self.eem_stack = eem_stack_filtered
             self.index = index_filtered

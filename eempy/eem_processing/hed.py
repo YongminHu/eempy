@@ -1,5 +1,5 @@
 from .eemnmf import EEMNMF
-from .basic import random_split_columns
+from ..utils import random_split_columns
 
 class HED:
     """

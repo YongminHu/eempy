@@ -4,6 +4,7 @@ Author: Yongmin Hu (yongminhu@outlook.com)
 Last update: 2024-07-03
 """
 
+from eempy.utils import *
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats as stats
@@ -11,23 +12,21 @@ import pandas as pd
 import math
 import plotly.graph_objects as go
 import plotly.express as px
-from ..eem_processing import PARAFAC
+from eempy.eem_processing import PARAFAC
 from plotly.subplots import make_subplots
 from sklearn.linear_model import LinearRegression
 from matplotlib.colors import LogNorm, TABLEAU_COLORS
-from matplotlib.lines import Line2D
-import plotly.figure_factory as ff
 
 
 def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_type='linear', vmin=0, vmax=10000,
-             n_cbar_ticks=5, cbar=True, cmap='jet', figure_size=(10, 7), axis_label_font_size=18, axis_ticks_font_size=16,
-             cbar_label="Intensity (a.u.)", cbar_font_size=16, cbar_fraction=0.02, fix_aspect_ratio=True, rotate=False,
+             n_cbar_ticks=5, cbar=True, cmap='jet', figure_size=(10, 7), label_font_size=18,
+             cbar_label="Intensity (a.u.)", cbar_font_size=16, fix_aspect_ratio=True, rotate=False,
              plot_tool='matplotlib', display=True, title=None, title_font_size=20):
     """
-    Plot EEM or EEM-like data.
+    plot EEM or EEM-like data.
 
     Parameters
-    ----------
+    ----------------
     intensity: np.ndarray (2d)
         The EEM.
     ex_range: np.ndarray (1d)
@@ -48,18 +47,14 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
         The colormap, see https://matplotlib.org/stable/users/explain/colors/colormaps.html.
     figure_size: tuple or list with two elements
         The figure size.
-    axis_label_font_size: int
+    label_font_size: int
         The fontsize of the x and y axes labels.
-    axis_ticks_font_size: int
-        The fontsize of the x and y ticks labels.
     cbar: bool
         Whether to plot the colorscale bar.
     cbar_label: str
         The label of the colorbar scale.
     cbar_font_size: int
         The label size of the colorbar scale.
-    cbar_fraction: float
-        The size fraction of the colorbar scale.
     fix_aspect_ratio: bool
         Whether to fix the aspect ratio to be one.
     rotate: bool
@@ -72,16 +67,15 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
         Plot title.
 
     Returns
-    -------
-    fig : matplotlib.figure.Figure
-    ax : matplotlib.axes.Axes
-        Axes object when ``plot_tool="matplotlib"``.
-    im : matplotlib.image.AxesImage
-        Image handle when ``plot_tool="matplotlib"``.
+    ----------------
+    fig：matplotlib figure
+    ax: array of matplotlib axes (if plot_tool == 'matplotlib')
     """
 
     if plot_tool == 'matplotlib':
         fig, ax = plt.subplots(figsize=figure_size)
+        font = {'size': label_font_size}
+        plt.rc('font', **font)
         # reset the axis direction
         if scale_type == 'log':
             c_norm = LogNorm(vmin=vmin, vmax=vmax)
@@ -95,9 +89,8 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
         else:
             extent = (ex_range.min(), ex_range.max(), em_range.min(), em_range.max())
             ax.set_xlim([ex_range[0], ex_range[-1]])
-        ax.set_xlabel('Emission wavelength [nm]' if not rotate else 'Excitation wavelength [nm]', fontsize=axis_label_font_size)
-        ax.set_ylabel('Excitation wavelength [nm]' if not rotate else 'Emission wavelength [nm]', fontsize=axis_label_font_size)
-        ax.tick_params(labelsize=axis_ticks_font_size)
+        ax.set_xlabel('Emission wavelength [nm]' if not rotate else 'Excitation wavelength [nm]')
+        ax.set_ylabel('Excitation wavelength [nm]' if not rotate else 'Emission wavelength [nm]')
         if not auto_intensity_range:
             if scale_type == 'log':
                 im = ax.imshow(intensity if not rotate else np.flipud(np.fliplr(intensity.T)), cmap=cmap,
@@ -112,18 +105,17 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
                            interpolation='none', extent=extent, origin='upper',
                            aspect=1 if fix_aspect_ratio else None)
         if cbar:
-            cbar = fig.colorbar(im, ax=ax, ticks=t_cbar, fraction=cbar_fraction, pad=0.06)
-            cbar.set_label(cbar_label, labelpad=2.5, fontsize=axis_label_font_size)
+            cbar = fig.colorbar(im, ax=ax, ticks=t_cbar, fraction=0.03, pad=0.04)
+            cbar.set_label(cbar_label, labelpad=1.5)
             cbar.ax.tick_params(labelsize=cbar_font_size)
 
         if title:
             ax.set_title(title, pad=20, fontsize=title_font_size)
 
         if display:
-            plt.tight_layout()
             plt.show()
 
-        return fig, ax, im
+        return fig, ax
 
     elif plot_tool == 'plotly':
 
@@ -160,8 +152,11 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
         layout = go.Layout(
             xaxis=dict(title=xaxis_title),
             yaxis=dict(title=yaxis_title),
-            font=dict(size=axis_label_font_size),
+            font=dict(size=label_font_size),
+            # width=figure_size[0] * 100,
+            # height=figure_size[1] * 100 if not fix_aspect_ratio else None,
             yaxis_scaleanchor="x" if fix_aspect_ratio else None,
+            # yaxis_constrain = 'domain',
             xaxis_constrain='domain',
             autosize=True,
             xaxis_showgrid=False,
@@ -183,144 +178,6 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
             fig.show()
 
         return fig
-    else:
-        raise ValueError("plot_tool must be 'matplotlib' or 'plotly'.")
-
-
-def plot_eem_stack(
-    eem_stack: np.ndarray,
-    ex_range: np.ndarray,
-    em_range: np.ndarray,
-    titles: list = None,
-    n_cols: int = 2,
-    auto_intensity_range: bool = True,
-    scale_type: str = 'linear',  # 'linear' or 'log'
-    vmin: float = None,
-    vmax: float = None,
-    cmap: str = 'jet',
-    figure_size: tuple = (12, 12),
-    axis_label_font_size: int = 12,
-    axis_ticks_font_size: int = 10,
-    cbar: bool = True,
-    cbar_fraction: float = 0.02,
-    fix_aspect_ratio: bool = True,
-    rotate: bool = False,
-    suptitle: str = None,
-    suptitle_font_size: int = 16,
-    plot_x_axis_label = True,
-    plot_y_axis_label = True,
-) -> tuple:
-    """
-    Plot a stack of EEMs in a grid of subplots.
-
-    Parameters
-    ----------
-    eem_stack : np.ndarray (3D)
-        Stack of EEMs, shape (n_samples, n_ex, n_em).
-    ex_range : np.ndarray (1D)
-        Excitation wavelengths.
-    em_range : np.ndarray (1D)
-        Emission wavelengths.
-    titles : list of str
-        List of subplot titles, length must equal number of EEMs.
-    n_cols : int
-        Number of columns in the subplot grid.
-    auto_intensity_range : bool
-        If True, use matplotlib's autoscale for intensities.
-    scale_type : str
-        'linear' or 'log' scale for color mapping.
-    vmin, vmax : float
-        Min and max intensities if auto_intensity_range is False.
-    cmap : str
-        Matplotlib colormap.
-    figure_size : tuple
-        Size of the entire figure.
-    axis_label_font_size, axis_ticks_font_size : int
-        Font sizes for labels and ticks.
-    cbar : bool
-        Whether to show a colorbar for each subplot.
-    cbar_fraction : float
-        Fraction size of colorbar.
-    fix_aspect_ratio : bool
-        If True, force aspect ratio to 1.
-    rotate : bool
-        If True, swap axes so x=excitation and y=emission.
-    suptitle : str
-        Overall figure title.
-    suptitle_font_size : int
-        Font size for overall title.
-
-    Returns
-    -------
-    fig : plt.Figure
-    axes : np.ndarray of Axes
-    ims : list of AxesImage
-    """
-    n_plots = eem_stack.shape[0]
-    if titles:
-        if len(titles) != n_plots:
-            raise ValueError("Length of titles must match number of EEMs in stack.")
-
-    n_rows = math.ceil(n_plots / n_cols)
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=figure_size, squeeze=False)
-    axes = axes.flatten()
-    ims = []
-
-    # Validate vmin/vmax
-    if not auto_intensity_range and (vmin is None or vmax is None):
-        raise ValueError("vmin and vmax must be provided when auto_intensity_range is False.")
-
-    for i in range(n_plots):
-        ax = axes[i]
-        intensity = eem_stack[i]
-
-        # Norm for log scale
-        norm = LogNorm(vmin=vmin, vmax=vmax) if (scale_type == 'log' and not auto_intensity_range) else None
-
-        # Data orientation
-        if not rotate:
-            # direct EEM: x=em, y=ex
-            plot_data = intensity
-            extent = (em_range.min(), em_range.max(), ex_range.min(), ex_range.max())
-        else:
-            # rotate: x=ex, y=em with flip so matches orientation
-            plot_data = np.flipud(np.fliplr(intensity.T))
-            extent = (ex_range.min(), ex_range.max(), em_range.min(), em_range.max())
-
-        im = ax.imshow(
-            plot_data,
-            cmap=cmap,
-            extent=extent,
-            origin='upper',
-            vmin=None if auto_intensity_range else vmin,
-            vmax=None if auto_intensity_range else vmax,
-            norm=norm,
-            aspect=1 if fix_aspect_ratio else 'auto'
-        )
-        ims.append(im)
-
-        if titles is not None:
-            ax.set_title(titles[i], fontsize=axis_label_font_size)
-        if plot_x_axis_label:
-            ax.set_xlabel('Emission wavelength [nm]' if not rotate else 'Excitation wavelength [nm]', fontsize=axis_label_font_size)
-        if plot_y_axis_label:
-            ax.set_ylabel('Excitation wavelength [nm]' if not rotate else 'Emission wavelength [nm]', fontsize=axis_label_font_size)
-        ax.tick_params(labelsize=axis_ticks_font_size)
-
-        if cbar:
-            fig.colorbar(im, ax=ax, fraction=cbar_fraction)
-
-    # Turn off unused subplots
-    for j in range(n_plots, len(axes)):
-        axes[j].axis('off')
-
-    if suptitle:
-        fig.suptitle(suptitle, fontsize=suptitle_font_size)
-
-    plt.tight_layout(rect=[0, 0, 1, 0.96] if suptitle else None)
-    plt.show()
-
-    return fig, axes, ims
 
 
 def plot_abs(absorbance, ex_range, xmax=0.1, ex_range_display=(200, 800), plot_tool='matplotlib', display=True,
@@ -329,7 +186,7 @@ def plot_abs(absorbance, ex_range, xmax=0.1, ex_range_display=(200, 800), plot_t
     Plot the UV absorbance data
 
     Parameters
-    ----------
+    ----------------
     absorbance: np.ndarray (1d)
         The absorbance.
     ex_range: np.ndarray (1d)
@@ -346,10 +203,9 @@ def plot_abs(absorbance, ex_range, xmax=0.1, ex_range_display=(200, 800), plot_t
         The size of the plot.
 
     Returns
-    -------
-    fig : matplotlib.figure.Figure
-    ax : matplotlib.axes.Axes
-        Axes object when ``plot_tool="matplotlib"``.
+    ----------------
+    fig：matplotlib figure
+    ax: array of matplotlib axes (if plot_tool == 'matplotlib')
     """
     if plot_tool == 'matplotlib':
         fig, ax = plt.subplots(figsize=figure_size)
@@ -370,9 +226,7 @@ def plot_abs(absorbance, ex_range, xmax=0.1, ex_range_display=(200, 800), plot_t
         fig.update_yaxes(title_text='Absorbance [a.u.]', range=[0, xmax])
         if display:
             fig.show()
-        return fig
-    else:
-        raise ValueError("plot_tool must be 'matplotlib' or 'plotly'.")
+    return fig
 
 
 def plot_fi(fi: pd.DataFrame, q: float = 0.05):
@@ -382,16 +236,16 @@ def plot_fi(fi: pd.DataFrame, q: float = 0.05):
     Parameters
     ----------
     fi: pandas DataFrame
-        A DataFrame of shape (n,1), where n is the number of samples. The output of EEMDataset.peak_picking() can be
+        A DataFrame of shape (n,1), where n is the number of samples. The output of EEMdataset.peak_picking() can be
         passed to this parameter.
     q: float
         Where to plot the reference lines. By default, this is set to be 0.05 - two horizontal lines will be plotted at
         95% and 105% of the average fluorescence intensity.
 
     Returns
-    -------
-    fig : matplotlib.figure.Figure
-    ax : matplotlib.axes.Axes
+    ----------
+    fig：matplotlib figure
+    ax: array of matplotlib axes
     """
     index = fi.index
     fi = fi.to_numpy()
@@ -421,15 +275,15 @@ def plot_fi_correlation(fi: pd.DataFrame, ref):
     Parameters
     ----------
     fi: pandas DataFrame
-        A DataFrame of shape (n,1), where n is the number of samples. The output of EEMDataset.peak_picking() can be
+        A DataFrame of shape (n,1), where n is the number of samples. The output of EEMdataset.peak_picking() can be
         passed to this parameter.
     ref: np.ndarray (1d)
-        The reference values. It should be a 1D numpy array of shape (n,), where n is the number of samples.
+        The reference value. It should be an 1d numpy array of shape (n,), where n is the number of samples.
 
     Returns
-    -------
-    fig : matplotlib.figure.Figure
-    ax : matplotlib.axes.Axes
+    ----------
+    fig：matplotlib figure
+    ax: array of matplotlib axes
     """
     fi_2d = fi.to_numpy()
     fi = fi_2d.reshape(-1)
@@ -452,7 +306,7 @@ def plot_fi_correlation(fi: pd.DataFrame, ref):
     ax.tick_params(labelsize=14)
     ax.text(0.5, 1.3, f"Linear regression model: y={w:.4f}" + f"x+{b:.4f}", ha='center', transform=ax.transAxes,
             fontsize=12)
-    ax.text(0.5, 1.225, f"Linear regression R2: {r2:.4f}", ha='center', transform=ax.transAxes, fontsize=12)
+    ax.text(0.5, 1.225, f"Linear regression R2:', '{r2:.4f}", ha='center', transform=ax.transAxes, fontsize=12)
     ax.text(0.5, 1.15, f"Pearson coefficient: {coef_p:.4f} (p-value = {p_value_p:.4e})", ha='center',
             transform=ax.transAxes, fontsize=12)
     ax.text(0.5, 1.075, f"Spearman coefficient: {coef_s:.4f} (p-value = {p_value_s:.4e})", ha='center',
@@ -483,9 +337,8 @@ def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()
 
     Returns
     -------
-    fig : matplotlib.figure.Figure
-    ax : matplotlib.axes.Axes
-        Axes object when ``plot_tool="matplotlib"``.
+    fig：matplotlib figure
+    ax: array of matplotlib axes (if plot_tool == 'matplotlib')
     """
 
     # Determine layout
@@ -497,81 +350,41 @@ def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()
     n_cols = min(n_tot_components, n_cols) if n_cols else n_tot_components
 
     if plot_tool == 'matplotlib':
-        # ----- Component layout (deterministic order, no sets) -----
-        if component_labels_dict:
-            comp_order = []
-            for name in parafac_models_dict:
-                for lbl in component_labels_dict[name]:
-                    if lbl not in comp_order:
-                        comp_order.append(lbl)
-            n_tot_components = len(comp_order)
-        else:
-            n_tot_components = max(m.n_components for m in parafac_models_dict.values())
-            comp_order = [f"C{i + 1}" for i in range(n_tot_components)]
-
-        n_rows = (n_tot_components - 1) // n_cols + 1 if n_cols else 1
-        n_cols = min(n_tot_components, n_cols) if n_cols else n_tot_components
-
-        fig, ax = plt.subplots(
-            nrows=n_rows, ncols=n_cols,
-            figsize=(3.3 * n_cols + 2.5, 4 * n_rows),  # add space for legend
-            sharey='row', sharex='col'
-        )
-        # No gaps between subplots
-        fig.subplots_adjust(wspace=0, hspace=0, right=0.8)  # reserve space on the right
-
-        # Normalize axes to a flat array
-        axes = ax.ravel() if isinstance(ax, np.ndarray) else np.array([ax])
-
-        # ----- Consistent color per model -----
-        model_names = list(parafac_models_dict.keys())
-        model_colors = {name: colors[i % len(colors)] for i, name in enumerate(model_names)}
-
-        for model_name, model in parafac_models_dict.items():
+        fig, ax = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=(3.3 * n_cols, 4 * n_rows), sharey='row',
+                               sharex='col')
+        fig.subplots_adjust(wspace=0, hspace=10)
+        for k, (model_name, model) in enumerate(parafac_models_dict.items()):
             for i in range(model.n_components):
-                comp_label = (
-                    component_labels_dict[model_name][i] if component_labels_dict else f"C{i + 1}"
-                )
-                pos = comp_order.index(comp_label)
+                component_label = component_labels_dict[model_name][i] if component_labels_dict else f'C{i + 1}'
+                pos = list(set(component_labels_dict.values())).index(component_label) if component_labels_dict else i
+                if n_rows > 1:
+                    ax[pos // n_cols, pos % n_cols].plot(model.ex_range, model.ex_loadings.iloc[:, i], '--',
+                                                         c=colors[k])
+                    ax[pos // n_cols, pos % n_cols].plot(model.em_range, model.em_loadings.iloc[:, i], label=model_name,
+                                                         c=colors[k])
+                    ax[pos // n_cols, pos % n_cols].tick_params(labelsize=14)
+                else:
+                    ax[pos].plot(model.ex_range, model.ex_loadings.iloc[:, i], '--', c=colors[k])
+                    ax[pos].plot(model.em_range, model.em_loadings.iloc[:, i], label=model_name, c=colors[k])
+                    ax[pos].tick_params(labelsize=14)
 
-                # Excitation (dashed)
-                axes[pos].plot(
-                    model.ex_range, model.ex_loadings.iloc[:, i],
-                    '--', c=model_colors[model_name]
-                )
-                # Emission (solid)
-                axes[pos].plot(
-                    model.em_range, model.em_loadings.iloc[:, i],
-                    '-', c=model_colors[model_name]
-                )
-                axes[pos].tick_params(labelsize=14)
+        for j in range(n_tot_components):
+            if component_labels_dict:
+                if n_rows > 1:
+                    ax[j // n_rows, j % n_cols].set_title(list(set(component_labels_dict.values()))[j], fontsize=18)
+                else:
+                    ax[j].set_title(list(set(component_labels_dict.values()))[j], fontsize=18)
+            else:
+                ax[j].set_title('C{i}'.format(i=j + 1), fontsize=18)
+            ax[j].legend(fontsize=12)
 
-        # Titles
-        for j, title in enumerate(comp_order):
-            axes[j].set_title(title, fontsize=18)
-
-        # ----- Shared legend on the right -----
-        legend_handles, legend_labels = [], []
-        for name in model_names:
-            legend_handles.extend([
-                Line2D([0], [0], linestyle='--', color=model_colors[name]),
-                Line2D([0], [0], linestyle='-', color=model_colors[name]),
-            ])
-            legend_labels.extend([f"{name}-ex", f"{name}-em"])
-
-        fig.legend(
-            legend_handles, legend_labels,
-            loc='center left', bbox_to_anchor=(0.82, 0.5),
-            fontsize=12, ncol=1
-        )
-
-        # Axis labels
-        # fig.text(0.5, 0.0, 'Wavelength (nm)', fontsize=18, ha='center')
-        # fig.text(0.05, 0.5, 'Loadings', fontsize=18, va='center', rotation='vertical')
-        fig.subplots_adjust(bottom=0.2)
-        fig.supxlabel("Wavelength (nm)", fontsize=18)
-        fig.supylabel("Loadings", fontsize=18, x=0.02)
-
+        leg_ax = fig.add_subplot(111)
+        leg_ax.axis('off')
+        # handles, labels = ax[0].get_legend_handles_labels()
+        # leg_ax.legend(flip_legend_order(handles,3), flip_legend_order(labels,3),
+        #               loc='upper center', bbox_to_anchor=(0.5, -0.35), fontsize=14, ncol=3)
+        fig.text(0.4, -0.1, 'Wavelength (nm)', fontsize=18)
+        fig.text(0.04, 0.35, 'Loadings', fontsize=18, rotation='vertical')
         if display:
             plt.show()
         return fig, ax
@@ -580,8 +393,8 @@ def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()
         fig = make_subplots(rows=n_rows, cols=n_cols, shared_xaxes=False, shared_yaxes=True,
                             subplot_titles=set(component_labels_dict.values()) if component_labels_dict
                             else [f'C{i + 1}' for i in range(n_tot_components)],
-                            horizontal_spacing=0.15 - 0.008 * n_cols,
-                            vertical_spacing=0.25)
+                            horizontal_spacing=0.2 - 0.008 * n_cols,
+                            vertical_spacing=0.2)
 
         for k, (model_name, model) in enumerate(parafac_models_dict.items()):
             for i in range(model.n_components):
@@ -617,125 +430,53 @@ def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()
         return fig
 
 
-def plot_fmax(table, component_labels=None, display=True, yaxis_title='Fmax', labels=None):
-    color_map_components = px.colors.qualitative.Plotly
-    if labels is not None:
-        color_map_clusters = px.colors.qualitative.Dark24
-        unique_labels = list(set(labels))
+# def plot_components(parafac_model: PARAFAC, component_labels=None, n_cols=None, rotate=False, display=True):
+#     component_stack = parafac_model.component_stack
+#     n_tot_components = component_stack.shape[0]
+#     ex_range = parafac_model.ex_range
+#     em_range = parafac_model.em_range
+#     n_rows = (n_tot_components - 1) // n_cols + 1 if n_cols else 1
+#     n_cols = min(n_tot_components, n_cols) if n_cols else n_tot_components
+#     fig = make_subplots(rows=n_rows, cols=n_cols,
+#                         subplot_titles=component_labels if component_labels
+#                         else [f'C{i + 1}' for i in range(n_tot_components)], horizontal_spacing=0.2 - 0.008 * n_cols,
+#                         vertical_spacing=0.5)
+#     for i in range(n_tot_components):
+#         component = component_stack[i]
+#         trace = go.Heatmap(
+#             z=component if not rotate else np.flipud(np.fliplr(component.T)),
+#             x=em_range if not rotate else ex_range,
+#             y=ex_range[::-1] if not rotate else em_range[::-1],
+#             coloraxis="coloraxis",
+#             zmin=0 if not np.min(component) >= -1e-3 else None,
+#             zmax=None,
+#         )
+#         fig.add_trace(trace, row=(i // n_cols) + 1, col=(i % n_cols) + 1)
+#
+#     fig.update_layout(
+#         legend=dict(x=0, y=0.1 - 0.2 * n_cols, orientation='h', font=dict(size=16)),
+#         height=400 * n_rows,
+#         width=400 * n_cols
+#     )
+#     fig.update_layout(coloraxis={'colorscale': 'jet'}, coloraxis_colorbar=dict(title="intensity (a.u.)"))
+#     fig.update_xaxes(title_text='Emission wavelength [nm]' if not rotate else 'Excitation wavelength [nm]')
+#     fig.update_yaxes(title_text='Excitation wavelength [nm]' if not rotate else 'Emission wavelength [nm]')
+#
+#     if display:
+#         fig.show()
+#
+#     return fig
 
+
+def plot_score(parafac_model: PARAFAC, component_labels=None, display=True):
     # Create a scatter plot
+    score_table = parafac_model.score
     fig = go.Figure()
-    for i in range(table.shape[1]):
+    for i in range(score_table.shape[1]):
         fig.add_trace(go.Scatter(
-            x=table.index,
-            y=table[table.columns[i]],
-            name=table.columns[i] if component_labels is None else component_labels[i],
-            mode='lines',
-            line=dict(color=color_map_components[i % len(color_map_components)]),
-        ))
-
-    if labels is not None:
-        for j, l in enumerate(unique_labels):
-            table_l = table.iloc[labels == l]
-            table_l['index'] = [table.index[i] for i, val in enumerate(labels) if val == l]
-            table_l = pd.melt(table_l, id_vars='index')
-            fig.add_trace(go.Scatter(
-                x=table_l['index'],
-                y=table_l['value'],
-                name=f'Cluster {l}',
-                mode='markers',
-                marker=dict(color=color_map_clusters[j % len(color_map_clusters)]) if labels is not None else None,
-            )
-                          )
-
-    fig.update_xaxes(tickangle=90)
-
-    # Customize the layout (optional)
-    fig.update_layout(
-        xaxis_title='Index',
-        yaxis_title=yaxis_title,
-    )
-
-    if display:
-        fig.show()
-
-    return fig
-
-
-def plot_error(error, bins='auto', display=True):
-    series = error.iloc[:, 0]
-
-    bin_edges = np.histogram_bin_edges(series, bins=bins)
-    bin_indices = pd.cut(series, bins=bin_edges, include_lowest=True)
-
-    hover_texts = bin_indices.groupby(bin_indices).apply(lambda x: '<br>'.join(map(str, x.index)))
-
-    # Count values per bin
-    bin_counts = bin_indices.value_counts().sort_index()
-
-    # Midpoints for x-axis
-    bin_midpoints = [(interval.left + interval.right) / 2 for interval in bin_counts.index]
-
-    # Build plot
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=bin_midpoints,
-        y=bin_counts.values,
-        hovertext=hover_texts.values,
-        hoverinfo='text'
-    ))
-    fig.update_layout(
-        xaxis_title=error.columns[0],
-        yaxis_title='Count',
-        title='Histogram with Sample Indices on Hover'
-    )
-
-    if display:
-        fig.show()
-
-    return fig
-
-
-def plot_reconstruction_error(table, bar_col_name, display=True, yaxis_scatter_title='Reconstruction error',
-                              yaxis_bar_title='Reconstruction error reduction', labels=None):
-    color_map_col = px.colors.qualitative.Plotly
-    if labels is not None:
-        color_map_clusters = px.colors.qualitative.Dark24
-        unique_labels = list(set(labels))
-        color_dict_clusters = {
-            label: color_map_clusters[i % len(color_map_clusters)] for i, label in enumerate(unique_labels)
-        }
-    # Create a scatter plot
-    fig = go.Figure()
-
-    for i in range(table.shape[1]):
-        if table.columns[i] != bar_col_name:
-            fig.add_trace(go.Scatter(
-                x=table.index,
-                y=table[table.columns[i]],
-                name=table.columns[i],
-                mode='lines',
-                line=dict(color=color_map_col[i % len(color_map_col)]),
-            ))
-
-    for j, l in enumerate(unique_labels):
-        table_l = table.iloc[labels == l]
-        table_l.drop(columns=[bar_col_name], inplace=True)
-        table_l['index'] = [table.index[i] for i, val in enumerate(labels) if val == l]
-        table_l = pd.melt(table_l, id_vars='index')
-        fig.add_trace(go.Scatter(
-            x=table_l['index'],
-            y=table_l['value'],
-            name=f'Cluster {l}',
-            mode='markers',
-            marker=dict(color=color_map_clusters[j % len(color_map_clusters)]) if labels is not None else None,
-        ))
-        fig.add_trace(go.Bar(
-            x=table.iloc[labels == l].index,
-            y=table[bar_col_name].iloc[labels == l],
-            name=f'Cluster {l}-Reconstruction error reduction',
-            yaxis='y2',
-            marker=dict(color=color_map_clusters[j % len(color_map_clusters)]) if labels is not None else None,
+            x=score_table.index,
+            y=score_table[score_table.columns[i]],
+            name=score_table.columns[i] if component_labels is None else component_labels[i]
         ))
 
     fig.update_xaxes(tickangle=90)
@@ -743,8 +484,31 @@ def plot_reconstruction_error(table, bar_col_name, display=True, yaxis_scatter_t
     # Customize the layout (optional)
     fig.update_layout(
         xaxis_title='Index',
-        yaxis=dict(title=yaxis_scatter_title),
-        yaxis2=dict(title=yaxis_bar_title, overlaying='y', side='right'),
+        yaxis_title='Score',
+    )
+
+    if display:
+        fig.show()
+
+    return fig
+
+def plot_fmax(parafac_model: PARAFAC, component_labels=None, display=True):
+    # Create a scatter plot
+    fmax_table = parafac_model.nnls_fmax
+    fig = go.Figure()
+    for i in range(fmax_table.shape[1]):
+        fig.add_trace(go.Scatter(
+            x=fmax_table.index,
+            y=fmax_table[fmax_table.columns[i]],
+            name=fmax_table.columns[i] if component_labels is None else component_labels[i]
+        ))
+
+    fig.update_xaxes(tickangle=90)
+
+    # Customize the layout (optional)
+    fig.update_layout(
+        xaxis_title='Index',
+        yaxis_title='Fmax',
     )
 
     if display:
@@ -753,11 +517,23 @@ def plot_reconstruction_error(table, bar_col_name, display=True, yaxis_scatter_t
     return fig
 
 
-def plot_dendrogram(linkage_matrix, threshold, index: list = None):
-
-    # Initialize figure by creating upper dendrogram
-    fig = ff.create_dendrogram(linkage_matrix, linkagefun=lambda x: linkage_matrix, orientation='bottom',
-                               labels=index, color_threshold=threshold)
-    fig.update_layout(width=800, height=800)
-    return fig
-
+def plot_greedy_selection(fmax_sequence, xlabel=None, ylabel=None, col=[0, 1], series_names=[], filter_kw=None):
+    markers = ['o', 's', '^', 'D', 'v', "<", ">", 'p', 'P', "x", '2', 'P', 'h']
+    fig, ax = plt.subplots()
+    for i, fmax in enumerate(fmax_sequence):
+        if filter_kw:
+            fmax = fmax.filter(like=filter_kw, axis=0)
+        if not xlabel:
+            xlabel = fmax.columns[col[0]]
+        if not ylabel:
+            ylabel = fmax.columns[col[1]]
+        x = fmax.iloc[:, col[0]]
+        y = fmax.iloc[:, col[1]]
+        if series_names:
+            name = series_names[i]
+        else:
+            name = i
+        ax.plot(x, y, '-', label=name, alpha=0.5, marker=markers[i], markersize=8)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+    ax.legend(fontsize=12)

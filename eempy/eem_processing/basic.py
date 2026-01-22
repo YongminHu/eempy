@@ -4,19 +4,19 @@ Author: Yongmin Hu (yongminhu@outlook.com)
 Last update: 2025-12
 """
 
-from eempy.utils import *
+
 import scipy.stats as stats
 import pandas as pd
 import numpy as np
 import warnings
+from typing import Optional
 from sklearn.linear_model import LinearRegression
 from scipy.ndimage import gaussian_filter, median_filter
 from scipy.interpolate import RegularGridInterpolator, interp1d, griddata
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
-from tensorly.tenalg import unfolding_dot_khatri_rao
 from tlviz.factor_tools import permute_cp_tensor
-from typing import Optional
+from ..utils import dichotomy_search
 
 
 def process_eem_stack(eem_stack, f, **kwargs):
@@ -405,7 +405,8 @@ def eem_raman_scattering_removal(intensity, ex_range, em_range, width=5, interpo
         if interpolation_dimension == '1d-ex':
             for j in range(intensity.shape[1]):
                 col_mask = raman_mask[:, j]
-                if np.all(col_mask == 0) or np.all(col_mask == 1): continue
+                if np.all(col_mask == 0) or np.all(col_mask == 1): 
+                    continue
                 known_x = np.flipud(ex_range)[col_mask == 1]
                 known_y = intensity_filled[:, j][col_mask == 1]
                 f1 = interp1d(known_x, known_y, kind=interpolation_method, fill_value='extrapolate')
@@ -413,7 +414,8 @@ def eem_raman_scattering_removal(intensity, ex_range, em_range, width=5, interpo
         elif interpolation_dimension == '1d-em':
             for i in range(intensity.shape[0]):
                 row_mask = raman_mask[i, :]
-                if np.all(row_mask == 0) or np.all(row_mask == 1): continue
+                if np.all(row_mask == 0) or np.all(row_mask == 1): 
+                    continue
                 known_x = em_range[row_mask == 1]
                 known_y = intensity_filled[i, :][row_mask == 1]
                 f1 = interp1d(known_x, known_y, kind=interpolation_method, fill_value='extrapolate')
@@ -506,7 +508,8 @@ def eem_rayleigh_scattering_removal(intensity, ex_range, em_range, width_o1=20, 
             if axis == '1d-ex':
                 for j in range(intensity.shape[1]):
                     col_mask = mask[:, j]
-                    if np.all(col_mask == 0) or np.all(col_mask == 1): continue
+                    if np.all(col_mask == 0) or np.all(col_mask == 1): 
+                        continue
                     x = np.flipud(ex_range)[col_mask == 1]
                     y = intensity_masked[:, j][col_mask == 1]
                     f1 = interp1d(x, y, kind=itp, fill_value='extrapolate')
@@ -514,7 +517,8 @@ def eem_rayleigh_scattering_removal(intensity, ex_range, em_range, width_o1=20, 
             elif axis == '1d-em':
                 for i in range(intensity.shape[0]):
                     row_mask = mask[i, :]
-                    if np.all(row_mask == 0) or np.all(row_mask == 1): continue
+                    if np.all(row_mask == 0) or np.all(row_mask == 1): 
+                        continue
                     x = em_range[row_mask == 1]
                     y = intensity_masked[i, :][row_mask == 1]
                     f1 = interp1d(x, y, kind=itp, fill_value='extrapolate')
@@ -721,7 +725,7 @@ def eems_fit_components(eem_stack, components, fit_intercept=False, positive=Tru
     return score_sample, fmax_sample, eem_stack_pred
 
 
-def loadings_similarity(loadings1: pd.DataFrame, loadings2: pd.DataFrame, wavelength_alignment=False, dtw=False):
+def loadings_similarity(loadings1: pd.DataFrame, loadings2: pd.DataFrame, wavelength_alignment=False):
     """
     Calculate the Tucker's congruence between each pair of components of two loadings (of excitation or emission).
     Parameters
@@ -757,10 +761,7 @@ def loadings_similarity(loadings1: pd.DataFrame, loadings2: pd.DataFrame, wavele
     m_sim = np.zeros([loadings1.shape[1], loadings2.shape[1]])
     for n2 in range(loadings2.shape[1]):
         for n1 in range(loadings1.shape[1]):
-            if dtw:
-                l1, l2 = dynamic_time_warping(loadings1[:, n1], loadings2[:, n2])
-            else:
-                l1, l2 = [loadings1[:, n1], loadings2[:, n2]]
+            l1, l2 = [loadings1[:, n1], loadings2[:, n2]]
             m_sim[n1, n2] = stats.pearsonr(l1, l2)[0]
     m_sim = pd.DataFrame(m_sim, index=['model1 C{i}'.format(i=i + 1) for i in range(loadings1.shape[1])],
                          columns=['model2 C{i}'.format(i=i + 1) for i in range(loadings2.shape[1])])
@@ -894,10 +895,10 @@ def align_components_by_components(models_dict: dict, components_ref: dict):
         model.nnls_fmax = model.nnls_fmax.iloc[:, permutation]
         model.components = model.components[permutation, :, :]
         model.beta = model.beta[permutation] if model.beta is not None else None
-        if getattr(model, 'ex_loadings', None) and getattr(model, 'em_loadings', None):
+        if getattr(model, 'ex_loadings', None) is not None and getattr(model, 'em_loadings', None) is not None:
             model.ex_loadings.columns, model.em_loadings.columns = (
                     [component_labels_var] * 2)
-        if getattr(model, 'score', None):
+        if getattr(model, 'score', None) is not None:
             model.score.columns = component_labels_var
         models_dict_new[model_label] = model
     return models_dict_new

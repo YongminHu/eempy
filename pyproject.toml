@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eem-python"
-version = "1.4"
+version = "1.5"
 description = "A python toolkit for excitation-emission matrix (EEM) analysis"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -23,7 +23,8 @@ dependencies = [
   "tlviz",
   "matplotlib",
   "plotly",
-  "openpyxl"
+  "openpyxl",
+  "pytest",
 ]
 
 [project.urls]

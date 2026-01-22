@@ -210,9 +210,11 @@ def read_eem_dataset(folder_path: str, mandatory_keywords=None, optional_keyword
     folder_path: str
         The path to the folder containing EEMs.
     mandatory_keywords: list of str
-        Keywords for searching EEM files whose filenames contain all the mandatory keywords.
+        Filenames must contain all of these keywords (logical AND).
+        Example: ["PEM", "2021-02-02"] will match only files containing both substrings.
     optional_keywords: list of str
-        Keywords for searching EEM files whose filenames contain any of the optional keywords.
+        Filenames must contain at least one of these keywords (logical OR).
+        If empty or None, no additional filtering is applied beyond mandatory_keywords.
     data_format: str, {'default'}
         Format of the EEM file. By passing ``'default'``, the following tabular format is supported:
         - The first row contains excitation wavelengths (Ex).
@@ -229,7 +231,7 @@ def read_eem_dataset(folder_path: str, mandatory_keywords=None, optional_keyword
             Em_m               I_m1   I_m2   I_m3   ...   I_mn
 
         Where I_nm is the intensity at excitation Ex_n and emission Em_m.
-    index_pos: str
+    index_pos: tuple/list or None
         The starting and ending positions of index in filenames. For example, if you want to read the index "2024_01_01"
         from the file with the name "EEM_2024_01_01_PEM.dat", a tuple (4, 13) should be passed to this parameter.
     as_timestamp: bool
@@ -262,8 +264,8 @@ def read_eem_dataset(folder_path: str, mandatory_keywords=None, optional_keyword
         Sorted excitation wavelengths (ascending).
     em_range: np.ndarray (1d)
         Sorted emission wavelengths (ascending).
-    indexes: str | datetime | None
-        Extracted index (optionally parsed as datetime).
+    indexes: list of str | datetime | None
+        Extracted per-file indexes (optionally parsed as datetime).
     """
     # ---- resolve file list ----
     filename_list = get_filelist(folder_path, mandatory_keywords, optional_keywords) \
@@ -394,7 +396,7 @@ def read_abs(file_path, index_pos: Union[Tuple, List, None] = None, data_format=
     Import UV absorbance data from UV absorbance file.
 
     Parameters
-    ----------------
+    ----------
     file_path: str
         The filepath to the UV absorbance file
     index_pos: None or tuple with two elements
@@ -411,7 +413,7 @@ def read_abs(file_path, index_pos: Union[Tuple, List, None] = None, data_format=
         Where A_i correspond to the absorbance at wavelength Ex_i
 
     Returns
-    ----------------
+    -------
     absorbance:np.ndarray (1d)
         The UV absorbance spectra
     ex_range: np.ndarray (1d)
@@ -484,12 +486,14 @@ def read_abs_dataset(folder_path, mandatory_keywords='ABS', optional_keywords=[]
     folder_path: str
         The path to the folder containing absorbance files.
     mandatory_keywords: list of str
-        Keywords for searching absorbance files whose filenames contain all the mandatory keywords.
+        Filenames must contain all of these keywords (logical AND).
+        Example: ["ABS", "2021-02-02"] will match only files containing both substrings.
     optional_keywords: list of str
-        Keywords for searching absorbance files whose filenames contain any of the optional keywords.
+        Filenames must contain at least one of these keywords (logical OR).
+        If empty or None, no additional filtering is applied beyond mandatory_keywords.
     data_format: str
         Specify the type of absorbance data format.
-    index_pos: list of int
+    index_pos: tuple/list or None
         The starting and ending positions of index in filenames. For example, if you want to read the index "2024_01_01"
         from the file with the name "ABS_2024_01_01_PEM.dat", a tuple (4, 13) should be passed to this parameter.
     custom_filename_list: list or None
@@ -598,16 +602,16 @@ def read_reference_from_text(filepath):
             5.0
 
     Parameters
-    ----------------
+    ----------
     filepath: str
         The filepath to the reference file.
 
     Returns
-    ----------------
-    absorbance:np.ndarray (1d)
-        The reference data
-    header: str
-        The header
+    -------
+    reference_data : list of float
+        The reference values (one per line after the header).
+    header : str
+        The header string from the first line.
     """
     reference_data = []
     with open(filepath, "r") as f:
@@ -626,7 +630,7 @@ def read_reference_from_text(filepath):
 def get_filelist(folderpath, mandatory_keywords, optional_keywords):
     """
     Get a list containing all filenames with given keywords in a folder. A filename must contain all mandatory keywords
-    and any of the optional keywords.
+    and at least one of the optional keywords.
 
     """
     filelist = os.listdir(folderpath)
@@ -660,12 +664,12 @@ def read_parafac_model(filepath):
     https://openfluor.lablicate.com/). Note that the models downloaded from OpenFluor normally don't have scores.
 
     Parameters
-    ----------------
+    ----------
     filepath: str
         The filepath to the model file.
 
     Returns
-    ----------------
+    -------
     ex_df: pd.DataFrame
         Excitation loadings
     em_df: pd.DataFrame

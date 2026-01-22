@@ -11,7 +11,8 @@ from tlviz.model_evaluation import core_consistency
 from tlviz.outliers import compute_leverage
 from eempy.solver import parafac_with_prior_hals, update_beta_in_hals, solve_W
 from .eem_dataset import EEMDataset
-from .basic import eems_fit_components, eem_stack_to_2d
+from .basic import eems_fit_components
+from ..utils import eem_stack_to_2d
 
 
 class PARAFAC:
@@ -156,7 +157,7 @@ class PARAFAC:
 
     References
     -----------
-    [1]  Tensorly documentation for CP/PARAFAC deomposition.
+    [1]  Tensorly documentation for CP/PARAFAC decomposition.
     [2]  Hu, Yongmin, Céline Jacquin, and Eberhard Morgenroth. "Fluorescence Quenching as a Diagnostic Tool for
     Prediction Reliability Assessment and Anomaly Detection in EEM-Based Water Quality Monitoring." Environmental
     Science & Technology 59.36 (2025): 19490-19501.
@@ -224,7 +225,7 @@ class PARAFAC:
         Parameters
         ----------
         eem_dataset : EEMDataset
-            The EEM dataset that the PARAFAC model establishes on.
+            The EEM dataset used to fit the PARAFAC model.
 
         Returns
         -------

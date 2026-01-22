@@ -16,28 +16,30 @@ from .basic import loadings_similarity, align_components_by_components, componen
 
 class SplitValidation:
     """
-    Conduct PARAFAC model validation by evaluating the consistency of PARAFAC models established on EEM sub-datasets.
+    Validate PARAFAC or NMF models by comparing component consistency across EEM sub-datasets.
 
     Parameters
     ----------
-    base_model: PARAFAC or EEMNMF
-        The base PARAFAC or NMF model to be used for validation.
-    n_splits: int
-        Number of splits.
-    combination_size: int or str, {int, 'half'}
-        The number of splits assembled into one combination. If 'half' is passed, each combination will include
-        half of the splits (i.e., the split-half validation).
-    rule: str, {'random', 'sequential'}
-        Whether to split the EEM dataset randomly. If 'sequential' is passed, the dataset will be split according
-        to index order.
-    random_state: int, optional
-        Random seed for reproducibility. Only used if `rule` is 'random'.
+    base_model : PARAFAC or EEMNMF
+        Base model used to fit each sub-dataset.
+    n_splits : int
+        Number of splits used to create sub-datasets.
+    combination_size : int or {"half"}, default "half"
+        Number of splits assembled into each combination. If "half" is passed, each combination uses half of the
+        splits (split-half validation).
+    rule : {"random", "sequential"}, default "random"
+        Split rule for the dataset. "sequential" splits by index order.
+    random_state : int, optional
+        Random seed used when ``rule="random"``.
+
     Attributes
-    -----------
-    eem_subsets: dict
-        Dictionary of EEM sub-datasets.
-    subset_specific_models: dict
-        Dictionary of PARAFAC models established on sub-datasets.
+    ----------
+    eem_subsets : dict
+        Mapping of subset labels to EEMDataset instances.
+    subset_specific_models : dict
+        Mapping of subset labels to fitted PARAFAC or EEMNMF models.
+    eem_dataset_full : EEMDataset or None
+        The full dataset used to generate splits.
     """
     def __init__(self, base_model, n_splits=4, combination_size='half', rule='random',
                  random_state=None):
@@ -54,20 +56,33 @@ class SplitValidation:
 
 
     def fit(self, eem_dataset: EEMDataset):
+        """
+        Fit the base model on each sub-dataset and store the fitted models.
+
+        Parameters
+        ----------
+        eem_dataset : EEMDataset
+            Full dataset used for splitting and model fitting.
+
+        Returns
+        -------
+        self : SplitValidation
+            Fitted validation object.
+        """
         split_set = eem_dataset.splitting(
             n_split=self.n_split, rule=self.rule, random_state=self.random_state,
             kw_top=self.base_model.kw_top, kw_bot=self.base_model.kw_bot,
             idx_top=self.base_model.idx_top, idx_bot=self.base_model.idx_bot
         )
         if self.combination_size == 'half':
-            cs = int(self.n_split) / 2
+            cs = int(self.n_split) // 2
         else:
             cs = int(self.combination_size)
         elements = list(itertools.combinations([i for i in range(self.n_split)], int(cs)))
         codes = list(itertools.combinations(list(string.ascii_uppercase)[0:self.n_split], int(cs)))
         model_complete = copy.deepcopy(self.base_model)
         model_complete.fit(eem_dataset=eem_dataset)
-        sims_ex, sims_em, models, subsets = ({}, {}, {}, {})
+        models, subsets = ({}, {})
         for e, c in zip(elements, codes):
             label = ''.join(c)
             subdataset = combine_eem_datasets([split_set[i] for i in e])
@@ -84,7 +99,7 @@ class SplitValidation:
             elif isinstance(model_subdataset, PARAFAC):
                 if self.base_model.prior_dict_sample is not None:
                     idx_in_split = [eem_dataset.index.index(idx) for idx in subdataset.index]
-                    for r in list(self.base_model.prior_dict_W.keys()):
+                    for r in list(self.base_model.prior_dict_sample.keys()):
                         model_subdataset.prior_dict_sample[r] = self.base_model.prior_dict_sample[r][idx_in_split]
             model_subdataset.fit(subdataset)
             models[label] = model_subdataset
@@ -101,14 +116,19 @@ class SplitValidation:
 
     def compare_parafac_loadings(self):
         """
-        Calculate the similarities of ex/em loadings between PARAFAC models established on sub-datasets.
+        Compare excitation/emission loadings between PARAFAC models fitted to paired sub-datasets.
+
+        This method is only meaningful for PARAFAC models because it relies on Ex/Em loadings.
+
         Returns
         -------
-        similarities_ex: pandas.DataFrame
-            Similarities in excitation loadings.
-        similarities_em: pandas.DataFrame
-            Similarities in emission loadings.
+        similarities_ex : pandas.DataFrame
+            Similarity scores for excitation loadings per component.
+        similarities_em : pandas.DataFrame
+            Similarity scores for emission loadings per component.
         """
+        if not isinstance(self.base_model, PARAFAC):
+            raise ValueError("compare_parafac_loadings is only supported for PARAFAC models.")
         labels = sorted(self.subset_specific_models.keys())
         similarities_ex = {}
         similarities_em = {}
@@ -124,22 +144,23 @@ class SplitValidation:
             similarities_ex, orient='index',
             columns=['Similarities in C{i}-ex'.format(i=i + 1) for i in range(self.base_model.n_components)]
         )
-        similarities_ex.index.name_train = 'Test'
+        similarities_ex.index.name = 'Test'
         similarities_em = pd.DataFrame.from_dict(
             similarities_em, orient='index',
             columns=['Similarities in C{i}-em'.format(i=i + 1) for i in range(self.base_model.n_components)]
         )
-        similarities_em.index.name_train = 'Test'
+        similarities_em.index.name = 'Test'
         return similarities_ex, similarities_em
 
 
     def compare_components(self):
         """
-        Calculate the similarities of components between PARAFAC or NMF models established on sub-datasets.
+        Compare component EEMs between models fitted to paired sub-datasets.
+
         Returns
         -------
-        similarities_components: pandas.DataFrame
-            Similarities in components.
+        similarities_components : pandas.DataFrame
+            Similarity scores for component EEMs.
         """
         labels = sorted(self.subset_specific_models.keys())
         similarities_components = {}
@@ -153,11 +174,27 @@ class SplitValidation:
             similarities_components, orient='index',
             columns=['Similarities in C{i}'.format(i=i + 1) for i in range(self.base_model.n_components)]
         )
-        similarities_components.index.name_train = 'Test'
+        similarities_components.index.name = 'Test'
         return similarities_components
 
 
     def correlation_cv(self, ref_col):
+        """
+        Cross-validate reference correlations using component Fmax values.
+
+        For each split pair, fit a linear regression on the training subset and evaluate on the paired test subset.
+        Metrics are reported for each component as R2 and RMSE for both training and test.
+
+        Parameters
+        ----------
+        ref_col : str
+            Column name in ``eem_dataset_full.ref`` used as the reference variable.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Table of R2 and RMSE metrics for each component and split pairing.
+        """
         assert ref_col in self.eem_dataset_full.ref.columns, f"'{ref_col}' is not found in reference."
         labels = sorted(self.subset_specific_models.keys())
         tbl = {}

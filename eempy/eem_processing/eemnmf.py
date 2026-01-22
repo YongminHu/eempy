@@ -5,7 +5,8 @@ from math import sqrt
 
 from scipy import stats
 from sklearn.decomposition import NMF
-from .basic import eems_fit_components, eem_stack_to_2d
+from .basic import eems_fit_components
+from ..utils import eem_stack_to_2d
 from .eem_dataset import EEMDataset
 from eempy.solver import nmf_with_prior_hals, solve_W
 
@@ -241,8 +242,8 @@ class EEMNMF:
 
         Parameters
         ----------
-        eem_dataset: eempy.dataset.EEMDataset
-            The EEM dataset that the PARAFAC model establishes on.
+        eem_dataset: EEMDataset
+            The EEM dataset used to fit the NMF model.
         """
         if self.kw_top is not None and self.kw_bot is not None:
             assert eem_dataset.index is not None
