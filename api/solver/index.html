@@ -1,0 +1,3080 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Excitation-Emission Matrix (EEM) fluorescence analysis toolkit">
+      
+      
+        <meta name="author" content="Yongmin Hu">
+      
+      
+      
+        <link rel="prev" href="../plot/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+    
+    
+      
+        <title>solver - eempy</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#solver" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="eempy" class="md-header__button md-logo" aria-label="eempy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            eempy
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              solver
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="eempy" class="md-nav__button md-logo" aria-label="eempy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    eempy
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../eem_processing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    eem_processing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../read_data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    read_data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plot/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    plot
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    solver
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    solver
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#eempy.solver.core" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        core
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="core">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#eempy.solver.core.hals_nnls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        hals_nnls
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.solver.core.nmf_with_prior_hals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nmf_with_prior_hals
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.solver.core.parafac_with_prior_hals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        parafac_with_prior_hals
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.solver.core.replace_factor_with_prior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        replace_factor_with_prior
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.solver.core.solve_W" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        solve_W
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.solver.core.unfolded_eem_stack_initialization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        unfolded_eem_stack_initialization
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.solver.core.update_beta_in_hals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        update_beta_in_hals
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.solver.core.update_column_in_hals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        update_column_in_hals
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#eempy.solver.core" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        core
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="core">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#eempy.solver.core.hals_nnls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        hals_nnls
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.solver.core.nmf_with_prior_hals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nmf_with_prior_hals
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.solver.core.parafac_with_prior_hals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        parafac_with_prior_hals
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.solver.core.replace_factor_with_prior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        replace_factor_with_prior
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.solver.core.solve_W" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        solve_W
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.solver.core.unfolded_eem_stack_initialization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        unfolded_eem_stack_initialization
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.solver.core.update_beta_in_hals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        update_beta_in_hals
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.solver.core.update_column_in_hals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        update_column_in_hals
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="solver">solver</h1>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="eempy.solver.core" class="doc doc-heading">
+            <span class="doc doc-object-name doc-module-name">eempy.solver.core</span>
+
+
+</h2>
+
+    <div class="doc doc-contents first">
+
+        <p>Solver routines for excitation–emission matrix (EEM) decomposition.</p>
+<p>This module provides numerical solvers used to decompose an EEM stack into a small number of non-negative components
+using matrix (NMF) and tensor (CP/PARAFAC) factorization models.</p>
+<p>Implemented features include:
+- HALS/ALS-style NNLS updates for NMF and CP factors,
+- quadratic (Tikhonov) priors with NaN-masked entries,
+- elastic-net regularization (L1/L2 mix),
+- optional paired-sample ratio constraints on sample-mode scores,
+- elementwise masking to ignore sparse invalid tensor entries.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.solver.core.hals_nnls" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">hals_nnls</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">hals_nnls</span><span class="p">(</span><span class="n">UtM</span><span class="p">,</span> <span class="n">UtU</span><span class="p">,</span> <span class="n">prior_dict</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">gamma</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">l1_ratio</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">V</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_iter</span><span class="o">=</span><span class="mi">500</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">1e-08</span><span class="p">,</span> <span class="n">eps</span><span class="o">=</span><span class="mf">1e-08</span><span class="p">,</span> <span class="n">fixed_components</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>HALS-style non-negative least squares update with optional priors and elastic-net.</p>
+<p>This routine updates a factor matrix <code>V</code> (with shape <code>(rank, n_features)</code>) in a least-squares subproblem in NMF and
+PARAFAC:</p>
+<pre><code>min_{V &gt;= 0}  1/2 || UtM - UtU @ V ||_F^2
+              + sum_k (gamma_k/2) ||mask_k * (V_k - p_k)||_2^2
+              + alpha * [ l1_ratio * ||V||_1 + (1 - l1_ratio)/2 * ||V||_F^2 ]
+</code></pre>
+<p>where:
+- <code>UtM</code> corresponds to UᵀM (or a mode-wise MTTKRP in PARAFAC),
+- <code>UtU</code> corresponds to UᵀU (Gram matrix),
+- <code>prior_dict[k] = p_k</code> is an optional per-component prior vector for row <code>k</code>, with NaNs allowed to indicate "no
+prior" at specific entries,
+- <code>gamma</code> can be a scalar applied to all prior components or a dict <code>{k: gamma_k}</code> to specify gamma values for
+different priors.</p>
+<p>The update is performed row-by-row (FastHALS residual update), and can keep selected components fixed (useful
+when seeding or freezing known spectra).</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>UtM</code>
+            </td>
+            <td>
+                  <code> np.ndarray, shape (rank, n)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Cross-product term (e.g., UᵀM or MTTKRPᵀ), with one row per component.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>UtU</code>
+            </td>
+            <td>
+                  <code> np.ndarray, shape (rank, rank)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Gram matrix term (e.g., UᵀU).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>prior_dict</code>
+            </td>
+            <td>
+                  <code> dict[int, array-like]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Mapping from component index <code>k</code> to a prior vector of length <code>n</code>. NaNs are treated as "no prior" for those
+entries.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>gamma</code>
+            </td>
+            <td>
+                  <code> float or dict[int, float]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Prior strength. If a float is provided, it is applied to all keys in <code>prior_dict</code>. If a dict is provided,
+strengths are component-specific.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>alpha</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Overall elastic-net strength (0 disables elastic-net).</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>l1_ratio</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Elastic-net mixing parameter in [0, 1]. 0 = pure L2, 1 = pure L1.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>V</code>
+            </td>
+            <td>
+                  <code> np.ndarray, shape (rank, n)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Initial value for <code>V</code>. If None, a least-squares solution is computed and clipped to be positive.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_iter</code>
+            </td>
+            <td>
+                  <code> int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Maximum number of HALS iterations.</p>
+              </div>
+            </td>
+            <td>
+                  <code>500</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>tol</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Relative convergence tolerance based on HALS update magnitude.</p>
+              </div>
+            </td>
+            <td>
+                  <code>1e-08</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>eps</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Small positive constant used for numerical stability and positivity floor.</p>
+              </div>
+            </td>
+            <td>
+                  <code>1e-08</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>fixed_components</code>
+            </td>
+            <td>
+                  <code> list[int]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Indices of components (rows of <code>V</code>) that should not be updated.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>V</code></td>            <td>
+                  <code>(<span title="numpy.ndarray">ndarray</span>, <span title="shape">shape</span>(<span title="rank">rank</span>, <span title="n">n</span>))</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Updated non-negative factor matrix.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.solver.core.nmf_with_prior_hals" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">nmf_with_prior_hals</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">nmf_with_prior_hals</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">rank</span><span class="p">,</span> <span class="n">prior_dict_H</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">prior_dict_W</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">prior_dict_A</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">prior_dict_B</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">prior_dict_C</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ref_components</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">gamma_W</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">gamma_H</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">gamma_A</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">gamma_B</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">gamma_C</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">alpha_W</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">alpha_H</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">alpha_A</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">alpha_B</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">alpha_C</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">l1_ratio</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">idx_top</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">idx_bot</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">lam</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">fit_rank_one</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">component_shape</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_iter_als</span><span class="o">=</span><span class="mi">500</span><span class="p">,</span> <span class="n">max_iter_nnls</span><span class="o">=</span><span class="mi">500</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">1e-06</span><span class="p">,</span> <span class="n">eps</span><span class="o">=</span><span class="mf">1e-08</span><span class="p">,</span> <span class="n">init</span><span class="o">=</span><span class="s1">&#39;random&#39;</span><span class="p">,</span> <span class="n">custom_init</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">fixed_components</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Non-negative matrix factorization (NMF) using HALS with optional priors and regularizations.</p>
+<p>This solver decomposes a non-negative matrix <code>X</code> into:</p>
+<pre><code>X ≈ W @ H
+</code></pre>
+<p>where <code>W</code> (m × rank) contains sample scores / concentrations and <code>H</code> (rank × n) contains component
+spectra/features. It is designed for EEM decomposition where <code>X</code> can be an unfolded EEM stack and where
+components may be constrained by priors or by a paired-sample ratio constraint.</p>
+<p>Supported options include:
+- Quadratic priors on <code>W</code> and/or <code>H</code> (NaNs skip entries).
+- Elastic-net regularization on <code>W</code> and/or <code>H</code>.
+- A paired-row ratio penalty on <code>W</code>: W[idx_top] ≈ beta * W[idx_bot] with weight <code>lam</code>.
+- A hybrid model where selected components are forced to be rank-1 outer products
+  in EEM space (CP-like): <code>H[k]</code> reshaped to <code>(n_ex, n_em)</code> is approximated by
+  <code>outer(B[:,k], C[:,k])</code>. This is controlled via <code>fit_rank_one</code> and requires
+  <code>component_shape</code>.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>X</code>
+            </td>
+            <td>
+                  <code> np.ndarray, shape (m, n)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Non-negative data matrix (e.g., unfolded EEM stack).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>rank</code>
+            </td>
+            <td>
+                  <code> int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Number of components.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>prior_dict_H</code>
+            </td>
+            <td>
+                  <code> dict[int, array-like]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Priors for rows of <code>H</code> (length <code>n</code>). NaNs skip entries.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>prior_dict_W</code>
+            </td>
+            <td>
+                  <code> dict[int, array-like]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Priors for columns of <code>W</code> (length <code>m</code>). NaNs skip entries.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>prior_dict_A</code>
+            </td>
+            <td>
+                  <code> dict[int, array-like]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Priors for CP sample-mode factor <code>A</code> when using rank-1 components.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>prior_dict_B</code>
+            </td>
+            <td>
+                  <code> dict[int, array-like]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Priors for CP excitation factor <code>B</code> when using rank-1 components.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>prior_dict_C</code>
+            </td>
+            <td>
+                  <code> dict[int, array-like]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Priors for CP emission factor <code>C</code> when using rank-1 components.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>ref_components</code>
+            </td>
+            <td>
+                  <code> dict[int, array-like]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Reference components used to permute the solution for consistent ordering.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>gamma_W</code>
+            </td>
+            <td>
+                  <code> float or dict[int, float]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Prior weight(s) for <code>W</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>gamma_H</code>
+            </td>
+            <td>
+                  <code> float or dict[int, float]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Prior weight(s) for <code>H</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>gamma_A</code>
+            </td>
+            <td>
+                  <code> float or dict[int, float]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Prior weight(s) for CP sample-mode factor <code>A</code> in the rank-1 part.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>gamma_B</code>
+            </td>
+            <td>
+                  <code> float or dict[int, float]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Prior weight(s) for CP excitation factor <code>B</code> in the rank-1 part.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>gamma_C</code>
+            </td>
+            <td>
+                  <code> float or dict[int, float]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Prior weight(s) for CP emission factor <code>C</code> in the rank-1 part.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>alpha_W</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Elastic-net strength for <code>W</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>alpha_H</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Elastic-net strength for <code>H</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>alpha_A</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Elastic-net strength for CP sample-mode factor <code>A</code> (rank-1 part).</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>alpha_B</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Elastic-net strength for CP excitation factor <code>B</code> (rank-1 part).</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>alpha_C</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Elastic-net strength for CP emission factor <code>C</code> (rank-1 part).</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>l1_ratio</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Elastic-net mixing parameter in [0, 1].</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>idx_top</code>
+            </td>
+            <td>
+                  <code> sequence[int]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Row indices in <code>W</code> for the paired "top" samples.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>idx_bot</code>
+            </td>
+            <td>
+                  <code> sequence[int]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Row indices in <code>W</code> for the paired "bottom" samples.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>lam</code>
+            </td>
+            <td>
+                  <code> float or dict[int, float]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Ratio-penalty weight(s). Enable ratio constraint when provided together
+with <code>idx_top</code> and <code>idx_bot</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>fit_rank_one</code>
+            </td>
+            <td>
+                  <code> dict[int, bool] or False</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If a dict, <code>fit_rank_one[k]=True</code> marks component <code>k</code> to be modeled as a
+rank-1 outer product in EEM space (CP-like). If False, standard NMF is used.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>component_shape</code>
+            </td>
+            <td>
+                  <code> tuple[int, int]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>(n_ex, n_em)</code> used to reshape rows of <code>H</code> when using rank-1 components.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_iter_als</code>
+            </td>
+            <td>
+                  <code> int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Maximum number of outer ALS iterations.</p>
+              </div>
+            </td>
+            <td>
+                  <code>500</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_iter_nnls</code>
+            </td>
+            <td>
+                  <code> int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Maximum number of HALS iterations per NNLS subproblem.</p>
+              </div>
+            </td>
+            <td>
+                  <code>500</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>tol</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Relative convergence tolerance on the reconstruction error.</p>
+              </div>
+            </td>
+            <td>
+                  <code>1e-06</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>eps</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Small positive constant used as a positivity floor.</p>
+              </div>
+            </td>
+            <td>
+                  <code>1e-08</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>init</code>
+            </td>
+            <td>
+                  <code> str, {&#34;random&#34;, &#34;svd&#34;, &#34;nndsvd&#34;, &#34;nndsvda&#34;, &#34;nndsvdar&#34;, &#34;ordinary_nmf&#34;, &#34;ordinary_cp&#34;, &#34;custom&#34;}</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Initialization method.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;random&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>custom_init</code>
+            </td>
+            <td>
+                  <code> tuple(W, H)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Custom initialization, only used when <code>init="custom"</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>fixed_components</code>
+            </td>
+            <td>
+                  <code> list[int]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Indices of components to keep fixed during updates.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>random_state</code>
+            </td>
+            <td>
+                  <code> int or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Random seed.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>W</code></td>            <td>
+                  <code>(<span title="numpy.ndarray">ndarray</span>, <span title="shape">shape</span>(<span title="m">m</span>, <span title="rank">rank</span>))</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Non-negative sample scores / concentrations.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>H</code></td>            <td>
+                  <code>(<span title="numpy.ndarray">ndarray</span>, <span title="shape">shape</span>(<span title="rank">rank</span>, <span title="n">n</span>))</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Non-negative component matrix (flattened EEM components if applicable).</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>beta</code></td>            <td>
+                  <code>(<span title="numpy.ndarray">ndarray</span> or None, <span title="shape">shape</span>(<span title="rank">rank</span>))</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Per-component ratio estimates when the ratio penalty is enabled; otherwise None.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.solver.core.parafac_with_prior_hals" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">parafac_with_prior_hals</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">parafac_with_prior_hals</span><span class="p">(</span><span class="n">tensor</span><span class="p">,</span> <span class="n">rank</span><span class="p">,</span> <span class="n">prior_dict_A</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">prior_dict_B</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">prior_dict_C</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">gamma_A</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">gamma_B</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">gamma_C</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">ref_components</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alpha_A</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">alpha_B</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">alpha_C</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">l1_ratio</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">lam</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">idx_top</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">idx_bot</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_iter_als</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">max_iter_nnls</span><span class="o">=</span><span class="mi">500</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">1e-09</span><span class="p">,</span> <span class="n">eps</span><span class="o">=</span><span class="mf">1e-08</span><span class="p">,</span> <span class="n">init</span><span class="o">=</span><span class="s1">&#39;svd&#39;</span><span class="p">,</span> <span class="n">custom_init</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">fixed_components</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Non-negative PARAFAC decomposition for EEM stacks using HALS with optional priors and masking.</p>
+<p>This solver factorizes a 3-way tensor <code>X</code> into non-negative PARAFAC factors:</p>
+<pre><code>X ≈ [[A, B, C]]
+</code></pre>
+<p>where:
+- <code>A</code> (n_samples × rank) contains sample scores / concentrations,
+- <code>B</code> (n_ex × rank) contains excitation loadings,
+- <code>C</code> (n_em × rank) contains emission loadings.</p>
+<p>Optional features supported by this implementation:
+- Sparse elementwise masking.
+- Quadratic priors on any factor (A/B/C), with NaNs allowed to skip entries.
+- Elastic-net regularization on any factor (L1/L2 mix).
+- A ratio constraint on paired rows of A: A[idx_top] ≈ beta * A[idx_bot], controlled by <code>lam</code> and estimated per
+component (<code>beta</code>).</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>tensor</code>
+            </td>
+            <td>
+                  <code> array-like, shape (I, J, K)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Input tensor (EEM stack). Non-negative values are expected.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>rank</code>
+            </td>
+            <td>
+                  <code> int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Number of CP components.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>prior_dict_A</code>
+            </td>
+            <td>
+                  <code> dict[int, array-like]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Priors for columns of <code>A</code> (sample-mode factor). Each prior vector must have
+length <code>I</code>. NaNs indicate entries without a prior.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>prior_dict_B</code>
+            </td>
+            <td>
+                  <code> dict[int, array-like]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Priors for columns of <code>B</code> (excitation factor), length <code>J</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>prior_dict_C</code>
+            </td>
+            <td>
+                  <code> dict[int, array-like]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Priors for columns of <code>C</code> (emission factor), length <code>K</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>gamma_A</code>
+            </td>
+            <td>
+                  <code> float or dict[int, float]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Prior weight(s) for <code>A</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>gamma_B</code>
+            </td>
+            <td>
+                  <code> float or dict[int, float]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Prior weight(s) for <code>B</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>gamma_C</code>
+            </td>
+            <td>
+                  <code> float or dict[int, float]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Prior weight(s) for <code>C</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>ref_components</code>
+            </td>
+            <td>
+                  <code> dict[int, array-like]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Reference components used to permute factors for consistent component order. Each value should be a
+flattened (J*K,) reference spectrum (e.g., outer(B,C)).</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>alpha_A</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Elastic-net strength for <code>A</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>alpha_B</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Elastic-net strength for <code>B</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>alpha_C</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Elastic-net strength for <code>C</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>l1_ratio</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Elastic-net mixing parameter in [0, 1].</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>lam</code>
+            </td>
+            <td>
+                  <code> float or dict[int, float]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Ratio-penalty weight(s) for the sample-mode factor <code>A</code>. If provided together
+with <code>idx_top</code> and <code>idx_bot</code>, <code>beta</code> is estimated per component.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>idx_top</code>
+            </td>
+            <td>
+                  <code> sequence[int]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Row indices in <code>A</code> corresponding to the "top/original" samples in paired data.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>idx_bot</code>
+            </td>
+            <td>
+                  <code> sequence[int]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Row indices in <code>A</code> corresponding to the "bottom/perturbed" samples in paired data.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_iter_als</code>
+            </td>
+            <td>
+                  <code> int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Maximum number of outer ALS iterations.</p>
+              </div>
+            </td>
+            <td>
+                  <code>200</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_iter_nnls</code>
+            </td>
+            <td>
+                  <code> int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Maximum number of inner HALS iterations for each NNLS subproblem.</p>
+              </div>
+            </td>
+            <td>
+                  <code>500</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>tol</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Relative convergence tolerance on masked reconstruction error.</p>
+              </div>
+            </td>
+            <td>
+                  <code>1e-09</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>eps</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Small positive constant for numerical stability and positivity floor.</p>
+              </div>
+            </td>
+            <td>
+                  <code>1e-08</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>init</code>
+            </td>
+            <td>
+                  <code> str, {&#34;random&#34;, &#34;svd&#34;, &#34;nndsvd&#34;, &#34;nndsvda&#34;, &#34;nndsvdar&#34;, &#34;ordinary_cp&#34;, &#34;custom&#34;}</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Initialization method for factors.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;svd&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>custom_init</code>
+            </td>
+            <td>
+                  <code> tuple(A, B, C)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Custom initialization, only used when <code>init="custom"</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>random_state</code>
+            </td>
+            <td>
+                  <code> int or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Random seed for reproducible initialization.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>fixed_components</code>
+            </td>
+            <td>
+                  <code> list[int]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Component indices to keep fixed during updates (useful when seeding known spectra).</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>mask</code>
+            </td>
+            <td>
+                  <code> array-like, shape (I, J, K)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Elementwise mask (1 = keep / valid entry, 0 = ignore entry). If None, finite
+entries of <code>tensor</code> are treated as valid.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>A</code></td>            <td>
+                  <code>(<span title="numpy.ndarray">ndarray</span>, <span title="shape">shape</span>(<span title="I">I</span>, <span title="rank">rank</span>))</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Sample-mode factor (scores / concentrations).</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>B</code></td>            <td>
+                  <code>(<span title="numpy.ndarray">ndarray</span>, <span title="shape">shape</span>(<span title="J">J</span>, <span title="rank">rank</span>))</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Excitation factor loadings.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>C</code></td>            <td>
+                  <code>(<span title="numpy.ndarray">ndarray</span>, <span title="shape">shape</span>(<span title="K">K</span>, <span title="rank">rank</span>))</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Emission factor loadings.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>beta</code></td>            <td>
+                  <code>(<span title="numpy.ndarray">ndarray</span> or None, <span title="shape">shape</span>(<span title="rank">rank</span>))</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Estimated per-component ratio between paired sample rows when the ratio penalty is enabled; otherwise None.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.solver.core.replace_factor_with_prior" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">replace_factor_with_prior</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">replace_factor_with_prior</span><span class="p">(</span><span class="n">factors</span><span class="p">,</span> <span class="n">prior</span><span class="p">,</span> <span class="n">replaced_mode</span><span class="p">,</span> <span class="n">replaced_rank</span><span class="o">=</span><span class="s1">&#39;best-fit&#39;</span><span class="p">,</span> <span class="n">frozen_rank</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">project_prior</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">X</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">show_replaced_rank</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Replace a single component in a two-factor decomposition with a prior vector.</p>
+<p>This helper is primarily used for NMF/PARAFAC initialization, where a loading is replaced by a prior vector. This
+is particularly useful when the user has prior knowledge of some of the factors while keeping other unknown
+factors initialized via standard methods. It can (i) select which component to replace by maximizing correlation
+with the prior ("best-fit"), (ii) directly replace a specified component, and (iii) optionally project the prior
+to the other factor to keep the reconstruction consistent. E.g., when replacing a loading in one mode,
+the corresponding loading in the other mode is updated via a non-negative least-squares projection.</p>
+
+
+<details class="note" open>
+  <summary>Notes</summary>
+  <ul>
+<li>Replacement is performed in-place on <code>factors</code>.</li>
+<li>When <code>project_prior=True</code>, the method computes a residual excluding the
+  replaced component and projects the prior onto the other mode using a
+  non-negative least-squares-style clipping.</li>
+</ul>
+</details>
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>factors</code>
+            </td>
+            <td>
+                  <code> list[np.ndarray]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Factor matrices for a rank-<code>r</code> matrix model. Expected shapes are <code>[F0, F1]</code> where <code>F0.shape = (m,
+r)</code> and <code>F1.shape = (n, r)</code>.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>prior</code>
+            </td>
+            <td>
+                  <code> array-like, shape (m,) or (n,)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Prior vector to insert into the selected component of <code>factors[replaced_mode]</code>.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>replaced_mode</code>
+            </td>
+            <td>
+                  <code> int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Which factor to modify: 0 or 1.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>replaced_rank</code>
+            </td>
+            <td>
+                  <code> int or {&#34;best-fit&#34;}</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Component index to replace. If "best-fit", the component with the highest Pearson correlation to <code>prior</code> is
+replaced (excluding <code>frozen_rank</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;best-fit&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>frozen_rank</code>
+            </td>
+            <td>
+                  <code> int or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Component index that must not be replaced (useful when one component is fixed).</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>project_prior</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If True, also update the complementary factor column by projecting the prior onto the residual (requires <code>X</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>X</code>
+            </td>
+            <td>
+                  <code> np.ndarray</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Data matrix being factorized, shape (m, n). Required if <code>project_prior=True</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>show_replaced_rank</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If True, also return the selected <code>replaced_rank</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>factors</code></td>            <td>
+                  <code><span title="list">list</span>[<span title="numpy.ndarray">ndarray</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Updated factor matrices.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>replaced_rank</code></td>            <td>
+                  <code>(<span title="int">int</span>, <span title="optional">optional</span>)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Only returned when <code>show_replaced_rank=True</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.solver.core.solve_W" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">solve_W</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">solve_W</span><span class="p">(</span><span class="n">X1</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">X2</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">beta</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">reg</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">non_negativity</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Solve for the sample-score matrix W in a (possibly constrained) linear regression subproblem.</p>
+<p>This helper solves for <code>W</code> in one of the following least-squares problems:</p>
+<p>1) Standard regression (single dataset):
+       minimize_W || X1 - W @ H ||_F^2</p>
+<p>2) Paired / ratio-augmented regression (two datasets):
+       minimize_W || X1 - W @ H ||_F^2
+                 + || X2 - W @ diag(beta) @ H ||_F^2</p>
+<p>Optionally, non-negativity can be enforced via row-wise NNLS.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>X1</code>
+            </td>
+            <td>
+                  <code> np.ndarray, shape (m, n)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Primary data matrix.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>H</code>
+            </td>
+            <td>
+                  <code> np.ndarray, shape (r, n)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Component matrix (rows are components).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>X2</code>
+            </td>
+            <td>
+                  <code> np.ndarray, shape (m, n)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Secondary data matrix used when <code>beta</code> is provided.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>beta</code>
+            </td>
+            <td>
+                  <code> np.ndarray, shape (r,)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Per-component scaling applied to the secondary term. If None, the second term
+is omitted.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>reg</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Ridge (L2) regularization strength added to the normal equations (0 disables).</p>
+              </div>
+            </td>
+            <td>
+                  <code>0.0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>non_negativity</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If True, enforce <code>W &gt;= 0</code> using NNLS. If False, solve the unconstrained
+normal equations.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>W</code></td>            <td>
+                  <code>(<span title="numpy.ndarray">ndarray</span>, <span title="shape">shape</span>(<span title="m">m</span>, <span title="r">r</span>))</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Estimated sample-score / concentration matrix.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.solver.core.unfolded_eem_stack_initialization" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">unfolded_eem_stack_initialization</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">unfolded_eem_stack_initialization</span><span class="p">(</span><span class="n">M</span><span class="p">,</span> <span class="n">rank</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;nndsvd&#39;</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Initialize non-negative matrix factors from an unfolded EEM stack.</p>
+<p>Given a non-negative matrix <code>M</code> (typically an unfolding of a 3D EEM stack), this routine produces an
+initialization <code>(U, V)</code> suitable for NMF / HALS updates.</p>
+<p>Supported initializations include:
+- <code>ordinary_nmf</code> : U, V generated through scikit-learn NMF with NNDSVD init.
+- <code>svd</code> : absolute-value SVD-based factors (non-negative by clipping).
+- <code>nndsvd</code>, <code>nndsvda</code>, <code>nndsvdar</code> : NNDSVD variants (Boutsidis &amp; Gallopoulos), where zeros are kept (<code>nndsvd</code>),
+filled with the mean (<code>nndsvda</code>), or filled with small random values (<code>nndsvdar</code>).</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>M</code>
+            </td>
+            <td>
+                  <code> np.ndarray, shape (m, n)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Non-negative matrix to factorize (e.g., unfolded tensor).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>rank</code>
+            </td>
+            <td>
+                  <code> int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Number of components (latent factors).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>method</code>
+            </td>
+            <td>
+                  <code> str, {&#34;ordinary_nmf&#34;, &#34;svd&#34;, &#34;nndsvd&#34;, &#34;nndsvda&#34;, &#34;nndsvdar&#34;}</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Initialization method. Default is "nndsvd".</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;nndsvd&#39;</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>U</code></td>            <td>
+                  <code>(<span title="numpy.ndarray">ndarray</span>, <span title="shape">shape</span>(<span title="m">m</span>, <span title="rank">rank</span>))</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Left factor initialization.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>V</code></td>            <td>
+                  <code>(<span title="numpy.ndarray">ndarray</span>, <span title="shape">shape</span>(<span title="rank">rank</span>, <span title="n">n</span>))</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Right factor initialization.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="references" open>
+  <summary>References</summary>
+  <p>[1] Boutsidis, Christos, and Efstratios Gallopoulos. "SVD based initialization: A head start for nonnegative matrix
+factorization." Pattern recognition 41.4 (2008): 1350-1362.</p>
+</details>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.solver.core.update_beta_in_hals" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">update_beta_in_hals</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">update_beta_in_hals</span><span class="p">(</span><span class="n">W</span><span class="p">:</span> <span class="n">ndarray</span><span class="p">,</span> <span class="n">idx_top</span><span class="p">,</span> <span class="n">idx_bot</span><span class="p">,</span> <span class="n">eps</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">boundaries</span><span class="p">:</span> <span class="nb">tuple</span> <span class="o">=</span> <span class="p">(</span><span class="mf">0.95</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Estimate per-component ratios between paired sample rows.</p>
+<p>Given a factor matrix <code>W</code> and paired row indices (<code>idx_top</code>, <code>idx_bot</code>), this function estimates a ratio
+ <code>beta[j]</code> for each component <code>j</code> such that:</p>
+<pre><code>W[idx_top, j] ≈ beta[j] * W[idx_bot, j]
+</code></pre>
+<p>The least-squares solution is computed independently per component and then clamped to a user-provided interval.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>W</code>
+            </td>
+            <td>
+                  <code> np.ndarray, shape (m, r)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Score / concentration matrix with <code>m</code> samples and <code>r</code> components.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>idx_top</code>
+            </td>
+            <td>
+                  <code> sequence[int]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Row indices corresponding to the "top/original" samples.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>idx_bot</code>
+            </td>
+            <td>
+                  <code> sequence[int]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Row indices corresponding to the "bottom/perturbed" samples.
+Must have the same length as <code>idx_top</code>.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>eps</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Small constant added to the denominator to avoid division by zero.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>boundaries</code>
+            </td>
+            <td>
+                  <code> tuple[float, float]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>(min_beta, max_beta) bounds used to clamp each estimated ratio.</p>
+              </div>
+            </td>
+            <td>
+                  <code>(0.95, 2)</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>beta</code></td>            <td>
+                  <code>(<span title="numpy.ndarray">ndarray</span>, <span title="shape">shape</span>(<span title="r">r</span>))</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Estimated ratio for each component, clamped to <code>[min_beta, max_beta]</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.solver.core.update_column_in_hals" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">update_column_in_hals</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">update_column_in_hals</span><span class="p">(</span><span class="n">Rk</span><span class="p">,</span> <span class="n">hk_norm2</span><span class="p">,</span> <span class="n">beta_k</span><span class="p">,</span> <span class="n">lam</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">prior_dict</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">gamma</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">l1_ratio</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">idx_top</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">idx_bot</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">eps</span><span class="o">=</span><span class="mf">1e-08</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>HALS-style update for one column with a paired-row ratio penalty.</p>
+<p>This update is designed for sample-mode factors (e.g., <code>W</code> in NMF or <code>A</code> in PARAFAC) when the dataset contains
+paired samples (top/bottom) that are expected to follow a component-wise ratio:</p>
+<pre><code>w[top_i] ≈ beta_k * w[bot_i]
+</code></pre>
+<p>The subproblem solved for a single component column <code>w_k</code> is:</p>
+<pre><code>1/2 || Rk - d * w_k ||_2^2
+</code></pre>
+<ul>
+<li>(lam/2) * sum_i (w[top_i] - beta_k * w[bot_i])^2</li>
+<li>(gamma/2) * ||mask * (w_k - p_k)||_2^2</li>
+<li>alpha * [ l1_ratio * ||w_k||_1 + (1 - l1_ratio)/2 * ||w_k||_2^2 ]</li>
+</ul>
+<p>where NaNs in the prior are ignored (masked out).</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>Rk</code>
+            </td>
+            <td>
+                  <code> np.ndarray, shape (m,)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Current HALS residual for component <code>k</code> (with the k-th contribution restored).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>hk_norm2</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Squared norm of the corresponding component in the other factor(s) (i.e., the diagonal element <code>d</code> of the
+Gram matrix).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>beta_k</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Current ratio estimate for component <code>k</code>.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>lam</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Ratio penalty weight for component <code>k</code>.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>k</code>
+            </td>
+            <td>
+                  <code> int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Component index (used to look up <code>prior_dict[k]</code>).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>prior_dict</code>
+            </td>
+            <td>
+                  <code> dict[int, array-like]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Mapping from component index to a prior vector of length <code>m</code> (NaNs allowed).</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>gamma</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Prior weight.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0.0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>alpha</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Elastic-net strength.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0.0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>l1_ratio</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Elastic-net mixing parameter in [0, 1].</p>
+              </div>
+            </td>
+            <td>
+                  <code>0.0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>idx_top</code>
+            </td>
+            <td>
+                  <code> sequence[int]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Indices of "top/original" rows in the paired sample design.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>idx_bot</code>
+            </td>
+            <td>
+                  <code> sequence[int]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Indices of "bottom/perturbed" rows paired with <code>idx_top</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>eps</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Small constant used as a positivity floor and for numerical stability.</p>
+              </div>
+            </td>
+            <td>
+                  <code>1e-08</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>w_new</code></td>            <td>
+                  <code>(<span title="numpy.ndarray">ndarray</span>, <span title="shape">shape</span>(<span title="m">m</span>))</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Updated non-negative column for component <code>k</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.expand", "navigation.sections", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

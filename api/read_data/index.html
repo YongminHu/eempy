@@ -1,0 +1,2062 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Excitation-Emission Matrix (EEM) fluorescence analysis toolkit">
+      
+      
+        <meta name="author" content="Yongmin Hu">
+      
+      
+      
+        <link rel="prev" href="../eem_processing/">
+      
+      
+        <link rel="next" href="../plot/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+    
+    
+      
+        <title>read_data - eempy</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#read_data" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="eempy" class="md-header__button md-logo" aria-label="eempy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            eempy
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              read_data
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="eempy" class="md-nav__button md-logo" aria-label="eempy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    eempy
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../eem_processing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    eem_processing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    read_data
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    read_data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#eempy.read_data.read_data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        read_data
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="read_data">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#eempy.read_data.read_data.get_filelist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_filelist
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.read_data.read_data.read_abs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        read_abs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.read_data.read_data.read_abs_dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        read_abs_dataset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.read_data.read_data.read_eem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        read_eem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.read_data.read_data.read_eem_dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        read_eem_dataset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.read_data.read_data.read_parafac_model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        read_parafac_model
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.read_data.read_data.read_parafac_models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        read_parafac_models
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.read_data.read_data.read_reference_from_text" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        read_reference_from_text
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plot/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    plot
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../solver/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    solver
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#eempy.read_data.read_data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        read_data
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="read_data">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#eempy.read_data.read_data.get_filelist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_filelist
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.read_data.read_data.read_abs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        read_abs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.read_data.read_data.read_abs_dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        read_abs_dataset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.read_data.read_data.read_eem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        read_eem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.read_data.read_data.read_eem_dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        read_eem_dataset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.read_data.read_data.read_parafac_model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        read_parafac_model
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.read_data.read_data.read_parafac_models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        read_parafac_models
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.read_data.read_data.read_reference_from_text" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        read_reference_from_text
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="read_data">read_data</h1>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="eempy.read_data.read_data" class="doc doc-heading">
+            <span class="doc doc-object-name doc-module-name">eempy.read_data.read_data</span>
+
+
+</h2>
+
+    <div class="doc doc-contents first">
+
+        <p>Functions for importing files
+Author: Yongmin Hu (yongminhu@outlook.com)
+Last update: 2026-01</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.read_data.read_data.get_filelist" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">get_filelist</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">get_filelist</span><span class="p">(</span><span class="n">folderpath</span><span class="p">,</span> <span class="n">mandatory_keywords</span><span class="p">,</span> <span class="n">optional_keywords</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Get a list containing all filenames with given keywords in a folder. A filename must contain all mandatory keywords
+and at least one of the optional keywords.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>folderpath</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Folder path to search.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>mandatory_keywords</code>
+            </td>
+            <td>
+                  <code> str or list of str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Filenames must contain all of these keywords (logical AND).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>optional_keywords</code>
+            </td>
+            <td>
+                  <code> str or list of str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Filenames must contain at least one of these keywords (logical OR). If empty or None, no additional filtering
+is applied beyond mandatory_keywords.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code>list of str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Filenames matching the keyword filters.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.read_data.read_data.read_abs" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">read_abs</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">read_abs</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="n">index_pos</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Tuple</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">data_format</span><span class="o">=</span><span class="s1">&#39;default&#39;</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Import UV absorbance data from UV absorbance file.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>file_path</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The filepath to the UV absorbance file</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>index_pos</code>
+            </td>
+            <td>
+                  <code> None or tuple with two elements</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The starting and ending positions of index in filenames. For example, if you want to read the index "2024_01_01"
+from the file with the name "EEM_2024_01_01_PEM.dat", a tuple (4, 13) should be passed to this parameter.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>data_format</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Format of the UV absorbance file. By passing <code>data_format='default'</code>, the following format is supported:</p>
+<pre><code>Ex_1    A_1
+Ex_2    A_2
+...     ...
+Ex_n    A_n
+</code></pre>
+<p>Where A_i correspond to the absorbance at wavelength Ex_i</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;default&#39;</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>absorbance</code></td>            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The UV absorbance spectrum (1D array).</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>ex_range</code></td>            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The excitation wavelengths (1D array).</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>index</code></td>            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The index of the Absorbance spectrum.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.read_data.read_data.read_abs_dataset" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">read_abs_dataset</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">read_abs_dataset</span><span class="p">(</span><span class="n">folder_path</span><span class="p">,</span> <span class="n">mandatory_keywords</span><span class="o">=</span><span class="s1">&#39;ABS&#39;</span><span class="p">,</span> <span class="n">optional_keywords</span><span class="o">=</span><span class="p">[],</span> <span class="n">data_format</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;default&#39;</span><span class="p">,</span> <span class="n">index_pos</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Tuple</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">custom_filename_list</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Tuple</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">wavelength_alignment</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">interpolation_method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;linear&#39;</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>folder_path</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The path to the folder containing absorbance files.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>mandatory_keywords</code>
+            </td>
+            <td>
+                  <code> list of str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Filenames must contain all of these keywords (logical AND).
+Example : ["ABS", "2021-02-02"] will match only files containing both substrings.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;ABS&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>optional_keywords</code>
+            </td>
+            <td>
+                  <code> list of str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Filenames must contain at least one of these keywords (logical OR).
+If empty or None, no additional filtering is applied beyond mandatory_keywords.</p>
+              </div>
+            </td>
+            <td>
+                  <code>[]</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>data_format</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Specify the type of absorbance data format.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;default&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>index_pos</code>
+            </td>
+            <td>
+                  <code> tuple/list or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The starting and ending positions of index in filenames. For example, if you want to read the index "2024_01_01"
+from the file with the name "ABS_2024_01_01_PEM.dat", a tuple (4, 13) should be passed to this parameter.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>custom_filename_list</code>
+            </td>
+            <td>
+                  <code> list or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If a list is passed, only the absorbance files whose filenames are specified in the list will be imported.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>wavelength_alignment</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Align the ex range of the absorbance files. This is useful if the absorbance are measured with different ex
+range. Note that ex will be aligned according to the ex ranges with the smallest intervals among all the
+imported absorbance files.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>interpolation_method</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The interpolation method used for aligning ex. It is only useful if wavelength_alignment=True.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;linear&#39;</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>abs_stack</code></td>            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A stack of imported absorbance files (n_samples, n_wavelengths).</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>ex_range</code></td>            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The excitation wavelengths (1D array).</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>indexes</code></td>            <td>
+                  <code><span title="list">list</span> or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The list of absorbance file indexes (if index_pos is specified).</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.read_data.read_data.read_eem" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">read_eem</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">read_eem</span><span class="p">(</span><span class="n">file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">index_pos</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="kc">None</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">data_format</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;default&#39;</span><span class="p">,</span> <span class="n">as_timestamp</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">timestamp_format</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">delimiter</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">file_first_row</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;ex&#39;</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Import EEM from file (tabular format).</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>file_path</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Filepath to the EEM file.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>index_pos</code>
+            </td>
+            <td>
+                  <code> None or tuple/list with two elements</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Start/end positions of index in filename (1-based start, end inclusive as in original code intent).
+Example : (4, 13) extracts basename[3:13].</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>data_format</code>
+            </td>
+            <td>
+                  <code> str, {&#39;default&#39;}</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Format of the EEM file. By passing <code>'default'</code>, the following tabular format is supported:
+- The first row contains excitation wavelengths (Ex).
+- The top left may be blank or non-numeric; any non-numeric tokens are ignored.
+- The first column of subsequent rows contains emission wavelengths (Em).
+- The remaining cells are fluorescence intensities for each (Ex, Em) pair.</p>
+<p>Schematic layout:</p>
+<pre><code>&lt;blank or label&gt;   Ex_1   Ex_2   Ex_3   ...   Ex_n
+Em_1               I_11   I_12   I_13   ...   I_1N
+Em_2               I_21   I_22   I_23   ...   I_2N
+...
+Em_m               I_m1   I_m2   I_m3   ...   I_mn
+</code></pre>
+<p>Where I_nm is the intensity at excitation Ex_n and emission Em_m.
+If your files are in similar format but with the first row being Em wavelengths and the fist column being Ex wavelengths, pass <code>file_first_row='em'</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;default&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>as_timestamp</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether to parse extracted index as datetime.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>timestamp_format</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Datetime strptime format if as_timestamp is True.
+Rules can be seen on https://docs.python.org/3/library/datetime.html#format-codes</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>delimiter</code>
+            </td>
+            <td>
+                  <code> Optional[str] = None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Field delimiter. If None (default), split on arbitrary whitespace (tabs/spaces). If your file uses a specific
+delimiter (e.g., comma or semicolon), pass <code>delimiter=','</code> or <code>delimiter=';'</code>, etc.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>file_first_row</code>
+            </td>
+            <td>
+                  <code> {&#34;ex&#34;,&#34;em&#34;}</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether the first row contains Ex or Em wavelengths.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;ex&#39;</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>intensity</code></td>            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>EEM matrix with shape (n_ex, n_em). Rows correspond to excitation wavelengths, columns to emission
+wavelengths. The smallest excitation &amp; emission wavelengths correspond to intensity[-1, 0],
+with excitation wavelength increases from bottom to top and emission wavelength increases from left to
+right.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>ex_range</code></td>            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Sorted excitation wavelengths (ascending).</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>em_range</code></td>            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Sorted emission wavelengths (ascending).</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>index</code></td>            <td>
+                  <code><span title="str">str</span> | <span title="datetime.datetime">datetime</span> | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Extracted index (optionally parsed as datetime).</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.read_data.read_data.read_eem_dataset" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">read_eem_dataset</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">read_eem_dataset</span><span class="p">(</span><span class="n">folder_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">mandatory_keywords</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">optional_keywords</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">data_format</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;default&#39;</span><span class="p">,</span> <span class="n">index_pos</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Tuple</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">as_timestamp</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">timestamp_format</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">delimiter</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">file_first_row</span><span class="o">=</span><span class="s1">&#39;ex&#39;</span><span class="p">,</span> <span class="n">custom_filename_list</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Tuple</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">wavelength_alignment</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">interpolation_method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;linear&#39;</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Import EEM dataset from files.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>folder_path</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The path to the folder containing EEMs.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>mandatory_keywords</code>
+            </td>
+            <td>
+                  <code> list of str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Filenames must contain all of these keywords (logical AND).
+Example : ["PEM", "2021-02-02"] will match only files containing both substrings.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>optional_keywords</code>
+            </td>
+            <td>
+                  <code> list of str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Filenames must contain at least one of these keywords (logical OR).
+If empty or None, no additional filtering is applied beyond mandatory_keywords.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>data_format</code>
+            </td>
+            <td>
+                  <code> str, {&#39;default&#39;}</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Format of the EEM file. By passing <code>'default'</code>, the following tabular format is supported:
+- The first row contains excitation wavelengths (Ex).
+- The top left may be blank or non-numeric; any non-numeric tokens are ignored.
+- The first column of subsequent rows contains emission wavelengths (Em).
+- The remaining cells are fluorescence intensities for each (Ex, Em) pair.</p>
+<p>Schematic layout:</p>
+<pre><code>&lt;blank or label&gt;   Ex_1   Ex_2   Ex_3   ...   Ex_n
+Em_1               I_11   I_12   I_13   ...   I_1N
+Em_2               I_21   I_22   I_23   ...   I_2N
+...
+Em_m               I_m1   I_m2   I_m3   ...   I_mn
+</code></pre>
+<p>Where I_nm is the intensity at excitation Ex_n and emission Em_m.
+If your files are in similar format but with the first row being Em wavelengths and the fist column being Ex wavelengths, pass <code>file_first_row='em'</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;default&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>index_pos</code>
+            </td>
+            <td>
+                  <code> tuple/list or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The starting and ending positions of index in filenames. For example, if you want to read the index "2024_01_01"
+from the file with the name "EEM_2024_01_01_PEM.dat", a tuple (4, 13) should be passed to this parameter.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>as_timestamp</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether to read the index as timestamps.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>timestamp_format</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Datetime strptime format if as_timestamp is True.
+Rules can be seen on https://docs.python.org/3/library/datetime.html#format-codes</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>delimiter</code>
+            </td>
+            <td>
+                  <code> Optional[str] = None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Field delimiter. If None (default), split on arbitrary whitespace (tabs/spaces). If your file uses a specific
+delimiter (e.g., comma or semicolon), pass <code>delimiter=','</code> or <code>delimiter=';'</code>, etc.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>file_first_row</code>
+            </td>
+            <td>
+                  <code> {&#34;ex&#34;,&#34;em&#34;}</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether the first row contains Ex or Em wavelengths.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;ex&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>custom_filename_list</code>
+            </td>
+            <td>
+                  <code> list or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If a list is passed, only the EEM files whose filenames are specified in the list will be imported.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>wavelength_alignment</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Align the ex/em ranges of the EEMs. This is useful if the EEMs are measured with different ex/em ranges.
+Note that ex/em will be aligned according to the ex/em ranges with the smallest intervals among all the
+imported EEMs.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>interpolation_method</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The interpolation method used for aligning ex/em. It is only useful if wavelength_alignment=True.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;linear&#39;</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>eem_stack</code></td>            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>EEM stack with shape (n_sample, n_ex, n_em). For each EEM with shape (n_ex, n_em), rows correspond to
+excitation wavelengths, columns to emission wavelengths. The smallest excitation &amp; emission wavelengths
+correspond to intensity[-1, 0], with excitation wavelength increases from bottom to top and emission
+wavelength increases from left to right.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>ex_range</code></td>            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Sorted excitation wavelengths (ascending).</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>em_range</code></td>            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Sorted emission wavelengths (ascending).</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>indexes</code></td>            <td>
+                  <code>list of str | datetime | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Extracted per-file indexes (optionally parsed as datetime).</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.read_data.read_data.read_parafac_model" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">read_parafac_model</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">read_parafac_model</span><span class="p">(</span><span class="n">filepath</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Import PARAFAC model from a text file written in the format suggested by OpenFluor (
+https : //openfluor.lablicate.com/). Note that the models downloaded from OpenFluor normally don't have scores.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>filepath</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The filepath to the model file.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>ex_df</code></td>            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Excitation loadings</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>em_df</code></td>            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Emission loadings</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>score_df</code></td>            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span> or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Scores (if there's any)</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>info_dict</code></td>            <td>
+                  <code><span title="dict">dict</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A dictionary containing the model information</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.read_data.read_data.read_parafac_models" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">read_parafac_models</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">read_parafac_models</span><span class="p">(</span><span class="n">datdir</span><span class="p">,</span> <span class="n">kw</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Search all PARAFAC models in a folder by keyword in filenames and import all of them into a dictionary using
+read_parafac_model()</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>datdir</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Folder containing PARAFAC model files.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>kw</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Keyword used to filter filenames.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code>list of dict</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A list of dicts with keys: <code>info</code>, <code>ex</code>, <code>em</code>, <code>score</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.read_data.read_data.read_reference_from_text" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">read_reference_from_text</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">read_reference_from_text</span><span class="p">(</span><span class="n">filepath</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Read reference data from text file. The reference data can be any 1D data (e.g., dissolved organic carbon
+concentration). This first line of the file should be a header, and then each following line contains one datapoint,
+without any separators other than line breaks.
+For example:</p>
+<pre><code>    DOC (mg/L)
+    1.0
+    2.0
+    ...
+    5.0
+</code></pre>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>filepath</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The filepath to the reference file.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>reference_data</code></td>            <td>
+                  <code>list of float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The reference values (one per line after the header).</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>header</code></td>            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The header string from the first line.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.expand", "navigation.sections", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

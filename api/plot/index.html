@@ -1,0 +1,2757 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Excitation-Emission Matrix (EEM) fluorescence analysis toolkit">
+      
+      
+        <meta name="author" content="Yongmin Hu">
+      
+      
+      
+        <link rel="prev" href="../read_data/">
+      
+      
+        <link rel="next" href="../solver/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+    
+    
+      
+        <title>plot - eempy</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#plot" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="eempy" class="md-header__button md-logo" aria-label="eempy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            eempy
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              plot
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="eempy" class="md-nav__button md-logo" aria-label="eempy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    eempy
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../eem_processing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    eem_processing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../read_data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    read_data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    plot
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    plot
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#eempy.plot.plot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="plot">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#eempy.plot.plot.plot_abs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_abs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.plot.plot.plot_dendrogram" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_dendrogram
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.plot.plot.plot_eem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_eem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.plot.plot.plot_eem_stack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_eem_stack
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.plot.plot.plot_error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_error
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.plot.plot.plot_fi" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_fi
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.plot.plot.plot_fi_correlation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_fi_correlation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.plot.plot.plot_fmax" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_fmax
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.plot.plot.plot_loadings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_loadings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.plot.plot.plot_reconstruction_error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_reconstruction_error
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../solver/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    solver
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#eempy.plot.plot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="plot">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#eempy.plot.plot.plot_abs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_abs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.plot.plot.plot_dendrogram" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_dendrogram
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.plot.plot.plot_eem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_eem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.plot.plot.plot_eem_stack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_eem_stack
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.plot.plot.plot_error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_error
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.plot.plot.plot_fi" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_fi
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.plot.plot.plot_fi_correlation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_fi_correlation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.plot.plot.plot_fmax" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_fmax
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.plot.plot.plot_loadings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_loadings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eempy.plot.plot.plot_reconstruction_error" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plot_reconstruction_error
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="plot">plot</h1>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="eempy.plot.plot" class="doc doc-heading">
+            <span class="doc doc-object-name doc-module-name">eempy.plot.plot</span>
+
+
+</h2>
+
+    <div class="doc doc-contents first">
+
+        <p>Functions for plotting EEM-related data
+Author: Yongmin Hu (yongminhu@outlook.com)
+Last update: 2024-07-03</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.plot.plot.plot_abs" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">plot_abs</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">plot_abs</span><span class="p">(</span><span class="n">absorbance</span><span class="p">,</span> <span class="n">ex_range</span><span class="p">,</span> <span class="n">xmax</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">ex_range_display</span><span class="o">=</span><span class="p">(</span><span class="mi">200</span><span class="p">,</span> <span class="mi">800</span><span class="p">),</span> <span class="n">plot_tool</span><span class="o">=</span><span class="s1">&#39;matplotlib&#39;</span><span class="p">,</span> <span class="n">display</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">figure_size</span><span class="o">=</span><span class="p">(</span><span class="mf">6.5</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Plot the UV absorbance data</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>absorbance</code>
+            </td>
+            <td>
+                  <code> np.ndarray</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The absorbance spectrum (1D array).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>ex_range</code>
+            </td>
+            <td>
+                  <code> np.ndarray</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The excitation wavelengths (1D array).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>xmax</code>
+            </td>
+            <td>
+                  <code> float (0~1)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The maximum absorbance displayed.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0.1</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>ex_range_display</code>
+            </td>
+            <td>
+                  <code> tuple with two elements</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The range of excitation wavelengths displayed.</p>
+              </div>
+            </td>
+            <td>
+                  <code>(200, 800)</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>plot_tool</code>
+            </td>
+            <td>
+                  <code> str, {&#39;matplotlib&#39;, &#39;plotly&#39;}</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Which python package to use for plotting.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;matplotlib&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>display</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether to display the figure when calling the function.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>figure_size</code>
+            </td>
+            <td>
+                  <code> tuple (width, height)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The size of the plot.</p>
+              </div>
+            </td>
+            <td>
+                  <code>(6.5, 2)</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>fig</code></td>            <td>
+                  <code><span title="matplotlib.figure.Figure">Figure</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>ax</code></td>            <td>
+                  <code><span title="matplotlib.axes.Axes">Axes</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Axes object when <code>plot_tool="matplotlib"</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.plot.plot.plot_dendrogram" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">plot_dendrogram</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">plot_dendrogram</span><span class="p">(</span><span class="n">linkage_matrix</span><span class="p">,</span> <span class="n">threshold</span><span class="p">,</span> <span class="n">index</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Plot a dendrogram from a linkage matrix.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>linkage_matrix</code>
+            </td>
+            <td>
+                  <code> np.ndarray</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Linkage matrix from hierarchical clustering.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>threshold</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Distance threshold for coloring clusters.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>index</code>
+            </td>
+            <td>
+                  <code> list or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Optional labels for samples.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>fig</code></td>            <td>
+                  <code><span title="plotly.graph_objects.Figure">Figure</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.plot.plot.plot_eem" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">plot_eem</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">plot_eem</span><span class="p">(</span><span class="n">intensity</span><span class="p">:</span> <span class="n">ndarray</span><span class="p">,</span> <span class="n">ex_range</span><span class="p">,</span> <span class="n">em_range</span><span class="p">,</span> <span class="n">auto_intensity_range</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">scale_type</span><span class="o">=</span><span class="s1">&#39;linear&#39;</span><span class="p">,</span> <span class="n">vmin</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">vmax</span><span class="o">=</span><span class="mi">10000</span><span class="p">,</span> <span class="n">n_cbar_ticks</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">cbar</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s1">&#39;jet&#39;</span><span class="p">,</span> <span class="n">figure_size</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">7</span><span class="p">),</span> <span class="n">axis_label_font_size</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">axis_ticks_font_size</span><span class="o">=</span><span class="mi">16</span><span class="p">,</span> <span class="n">cbar_label</span><span class="o">=</span><span class="s1">&#39;Intensity (a.u.)&#39;</span><span class="p">,</span> <span class="n">cbar_font_size</span><span class="o">=</span><span class="mi">16</span><span class="p">,</span> <span class="n">cbar_fraction</span><span class="o">=</span><span class="mf">0.02</span><span class="p">,</span> <span class="n">fix_aspect_ratio</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">rotate</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">plot_tool</span><span class="o">=</span><span class="s1">&#39;matplotlib&#39;</span><span class="p">,</span> <span class="n">display</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">title</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">title_font_size</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Plot EEM or EEM-like data.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>intensity</code>
+            </td>
+            <td>
+                  <code> np.ndarray</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The EEM.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>ex_range</code>
+            </td>
+            <td>
+                  <code> np.ndarray</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The excitation wavelengths.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>em_range</code>
+            </td>
+            <td>
+                  <code> np.ndarray</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The emission wavelengths.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>auto_intensity_range</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether to use the colorbar range generated automatically by matplotlib for plotting fluorescence intensity.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>scale_type</code>
+            </td>
+            <td>
+                  <code> str, {&#39;linear&#39;, &#39;log&#39;}</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The type of colorbar scale used for plotting fluorescence intensity.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;linear&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>vmin</code>
+            </td>
+            <td>
+                  <code> int or float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The minimum intensity displayed, if you wish to adjust the intensity scale yourself (autoscale=False).</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>vmax</code>
+            </td>
+            <td>
+                  <code> int or float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The maximum intensity displayed, if you wish to adjust the intensity scale yourself (autoscale=False).</p>
+              </div>
+            </td>
+            <td>
+                  <code>10000</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>n_cbar_ticks</code>
+            </td>
+            <td>
+                  <code> int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The number of ticks in colorbar.</p>
+              </div>
+            </td>
+            <td>
+                  <code>5</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>cmap</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The colormap, see https://matplotlib.org/stable/users/explain/colors/colormaps.html.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;jet&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>figure_size</code>
+            </td>
+            <td>
+                  <code> tuple or list with two elements</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The figure size.</p>
+              </div>
+            </td>
+            <td>
+                  <code>(10, 7)</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>axis_label_font_size</code>
+            </td>
+            <td>
+                  <code> int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The fontsize of the x and y axes labels.</p>
+              </div>
+            </td>
+            <td>
+                  <code>18</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>axis_ticks_font_size</code>
+            </td>
+            <td>
+                  <code> int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The fontsize of the x and y ticks labels.</p>
+              </div>
+            </td>
+            <td>
+                  <code>16</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>cbar</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether to plot the colorscale bar.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>cbar_label</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The label of the colorbar scale.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;Intensity (a.u.)&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>cbar_font_size</code>
+            </td>
+            <td>
+                  <code> int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The label size of the colorbar scale.</p>
+              </div>
+            </td>
+            <td>
+                  <code>16</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>cbar_fraction</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The size fraction of the colorbar scale.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0.02</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>fix_aspect_ratio</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether to fix the aspect ratio to be one.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>rotate</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether to rotate the EEM, so that the x-axis is excitation and y-axis is emission.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>plot_tool</code>
+            </td>
+            <td>
+                  <code> str, {&#39;matplotlib&#39;, &#39;plotly&#39;}</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Which python package to use for plotting.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;matplotlib&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>display</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether to display the figure when calling the function</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>title</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Plot title.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>title_font_size</code>
+            </td>
+            <td>
+                  <code> int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Font size for the plot title.</p>
+              </div>
+            </td>
+            <td>
+                  <code>20</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>fig</code></td>            <td>
+                  <code><span title="matplotlib.figure.Figure">Figure</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>ax</code></td>            <td>
+                  <code><span title="matplotlib.axes.Axes">Axes</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Axes object when <code>plot_tool="matplotlib"</code>.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>im</code></td>            <td>
+                  <code><span title="matplotlib.image.AxesImage">AxesImage</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Image handle when <code>plot_tool="matplotlib"</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.plot.plot.plot_eem_stack" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">plot_eem_stack</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">plot_eem_stack</span><span class="p">(</span><span class="n">eem_stack</span><span class="p">:</span> <span class="n">ndarray</span><span class="p">,</span> <span class="n">ex_range</span><span class="p">:</span> <span class="n">ndarray</span><span class="p">,</span> <span class="n">em_range</span><span class="p">:</span> <span class="n">ndarray</span><span class="p">,</span> <span class="n">titles</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">n_cols</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span> <span class="n">auto_intensity_range</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">scale_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;linear&#39;</span><span class="p">,</span> <span class="n">vmin</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">vmax</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">cmap</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;jet&#39;</span><span class="p">,</span> <span class="n">figure_size</span><span class="p">:</span> <span class="nb">tuple</span> <span class="o">=</span> <span class="p">(</span><span class="mi">12</span><span class="p">,</span> <span class="mi">12</span><span class="p">),</span> <span class="n">axis_label_font_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">12</span><span class="p">,</span> <span class="n">axis_ticks_font_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span> <span class="n">cbar</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">cbar_fraction</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.02</span><span class="p">,</span> <span class="n">fix_aspect_ratio</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">rotate</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">suptitle</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">suptitle_font_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">16</span><span class="p">,</span> <span class="n">plot_x_axis_label</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">plot_y_axis_label</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Plot a stack of EEMs in a grid of subplots.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>eem_stack</code>
+            </td>
+            <td>
+                  <code> np.ndarray</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Stack of EEMs, shape (n_samples, n_ex, n_em).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>ex_range</code>
+            </td>
+            <td>
+                  <code> np.ndarray</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Excitation wavelengths (1D array).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>em_range</code>
+            </td>
+            <td>
+                  <code> np.ndarray</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Emission wavelengths (1D array).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>titles</code>
+            </td>
+            <td>
+                  <code> list of str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>List of subplot titles, length must equal number of EEMs.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>n_cols</code>
+            </td>
+            <td>
+                  <code> int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Number of columns in the subplot grid.</p>
+              </div>
+            </td>
+            <td>
+                  <code>2</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>auto_intensity_range</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If True, use matplotlib's autoscale for intensities.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>scale_type</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>'linear' or 'log' scale for color mapping.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;linear&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>vmin</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Minimum intensity if auto_intensity_range is False.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>vmax</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Maximum intensity if auto_intensity_range is False.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>cmap</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Matplotlib colormap.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;jet&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>figure_size</code>
+            </td>
+            <td>
+                  <code> tuple</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Size of the entire figure.</p>
+              </div>
+            </td>
+            <td>
+                  <code>(12, 12)</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>axis_label_font_size</code>
+            </td>
+            <td>
+                  <code> int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Font size for axis labels.</p>
+              </div>
+            </td>
+            <td>
+                  <code>12</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>axis_ticks_font_size</code>
+            </td>
+            <td>
+                  <code> int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Font size for axis ticks.</p>
+              </div>
+            </td>
+            <td>
+                  <code>10</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>cbar</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether to show a colorbar for each subplot.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>cbar_fraction</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Fraction size of colorbar.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0.02</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>fix_aspect_ratio</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If True, force aspect ratio to 1.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>rotate</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If True, swap axes so x=excitation and y=emission.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>suptitle</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Overall figure title.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>suptitle_font_size</code>
+            </td>
+            <td>
+                  <code> int</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Font size for overall title.</p>
+              </div>
+            </td>
+            <td>
+                  <code>16</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>plot_x_axis_label</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether to show the x-axis label on each subplot.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>plot_y_axis_label</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether to show the y-axis label on each subplot.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>fig</code></td>            <td>
+                  <code><span title="matplotlib.pyplot.Figure">Figure</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>axes</code></td>            <td>
+                  <code>np.ndarray of Axes</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>ims</code></td>            <td>
+                  <code>list of AxesImage</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.plot.plot.plot_error" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">plot_error</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">plot_error</span><span class="p">(</span><span class="n">error</span><span class="p">,</span> <span class="n">bins</span><span class="o">=</span><span class="s1">&#39;auto&#39;</span><span class="p">,</span> <span class="n">display</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Plot a histogram of error values with sample indices on hover.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>error</code>
+            </td>
+            <td>
+                  <code> pd.DataFrame</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Error table with a single column.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>bins</code>
+            </td>
+            <td>
+                  <code> int, str, or sequence</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Bin specification passed to NumPy histogram.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;auto&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>display</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether to display the figure when calling the function.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>fig</code></td>            <td>
+                  <code><span title="plotly.graph_objects.Figure">Figure</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.plot.plot.plot_fi" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">plot_fi</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">plot_fi</span><span class="p">(</span><span class="n">fi</span><span class="p">:</span> <span class="n">DataFrame</span><span class="p">,</span> <span class="n">q</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.05</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Plot the fluorescence intensities of samples at a specific pair of ex/em.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>fi</code>
+            </td>
+            <td>
+                  <code> pd.DataFrame</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A DataFrame of shape (n,1), where n is the number of samples. The output of EEMDataset.peak_picking() can be
+passed to this parameter.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>q</code>
+            </td>
+            <td>
+                  <code> float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Where to plot the reference lines. By default, this is set to be 0.05 - two horizontal lines will be plotted at
+95% and 105% of the average fluorescence intensity.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0.05</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>fig</code></td>            <td>
+                  <code><span title="matplotlib.figure.Figure">Figure</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>ax</code></td>            <td>
+                  <code><span title="matplotlib.axes.Axes">Axes</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.plot.plot.plot_fi_correlation" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">plot_fi_correlation</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">plot_fi_correlation</span><span class="p">(</span><span class="n">fi</span><span class="p">:</span> <span class="n">DataFrame</span><span class="p">,</span> <span class="n">ref</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Plot fluorescence intensity versus the reference value.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>fi</code>
+            </td>
+            <td>
+                  <code> pd.DataFrame</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A DataFrame of shape (n,1), where n is the number of samples. The output of EEMDataset.peak_picking() can be
+passed to this parameter.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>ref</code>
+            </td>
+            <td>
+                  <code> np.ndarray</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The reference values. It should be a 1D numpy array of shape (n,), where n is the number of samples.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>fig</code></td>            <td>
+                  <code><span title="matplotlib.figure.Figure">Figure</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>ax</code></td>            <td>
+                  <code><span title="matplotlib.axes.Axes">Axes</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.plot.plot.plot_fmax" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">plot_fmax</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">plot_fmax</span><span class="p">(</span><span class="n">table</span><span class="p">,</span> <span class="n">component_labels</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">display</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">yaxis_title</span><span class="o">=</span><span class="s1">&#39;Fmax&#39;</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Plot Fmax (or similar score) tables.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>table</code>
+            </td>
+            <td>
+                  <code> pd.DataFrame</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Table of component scores (samples x components).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>component_labels</code>
+            </td>
+            <td>
+                  <code> list or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Optional labels for components shown in the legend.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>display</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether to display the figure when calling the function.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>yaxis_title</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Y-axis title for the score axis.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;Fmax&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>labels</code>
+            </td>
+            <td>
+                  <code> array-like or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Optional cluster labels used to overlay cluster-colored markers.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>fig</code></td>            <td>
+                  <code><span title="plotly.graph_objects.Figure">Figure</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.plot.plot.plot_loadings" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">plot_loadings</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">plot_loadings</span><span class="p">(</span><span class="n">parafac_models_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">colors</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="n">TABLEAU_COLORS</span><span class="o">.</span><span class="n">values</span><span class="p">()),</span> <span class="n">component_labels_dict</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">n_cols</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">plot_tool</span><span class="o">=</span><span class="s1">&#39;matplotlib&#39;</span><span class="p">,</span> <span class="n">display</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">legend_pad</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Plot the excitation and emission loadings for PARAFAC models.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>parafac_models_dict</code>
+            </td>
+            <td>
+                  <code><span title="dict">dict</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A dictionary of PARAFAC objects. Each PARAFAC model is labelled with a dictionary key.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>colors</code>
+            </td>
+            <td>
+                  <code><span title="list">list</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A list of matplotlib-compatible colors used for plotting.</p>
+              </div>
+            </td>
+            <td>
+                  <code><span title="list">list</span>(<span title="matplotlib.colors.TABLEAU_COLORS.values">values</span>())</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>component_labels_dict</code>
+            </td>
+            <td>
+                  <code><span title="dict">dict</span> or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A dictionary of component names for each PARAFAC model. The keys of the dict should be identical to those of the
+parafac_models_dict. The value of each key is a list of component names.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>n_cols</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span> or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Maximum number of subplots at each row. if None, subplots will be shown in-line.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>plot_tool</code>
+            </td>
+            <td>
+                  <code>(<span title="str">str</span>, {<span title="matplotlib">matplotlib</span>, <span title="plotly">plotly</span>})</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Which python package to use for plotting.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;matplotlib&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>display</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether to display the figure when calling the function.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>legend_pad</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Extra padding below the legend in the plotly layout.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>fig</code></td>            <td>
+                  <code><span title="matplotlib.figure.Figure">Figure</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>ax</code></td>            <td>
+                  <code><span title="matplotlib.axes.Axes">Axes</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Axes object when <code>plot_tool="matplotlib"</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="eempy.plot.plot.plot_reconstruction_error" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">plot_reconstruction_error</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">plot_reconstruction_error</span><span class="p">(</span><span class="n">table</span><span class="p">,</span> <span class="n">bar_col_name</span><span class="p">,</span> <span class="n">display</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">yaxis_scatter_title</span><span class="o">=</span><span class="s1">&#39;Reconstruction error&#39;</span><span class="p">,</span> <span class="n">yaxis_bar_title</span><span class="o">=</span><span class="s1">&#39;Reconstruction error reduction&#39;</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Plot reconstruction errors and per-sample error reductions.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>table</code>
+            </td>
+            <td>
+                  <code> pd.DataFrame</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Table containing error series. One column is used as bars (bar_col_name),
+the rest are plotted as lines.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>bar_col_name</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Column name used for the bar series.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>display</code>
+            </td>
+            <td>
+                  <code> bool</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether to display the figure when calling the function.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>yaxis_scatter_title</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Y-axis title for the line series.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;Reconstruction error&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>yaxis_bar_title</code>
+            </td>
+            <td>
+                  <code> str</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Y-axis title for the bar series.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;Reconstruction error reduction&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>labels</code>
+            </td>
+            <td>
+                  <code> array-like or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Optional cluster labels used to overlay cluster-colored markers and bars.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>fig</code></td>            <td>
+                  <code><span title="plotly.graph_objects.Figure">Figure</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.expand", "navigation.sections", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
