@@ -25,13 +25,13 @@ def process_eem_stack(eem_stack, f, **kwargs):
 
     Parameters
     ----------
-    eem_stack : np.ndarray (3d)
-        The EEM stack.
-    f : callable
+    eem_stack :  np.ndarray
+        The EEM stack (n_samples, n_ex, n_em).
+    f :  callable
         The EEM processing function to apply. Available functions include all functions named in the format of
         "eem_xxx()".
-    **kwargs : f function parameters
-        The parameters of the EEM processing function.
+    **kwargs : dict
+        Additional keyword arguments passed to the EEM processing function.
 
     Returns
     -------
@@ -80,13 +80,13 @@ def eem_threshold_masking(intensity, threshold, fill=np.nan, mask_type='greater'
 
     Parameters
     ----------
-    intensity : np.ndarray
+    intensity :  np.ndarray
         A 2D NumPy array representing the Excitation-Emission Matrix.
-    threshold : float or int
+    threshold :  float or int
         The intensity threshold value.
-    fill : float or int
+    fill :  float or int
         The value to use for masked data points.
-    mask_type : str, {"greater", "smaller"}
+    mask_type :  str, {"greater", "smaller"}
         Specifies whether to mask intensities 'greater' than or 'smaller' than the threshold.
 
     Returns
@@ -115,21 +115,21 @@ def eem_region_masking(intensity, ex_range, em_range, ex_min=230, ex_max=500, em
 
     Parameters
     ----------
-    intensity : np.ndarray
+    intensity :  np.ndarray
         A 2D NumPy array representing the Excitation-Emission Matrix.
-    ex_range : np.ndarray
+    ex_range :  np.ndarray
         A 1D NumPy array of the excitation wavelengths.
-    em_range : np.ndarray
+    em_range :  np.ndarray
         A 1D NumPy array of the emission wavelengths.
-    ex_min : float
+    ex_min :  float
         The lower boundary of the excitation wavelength for the masked area.
-    ex_max : float
+    ex_max :  float
         The upper boundary of the excitation wavelength for the masked area.
-    em_min : float
+    em_min :  float
         The lower boundary of the emission wavelength for the masked area.
-    em_max : float
+    em_max :  float
         The upper boundary of the emission wavelength for the masked area.
-    fill : str, {"nan", "zero"}
+    fill :  str, {"nan", "zero"}
         Specifies how to fill the masked area.
 
     Returns
@@ -161,11 +161,11 @@ def eem_gaussian_filter(intensity, sigma=1, truncate=3):
 
     Parameters
     ----------
-    intensity : np.ndarray
+    intensity :  np.ndarray
         A 2D NumPy array representing the Excitation-Emission Matrix.
-    sigma : float
+    sigma :  float
         Standard deviation for Gaussian kernel.
-    truncate : float
+    truncate :  float
         Truncate the filter at this many standard deviations.
 
     Returns
@@ -183,12 +183,12 @@ def eem_median_filter(intensity, window_size=(3, 3), mode='reflect'):
 
     Parameters
     ----------
-    intensity : np.ndarray
+    intensity :  np.ndarray
         A 2D NumPy array representing the Excitation-Emission Matrix.
-    window_size : tuple of two integers
+    window_size :  tuple of two integers
         The shape of the filter window, e.g., (height, width). For example,
         (3, 5) specifies a window of 3 pixels along axis 0 and 5 pixels along axis 1.
-    mode : str, {‘reflect’, ‘constant’, ‘nearest’, ‘mirror’, ‘wrap’}
+    mode :  str, {‘reflect’, ‘constant’, ‘nearest’, ‘mirror’, ‘wrap’}
         Determines how the array is extended beyond its boundaries.
         The default is 'reflect'.
 
@@ -207,19 +207,19 @@ def eem_cutting(intensity, ex_range_old, em_range_old, ex_min_new, ex_max_new, e
 
     Parameters
     ----------
-    intensity : np.ndarray
+    intensity :  np.ndarray
         A 2D NumPy array representing the Excitation-Emission Matrix.
-    ex_range : np.ndarray
-        A 1D NumPy array of the excitation wavelengths.
-    em_range : np.ndarray
-        A 1D NumPy array of the emission wavelengths.
-    ex_min_new : float
+    ex_range_old :  np.ndarray
+        A 1D NumPy array of the original excitation wavelengths.
+    em_range_old :  np.ndarray
+        A 1D NumPy array of the original emission wavelengths.
+    ex_min_new :  float
         The lower boundary of excitation wavelength of the EEM after cutting.
-    ex_max_new : float
+    ex_max_new :  float
         The upper boundary of excitation wavelength of the EEM after cutting.
-    em_min_new : float
+    em_min_new :  float
         The lower boundary of emission wavelength of the EEM after cutting.
-    em_max_new : float
+    em_max_new :  float
         The upper boundary of emission wavelength of the EEM after cutting.
 
     Returns
@@ -237,7 +237,7 @@ def eem_cutting(intensity, ex_range_old, em_range_old, ex_min_new, ex_max_new, e
     ex_max_idx = dichotomy_search(ex_range_old, ex_max_new)
     intensity_cut = intensity[
                     ex_range_old.shape[0] - ex_max_idx - 1:ex_range_old.shape[0] - ex_min_idx,
-                    em_min_idx:em_max_idx + 1
+                    em_min_idx : em_max_idx + 1
                     ]
     em_range_cut = em_range_old[em_min_idx:em_max_idx + 1]
     ex_range_cut = ex_range_old[ex_min_idx:ex_max_idx + 1]
@@ -253,15 +253,15 @@ def eem_nan_imputing(intensity, ex_range, em_range, method: str = 'linear', fill
 
     Parameters
     ----------
-    intensity : np.ndarray
+    intensity :  np.ndarray
         A 2D NumPy array representing the Excitation-Emission Matrix.
-    ex_range : np.ndarray
+    ex_range :  np.ndarray
         A 1D NumPy array of the excitation wavelengths.
-    em_range : np.ndarray
+    em_range :  np.ndarray
         A 1D NumPy array of the emission wavelengths.
-    method : str, {"linear", "cubic"}
+    method :  str, {"linear", "cubic"}
         The method for the primary 2D interpolation. Passed to `scipy.griddata`.
-    fill_value : float or str, {"linear_ex", "linear_em"}
+    fill_value :  float or str, {"linear_ex", "linear_em"}
         Controls how to fill values outside the non-NaN data region.
         - float: Fills with the given constant value.
         - 'linear_ex': Performs 1D linear extrapolation along each column (excitation axis).
@@ -272,7 +272,7 @@ def eem_nan_imputing(intensity, ex_range, em_range, method: str = 'linear', fill
     intensity_imputed : np.ndarray
         The imputed EEM with NaN values filled.
     """
-    x, y = np.meshgrid(em_range, ex_range[::-1])
+    x, y = np.meshgrid(em_range, ex_range[:-1])
     xx = x[~np.isnan(intensity)].flatten()
     yy = y[~np.isnan(intensity)].flatten()
     zz = intensity[~np.isnan(intensity)].flatten()
@@ -308,27 +308,27 @@ def eem_raman_normalization(intensity, blank=None, ex_range_blank=None, em_range
 
     Parameters
     ----------
-    intensity : np.ndarray
+    intensity :  np.ndarray
         A 2D NumPy array representing the Excitation-Emission Matrix.
-    blank : np.ndarray (2d) or np.ndarray (3d)
+    blank :  np.ndarray
         The blank. If this function is called by implementing process_eem_stack(), a 3d array with length n (the number
         of samples) at axis 0 may be passed. In this case, each EEM will be normalized with a sample-specific blank.
-    ex_range_blank : np.ndarray (1d)
-        The excitation wavelengths of blank.
-    em_range_blank : np.ndarray (1d)
-        The emission wavelengths of blank.
-    from_blank : bool
+    ex_range_blank :  np.ndarray
+        The excitation wavelengths of blank (1D array).
+    em_range_blank :  np.ndarray
+        The emission wavelengths of blank (1D array).
+    from_blank :  bool
         Whether to calculate the RSU from a blank. If False, manual_rsu will be used.
-    integration_time : float
+    integration_time :  float
         The integration time of the blank measurement.
-    ex_target : float
+    ex_target :  float
         The excitation wavelength at which the RSU is calculated.
-    bandwidth : float
+    bandwidth :  float
         The bandwidth of Raman scattering peak.
-    rsu_standard : float
+    rsu_standard :  float
         A factor used to divide the raw RSU. This is used to control the magnitude of RSU so that the normalized
         intensity of EEM would not be numerically too high or too low.
-    manual_rsu : float
+    manual_rsu :  float
         If from_blank = False, this will be used as the RSU_final directly.
 
     Returns
@@ -360,21 +360,21 @@ def eem_raman_scattering_removal(intensity, ex_range, em_range, width=5, interpo
 
     Parameters
     ----------
-    intensity : np.ndarray
+    intensity :  np.ndarray
         A 2D NumPy array representing the Excitation-Emission Matrix.
-    ex_range : np.ndarray
+    ex_range :  np.ndarray
         A 1D NumPy array of the excitation wavelengths.
-    em_range : np.ndarray
+    em_range :  np.ndarray
         A 1D NumPy array of the emission wavelengths.
-    width : float
+    width :  float
         The total width (in nm) of the Raman scattering band to remove.
-    interpolation_method : str, {"linear", "cubic", "nan", "zero"}
+    interpolation_method :  str, {"linear", "cubic", "nan", "zero"}
         The method used to fill the masked Raman scattering region.
-    interpolation_dimension : str, {"1d-ex", "1d-em", "2d"}
+    interpolation_dimension :  str, {"1d-ex", "1d-em", "2d"}
         The axis for interpolation. '1d-ex' interpolates along the excitation
         axis, '1d-em' along the emission axis, and '2d' uses 2D interpolation.
         This parameter is ignored if `interpolation_method` is 'nan' or 'zero'.#
-    recover_original_nan : bool
+    recover_original_nan :  bool
         If True (default), the nan values existing before scattering removal will be preserved as nan.
 
     Returns
@@ -442,26 +442,26 @@ def eem_rayleigh_scattering_removal(intensity, ex_range, em_range, width_o1=20, 
 
     Parameters
     ----------
-    intensity : np.ndarray
+    intensity :  np.ndarray
         A 2D NumPy array representing the Excitation-Emission Matrix.
-    ex_range : np.ndarray
+    ex_range :  np.ndarray
         A 1D NumPy array of the excitation wavelengths.
-    em_range : np.ndarray
+    em_range :  np.ndarray
         A 1D NumPy array of the emission wavelengths.
-    width_o1 : float
+    width_o1 :  float
         The total width (in nm) of the 1st order Rayleigh scattering (Em = Ex).
-    width_o2 : float
+    width_o2 :  float
         The total width (in nm) of the 2nd order Rayleigh scattering (Em = 2*Ex).
-    interpolation_dimension_o1 : str, {"1d-ex", "1d-em", "2d"}
+    interpolation_dimension_o1 :  str, {"1d-ex", "1d-em", "2d"}
         The axis for interpolating the 1st order scattering. '1d-ex' for
         excitation axis, '1d-em' for emission axis, '2d' for 2D grid.
-    interpolation_dimension_o2 : str, {"1d-ex", "1d-em", "2d"}
+    interpolation_dimension_o2 :  str, {"1d-ex", "1d-em", "2d"}
         The axis for interpolating the 2nd order scattering.
-    interpolation_method_o1 : str, {"linear", "cubic", "nan", "zero", "none"}
+    interpolation_method_o1 :  str, {"linear", "cubic", "nan", "zero", "none"}
         The method for filling the 1st order scattering region.
-    interpolation_method_o2 : str, {"linear", "cubic", "nan", "zero", "none"}
+    interpolation_method_o2 :  str, {"linear", "cubic", "nan", "zero", "none"}
         The method for filling the 2nd order scattering region.
-    recover_original_nan : bool
+    recover_original_nan :  bool
         If True (default), the nan values existing before scattering removal will be preserved as nan.
 
     Returns
@@ -504,7 +504,7 @@ def eem_rayleigh_scattering_removal(intensity, ex_range, em_range, width_o1=20, 
             intensity_masked[mask == 0] = np.nan
         elif itp == 'none':
             pass
-        else:  # Handle 'linear' or 'cubic'
+        else : # Handle 'linear' or 'cubic'
             if axis == '1d-ex':
                 for j in range(intensity.shape[1]):
                     col_mask = mask[:, j]
@@ -538,15 +538,15 @@ def eem_ife_correction(intensity, ex_range_eem, em_range_eem, absorbance, ex_ran
 
     Parameters
     ----------
-    intensity : np.ndarray
+    intensity :  np.ndarray
         A 2D NumPy array representing the Excitation-Emission Matrix.
-    ex_range_eem : np.ndarray
+    ex_range_eem :  np.ndarray
         A 1D NumPy array of the EEM's excitation wavelengths.
-    em_range_eem : np.ndarray
+    em_range_eem :  np.ndarray
         A 1D NumPy array of the EEM's emission wavelengths.
-    absorbance : np.ndarray
+    absorbance :  np.ndarray
         A 1D NumPy array of the absorbance spectrum corresponding to a single sample.
-    ex_range_abs : np.ndarray
+    ex_range_abs :  np.ndarray
         A 1D NumPy array of the wavelengths for the absorbance spectrum.
 
     Returns
@@ -569,19 +569,19 @@ def eem_regional_integration(intensity, ex_range, em_range, ex_min, ex_max, em_m
 
     Parameters
     ----------
-    intensity : np.ndarray
+    intensity :  np.ndarray
         A 2D NumPy array representing the Excitation-Emission Matrix.
-    ex_range : np.ndarray
+    ex_range :  np.ndarray
         A 1D NumPy array of the excitation wavelengths.
-    em_range : np.ndarray
+    em_range :  np.ndarray
         A 1D NumPy array of the emission wavelengths.
-    ex_min : float
+    ex_min :  float
         The lower boundary of excitation wavelengths of the integrated region.
-    ex_max : float
+    ex_max :  float
         The upper boundary of excitation wavelengths of the integrated region.
-    em_min : float
+    em_min :  float
         The lower boundary of emission wavelengths of the integrated region.
-    em_max : float
+    em_max :  float
         The upper boundary of emission wavelengths of the integrated region.
 
     Returns
@@ -625,17 +625,17 @@ def eem_interpolation(intensity, ex_range_old, em_range_old, ex_range_new, em_ra
 
     Parameters
     ----------
-    intensity : np.ndarray
+    intensity :  np.ndarray
         A 2D NumPy array representing the Excitation-Emission Matrix.
-    ex_range_old : np.ndarray
+    ex_range_old :  np.ndarray
         A 1D array of the original excitation wavelengths (must be monotonic).
-    em_range_old : np.ndarray
+    em_range_old :  np.ndarray
         A 1D array of the original emission wavelengths (must be monotonic).
-    ex_range_new : np.ndarray
+    ex_range_new :  np.ndarray
         A 1D array of the target excitation wavelengths.
-    em_range_new : np.ndarray
+    em_range_new :  np.ndarray
         A 1D array of the target emission wavelengths.
-    method : str, {"linear", "nearest", "slinear", "cubic", "quintic"}
+    method :  str, {"linear", "nearest", "slinear", "cubic", "quintic"}
         The interpolation method, passed to `scipy.RegularGridInterpolator`.
 
     Returns
@@ -643,8 +643,8 @@ def eem_interpolation(intensity, ex_range_old, em_range_old, ex_range_new, em_ra
     intensity_interpolated : np.ndarray
         The interpolated EEM on the new wavelength grid.
     """
-    interp = RegularGridInterpolator((ex_range_old[::-1], em_range_old), intensity, method=method, bounds_error=False)
-    x, y = np.meshgrid(ex_range_new[::-1], em_range_new, indexing='ij')
+    interp = RegularGridInterpolator((ex_range_old[:-1], em_range_old), intensity, method=method, bounds_error=False)
+    x, y = np.meshgrid(ex_range_new[:-1], em_range_new, indexing='ij')
     intensity_interpolated = interp((x, y)).reshape(ex_range_new.shape[0], em_range_new.shape[0])
     return intensity_interpolated
 
@@ -657,7 +657,7 @@ def eems_tf_normalization(eem_stack):
 
     Parameters
     ----------
-    eem_stack : np.ndarray
+    eem_stack :  np.ndarray
         The 3D EEM stack, with shape (n_samples, n_ex_wavelengths, n_em_wavelengths).
 
     Returns
@@ -683,13 +683,13 @@ def eems_fit_components(eem_stack, components, fit_intercept=False, positive=Tru
 
     Parameters
     ----------
-    eem_stack : np.ndarray
+    eem_stack :  np.ndarray
         The 3D EEM stack, with shape (n_samples, n_ex_wavelengths, n_em_wavelengths).
-    components : np.ndarray
+    components :  np.ndarray
         A 3D array of spectral components (n_components, n_ex, n_em).
-    fit_intercept : bool, optional
+    fit_intercept :  bool, optional
         Whether to calculate an intercept for the linear model. Defaults to False.
-    positive : bool, optional
+    positive :  bool, optional
         When set to True, forces the coefficients (scores) to be non-negative.
         Defaults to True.
 
@@ -730,15 +730,15 @@ def loadings_similarity(loadings1: pd.DataFrame, loadings2: pd.DataFrame, wavele
     Calculate the Tucker's congruence between each pair of components of two loadings (of excitation or emission).
     Parameters
     ----------
-    loadings1 : pandas.DataFrame
+    loadings1 :  pandas.DataFrame
         The first loadings. Each column of the table corresponds to one component.
-    loadings2 : pandas.DataFrame
+    loadings2 :  pandas.DataFrame
         The second loadings. Each column of the table corresponds to one component.
-    wavelength_alignment : bool
+    wavelength_alignment :  bool
         Align the ex/em ranges of the components. This is useful if the PARAFAC models have different ex/em wavelengths.
         Note that ex/em will be aligned according to the ex/em ranges with the lower intervals between the two PARAFAC
         models.
-    dtw : bool
+    dtw :  bool
         Apply dynamic time warping (DTW) to align the component loadings before calculating the similarity. This is
         useful for matching loadings with similar but shifted shapes.
     Returns
@@ -771,13 +771,15 @@ def loadings_similarity(loadings1: pd.DataFrame, loadings2: pd.DataFrame, wavele
 def component_similarity(components1: np.ndarray, components2: np.ndarray):
     """
     Calculate the Pearson correlation coefficient between each pair of components of two PARAFAC or NMF models.
-    Parameters:
+
+    Parameters
     ----------
-    components1 : np.ndarray
-        The first set of components. Each component is a 3D array (n_components, ex, em).
-    components2 : np.ndarray
-        The second set of components. Each component is a 3D array (n_components, ex, em).
-    Returns:
+    components1 :  np.ndarray
+        The first set of components, shape (n_components, n_ex, n_em).
+    components2 :  np.ndarray
+        The second set of components, shape (n_components, n_ex, n_em).
+
+    Returns
     -------
     m_sim : pandas.DataFrame
         The table of component similarities between each pair of components.
@@ -799,13 +801,13 @@ def align_components_by_loadings(models_dict: dict, ex_ref: pd.DataFrame, em_ref
     are labelled by the same name.
     Parameters
     ----------
-    models_dict : dict
+    models_dict :  dict
         Dictionary of PARAFAC objects, the models to be aligned.
-    ex_ref : pandas.DataFrame
+    ex_ref :  pandas.DataFrame
         Ex loadings of the reference
-    em_ref : pandas.DataFrame
+    em_ref :  pandas.DataFrame
         Em loadings of the reference
-    wavelength_alignment : bool
+    wavelength_alignment :  bool
         Align the ex/em ranges of the components. This is useful if the PARAFAC models have different ex/em wavelengths.
         Note that ex/em will be aligned according to the ex/em ranges with the lower intervals between the two PARAFAC
         models.
@@ -856,9 +858,9 @@ def align_components_by_components(models_dict: dict, components_ref: dict):
     are labelled by the same name.
     Parameters
     ----------
-    models_dict : dict
+    models_dict :  dict
         Dictionary of PARAFAC objects, the models to be aligned.
-    components_ref : dict
+    components_ref :  dict
         Dictionary where each item is a reference component. The keys are the component labels, the values are the
         components (np.ndarray).
     Returns

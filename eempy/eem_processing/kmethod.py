@@ -3,7 +3,7 @@ import pandas as pd
 
 import copy
 import warnings
-from typing import Optional, Union
+from typing import Union
 
 from math import sqrt
 from sklearn.metrics import silhouette_score
@@ -42,13 +42,13 @@ class KMethod:
 
     Parameters
     ----------
-    base_model : object
+    base_model :  object
         Base decomposition model used within each cluster (e.g., an instance of ``PARAFAC`` or ``EEMNMF``). Before
         passing to ``KMethod``, the base model should be properly configured (e.g., number of components,
         regularizations to be implemented, etc.).
-    n_initial_splits : int
+    n_initial_splits :  int
         Number of splits used in initialization (the first partition of the dataset before iterative refinement).
-    distance_metric : {'reconstruction_error', 'reconstruction_error_with_beta', 'quenching_coefficient'}, default 'reconstruction_error'
+    distance_metric :  {'reconstruction_error', 'reconstruction_error_with_beta', 'quenching_coefficient'}, default 'reconstruction_error'
         Criterion used for assignment in the maximization step.
         - ``'reconstruction_error'``: assign each sample to the model with the smallest per-sample RMSE.
         - ``'reconstruction_error_with_beta'``: like reconstruction error, but pairs samples into top/bot groups and
@@ -56,51 +56,51 @@ class KMethod:
           all samples (requires ``kw_top``, ``kw_bot`` in ``base_model``).
         - ``'quenching_coefficient'``: assign samples based on similarity of estimated quenching coefficients derived
           from paired top/bot samples (requires ``kw_top`` and ``kw_bot``).
-    max_iter : int, default 20
+    max_iter :  int, default 20
         Maximum number of K-method iterations in a single base clustering run.
-    tol : float, default 0.001
+    tol :  float, default 0.001
         Convergence tolerance based on similarity between cluster-specific models of two consecutive iterations.
         If the average Tucker’s congruence (or component similarity proxy) exceeds ``1 - tol``, convergence is declared.
-    elimination : {'default'} or int, default 'default'
+    elimination :  {'default'} or int, default 'default'
         Minimum allowed cluster size during optimization. Clusters with fewer samples than the threshold are removed.
         - ``'default'``: use ``base_model.n_components`` as the minimum cluster size.
         - ``int``: explicit minimum cluster size.
 
     Attributes
     ----------
-    unified_model : object or None
+    unified_model :  object or None
         Unified model fitted once on the full dataset (a deep copy of ``base_model``). Used as a reference for
         aligning components and for some distance calculations.
-    label_history : list or None
+    label_history :  list or None
         History of cluster assignments. For base clustering runs, this is typically a list containing a DataFrame
         with per-sample labels across iterations.
-    error_history : list or None
+    error_history :  list or None
         History of per-sample distances/errors (e.g., RMSE) across iterations, typically stored as DataFrames.
-    silhouette_score : float or None
+    silhouette_score :  float or None
         Silhouette score computed on the final distance matrix during hierarchical clustering (when available).
-    labels : numpy.ndarray or None
+    labels :  numpy.ndarray or None
         Final cluster labels for each sample. Labels are cluster IDs returned by hierarchical clustering
         (typically 1..K), or by base clustering when used directly.
-    index_sorted : list or None
+    index_sorted :  list or None
         Dataset index reordered by the final hierarchical clustering labels (when available).
-    ref_sorted : pandas.DataFrame or None
+    ref_sorted :  pandas.DataFrame or None
         Reference table reordered by the final hierarchical clustering labels (when available).
-    threshold_r : float or None
+    threshold_r :  float or None
         Distance threshold used for hierarchical clustering cut (derived from the linkage matrix).
-    eem_clusters : dict or None
+    eem_clusters :  dict or None
         Mapping from cluster label to an ``EEMDataset`` containing the EEMs assigned to that cluster.
-    cluster_specific_models : dict or None
+    cluster_specific_models :  dict or None
         Mapping from cluster label to the fitted cluster-specific model (deep copies of ``base_model`` fitted on each
         cluster).
-    consensus_matrix : numpy.ndarray or None
+    consensus_matrix :  numpy.ndarray or None
         Consensus matrix ``M`` with shape ``(n_samples, n_samples)``, where ``M[i, j]`` is the fraction of base runs
         in which sample i and j co-occur in the same cluster.
-    distance_matrix : numpy.ndarray or None
+    distance_matrix :  numpy.ndarray or None
         Distance matrix derived from consensus, typically ``D[i, j] = (1 - M[i, j])**p`` (see
         ``consensus_conversion_power``).
-    linkage_matrix : numpy.ndarray or None
+    linkage_matrix :  numpy.ndarray or None
         Hierarchical clustering linkage matrix computed from the consensus-derived distance matrix.
-    consensus_matrix_sorted : numpy.ndarray or None
+    consensus_matrix_sorted :  numpy.ndarray or None
         Consensus matrix reordered by the final cluster labels for visualization.
 
     References
@@ -111,7 +111,7 @@ class KMethod:
 
     def __init__(
             self,
-            base_model: Union[PARAFAC, EEMNMF],
+            base_model : Union[PARAFAC, EEMNMF],
             n_initial_splits,
             distance_metric="reconstruction_error",
             max_iter=20,
@@ -151,15 +151,15 @@ class KMethod:
         Run clustering for a single time.
         Parameters
         ----------
-        eem_dataset: EEMDataset
+        eem_dataset : EEMDataset
             The EEM dataset to be clustered.
         Returns
         -------
-        cluster_labels: np.ndarray
+        cluster_labels : np.ndarray
             Cluster labels.
-        label_history: list
+        label_history : list
             Cluster labels in each iteration.
-        error_history: list
+        error_history : list
             Average reconstruction error (RMSE) in each iteration.
         """
         # -------Generate a unified model as reference for ordering components--------
@@ -189,10 +189,15 @@ class KMethod:
         def maximization(models: dict):
             sample_error = []
             sub_datasets = {}
+            idx_top = None
+            idx_bot = None
+            if self.distance_metric in ["reconstruction_error_with_beta", "quenching_coefficient"]:
+                if not all([self.kw_top, self.kw_bot]):
+                    raise ValueError("Both kw_unquenched and kw_quenched must be passed.")
+                idx_top = [i for i in range(len(eem_dataset.index)) if self.kw_top in eem_dataset.index[i]]
+                idx_bot = [i for i in range(len(eem_dataset.index)) if self.kw_bot in eem_dataset.index[i]]
             for label, m in models.items():
                 if self.distance_metric == "reconstruction_error_with_beta":
-                    idx_top = [i for i in range(len(eem_dataset.index)) if self.kw_top in eem_dataset.index[i]]
-                    idx_bot = [i for i in range(len(eem_dataset.index)) if self.kw_bot in eem_dataset.index[i]]
                     score_m, fmax_m, eem_stack_re_m = m.predict(
                         eem_dataset=eem_dataset,
                         fit_beta=True,
@@ -212,8 +217,7 @@ class KMethod:
                     rmse = np.sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels)
                     sample_error.append(rmse)
                 elif self.distance_metric == "quenching_coefficient":
-                    if not all([self.kw_top, self.kw_bot]):
-                        raise ValueError("Both kw_unquenched and kw_quenched must be passed.")
+                    score_m, fmax_m, eem_stack_re_m = m.predict(eem_dataset)
                     if type(m).__name__ == 'PARAFAC':
                         fmax_establishment = m.nnls_fmax
                     elif type(m).__name__ == 'EEMNMF':
@@ -246,13 +250,13 @@ class KMethod:
         def model_similarity(models_1: dict, models_2: dict):
             similarity = 0
             for label, m in models_1.items():
-                similarity = component_similarity(m.components, models_2[label].components).to_numpy().diagonal()
-            similarity = np.sum(similarity) / len(models_1)
+                sim = component_similarity(m.components, models_2[label].components).to_numpy().diagonal()
+                similarity += np.mean(sim)
+            similarity = similarity / len(models_1)
             return similarity
         # -------Initialization--------
         label_history = []
         error_history = []
-        sample_errors = []
         sub_datasets_n = {}
         if self.distance_metric == "reconstruction_error":
             initial_sub_eem_datasets = eem_dataset.splitting(n_split=self.n_initial_splits)
@@ -277,10 +281,10 @@ class KMethod:
                 if self.elimination == 'default' and sub_dataset_i.eem_stack.shape[0] <= self.base_model.n_components:
                     cluster_label_to_remove.append(cluster_label)
                 elif isinstance(self.elimination, int):
-                    if self.elimination <= max(self.base_model.n_components, self.elimination):
+                    if sub_dataset_i.eem_stack.shape[0] <= self.elimination:
                         cluster_label_to_remove.append(cluster_label)
-            for l in cluster_label_to_remove:
-                sub_datasets_n.pop(l)
+            for cluster_label in cluster_label_to_remove:
+                sub_datasets_n.pop(cluster_label)
             # -------The estimation step-------
             cluster_specific_models_new = estimation(sub_datasets_n)
             cluster_specific_models_new = align_components_by_components(
@@ -316,15 +320,15 @@ class KMethod:
         Run the clustering for many times and combine the output of each run to obtain an optimal clustering.
         Parameters
         ----------
-        eem_dataset: EEMDataset
+        eem_dataset : EEMDataset
             EEM dataset.
-        n_base_clusterings: int
+        n_base_clusterings : int
             Number of base clustering.
-        subsampling_portion: float
+        subsampling_portion : float
             The portion of EEMs remained after subsampling.
         Returns
         -------
-        self: object
+        self : object
             The established K-PARAFACs model
         """
         n_samples = eem_dataset.eem_stack.shape[0]
@@ -380,11 +384,11 @@ class KMethod:
         """
         Parameters
         ----------
-        eem_dataset: EEMDataset
+        eem_dataset : EEMDataset
             EEM dataset to cluster.
-        n_clusters: int
+        n_clusters : int
             Number of clusters.
-        consensus_conversion_power: float
+        consensus_conversion_power : float
             The factor adjusting the conversion from consensus matrix (M) to distance matrix (D) used for hierarchical
             clustering. D_{i,j} = (1 - M_{i,j})^factor. This number influences the gradient of distance with respect
             to consensus. A smaller number will lead to shaper increase of distance at consensus close to 1.
@@ -396,7 +400,7 @@ class KMethod:
         distance_matrix = (1 - self.consensus_matrix) ** consensus_conversion_power
         linkage_matrix = linkage(squareform(distance_matrix), method='complete')
         labels = fcluster(linkage_matrix, n_clusters, criterion='maxclust')
-        linkage_matrix_sorted = linkage_matrix[linkage_matrix[:, 2].argsort()[::-1]]
+        linkage_matrix_sorted = linkage_matrix[linkage_matrix[:, 2].argsort()[:-1]]
         max_d = linkage_matrix_sorted[n_clusters - 2, 2]
         self.threshold_r = max_d
         sorted_indices = np.argsort(labels)
@@ -444,17 +448,17 @@ class KMethod:
         produce the least RMSE.
         Parameters
         ----------
-        eem_dataset: EEMDataset
+        eem_dataset : EEMDataset
             The EEM dataset to be predicted.
         Returns
         -------
-        best_model_label: pd.DataFrame
+        best_model_label : pd.DataFrame
             The best-fit model for every EEM.
-        score_all: pd.DataFrame
+        score_all : pd.DataFrame
             The score fitted with each cluster-specific model.
-        fmax_all: pd.DataFrame
+        fmax_all : pd.DataFrame
             The fmax fitted with each cluster-specific model.
-        sample_error: pd.DataFrame
+        sample_error : pd.DataFrame
             The RMSE fitted with each cluster-specific model.
         """
         sample_error = []
@@ -462,7 +466,7 @@ class KMethod:
         fmax_all = []
         for label, m in self.cluster_specific_models.items():
             score_m, fmax_m, eem_stack_re_m = m.predict(eem_dataset)
-            res = m.eem_stack_train - eem_stack_re_m
+            res = eem_dataset.eem_stack - eem_stack_re_m
             n_pixels = m.eem_stack_train.shape[1] * m.eem_stack_train.shape[2]
             rmse = sqrt(np.sum(res ** 2, axis=(1, 2)) / n_pixels)
             sample_error.append(rmse)

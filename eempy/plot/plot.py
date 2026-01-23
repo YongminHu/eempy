@@ -19,57 +19,78 @@ from matplotlib.lines import Line2D
 import plotly.figure_factory as ff
 
 
-def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_type='linear', vmin=0, vmax=10000,
-             n_cbar_ticks=5, cbar=True, cmap='jet', figure_size=(10, 7), axis_label_font_size=18, axis_ticks_font_size=16,
-             cbar_label="Intensity (a.u.)", cbar_font_size=16, cbar_fraction=0.02, fix_aspect_ratio=True, rotate=False,
-             plot_tool='matplotlib', display=True, title=None, title_font_size=20):
+def plot_eem(intensity: np.ndarray, 
+             ex_range, 
+             em_range, 
+             auto_intensity_range=True, 
+             scale_type='linear', 
+             vmin=0, 
+             vmax=10000,
+             n_cbar_ticks=5, 
+             cbar=True, 
+             cmap='jet', 
+             figure_size=(10, 7), 
+             axis_label_font_size=18, 
+             axis_ticks_font_size=16,
+             cbar_label="Intensity (a.u.)", 
+             cbar_font_size=16, 
+             cbar_fraction=0.02, 
+             fix_aspect_ratio=True, 
+             rotate=False,
+             plot_tool='matplotlib', 
+             display=True, 
+             title=None, 
+             title_font_size=20
+             ):
     """
     Plot EEM or EEM-like data.
 
     Parameters
     ----------
-    intensity: np.ndarray (2d)
+    intensity :  np.ndarray
         The EEM.
-    ex_range: np.ndarray (1d)
+    ex_range :  np.ndarray
         The excitation wavelengths.
-    em_range: np.ndarray (1d)
+    em_range :  np.ndarray
         The emission wavelengths.
-    auto_intensity_range: bool
+    auto_intensity_range :  bool
         Whether to use the colorbar range generated automatically by matplotlib for plotting fluorescence intensity.
-    scale_type: str, {'linear', 'log'}
+    scale_type :  str, {'linear', 'log'}
         The type of colorbar scale used for plotting fluorescence intensity.
-    vmin: int or float
+    vmin :  int or float
         The minimum intensity displayed, if you wish to adjust the intensity scale yourself (autoscale=False).
-    vmax: int or float
+    vmax :  int or float
         The maximum intensity displayed, if you wish to adjust the intensity scale yourself (autoscale=False).
-    n_cbar_ticks: int
+    n_cbar_ticks :  int
         The number of ticks in colorbar.
-    cmap: str
+    cmap :  str
         The colormap, see https://matplotlib.org/stable/users/explain/colors/colormaps.html.
-    figure_size: tuple or list with two elements
+    figure_size :  tuple or list with two elements
         The figure size.
-    axis_label_font_size: int
+    axis_label_font_size :  int
         The fontsize of the x and y axes labels.
-    axis_ticks_font_size: int
+    axis_ticks_font_size :  int
         The fontsize of the x and y ticks labels.
-    cbar: bool
+    cbar :  bool
         Whether to plot the colorscale bar.
-    cbar_label: str
+    cbar_label :  str
         The label of the colorbar scale.
-    cbar_font_size: int
+    cbar_font_size :  int
         The label size of the colorbar scale.
-    cbar_fraction: float
+    cbar_fraction :  float
         The size fraction of the colorbar scale.
-    fix_aspect_ratio: bool
+    fix_aspect_ratio :  bool
         Whether to fix the aspect ratio to be one.
-    rotate: bool
+    rotate :  bool
         Whether to rotate the EEM, so that the x-axis is excitation and y-axis is emission.
-    plot_tool: str, {'matplotlib', 'plotly'}
+    plot_tool :  str, {'matplotlib', 'plotly'}
         Which python package to use for plotting.
-    display: bool
+    display :  bool
         Whether to display the figure when calling the function
-    title: str
+    title :  str
         Plot title.
+    title_font_size :  int
+        Font size for the plot title.
 
     Returns
     -------
@@ -133,7 +154,7 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
             t_cbar = np.logspace(math.log(vmin), math.log(vmax), n_cbar_ticks)
             trace = go.Heatmap(z=np.log10(intensity) if not rotate else np.flipud(np.fliplr(np.log10(intensity).T)),
                                x=em_range if not rotate else ex_range,
-                               y=ex_range[::-1] if not rotate else em_range[::-1],
+                               y=ex_range[:-1] if not rotate else em_range[:-1],
                                colorscale=cmap,
                                zmin=vmin if not auto_intensity_range else None,
                                zmax=vmax if not auto_intensity_range else None,
@@ -145,7 +166,7 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
             trace = go.Heatmap(
                 z=intensity if not rotate else np.flipud(np.fliplr(intensity.T)),
                 x=em_range if not rotate else ex_range,
-                y=ex_range[::-1] if not rotate else em_range[::-1],
+                y=ex_range[:-1] if not rotate else em_range[:-1],
                 colorscale=cmap,
                 zmin=vmin if not auto_intensity_range else None,
                 zmax=vmax if not auto_intensity_range else None,
@@ -188,67 +209,75 @@ def plot_eem(intensity, ex_range, em_range, auto_intensity_range=True, scale_typ
 
 
 def plot_eem_stack(
-    eem_stack: np.ndarray,
-    ex_range: np.ndarray,
-    em_range: np.ndarray,
-    titles: list = None,
-    n_cols: int = 2,
-    auto_intensity_range: bool = True,
-    scale_type: str = 'linear',  # 'linear' or 'log'
-    vmin: float = None,
-    vmax: float = None,
-    cmap: str = 'jet',
-    figure_size: tuple = (12, 12),
-    axis_label_font_size: int = 12,
-    axis_ticks_font_size: int = 10,
-    cbar: bool = True,
-    cbar_fraction: float = 0.02,
-    fix_aspect_ratio: bool = True,
-    rotate: bool = False,
-    suptitle: str = None,
-    suptitle_font_size: int = 16,
-    plot_x_axis_label = True,
-    plot_y_axis_label = True,
+    eem_stack : np.ndarray,
+    ex_range : np.ndarray,
+    em_range : np.ndarray,
+    titles : list = None,
+    n_cols : int = 2,
+    auto_intensity_range : bool = True,
+    scale_type : str = 'linear',  # 'linear' or 'log'
+    vmin : float = None,
+    vmax : float = None,
+    cmap : str = 'jet',
+    figure_size : tuple = (12, 12),
+    axis_label_font_size : int = 12,
+    axis_ticks_font_size : int = 10,
+    cbar : bool = True,
+    cbar_fraction : float = 0.02,
+    fix_aspect_ratio : bool = True,
+    rotate : bool = False,
+    suptitle : str = None,
+    suptitle_font_size : int = 16,
+    plot_x_axis_label : bool = True,
+    plot_y_axis_label : bool = True,
 ) -> tuple:
     """
     Plot a stack of EEMs in a grid of subplots.
 
     Parameters
     ----------
-    eem_stack : np.ndarray (3D)
+    eem_stack :  np.ndarray
         Stack of EEMs, shape (n_samples, n_ex, n_em).
-    ex_range : np.ndarray (1D)
-        Excitation wavelengths.
-    em_range : np.ndarray (1D)
-        Emission wavelengths.
-    titles : list of str
+    ex_range :  np.ndarray
+        Excitation wavelengths (1D array).
+    em_range :  np.ndarray
+        Emission wavelengths (1D array).
+    titles :  list of str
         List of subplot titles, length must equal number of EEMs.
-    n_cols : int
+    n_cols :  int
         Number of columns in the subplot grid.
-    auto_intensity_range : bool
+    auto_intensity_range :  bool
         If True, use matplotlib's autoscale for intensities.
-    scale_type : str
+    scale_type :  str
         'linear' or 'log' scale for color mapping.
-    vmin, vmax : float
-        Min and max intensities if auto_intensity_range is False.
-    cmap : str
+    vmin :  float
+        Minimum intensity if auto_intensity_range is False.
+    vmax :  float
+        Maximum intensity if auto_intensity_range is False.
+    cmap :  str
         Matplotlib colormap.
-    figure_size : tuple
+    figure_size :  tuple
         Size of the entire figure.
-    axis_label_font_size, axis_ticks_font_size : int
-        Font sizes for labels and ticks.
-    cbar : bool
+    axis_label_font_size :  int
+        Font size for axis labels.
+    axis_ticks_font_size :  int
+        Font size for axis ticks.
+    cbar :  bool
         Whether to show a colorbar for each subplot.
-    cbar_fraction : float
+    cbar_fraction :  float
         Fraction size of colorbar.
-    fix_aspect_ratio : bool
+    fix_aspect_ratio :  bool
         If True, force aspect ratio to 1.
-    rotate : bool
+    rotate :  bool
         If True, swap axes so x=excitation and y=emission.
-    suptitle : str
+    suptitle :  str
         Overall figure title.
-    suptitle_font_size : int
+    suptitle_font_size :  int
         Font size for overall title.
+    plot_x_axis_label :  bool
+        Whether to show the x-axis label on each subplot.
+    plot_y_axis_label :  bool
+        Whether to show the y-axis label on each subplot.
 
     Returns
     -------
@@ -330,19 +359,19 @@ def plot_abs(absorbance, ex_range, xmax=0.1, ex_range_display=(200, 800), plot_t
 
     Parameters
     ----------
-    absorbance: np.ndarray (1d)
-        The absorbance.
-    ex_range: np.ndarray (1d)
-        The excitation wavelengths.
-    xmax: float (0~1)
+    absorbance :  np.ndarray
+        The absorbance spectrum (1D array).
+    ex_range :  np.ndarray
+        The excitation wavelengths (1D array).
+    xmax :  float (0~1)
         The maximum absorbance displayed.
-    ex_range_display: tuple with two elements
+    ex_range_display :  tuple with two elements
         The range of excitation wavelengths displayed.
-    plot_tool: str, {'matplotlib', 'plotly'}
+    plot_tool :  str, {'matplotlib', 'plotly'}
         Which python package to use for plotting.
-    display: bool
+    display :  bool
         Whether to display the figure when calling the function.
-    figure_size: tuple (width, height)
+    figure_size :  tuple (width, height)
         The size of the plot.
 
     Returns
@@ -381,10 +410,10 @@ def plot_fi(fi: pd.DataFrame, q: float = 0.05):
 
     Parameters
     ----------
-    fi: pandas DataFrame
+    fi :  pd.DataFrame
         A DataFrame of shape (n,1), where n is the number of samples. The output of EEMDataset.peak_picking() can be
         passed to this parameter.
-    q: float
+    q :  float
         Where to plot the reference lines. By default, this is set to be 0.05 - two horizontal lines will be plotted at
         95% and 105% of the average fluorescence intensity.
 
@@ -420,10 +449,10 @@ def plot_fi_correlation(fi: pd.DataFrame, ref):
 
     Parameters
     ----------
-    fi: pandas DataFrame
+    fi :  pd.DataFrame
         A DataFrame of shape (n,1), where n is the number of samples. The output of EEMDataset.peak_picking() can be
         passed to this parameter.
-    ref: np.ndarray (1d)
+    ref :  np.ndarray
         The reference values. It should be a 1D numpy array of shape (n,), where n is the number of samples.
 
     Returns
@@ -460,26 +489,34 @@ def plot_fi_correlation(fi: pd.DataFrame, ref):
     return fig, ax
 
 
-def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()), component_labels_dict=None,
-                  n_cols=None, plot_tool='matplotlib', display=True, legend_pad=0):
+def plot_loadings(
+        parafac_models_dict: dict, 
+        colors=list(TABLEAU_COLORS.values()), 
+        component_labels_dict=None,
+        n_cols=None, plot_tool='matplotlib', 
+        display=True, 
+        legend_pad=0
+        ):
     """
     Plot the excitation and emission loadings for PARAFAC models.
 
     Parameters
     ----------
-    parafac_models_dict: dict
+    parafac_models_dict : dict
         A dictionary of PARAFAC objects. Each PARAFAC model is labelled with a dictionary key.
-    colors: format for matplotlib color
-        A list of colors used for plotting.
-    component_labels_dict: dict or None
+    colors : list
+        A list of matplotlib-compatible colors used for plotting.
+    component_labels_dict : dict or None
         A dictionary of component names for each PARAFAC model. The keys of the dict should be identical to those of the
         parafac_models_dict. The value of each key is a list of component names.
-    n_cols: int or None
+    n_cols : int or None
         Maximum number of subplots at each row. if None, subplots will be shown in-line.
-    plot_tool: str, {'matplotlib', 'plotly'}
+    plot_tool : str, {'matplotlib', 'plotly'}
         Which python package to use for plotting.
-    display: bool
+    display : bool
         Whether to display the figure when calling the function.
+    legend_pad : float
+        Extra padding below the legend in the plotly layout.
 
     Returns
     -------
@@ -618,6 +655,26 @@ def plot_loadings(parafac_models_dict: dict, colors=list(TABLEAU_COLORS.values()
 
 
 def plot_fmax(table, component_labels=None, display=True, yaxis_title='Fmax', labels=None):
+    """
+    Plot Fmax (or similar score) tables.
+
+    Parameters
+    ----------
+    table :  pd.DataFrame
+        Table of component scores (samples x components).
+    component_labels :  list or None
+        Optional labels for components shown in the legend.
+    display :  bool
+        Whether to display the figure when calling the function.
+    yaxis_title :  str
+        Y-axis title for the score axis.
+    labels :  array-like or None
+        Optional cluster labels used to overlay cluster-colored markers.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+    """
     color_map_components = px.colors.qualitative.Plotly
     if labels is not None:
         color_map_clusters = px.colors.qualitative.Dark24
@@ -663,6 +720,22 @@ def plot_fmax(table, component_labels=None, display=True, yaxis_title='Fmax', la
 
 
 def plot_error(error, bins='auto', display=True):
+    """
+    Plot a histogram of error values with sample indices on hover.
+
+    Parameters
+    ----------
+    error :  pd.DataFrame
+        Error table with a single column.
+    bins :  int, str, or sequence
+        Bin specification passed to NumPy histogram.
+    display :  bool
+        Whether to display the figure when calling the function.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+    """
     series = error.iloc[:, 0]
 
     bin_edges = np.histogram_bin_edges(series, bins=bins)
@@ -698,12 +771,35 @@ def plot_error(error, bins='auto', display=True):
 
 def plot_reconstruction_error(table, bar_col_name, display=True, yaxis_scatter_title='Reconstruction error',
                               yaxis_bar_title='Reconstruction error reduction', labels=None):
+    """
+    Plot reconstruction errors and per-sample error reductions.
+
+    Parameters
+    ----------
+    table :  pd.DataFrame
+        Table containing error series. One column is used as bars (bar_col_name),
+        the rest are plotted as lines.
+    bar_col_name :  str
+        Column name used for the bar series.
+    display :  bool
+        Whether to display the figure when calling the function.
+    yaxis_scatter_title :  str
+        Y-axis title for the line series.
+    yaxis_bar_title :  str
+        Y-axis title for the bar series.
+    labels :  array-like or None
+        Optional cluster labels used to overlay cluster-colored markers and bars.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+    """
     color_map_col = px.colors.qualitative.Plotly
     if labels is not None:
         color_map_clusters = px.colors.qualitative.Dark24
         unique_labels = list(set(labels))
         color_dict_clusters = {
-            label: color_map_clusters[i % len(color_map_clusters)] for i, label in enumerate(unique_labels)
+            label : color_map_clusters[i % len(color_map_clusters)] for i, label in enumerate(unique_labels)
         }
     # Create a scatter plot
     fig = go.Figure()
@@ -754,6 +850,22 @@ def plot_reconstruction_error(table, bar_col_name, display=True, yaxis_scatter_t
 
 
 def plot_dendrogram(linkage_matrix, threshold, index: list = None):
+    """
+    Plot a dendrogram from a linkage matrix.
+
+    Parameters
+    ----------
+    linkage_matrix :  np.ndarray
+        Linkage matrix from hierarchical clustering.
+    threshold :  float
+        Distance threshold for coloring clusters.
+    index :  list or None
+        Optional labels for samples.
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+    """
 
     # Initialize figure by creating upper dendrogram
     fig = ff.create_dendrogram(linkage_matrix, linkagefun=lambda x: linkage_matrix, orientation='bottom',

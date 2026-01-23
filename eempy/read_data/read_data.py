@@ -13,7 +13,7 @@ import pandas as pd
 import json
 from datetime import datetime
 from typing import Union, Tuple, List, Optional
-from ..eem_processing import eem_interpolation, eem_cutting, process_eem_stack, EEMDataset
+from ..eem_processing import eem_interpolation, EEMDataset
 from ..utils import dichotomy_search
 from scipy.interpolate import interp1d
 
@@ -32,19 +32,19 @@ def read_eem(
 
     Parameters
     ----------
-    file_path : str
+    file_path :  str
         Filepath to the EEM file.
-    index_pos : None or tuple/list with two elements
+    index_pos :  None or tuple/list with two elements
         Start/end positions of index in filename (1-based start, end inclusive as in original code intent).
-        Example: (4, 13) extracts basename[3:13].
-    data_format : str, {'default'}
+        Example : (4, 13) extracts basename[3:13].
+    data_format :  str, {'default'}
         Format of the EEM file. By passing ``'default'``, the following tabular format is supported:
         - The first row contains excitation wavelengths (Ex).
         - The top left may be blank or non-numeric; any non-numeric tokens are ignored.
         - The first column of subsequent rows contains emission wavelengths (Em).
         - The remaining cells are fluorescence intensities for each (Ex, Em) pair.
 
-        Schematic layout::
+        Schematic layout:
 
             <blank or label>   Ex_1   Ex_2   Ex_3   ...   Ex_n
             Em_1               I_11   I_12   I_13   ...   I_1N
@@ -53,28 +53,28 @@ def read_eem(
             Em_m               I_m1   I_m2   I_m3   ...   I_mn
 
         Where I_nm is the intensity at excitation Ex_n and emission Em_m.
-
-    as_timestamp : bool
+        If your files are in similar format but with the first row being Em wavelengths and the fist column being Ex wavelengths, pass ``file_first_row='em'``.
+    as_timestamp :  bool
         Whether to parse extracted index as datetime.
-    timestamp_format : str
+    timestamp_format :  str
         Datetime strptime format if as_timestamp is True.
         Rules can be seen on https://docs.python.org/3/library/datetime.html#format-codes
-    delimiter : Optional[str] = None
+    delimiter :  Optional[str] = None
         Field delimiter. If None (default), split on arbitrary whitespace (tabs/spaces). If your file uses a specific
         delimiter (e.g., comma or semicolon), pass ``delimiter=','`` or ``delimiter=';'``, etc.
-    file_first_row : {"ex","em"}
+    file_first_row :  {"ex","em"}
         Whether the first row contains Ex or Em wavelengths.
 
     Returns
     -------
-    intensity : np.ndarray (2d)
+    intensity : np.ndarray
         EEM matrix with shape (n_ex, n_em). Rows correspond to excitation wavelengths, columns to emission
         wavelengths. The smallest excitation & emission wavelengths correspond to intensity[-1, 0],
         with excitation wavelength increases from bottom to top and emission wavelength increases from left to
         right.
-    ex_range : np.ndarray (1d)
+    ex_range : np.ndarray
         Sorted excitation wavelengths (ascending).
-    em_range : np.ndarray (1d)
+    em_range : np.ndarray
         Sorted emission wavelengths (ascending).
     index : str | datetime | None
         Extracted index (optionally parsed as datetime).
@@ -125,8 +125,8 @@ def read_eem(
         if header_vals.size == 0:
             raise ValueError("Could not parse wavelength header from the first line.")
 
-        idx_vals: List[float] = []
-        rows: List[List[float]] = []
+        idx_vals : List[float] = []
+        rows : List[List[float]] = []
 
         for line in of:
             parts = _split(line)
@@ -192,37 +192,37 @@ def read_eem(
     intensity = data_em_ex_sorted.T  # (n_ex, n_em)
 
     # ---- enforce "matrix has origin at lower-left" in array indexing ----
-    intensity = intensity[::-1, :]
+    intensity = intensity[:-1, :]
 
     return intensity, ex_range, em_range, index
 
 
 def read_eem_dataset(folder_path: str, mandatory_keywords=None, optional_keywords=None, data_format: str = 'default',
-                     index_pos: Union[Tuple, List, None] = None, as_timestamp=False, timestamp_format=None,
+                     index_pos : Union[Tuple, List, None] = None, as_timestamp=False, timestamp_format=None,
                      delimiter=None, file_first_row="ex",
-                     custom_filename_list: Union[Tuple, List, None] = None, wavelength_alignment=False,
-                     interpolation_method: str = 'linear'):
+                     custom_filename_list : Union[Tuple, List, None] = None, wavelength_alignment=False,
+                     interpolation_method : str = 'linear'):
     """
     Import EEM dataset from files.
 
     Parameters
     ----------
-    folder_path: str
+    folder_path :  str
         The path to the folder containing EEMs.
-    mandatory_keywords: list of str
+    mandatory_keywords :  list of str
         Filenames must contain all of these keywords (logical AND).
-        Example: ["PEM", "2021-02-02"] will match only files containing both substrings.
-    optional_keywords: list of str
+        Example : ["PEM", "2021-02-02"] will match only files containing both substrings.
+    optional_keywords :  list of str
         Filenames must contain at least one of these keywords (logical OR).
         If empty or None, no additional filtering is applied beyond mandatory_keywords.
-    data_format: str, {'default'}
+    data_format :  str, {'default'}
         Format of the EEM file. By passing ``'default'``, the following tabular format is supported:
         - The first row contains excitation wavelengths (Ex).
         - The top left may be blank or non-numeric; any non-numeric tokens are ignored.
         - The first column of subsequent rows contains emission wavelengths (Em).
         - The remaining cells are fluorescence intensities for each (Ex, Em) pair.
 
-        Schematic layout::
+        Schematic layout:
 
             <blank or label>   Ex_1   Ex_2   Ex_3   ...   Ex_n
             Em_1               I_11   I_12   I_13   ...   I_1N
@@ -231,40 +231,41 @@ def read_eem_dataset(folder_path: str, mandatory_keywords=None, optional_keyword
             Em_m               I_m1   I_m2   I_m3   ...   I_mn
 
         Where I_nm is the intensity at excitation Ex_n and emission Em_m.
-    index_pos: tuple/list or None
+        If your files are in similar format but with the first row being Em wavelengths and the fist column being Ex wavelengths, pass ``file_first_row='em'``.
+    index_pos :  tuple/list or None
         The starting and ending positions of index in filenames. For example, if you want to read the index "2024_01_01"
         from the file with the name "EEM_2024_01_01_PEM.dat", a tuple (4, 13) should be passed to this parameter.
-    as_timestamp: bool
+    as_timestamp :  bool
         Whether to read the index as timestamps.
-    timestamp_format: str
+    timestamp_format :  str
         Datetime strptime format if as_timestamp is True.
         Rules can be seen on https://docs.python.org/3/library/datetime.html#format-codes
-    delimiter : Optional[str] = None
+    delimiter :  Optional[str] = None
         Field delimiter. If None (default), split on arbitrary whitespace (tabs/spaces). If your file uses a specific
         delimiter (e.g., comma or semicolon), pass ``delimiter=','`` or ``delimiter=';'``, etc.
-    file_first_row : {"ex","em"}
+    file_first_row :  {"ex","em"}
         Whether the first row contains Ex or Em wavelengths.
-    custom_filename_list: list or None
+    custom_filename_list :  list or None
         If a list is passed, only the EEM files whose filenames are specified in the list will be imported.
-    wavelength_alignment: bool
+    wavelength_alignment :  bool
         Align the ex/em ranges of the EEMs. This is useful if the EEMs are measured with different ex/em ranges.
         Note that ex/em will be aligned according to the ex/em ranges with the smallest intervals among all the
         imported EEMs.
-    interpolation_method: str
+    interpolation_method :  str
         The interpolation method used for aligning ex/em. It is only useful if wavelength_alignment=True.
 
     Returns
     -------
-    eem_stack: np.ndarray (3d)
+    eem_stack : np.ndarray
         EEM stack with shape (n_sample, n_ex, n_em). For each EEM with shape (n_ex, n_em), rows correspond to
         excitation wavelengths, columns to emission wavelengths. The smallest excitation & emission wavelengths
         correspond to intensity[-1, 0], with excitation wavelength increases from bottom to top and emission
         wavelength increases from left to right.
-    ex_range: np.ndarray (1d)
+    ex_range : np.ndarray
         Sorted excitation wavelengths (ascending).
-    em_range: np.ndarray (1d)
+    em_range : np.ndarray
         Sorted emission wavelengths (ascending).
-    indexes: list of str | datetime | None
+    indexes : list of str | datetime | None
         Extracted per-file indexes (optionally parsed as datetime).
     """
     # ---- resolve file list ----
@@ -397,13 +398,13 @@ def read_abs(file_path, index_pos: Union[Tuple, List, None] = None, data_format=
 
     Parameters
     ----------
-    file_path: str
+    file_path :  str
         The filepath to the UV absorbance file
-    index_pos: None or tuple with two elements
+    index_pos :  None or tuple with two elements
         The starting and ending positions of index in filenames. For example, if you want to read the index "2024_01_01"
         from the file with the name "EEM_2024_01_01_PEM.dat", a tuple (4, 13) should be passed to this parameter.
-    data_format: str
-        Format of the UV absorbance file. By passing ``data_format='default'``, the following format is supported::
+    data_format :  str
+        Format of the UV absorbance file. By passing ``data_format='default'``, the following format is supported:
 
             Ex_1    A_1
             Ex_2    A_2
@@ -414,11 +415,11 @@ def read_abs(file_path, index_pos: Union[Tuple, List, None] = None, data_format=
 
     Returns
     -------
-    absorbance:np.ndarray (1d)
-        The UV absorbance spectra
-    ex_range: np.ndarray (1d)
-        The excitation wavelengths
-    index: str
+    absorbance : np.ndarray
+        The UV absorbance spectrum (1D array).
+    ex_range : np.ndarray
+        The excitation wavelengths (1D array).
+    index : str
         The index of the Absorbance spectrum.
     """
     # ---- index parsing (preserve original slicing convention) ----
@@ -432,8 +433,8 @@ def read_abs(file_path, index_pos: Union[Tuple, List, None] = None, data_format=
             'The current version of eempy only supports reading files written in the "default" format.'
         )
 
-    idx: List[float] = []
-    data: List[float] = []
+    idx : List[float] = []
+    data : List[float] = []
 
     with open(file_path, "r") as of:
         for line in of:
@@ -477,41 +478,41 @@ def read_abs(file_path, index_pos: Union[Tuple, List, None] = None, data_format=
 
 
 def read_abs_dataset(folder_path, mandatory_keywords='ABS', optional_keywords=[], data_format: str = 'default',
-                     index_pos: Union[Tuple, List, None] = None, custom_filename_list: Union[Tuple, List, None] = None,
+                     index_pos : Union[Tuple, List, None] = None, custom_filename_list: Union[Tuple, List, None] = None,
                      wavelength_alignment=False, interpolation_method: str = 'linear'):
     """
 
     Parameters
     ----------
-    folder_path: str
+    folder_path :  str
         The path to the folder containing absorbance files.
-    mandatory_keywords: list of str
+    mandatory_keywords :  list of str
         Filenames must contain all of these keywords (logical AND).
-        Example: ["ABS", "2021-02-02"] will match only files containing both substrings.
-    optional_keywords: list of str
+        Example : ["ABS", "2021-02-02"] will match only files containing both substrings.
+    optional_keywords :  list of str
         Filenames must contain at least one of these keywords (logical OR).
         If empty or None, no additional filtering is applied beyond mandatory_keywords.
-    data_format: str
+    data_format :  str
         Specify the type of absorbance data format.
-    index_pos: tuple/list or None
+    index_pos :  tuple/list or None
         The starting and ending positions of index in filenames. For example, if you want to read the index "2024_01_01"
         from the file with the name "ABS_2024_01_01_PEM.dat", a tuple (4, 13) should be passed to this parameter.
-    custom_filename_list: list or None
+    custom_filename_list :  list or None
         If a list is passed, only the absorbance files whose filenames are specified in the list will be imported.
-    wavelength_alignment: bool
+    wavelength_alignment :  bool
         Align the ex range of the absorbance files. This is useful if the absorbance are measured with different ex
         range. Note that ex will be aligned according to the ex ranges with the smallest intervals among all the
         imported absorbance files.
-    interpolation_method: str
+    interpolation_method :  str
         The interpolation method used for aligning ex. It is only useful if wavelength_alignment=True.
 
     Returns
     -------
-    abs_stack: np.ndarray (2d)
-        A stack of imported absorbance files.
-    ex_range: np.ndarray (1d)
-        The excitation wavelengths
-    indexes: list or None
+    abs_stack : np.ndarray
+        A stack of imported absorbance files (n_samples, n_wavelengths).
+    ex_range : np.ndarray
+        The excitation wavelengths (1D array).
+    indexes : list or None
         The list of absorbance file indexes (if index_pos is specified).
     """
     # ---- resolve file list ----
@@ -593,7 +594,7 @@ def read_reference_from_text(filepath):
     Read reference data from text file. The reference data can be any 1D data (e.g., dissolved organic carbon
     concentration). This first line of the file should be a header, and then each following line contains one datapoint,
     without any separators other than line breaks.
-    For example::
+    For example:
 
             DOC (mg/L)
             1.0
@@ -603,7 +604,7 @@ def read_reference_from_text(filepath):
 
     Parameters
     ----------
-    filepath: str
+    filepath :  str
         The filepath to the reference file.
 
     Returns
@@ -632,6 +633,20 @@ def get_filelist(folderpath, mandatory_keywords, optional_keywords):
     Get a list containing all filenames with given keywords in a folder. A filename must contain all mandatory keywords
     and at least one of the optional keywords.
 
+    Parameters
+    ----------
+    folderpath :  str
+        Folder path to search.
+    mandatory_keywords :  str or list of str
+        Filenames must contain all of these keywords (logical AND).
+    optional_keywords :  str or list of str
+        Filenames must contain at least one of these keywords (logical OR). If empty or None, no additional filtering
+        is applied beyond mandatory_keywords.
+
+    Returns
+    -------
+    list of str
+        Filenames matching the keyword filters.
     """
     filelist = os.listdir(folderpath)
     if isinstance(mandatory_keywords, str):
@@ -661,22 +676,22 @@ def get_filelist(folderpath, mandatory_keywords, optional_keywords):
 def read_parafac_model(filepath):
     """
     Import PARAFAC model from a text file written in the format suggested by OpenFluor (
-    https://openfluor.lablicate.com/). Note that the models downloaded from OpenFluor normally don't have scores.
+    https : //openfluor.lablicate.com/). Note that the models downloaded from OpenFluor normally don't have scores.
 
     Parameters
     ----------
-    filepath: str
+    filepath :  str
         The filepath to the model file.
 
     Returns
     -------
-    ex_df: pd.DataFrame
+    ex_df : pd.DataFrame
         Excitation loadings
-    em_df: pd.DataFrame
+    em_df : pd.DataFrame
         Emission loadings
-    score_df: pd.DataFrame or None
+    score_df : pd.DataFrame or None
         Scores (if there's any)
-    info_dict: dict
+    info_dict : dict
         A dictionary containing the model information
     """
     with open(filepath, 'r') as f:
@@ -748,6 +763,18 @@ def read_parafac_models(datdir, kw):
     """
     Search all PARAFAC models in a folder by keyword in filenames and import all of them into a dictionary using
     read_parafac_model()
+
+    Parameters
+    ----------
+    datdir :  str
+        Folder containing PARAFAC model files.
+    kw :  str
+        Keyword used to filter filenames.
+
+    Returns
+    -------
+    list of dict
+        A list of dicts with keys: ``info``, ``ex``, ``em``, ``score``.
     """
     datlist = get_filelist(datdir, kw)
     parafac_results = []

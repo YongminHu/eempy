@@ -44,11 +44,11 @@ def unfolded_eem_stack_initialization(M, rank, method='nndsvd'):
 
     Parameters
     ----------
-    M : np.ndarray, shape (m, n)
+    M :  np.ndarray, shape (m, n)
         Non-negative matrix to factorize (e.g., unfolded tensor).
-    rank : int
+    rank :  int
         Number of components (latent factors).
-    method : str, {"ordinary_nmf", "svd", "nndsvd", "nndsvda", "nndsvdar"}, optional
+    method :  str, {"ordinary_nmf", "svd", "nndsvd", "nndsvda", "nndsvdar"}, optional
         Initialization method. Default is "nndsvd".
 
     Returns
@@ -158,29 +158,29 @@ def hals_nnls(
 
     Parameters
     ----------
-    UtM : np.ndarray, shape (rank, n)
+    UtM :  np.ndarray, shape (rank, n)
         Cross-product term (e.g., UᵀM or MTTKRPᵀ), with one row per component.
-    UtU : np.ndarray, shape (rank, rank)
+    UtU :  np.ndarray, shape (rank, rank)
         Gram matrix term (e.g., UᵀU).
-    prior_dict : dict[int, array-like], optional
+    prior_dict :  dict[int, array-like], optional
         Mapping from component index `k` to a prior vector of length `n`. NaNs are treated as "no prior" for those
         entries.
-    gamma : float or dict[int, float], optional
+    gamma :  float or dict[int, float], optional
         Prior strength. If a float is provided, it is applied to all keys in `prior_dict`. If a dict is provided,
         strengths are component-specific.
-    alpha : float, optional
+    alpha :  float, optional
         Overall elastic-net strength (0 disables elastic-net).
-    l1_ratio : float, optional
+    l1_ratio :  float, optional
         Elastic-net mixing parameter in [0, 1]. 0 = pure L2, 1 = pure L1.
-    V : np.ndarray, shape (rank, n), optional
+    V :  np.ndarray, shape (rank, n), optional
         Initial value for `V`. If None, a least-squares solution is computed and clipped to be positive.
-    max_iter : int, optional
+    max_iter :  int, optional
         Maximum number of HALS iterations.
-    tol : float, optional
+    tol :  float, optional
         Relative convergence tolerance based on HALS update magnitude.
-    eps : float, optional
+    eps :  float, optional
         Small positive constant used for numerical stability and positivity floor.
-    fixed_components : list[int], optional
+    fixed_components :  list[int], optional
         Indices of components (rows of `V`) that should not be updated.
 
     Returns
@@ -307,58 +307,58 @@ def parafac_with_prior_hals(
 
     Parameters
     ----------
-    tensor : array-like, shape (I, J, K)
+    tensor :  array-like, shape (I, J, K)
         Input tensor (EEM stack). Non-negative values are expected.
-    rank : int
+    rank :  int
         Number of CP components.
-    prior_dict_A : dict[int, array-like], optional
+    prior_dict_A :  dict[int, array-like], optional
         Priors for columns of `A` (sample-mode factor). Each prior vector must have
         length `I`. NaNs indicate entries without a prior.
-    prior_dict_B : dict[int, array-like], optional
+    prior_dict_B :  dict[int, array-like], optional
         Priors for columns of `B` (excitation factor), length `J`.
-    prior_dict_C : dict[int, array-like], optional
+    prior_dict_C :  dict[int, array-like], optional
         Priors for columns of `C` (emission factor), length `K`.
-    gamma_A : float or dict[int, float], optional
+    gamma_A :  float or dict[int, float], optional
         Prior weight(s) for `A`.
-    gamma_B : float or dict[int, float], optional
+    gamma_B :  float or dict[int, float], optional
         Prior weight(s) for `B`.
-    gamma_C : float or dict[int, float], optional
+    gamma_C :  float or dict[int, float], optional
         Prior weight(s) for `C`.
-    ref_components : dict[int, array-like], optional
+    ref_components :  dict[int, array-like], optional
         Reference components used to permute factors for consistent component order. Each value should be a
         flattened (J*K,) reference spectrum (e.g., outer(B,C)).
-    alpha_A : float, optional
+    alpha_A :  float, optional
         Elastic-net strength for `A`.
-    alpha_B : float, optional
+    alpha_B :  float, optional
         Elastic-net strength for `B`.
-    alpha_C : float, optional
+    alpha_C :  float, optional
         Elastic-net strength for `C`.
-    l1_ratio : float, optional
+    l1_ratio :  float, optional
         Elastic-net mixing parameter in [0, 1].
-    lam : float or dict[int, float], optional
+    lam :  float or dict[int, float], optional
         Ratio-penalty weight(s) for the sample-mode factor `A`. If provided together
         with `idx_top` and `idx_bot`, `beta` is estimated per component.
-    idx_top : sequence[int], optional
+    idx_top :  sequence[int], optional
         Row indices in `A` corresponding to the "top/original" samples in paired data.
-    idx_bot : sequence[int], optional
+    idx_bot :  sequence[int], optional
         Row indices in `A` corresponding to the "bottom/perturbed" samples in paired data.
-    max_iter_als : int, optional
+    max_iter_als :  int, optional
         Maximum number of outer ALS iterations.
-    max_iter_nnls : int, optional
+    max_iter_nnls :  int, optional
         Maximum number of inner HALS iterations for each NNLS subproblem.
-    tol : float, optional
+    tol :  float, optional
         Relative convergence tolerance on masked reconstruction error.
-    eps : float, optional
+    eps :  float, optional
         Small positive constant for numerical stability and positivity floor.
-    init : str, {"random", "svd", "nndsvd", "nndsvda", "nndsvdar", "ordinary_cp", "custom"}, optional
+    init :  str, {"random", "svd", "nndsvd", "nndsvda", "nndsvdar", "ordinary_cp", "custom"}, optional
         Initialization method for factors.
-    custom_init : tuple(A, B, C), optional
+    custom_init :  tuple(A, B, C), optional
         Custom initialization, only used when `init="custom"`.
-    random_state : int or None, optional
+    random_state :  int or None, optional
         Random seed for reproducible initialization.
-    fixed_components : list[int], optional
+    fixed_components :  list[int], optional
         Component indices to keep fixed during updates (useful when seeding known spectra).
-    mask : array-like, shape (I, J, K), optional
+    mask :  array-like, shape (I, J, K), optional
         Elementwise mask (1 = keep / valid entry, 0 = ignore entry). If None, finite
         entries of `tensor` are treated as valid.
 
@@ -616,23 +616,23 @@ def replace_factor_with_prior(factors, prior, replaced_mode, replaced_rank="best
 
     Parameters
     ----------
-    factors : list[np.ndarray]
+    factors :  list[np.ndarray]
         Factor matrices for a rank-`r` matrix model. Expected shapes are `[F0, F1]` where `F0.shape = (m,
         r)` and `F1.shape = (n, r)`.
-    prior : array-like, shape (m,) or (n,)
+    prior :  array-like, shape (m,) or (n,)
         Prior vector to insert into the selected component of `factors[replaced_mode]`.
-    replaced_mode : int
+    replaced_mode :  int
         Which factor to modify: 0 or 1.
-    replaced_rank : int or {"best-fit"}, optional
+    replaced_rank :  int or {"best-fit"}, optional
         Component index to replace. If "best-fit", the component with the highest Pearson correlation to `prior` is
         replaced (excluding `frozen_rank`).
-    frozen_rank : int or None, optional
+    frozen_rank :  int or None, optional
         Component index that must not be replaced (useful when one component is fixed).
-    project_prior : bool, optional
+    project_prior :  bool, optional
         If True, also update the complementary factor column by projecting the prior onto the residual (requires `X`).
-    X : np.ndarray, optional
+    X :  np.ndarray, optional
         Data matrix being factorized, shape (m, n). Required if `project_prior=True`.
-    show_replaced_rank : bool, optional
+    show_replaced_rank :  bool, optional
         If True, also return the selected `replaced_rank`.
 
     Returns
@@ -707,30 +707,30 @@ def update_column_in_hals(
 
     Parameters
     ----------
-    Rk : np.ndarray, shape (m,)
+    Rk :  np.ndarray, shape (m,)
         Current HALS residual for component `k` (with the k-th contribution restored).
-    hk_norm2 : float
+    hk_norm2 :  float
         Squared norm of the corresponding component in the other factor(s) (i.e., the diagonal element `d` of the
         Gram matrix).
-    beta_k : float
+    beta_k :  float
         Current ratio estimate for component `k`.
-    lam : float
+    lam :  float
         Ratio penalty weight for component `k`.
-    k : int
+    k :  int
         Component index (used to look up `prior_dict[k]`).
-    prior_dict : dict[int, array-like], optional
+    prior_dict :  dict[int, array-like], optional
         Mapping from component index to a prior vector of length `m` (NaNs allowed).
-    gamma : float, optional
+    gamma :  float, optional
         Prior weight.
-    alpha : float, optional
+    alpha :  float, optional
         Elastic-net strength.
-    l1_ratio : float, optional
+    l1_ratio :  float, optional
         Elastic-net mixing parameter in [0, 1].
-    idx_top : sequence[int]
+    idx_top :  sequence[int]
         Indices of "top/original" rows in the paired sample design.
-    idx_bot : sequence[int]
+    idx_bot :  sequence[int]
         Indices of "bottom/perturbed" rows paired with `idx_top`.
-    eps : float, optional
+    eps :  float, optional
         Small constant used as a positivity floor and for numerical stability.
 
     Returns
@@ -786,11 +786,11 @@ def update_column_in_hals(
 
 
 def update_beta_in_hals(
-        W: np.ndarray,
+        W : np.ndarray,
         idx_top,
         idx_bot,
-        eps: float = 0,
-        boundaries: tuple = (0.95, 2)
+        eps : float = 0,
+        boundaries : tuple = (0.95, 2)
 ) -> np.ndarray:
     """
     Estimate per-component ratios between paired sample rows.
@@ -804,16 +804,16 @@ def update_beta_in_hals(
 
     Parameters
     ----------
-    W : np.ndarray, shape (m, r)
+    W :  np.ndarray, shape (m, r)
         Score / concentration matrix with `m` samples and `r` components.
-    idx_top : sequence[int]
+    idx_top :  sequence[int]
         Row indices corresponding to the "top/original" samples.
-    idx_bot : sequence[int]
+    idx_bot :  sequence[int]
         Row indices corresponding to the "bottom/perturbed" samples.
         Must have the same length as `idx_top`.
-    eps : float, optional
+    eps :  float, optional
         Small constant added to the denominator to avoid division by zero.
-    boundaries : tuple[float, float], optional
+    boundaries :  tuple[float, float], optional
         (min_beta, max_beta) bounds used to clamp each estimated ratio.
 
     Returns
@@ -900,63 +900,71 @@ def nmf_with_prior_hals(
 
     Parameters
     ----------
-    X : np.ndarray, shape (m, n)
+    X :  np.ndarray, shape (m, n)
         Non-negative data matrix (e.g., unfolded EEM stack).
-    rank : int
+    rank :  int
         Number of components.
-    prior_dict_H : dict[int, array-like], optional
+    prior_dict_H :  dict[int, array-like], optional
         Priors for rows of `H` (length `n`). NaNs skip entries.
-    prior_dict_W : dict[int, array-like], optional
+    prior_dict_W :  dict[int, array-like], optional
         Priors for columns of `W` (length `m`). NaNs skip entries.
-    prior_dict_A : dict[int, array-like], optional
+    prior_dict_A :  dict[int, array-like], optional
         Priors for CP sample-mode factor `A` when using rank-1 components.
-    prior_dict_B : dict[int, array-like], optional
+    prior_dict_B :  dict[int, array-like], optional
         Priors for CP excitation factor `B` when using rank-1 components.
-    prior_dict_C : dict[int, array-like], optional
+    prior_dict_C :  dict[int, array-like], optional
         Priors for CP emission factor `C` when using rank-1 components.
-    ref_components : dict[int, array-like], optional
+    ref_components :  dict[int, array-like], optional
         Reference components used to permute the solution for consistent ordering.
-    gamma_W : float or dict[int, float], optional
+    gamma_W :  float or dict[int, float], optional
         Prior weight(s) for `W`.
-    gamma_H : float or dict[int, float], optional
+    gamma_H :  float or dict[int, float], optional
         Prior weight(s) for `H`.
-    gamma_A, gamma_B, gamma_C : float or dict[int, float], optional
-        Prior weight(s) for CP factors in the rank-1 part.
-    alpha_W : float, optional
+    gamma_A :  float or dict[int, float], optional
+        Prior weight(s) for CP sample-mode factor `A` in the rank-1 part.
+    gamma_B :  float or dict[int, float], optional
+        Prior weight(s) for CP excitation factor `B` in the rank-1 part.
+    gamma_C :  float or dict[int, float], optional
+        Prior weight(s) for CP emission factor `C` in the rank-1 part.
+    alpha_W :  float, optional
         Elastic-net strength for `W`.
-    alpha_H : float, optional
+    alpha_H :  float, optional
         Elastic-net strength for `H`.
-    alpha_A, alpha_B, alpha_C : float, optional
-        Elastic-net strengths for CP factors (rank-1 part).
-    l1_ratio : float, optional
+    alpha_A :  float, optional
+        Elastic-net strength for CP sample-mode factor `A` (rank-1 part).
+    alpha_B :  float, optional
+        Elastic-net strength for CP excitation factor `B` (rank-1 part).
+    alpha_C :  float, optional
+        Elastic-net strength for CP emission factor `C` (rank-1 part).
+    l1_ratio :  float, optional
         Elastic-net mixing parameter in [0, 1].
-    idx_top : sequence[int], optional
+    idx_top :  sequence[int], optional
         Row indices in `W` for the paired "top" samples.
-    idx_bot : sequence[int], optional
+    idx_bot :  sequence[int], optional
         Row indices in `W` for the paired "bottom" samples.
-    lam : float or dict[int, float], optional
+    lam :  float or dict[int, float], optional
         Ratio-penalty weight(s). Enable ratio constraint when provided together
         with `idx_top` and `idx_bot`.
-    fit_rank_one : dict[int, bool] or False, optional
+    fit_rank_one :  dict[int, bool] or False, optional
         If a dict, `fit_rank_one[k]=True` marks component `k` to be modeled as a
         rank-1 outer product in EEM space (CP-like). If False, standard NMF is used.
-    component_shape : tuple[int, int], optional
+    component_shape :  tuple[int, int], optional
         `(n_ex, n_em)` used to reshape rows of `H` when using rank-1 components.
-    max_iter_als : int, optional
+    max_iter_als :  int, optional
         Maximum number of outer ALS iterations.
-    max_iter_nnls : int, optional
+    max_iter_nnls :  int, optional
         Maximum number of HALS iterations per NNLS subproblem.
-    tol : float, optional
+    tol :  float, optional
         Relative convergence tolerance on the reconstruction error.
-    eps : float, optional
+    eps :  float, optional
         Small positive constant used as a positivity floor.
-    init : str, {"random", "svd", "nndsvd", "nndsvda", "nndsvdar", "ordinary_nmf", "ordinary_cp", "custom"}, optional
+    init :  str, {"random", "svd", "nndsvd", "nndsvda", "nndsvdar", "ordinary_nmf", "ordinary_cp", "custom"}, optional
         Initialization method.
-    custom_init : tuple(W, H), optional
+    custom_init :  tuple(W, H), optional
         Custom initialization, only used when `init="custom"`.
-    fixed_components : list[int], optional
+    fixed_components :  list[int], optional
         Indices of components to keep fixed during updates.
-    random_state : int or None, optional
+    random_state :  int or None, optional
         Random seed.
 
     Returns
@@ -1319,18 +1327,18 @@ def solve_W(X1, H, X2=None, beta=None, reg=0.0, non_negativity=True):
 
     Parameters
     ----------
-    X1 : np.ndarray, shape (m, n)
+    X1 :  np.ndarray, shape (m, n)
         Primary data matrix.
-    H : np.ndarray, shape (r, n)
+    H :  np.ndarray, shape (r, n)
         Component matrix (rows are components).
-    X2 : np.ndarray, shape (m, n), optional
+    X2 :  np.ndarray, shape (m, n), optional
         Secondary data matrix used when `beta` is provided.
-    beta : np.ndarray, shape (r,), optional
+    beta :  np.ndarray, shape (r,), optional
         Per-component scaling applied to the secondary term. If None, the second term
         is omitted.
-    reg : float, optional
+    reg :  float, optional
         Ridge (L2) regularization strength added to the normal equations (0 disables).
-    non_negativity : bool, optional
+    non_negativity :  bool, optional
         If True, enforce `W >= 0` using NNLS. If False, solve the unconstrained
         normal equations.
 

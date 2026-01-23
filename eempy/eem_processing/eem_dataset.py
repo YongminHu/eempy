@@ -35,29 +35,29 @@ class EEMDataset:
 
     Parameters
     ----------
-    eem_stack : np.ndarray
+    eem_stack :  np.ndarray
         The 3D EEM stack, with shape (n_samples, n_ex_wavelengths, n_em_wavelengths).
-    ex_range : np.ndarray
+    ex_range :  np.ndarray
         A 1D NumPy array of the excitation wavelengths.
-    em_range : np.ndarray
+    em_range :  np.ndarray
         A 1D NumPy array of the emission wavelengths.
-    index : list or None
+    index :  list or None
         Optional. The name used to label each sample. The number of elements in the list should equal the number
         of samples in the eem_stack (with the same sample order).
-    ref : pd.DataFrame or None
+    ref :  pd.DataFrame or None
         Optional. The reference data, e.g., the contaminant concentrations in each sample.
         It should have a length equal to the number of samples in the eem_stack.
         The index of each sample should be the name given in parameter "index".
         It is possible to have more than one column.
         NaN is allowed (for example, if contaminant concentrations in specific samples are unknown).
-    cluster : list or None
+    cluster :  list or None
         Optional. The classification of samples, e.g., the output of EEM clustering algorithms.
         The number of elements in the list should equal the number
         of samples in the eem_stack (with the same sample order).
     """
 
     def __init__(self, eem_stack: np.ndarray, ex_range: np.ndarray, em_range: np.ndarray,
-                 index: Optional[list] = None, ref: Optional[pd.DataFrame] = None, cluster: Optional[list] = None):
+                 index : Optional[list] = None, ref: Optional[pd.DataFrame] = None, cluster: Optional[list] = None):
         # ------------------parameters--------------------
         # The Em/Ex ranges should be sorted in ascending order
         self.eem_stack = eem_stack
@@ -75,7 +75,7 @@ class EEMDataset:
 
         Returns
         -------
-        zscore: np.ndarray
+        zscore : np.ndarray
         """
         zscore = stats.zscore(self.eem_stack, axis=0)
         return zscore
@@ -86,7 +86,7 @@ class EEMDataset:
 
         Returns
         -------
-        mean: np.ndarray
+        mean : np.ndarray
         """
         mean = np.mean(self.eem_stack, axis=0)
         return mean
@@ -97,7 +97,7 @@ class EEMDataset:
 
         Returns
         -------
-        variance: np.ndarray
+        variance : np.ndarray
         """
         variance = np.var(self.eem_stack, axis=0)
         return variance
@@ -108,7 +108,7 @@ class EEMDataset:
 
         Returns
         -------
-        std: np.ndarray
+        std : np.ndarray
         """
         return np.std(self.eem_stack, axis=0)
 
@@ -118,28 +118,28 @@ class EEMDataset:
 
         Returns
         -------
-        tf: np.ndarray
+        tf : np.ndarray
         """
         return self.eem_stack.sum(axis=(1, 2))
 
-    def regional_integration(self, ex_min, ex_max, em_min, em_max):
+    def regional_integration(self, ex_min, ex_max, em_min, em_max) -> pd.DataFrame:
         """
         Calculate regional integration of samples.
 
         Parameters
         ----------
-        ex_min: float
+        ex_min : float
             The lower boundary of excitation wavelengths of the integrated region.
-        ex_max: float
+        ex_max : float
             The upper boundary of excitation wavelengths of the integrated region.
-        em_min: float
+        em_min : float
             The lower boundary of emission wavelengths of the integrated region.
-        em_max: float
+        em_max : float
             The upper boundary of emission wavelengths of the integrated region.
 
         Returns
         -------
-        integrations: pd.DataFrame
+        integrations : pd.DataFrame
         """
         integrations, _ = process_eem_stack(
             self.eem_stack, eem_regional_integration, ex_range=self.ex_range,
@@ -158,14 +158,14 @@ class EEMDataset:
 
         Parameters
         ----------
-        ex: float or int
+        ex : float or int
             excitation wavelength of the wanted location
-        em: float or int
+        em : float or int
             emission wavelength of the wanted location
 
         Returns
         -------
-        fi: pandas.DataFrame
+        fi : pandas.DataFrame
             table of fluorescence intensities at the wanted location for all samples
         ex_actual:
             the actual ex of the extracted fluorescence intensities
@@ -190,7 +190,7 @@ class EEMDataset:
 
         Returns
         -------
-        hix: pandas.DataFrame
+        hix : pandas.DataFrame
             HIX
         """
         em1 = 300
@@ -212,7 +212,7 @@ class EEMDataset:
 
         Returns
         -------
-        bix: pandas.DataFrame
+        bix : pandas.DataFrame
             BIX
         """
         ex = 310
@@ -234,7 +234,7 @@ class EEMDataset:
 
         Returns
         -------
-        fi: pandas.DataFrame
+        fi : pandas.DataFrame
             Fluorescence index values. Note: the current implementation labels the output column as "BIX" even though the
             values correspond to FI.
         """
@@ -255,16 +255,16 @@ class EEMDataset:
 
         Parameters
         ----------
-        abs_stack: np.ndarray
+        abs_stack : np.ndarray
             absorbance spectra stack
-        ex_range_abs: np.ndarray
+        ex_range_abs : np.ndarray
             excitation wavelengths of absorbance spectra
-        target_ex: float or None
+        target_ex : float or None
             excitation wavelength for AQY. If None is passed, all excitation wavelengths will be returned.
 
         Returns
         -------
-        aqy: pandas.DataFrame
+        aqy : pandas.DataFrame
             apparent quantum yield (AQY)
         """
         aqy = []
@@ -273,7 +273,7 @@ class EEMDataset:
             abs = abs_stack[i]
             f1 = interp1d(ex_range_abs, abs, kind='linear', bounds_error=False, fill_value='extrapolate')
             abs_interpolated = f1(self.ex_range)
-            aqy.append(np.sum(intensity, axis=1)[::-1] / abs_interpolated)
+            aqy.append(np.sum(intensity, axis=1)[:-1] / abs_interpolated)
         aqy = pd.DataFrame(aqy, index=self.index, columns=[f'AQY (ex = {wavelength} nm)' for wavelength in list(self.ex_range)])
         if target_ex is None:
             return aqy
@@ -286,14 +286,14 @@ class EEMDataset:
 
         Parameters
         ----------
-        variables: list
+        variables : list
             List of variables (i.e., the headers of the reference table) to be fitted
-        fit_intercept: bool, optional
+        fit_intercept : bool, optional
             Whether to fit the intercept for linear regression.
 
         Returns
         -------
-        corr_dict: dict
+        corr_dict : dict
             A dictionary containing multiple correlation evaluation metrics.
         """
         m = self.eem_stack
@@ -336,18 +336,18 @@ class EEMDataset:
 
         Parameters
         ----------
-        threshold: float or int
+        threshold : float or int
             Intensity threshold.
-        fill: float or int
+        fill : float or int
             Value used to replace masked pixels.
-        mask_type: str, {"greater", "smaller"}, default="greater"
+        mask_type : str, {"greater", "smaller"}, default="greater"
             Whether to mask values greater than or smaller than `threshold`.
-        inplace: bool, default=True
+        inplace : bool, default=True
             If True, overwrite `self` and return it. If False, return a new EEMDataset instance.
 
         Returns
         -------
-        eem_dataset_new: EEMDataset
+        eem_dataset_new : EEMDataset
             EEM dataset with threshold masking applied.
         """
         eem_stack_masked, masks = process_eem_stack(self.eem_stack, eem_threshold_masking, threshold=threshold,
@@ -366,16 +366,16 @@ class EEMDataset:
 
         Parameters
         ----------
-        sigma: float, default=1
+        sigma : float, default=1
             Standard deviation of the Gaussian kernel.
-        truncate: float, default=3
+        truncate : float, default=3
             Truncate the filter at this many standard deviations.
-        inplace: bool, default=True
+        inplace : bool, default=True
             If True, overwrite `self` and return it. If False, return a new EEMDataset instance.
 
         Returns
         -------
-        eem_dataset_new: EEMDataset
+        eem_dataset_new : EEMDataset
             EEM dataset with Gaussian filtering applied.
         """
         eem_stack_filtered = process_eem_stack(self.eem_stack, eem_gaussian_filter, sigma=sigma, truncate=truncate)
@@ -393,17 +393,17 @@ class EEMDataset:
 
         Parameters
         ----------
-        window_size: tuple of two integers
+        window_size : tuple of two integers
             Gives the shape that is taken from the input array, at every element position, to define the input to the filter
             function.
-        mode: str, {‘reflect’, ‘constant’, ‘nearest’, ‘mirror’, ‘wrap’}
+        mode : str, {‘reflect’, ‘constant’, ‘nearest’, ‘mirror’, ‘wrap’}
             The mode parameter determines how the input array is extended beyond its boundaries.
-        inplace: bool
+        inplace : bool
             if True, overwrite the EEMDataset object with the processed EEMs.
 
         Returns
         -------
-        eem_dataset_new: EEMDataset
+        eem_dataset_new : EEMDataset
             The processed EEM dataset.
         """
         eem_stack_filtered = process_eem_stack(self.eem_stack, eem_median_filter, window_size=window_size, mode=mode)
@@ -421,22 +421,22 @@ class EEMDataset:
 
         Parameters
         ----------
-        ex_min: float, default=230
+        ex_min : float, default=230
             Lower bound of the excitation wavelength window to mask (nm).
-        ex_max: float, default=500
+        ex_max : float, default=500
             Upper bound of the excitation wavelength window to mask (nm).
-        em_min: float, default=250
+        em_min : float, default=250
             Lower bound of the emission wavelength window to mask (nm).
-        em_max: float, default=810
+        em_max : float, default=810
             Upper bound of the emission wavelength window to mask (nm).
-        fill_value: str, {"nan", "zero"}, default="nan"
+        fill_value : str, {"nan", "zero"}, default="nan"
             How to fill the masked region.
-        inplace: bool, default=True
+        inplace : bool, default=True
             If True, overwrite `self` and return it. If False, return a new EEMDataset instance.
 
         Returns
         -------
-        eem_dataset_new: EEMDataset
+        eem_dataset_new : EEMDataset
             EEM dataset with regional masking applied.
         """
         eem_stack_masked, _ = process_eem_stack(
@@ -458,20 +458,20 @@ class EEMDataset:
 
         Parameters
         ----------
-        ex_min: float
+        ex_min : float
             Lower bound of the excitation wavelength window to keep (nm).
-        ex_max: float
+        ex_max : float
             Upper bound of the excitation wavelength window to keep (nm).
-        em_min: float
+        em_min : float
             Lower bound of the emission wavelength window to keep (nm).
-        em_max: float
+        em_max : float
             Upper bound of the emission wavelength window to keep (nm).
-        inplace: bool, default=True
+        inplace : bool, default=True
             If True, overwrite `self` and return it. If False, return a new EEMDataset instance.
 
         Returns
         -------
-        eem_dataset_new: EEMDataset
+        eem_dataset_new : EEMDataset
             EEM dataset after cutting. The dataset's `ex_range` and `em_range` are updated accordingly.
         """
         eem_stack_cut, new_ranges = process_eem_stack(
@@ -498,16 +498,16 @@ class EEMDataset:
 
         Parameters
         ----------
-        method: str, {"linear", "cubic"}, default="linear"
+        method : str, {"linear", "cubic"}, default="linear"
             2D interpolation method passed to `scipy.interpolate.griddata`.
-        fill_value: float or str, {"linear_ex", "linear_em"}, default="linear_ex"
+        fill_value : float or str, {"linear_ex", "linear_em"}, default="linear_ex"
             How to fill pixels outside the convex hull of non-NaN data.
-        inplace: bool, default=True
+        inplace : bool, default=True
             If True, overwrite `self` and return it. If False, return a new EEMDataset instance.
 
         Returns
         -------
-        eem_dataset_new: EEMDataset
+        eem_dataset_new : EEMDataset
             EEM dataset with NaN pixels filled.
         """
         eem_stack_imputed = process_eem_stack(self.eem_stack, eem_nan_imputing, ex_range=self.ex_range,
@@ -530,30 +530,30 @@ class EEMDataset:
 
         Parameters
         ----------
-        blank: np.ndarray, optional
+        blank : np.ndarray, optional
             Blank EEM(s) used to estimate RSU when `from_blank=True`.
-        ex_range_blank: np.ndarray, optional
+        ex_range_blank : np.ndarray, optional
             Excitation wavelength axis for the blank EEM(s).
-        em_range_blank: np.ndarray, optional
+        em_range_blank : np.ndarray, optional
             Emission wavelength axis for the blank EEM(s).
-        from_blank: bool, default=False
+        from_blank : bool, default=False
             If True, calculate RSU from the provided blank EEM(s).
-        integration_time: float, default=1
+        integration_time : float, default=1
             Integration time used for the blank measurement.
-        ex_target: float, default=350
+        ex_target : float, default=350
             Excitation wavelength (nm) at which RSU is computed.
-        bandwidth: float, default=5
+        bandwidth : float, default=5
             Raman peak bandwidth (nm) used for regional integration.
-        rsu_standard: float, default=20000
+        rsu_standard : float, default=20000
             Scaling factor applied to RSU to control the magnitude of normalized intensities.
-        manual_rsu: float, default=1
+        manual_rsu : float, default=1
             RSU used directly when `from_blank=False`.
-        inplace: bool, default=True
+        inplace : bool, default=True
             If True, overwrite `self` and return it. If False, return a new EEMDataset instance.
 
         Returns
         -------
-        eem_dataset_new: EEMDataset
+        eem_dataset_new : EEMDataset
             Raman-normalized EEM dataset.
         """
         if from_blank and blank is None:
@@ -588,14 +588,14 @@ class EEMDataset:
 
         Parameters
         ----------
-        inplace: bool, default=True
+        inplace : bool, default=True
             If True, overwrite `self` and return it. If False, return a new EEMDataset instance.
 
         Returns
         -------
-        eem_dataset_new: EEMDataset
+        eem_dataset_new : EEMDataset
             Total-fluorescence-normalized EEM dataset.
-        weights: np.ndarray
+        weights : np.ndarray
             Per-sample normalization factors (total fluorescence divided by the dataset mean).
         """
         eem_stack_normalized, weights = eems_tf_normalization(self.eem_stack)
@@ -614,20 +614,20 @@ class EEMDataset:
 
         Parameters
         ----------
-        width: float, default=5
+        width : float, default=5
             Total width (nm) of the Raman scattering band to mask.
-        interpolation_method: str, {"linear", "cubic", "nan", "zero"}, default="linear"
+        interpolation_method : str, {"linear", "cubic", "nan", "zero"}, default="linear"
             Method used to fill the masked region.
-        interpolation_dimension: str, {"1d-ex", "1d-em", "2d"}, default="2d"
+        interpolation_dimension : str, {"1d-ex", "1d-em", "2d"}, default="2d"
             Interpolation axis/dimension used when `interpolation_method` is not "nan" or "zero".
-        recover_original_nan: bool, default=True
+        recover_original_nan : bool, default=True
             If True, preserve NaN pixels that existed before scattering removal.
-        inplace: bool, default=True
+        inplace : bool, default=True
             If True, overwrite `self` and return it. If False, return a new EEMDataset instance.
 
         Returns
         -------
-        eem_dataset_new: EEMDataset
+        eem_dataset_new : EEMDataset
             EEM dataset with Raman scattering removed and filled.
         """
         eem_stack_masked, _ = process_eem_stack(
@@ -653,26 +653,26 @@ class EEMDataset:
 
         Parameters
         ----------
-        width_o1: float, default=15
+        width_o1 : float, default=15
             Total width (nm) of the first-order Rayleigh band (Em = Ex).
-        width_o2: float, default=15
+        width_o2 : float, default=15
             Total width (nm) of the second-order Rayleigh band (Em = 2*Ex).
-        interpolation_dimension_o1: str, {"1d-ex", "1d-em", "2d"}, default="2d"
+        interpolation_dimension_o1 : str, {"1d-ex", "1d-em", "2d"}, default="2d"
             Interpolation axis/dimension for the first-order band.
-        interpolation_dimension_o2: str, {"1d-ex", "1d-em", "2d"}, default="2d"
+        interpolation_dimension_o2 : str, {"1d-ex", "1d-em", "2d"}, default="2d"
             Interpolation axis/dimension for the second-order band.
-        interpolation_method_o1: str, {"linear", "cubic", "nan", "zero", "none"}, default="zero"
+        interpolation_method_o1 : str, {"linear", "cubic", "nan", "zero", "none"}, default="zero"
             Fill method for the first-order band.
-        interpolation_method_o2: str, {"linear", "cubic", "nan", "zero", "none"}, default="linear"
+        interpolation_method_o2 : str, {"linear", "cubic", "nan", "zero", "none"}, default="linear"
             Fill method for the second-order band.
-        recover_original_nan: bool, default=True
+        recover_original_nan : bool, default=True
             If True, preserve NaN pixels that existed before scattering removal.
-        inplace: bool, default=True
+        inplace : bool, default=True
             If True, overwrite `self` and return it. If False, return a new EEMDataset instance.
 
         Returns
         -------
-        eem_dataset_new: EEMDataset
+        eem_dataset_new : EEMDataset
             EEM dataset with Rayleigh scattering removed and filled.
         """
         eem_stack_masked, _ = process_eem_stack(
@@ -699,16 +699,16 @@ class EEMDataset:
 
         Parameters
         ----------
-        absorbance: np.ndarray
+        absorbance : np.ndarray
             Absorbance spectra stack (n_samples, n_abs_wavelengths).
-        ex_range_abs: np.ndarray
+        ex_range_abs : np.ndarray
             Wavelength axis (nm) for the absorbance spectra.
-        inplace: bool, default=True
+        inplace : bool, default=True
             If True, overwrite `self` and return it. If False, return a new EEMDataset instance.
 
         Returns
         -------
-        eem_dataset_new: EEMDataset
+        eem_dataset_new : EEMDataset
             IFE-corrected EEM dataset.
         """
         eem_stack_corrected = process_eem_stack(
@@ -730,18 +730,18 @@ class EEMDataset:
 
         Parameters
         ----------
-        ex_range_new: np.ndarray
+        ex_range_new : np.ndarray
             Target excitation wavelength axis (nm).
-        em_range_new: np.ndarray
+        em_range_new : np.ndarray
             Target emission wavelength axis (nm).
-        method: str, {"linear", "nearest", "slinear", "cubic", "quintic"}
+        method : str, {"linear", "nearest", "slinear", "cubic", "quintic"}
             Interpolation method passed to `scipy.interpolate.RegularGridInterpolator`.
-        inplace: bool, default=True
+        inplace : bool, default=True
             If True, overwrite `self` and return it. If False, return a new EEMDataset instance.
 
         Returns
         -------
-        eem_dataset_new: EEMDataset
+        eem_dataset_new : EEMDataset
             EEM dataset interpolated to the new wavelength grid. The dataset's `ex_range` and `em_range` are updated accordingly.
         """
         eem_stack_interpolated = process_eem_stack(
@@ -768,17 +768,17 @@ class EEMDataset:
 
         Parameters
         ----------
-        n_split: int
+        n_split : int
             The number of splits.
-        rule: str, {'random', 'sequential'}
+        rule : str, {'random', 'sequential'}
             If 'random' is passed, the split will be generated randomly. If 'sequential' is passed, the dataset will be
             split according to index order.
-        random_state: int, optional
+        random_state : int, optional
             Random seed for splitting.
 
         Returns
         -------
-        model_list: list.
+        model_list : list.
             A list of sub-datasets. Each of them is an EEMDataset object.
         """
         if kw_top is not None and kw_bot is not None:
@@ -842,16 +842,16 @@ class EEMDataset:
 
         Parameters
         ----------
-        portion: float
+        portion : float
             The portion.
-        inplace: bool
+        inplace : bool
             if True, overwrite the EEMDataset object.
 
         Returns
         -------
-        eem_dataset_sub: np.ndarray
+        eem_dataset_sub : np.ndarray
             New EEM dataset.
-        selected_indices: np.ndarray
+        selected_indices : np.ndarray
             Indices of selected EEMs.
         """
         n_samples = self.eem_stack.shape[0]
@@ -889,12 +889,12 @@ class EEMDataset:
 
         Parameters
         -------
-        inplace: bool
+        inplace : bool
             If True, overwrite the EEMDataset object.
 
         Returns
         -------
-        eem_dataset_new: EEMDataset
+        eem_dataset_new : EEMDataset
             The processed EEM dataset.
         """
         sorted_indices = sorted(range(len(self.index)), key=lambda i: self.index[i])
@@ -922,16 +922,16 @@ class EEMDataset:
 
         Parameters
         -------
-        mandatory_keywords: str or list of str
+        mandatory_keywords : str or list of str
             Keywords for selecting samples whose indexes contain all the mandatory keywords.
-        optional_keywords: str or list of str
+        optional_keywords : str or list of str
             Keywords for selecting samples whose indexes contain any of the optional keywords.
-        inplace: bool
+        inplace : bool
             if True, overwrite the EEMDataset object.
 
         Returns
         -------
-        eem_dataset_new: EEMDataset
+        eem_dataset_new : EEMDataset
             The filtered EEM dataset.
         """
         if mandatory_keywords is None and optional_keywords is None:
@@ -980,14 +980,14 @@ class EEMDataset:
 
         Parameters
         -------
-        cluster_names: int/float/str or list of int/float/str
+        cluster_names : int/float/str or list of int/float/str
             cluster names.
-        inplace: bool
+        inplace : bool
             if False, overwrite the EEMDataset object.
 
         Returns
         -------
-        eem_dataset_new: EEMDataset
+        eem_dataset_new : EEMDataset
             The filtered EEM dataset.
         """
         if self.cluster is None:
@@ -1038,12 +1038,12 @@ def combine_eem_datasets(list_eem_datasets):
 
     Parameters
     ----------
-    list_eem_datasets: list.
+    list_eem_datasets :  list.
         List of EEM datasets.
 
     Returns
     -------
-    eem_dataset_combined: EEMDataset
+    eem_dataset_combined : EEMDataset
         EEM dataset combined.
     """
     eem_stack_combined = []

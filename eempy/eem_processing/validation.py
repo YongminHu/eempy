@@ -20,25 +20,25 @@ class SplitValidation:
 
     Parameters
     ----------
-    base_model : PARAFAC or EEMNMF
+    base_model :  PARAFAC or EEMNMF
         Base model used to fit each sub-dataset.
-    n_splits : int
+    n_splits :  int
         Number of splits used to create sub-datasets.
-    combination_size : int or {"half"}, default "half"
+    combination_size :  int or {"half"}, default "half"
         Number of splits assembled into each combination. If "half" is passed, each combination uses half of the
         splits (split-half validation).
-    rule : {"random", "sequential"}, default "random"
+    rule :  {"random", "sequential"}, default "random"
         Split rule for the dataset. "sequential" splits by index order.
-    random_state : int, optional
+    random_state :  int, optional
         Random seed used when ``rule="random"``.
 
     Attributes
     ----------
-    eem_subsets : dict
+    eem_subsets :  dict
         Mapping of subset labels to EEMDataset instances.
-    subset_specific_models : dict
+    subset_specific_models :  dict
         Mapping of subset labels to fitted PARAFAC or EEMNMF models.
-    eem_dataset_full : EEMDataset or None
+    eem_dataset_full :  EEMDataset or None
         The full dataset used to generate splits.
     """
     def __init__(self, base_model, n_splits=4, combination_size='half', rule='random',

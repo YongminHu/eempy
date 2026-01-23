@@ -11,17 +11,17 @@ def multi_matrices_khatri_rao(matrices, weights=None, skip_matrix=None, mask=Non
 
     Parameters
     ----------
-    matrices : list of np.ndarray
+    matrices :  list of np.ndarray
         List of matrices with the same number of columns
 
-    weights : np.ndarray, shape (m,), optional
+    weights :  np.ndarray, shape (m,), optional
         Array of weights for each rank, of length m, the number of columns of the factors
         (i.e. m == matrices[i].shape[1] for any factor).
 
-    skip_matrix : int or None, optional
+    skip_matrix :  int or None, optional
         If not None, index of a matrix to skip.
 
-    mask : np.ndarray or None, optional
+    mask :  np.ndarray or None, optional
         Mask applied elementwise to the output after computing the Khatri-Rao product.
         It will be flattened and broadcast over columns.
 
@@ -88,9 +88,9 @@ def unfold_by_mode(tensor, mode):
 
     Parameters
     ----------
-    tensor : np.ndarray
+    tensor :  np.ndarray
         Input tensor.
-    mode : int
+    mode :  int
         Mode along which to unfold.
 
     Returns
@@ -112,16 +112,16 @@ def calculate_mttkrp(tensor, cp_tensor, mode, mask=None):
 
     Parameters
     ----------
-    tensor : np.ndarray
+    tensor :  np.ndarray
         Tensor to unfold.
-    cp_tensor : tuple
+    cp_tensor :  tuple
         CP tensor represented as ``(weights, factors)`` where:
         - ``weights`` is a 1D array of length ``rank`` (or ``None``),
         - ``factors`` is a list of factor matrices, each with shape ``(I_k, rank)``.
-    mode : int
+    mode :  int
         Mode on which to unfold ``tensor``. The factor matrix in this mode is skipped
         in the Khatri-Rao product.
-    mask : np.ndarray
+    mask :  np.ndarray
         Elementwise mask (1 = keep / valid entry, 0 = ignore entry).
 
     Returns
@@ -147,11 +147,11 @@ def masked_tensor_norm_error(tensor, reconstruction, mask):
 
     Parameters
     ----------
-    tensor : array-like
+    tensor :  array-like
         Original tensor.
-    reconstruction : array-like
+    reconstruction :  array-like
         Reconstructed tensor with the same shape as ``tensor``.
-    mask : array-like
+    mask :  array-like
         Elementwise mask (1 = keep / observed entry, 0 = ignore entry). Must broadcast to ``tensor``.
 
     Returns

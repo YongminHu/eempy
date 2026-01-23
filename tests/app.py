@@ -1,3 +1,10 @@
+"""
+Author: Yongmin Hu
+
+This is an application for EEM data processing using Dash framework. However, this is application may not be compatible with eempy version > 1.4. To use the up-to-date application, please refer to the eempy-vis GitHub page (https://github.com/YongminHu/eempy-vis).
+"""
+
+
 import numpy as np
 import pandas as pd
 import copy

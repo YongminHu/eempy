@@ -44,130 +44,130 @@ class EEMNMF:
 
     Parameters
     ----------
-    n_components : int
+    n_components :  int
         Number of NMF components (rank of the factorization).
-    solver : {'cd', 'mu', 'hals'}, default 'cd'
+    solver :  {'cd', 'mu', 'hals'}, default 'cd'
         Optimization algorithm used to fit NMF.
         - ``'cd'``: Coordinate Descent solver (scikit-learn ``decomposition.NMF``).
         - ``'mu'``: Multiplicative Updates solver (scikit-learn ``decomposition.NMF``).
         - ``'hals'``: Hierarchical Alternating Least Squares solver with optional priors/regularization
           (``eempy.solver.nmf_with_prior_hals``).
-    init : str, default 'nndsvda'
+    init :  str, default 'nndsvda'
         Initialization strategy passed to the selected solver.
         Common options include ``'random'``, ``'nndsvd'``, ``'nndsvda'``, ``'nndsvdar'`` (solver-dependent).
         For HALS, a custom initialization can be provided via ``custom_init`` when supported.
-    custom_init : optional
+    custom_init :  optional
         Custom initialization passed to the HALS solver (when supported by the backend implementation).
-    fixed_components : optional
+    fixed_components :  optional
         Component(s) to keep fixed during fitting (backend-specific behavior).
-    beta_loss : {'frobenius', 'kullback-leibler', 'itakura-saito'}, default 'frobenius'
+    beta_loss :  {'frobenius', 'kullback-leibler', 'itakura-saito'}, default 'frobenius'
         Beta divergence used by the ``'mu'`` solver. Ignored by ``'cd'`` and ``'hals'``.
-    alpha_sample : float, default 0
+    alpha_sample :  float, default 0
         Regularization strength applied to the sample-mode factor matrix ``W`` (backend-specific).
         For scikit-learn, this maps to ``alpha_W``.
-    alpha_component : float, default 0
+    alpha_component :  float, default 0
         Regularization strength applied to the component matrix ``H`` (backend-specific).
         For scikit-learn, this maps to ``alpha_H``.
-    l1_ratio : float, default 1
+    l1_ratio :  float, default 1
         Elastic-net mixing parameter used by the backend (``1`` corresponds to L1 only; ``0`` to L2 only).
-    prior_dict_W : dict, optional
+    prior_dict_W :  dict, optional
         Prior information for the sample-mode factor matrix ``W`` (HALS solver only).
         Keys are component indices (int); values are 1D arrays of length ``n_samples``.
         Use NaNs to indicate unknown entries that should not contribute to the penalty.
-    prior_dict_H : dict, optional
+    prior_dict_H :  dict, optional
         Prior information for the component matrix ``H`` (HALS solver only).
         Keys are component indices (int); values are 1D arrays of length ``n_pixels``.
         Use NaNs to indicate unknown entries that should not contribute to the penalty.
-    prior_dict_A : dict, optional
+    prior_dict_A :  dict, optional
         Additional prior mapping used by the HALS backend (backend-specific).
-    prior_dict_B : dict, optional
+    prior_dict_B :  dict, optional
         Additional prior mapping used by the HALS backend (backend-specific).
-    prior_dict_C : dict, optional
+    prior_dict_C :  dict, optional
         Additional prior mapping used by the HALS backend (backend-specific).
-    gamma_W : float, default 0
+    gamma_W :  float, default 0
         Additional prior/penalty strength for the sample-mode factor matrix ``W`` (HALS solver only).
-    gamma_H : float, default 0
+    gamma_H :  float, default 0
         Additional prior/penalty strength for the component matrix ``H`` (HALS solver only).
-    gamma_A : float, default 0
+    gamma_A :  float, default 0
         Additional prior/penalty strength for backend-specific prior term A (HALS solver only).
-    gamma_B : float, default 0
+    gamma_B :  float, default 0
         Additional prior/penalty strength for backend-specific prior term B (HALS solver only).
-    gamma_C : float, default 0
+    gamma_C :  float, default 0
         Additional prior/penalty strength for backend-specific prior term C (HALS solver only).
-    ref_components : optional
+    ref_components :  optional
         Reference component definitions used by the backend prior/regularization logic (backend-specific).
-    kw_top : str, optional
+    kw_top :  str, optional
         Keyword used to identify "top" EEM from ``eem_dataset.index`` during fitting. "Top" and "bot"
         EEMs are assumed to be paired one-to-one and aligned by selection order (first "top" ↔ first "bot", etc.).
         A recommended naming convention is "a_sharing_sample_name" + "kw_top" or "kw_bot" for the quenched and
         unquenched EEM derived from the same original sample, so the pair differs only by ``kw_top``/``kw_bot`` and
         alignment is preserved when selecting by keywords. An alternative approach is to provide ``idx_top`` and
         ``idx_bot`` to directly specify "top" and "bot" EEMs by positions.
-    kw_bot : str, optional
+    kw_bot :  str, optional
         Keyword used to identify "bot" EEM from ``eem_dataset.index`` during fitting.
-    idx_top : list of int, optional
+    idx_top :  list of int, optional
         0-based integer positions of samples in eem_dataset used as the numerator ("top") group (e.g., [0, 1,
         2]).
-    idx_bot : list of int, optional
+    idx_bot :  list of int, optional
         0-based integer positions of samples in eem_dataset used as the denominator ("bot") group (e.g., [3, 4,
         5]).
-    lam : float, default 0
+    lam :  float, default 0
         Strength of ratio-based regularization between "top" and "bot" samples (HALS solver only).
-    fit_rank_one : bool, default False
+    fit_rank_one :  bool, default False
         Whether to enable a rank-one component constraint/penalty in the HALS backend (backend-specific).
-    normalization : {'pixel_std', None}, default None
+    normalization :  {'pixel_std', None}, default None
         Optional preprocessing applied to the unfolded data matrix before factorization.
         - ``None``: no normalization.
         - ``'pixel_std'``: divide each pixel (feature) by its standard deviation across samples.
-    sort_components_by_em : bool, default True
+    sort_components_by_em :  bool, default True
         Whether to sort components by the emission peak position (ascending). If ``False``, components are
         kept in the solver output order.
-    max_iter_als : int, default 100
+    max_iter_als :  int, default 100
         Maximum number of outer iterations for the HALS solver.
-    max_iter_nnls : int, default 500
+    max_iter_nnls :  int, default 500
         Maximum number of iterations for NNLS subproblems (when used by the backend).
-    tol : float, default 1e-5
+    tol :  float, default 1e-5
         Convergence tolerance passed to the solver.
-    random_state : int, default 42
+    random_state :  int, default 42
         Random seed used by solvers that support it.
 
     Attributes
     ----------
-    fmax : pandas.DataFrame or None
+    fmax :  pandas.DataFrame or None
         Sample-mode component amplitudes computed from the fitted NMF ``W`` (and rescaling after component
         normalization). Columns follow the naming convention ``"component {i} NMF-Fmax"``.
-    nnls_fmax : pandas.DataFrame or None
+    nnls_fmax :  pandas.DataFrame or None
         Component amplitudes computed by refitting each EEM using NNLS with the fitted components.
         Columns follow the naming convention ``"component {i} NNLS-Fmax"``.
-    components : numpy.ndarray or None
+    components :  numpy.ndarray or None
         Component EEMs with shape ``(n_components, n_ex, n_em)`` constructed from the unfolded ``H``.
         Each component is normalized by its maximum value (peak intensity equals 1), and the scaling is
         carried into ``fmax``.
-    eem_stack_train : numpy.ndarray or None
+    eem_stack_train :  numpy.ndarray or None
         EEM stack used for model fitting, with shape ``(n_samples, n_ex, n_em)``.
-    eem_stack_reconstructed : numpy.ndarray or None
+    eem_stack_reconstructed :  numpy.ndarray or None
         Reconstructed EEM stack from the fitted model, with shape ``(n_samples, n_ex, n_em)``.
-    eem_stack_unfolded : numpy.ndarray or None
+    eem_stack_unfolded :  numpy.ndarray or None
         Unfolded 2D matrix used by the solver, with shape ``(n_samples, n_pixels)``.
-    normalization_factor_std : numpy.ndarray or None
+    normalization_factor_std :  numpy.ndarray or None
         Per-pixel standard deviation used when ``normalization='pixel_std'``. Shape is ``(n_pixels,)``.
         ``None`` if no pixel-wise standard-deviation normalization was applied.
-    normalization_factor_max : numpy.ndarray or None
+    normalization_factor_max :  numpy.ndarray or None
         Per-component scaling factors (maximum value of each component in the unfolded space) used
         to normalize ``components`` and rescale reported amplitudes. Shape is ``(n_components,)``.
-    ex_range : numpy.ndarray or None
+    ex_range :  numpy.ndarray or None
         Excitation wavelength grid corresponding to ``components``.
-    em_range : numpy.ndarray or None
+    em_range :  numpy.ndarray or None
         Emission wavelength grid corresponding to ``components``.
-    beta : numpy.ndarray or None
+    beta :  numpy.ndarray or None
         Component-wise ratio parameters used when ratio regularization / beta fitting is enabled
         (backend-specific).
-    decomposer : object or None
+    decomposer :  object or None
         Underlying solver object when using scikit-learn NMF (e.g., fitted ``sklearn.decomposition.NMF``).
         May be ``None`` depending on the solver/backend implementation.
-    reconstruction_error : float or None
+    reconstruction_error :  float or None
         Reconstruction error if provided by the backend/solver; otherwise ``None``.
-    objective_function_error : object or None
+    objective_function_error :  object or None
         Objective tracking information if provided by the backend/solver; otherwise ``None``.
 
     References
@@ -242,7 +242,7 @@ class EEMNMF:
 
         Parameters
         ----------
-        eem_dataset: EEMDataset
+        eem_dataset : EEMDataset
             The EEM dataset used to fit the NMF model.
         """
         if self.kw_top is not None and self.kw_bot is not None:
@@ -274,7 +274,7 @@ class EEMNMF:
                 X[np.isnan(X)] = 0
                 nmf_score = decomposer.fit_transform(X)
                 components = decomposer.components_ * factor_std
-            else:
+            else :
                 factor_std = None
                 nmf_score = decomposer.fit_transform(X)
                 components = decomposer.components_
@@ -324,7 +324,7 @@ class EEMNMF:
                 self.beta = beta
                 nmf_score = W
                 components = H * factor_std
-            else:
+            else :
                 factor_std = None
                 W, H, beta = nmf_with_prior_hals(
                     X,
@@ -363,7 +363,7 @@ class EEMNMF:
             nmf_score = pd.DataFrame(nmf_score, index=eem_dataset.index,
                                      columns=["component {i} NMF-Fmax".format(i=i + 1) for i in
                                               range(self.n_components)])
-        else:
+        else :
             raise ValueError("Unknown solver name: choose 'mu', 'cd' or 'hals'.")
         factor_max = np.max(components, axis=1)
         components = components / factor_max[:, None]
@@ -407,7 +407,7 @@ class EEMNMF:
 
         Returns
         -------
-        max_exem: list
+        max_exem : list
             A List of (ex, em) of component peaks.
         """
         max_exem = []
@@ -424,7 +424,7 @@ class EEMNMF:
 
         Returns
         -------
-        res: np.ndarray (3d)
+        res : np.ndarray (3d)
             the residual
         """
         res = self.eem_stack_train - self.eem_stack_reconstructed
@@ -437,7 +437,7 @@ class EEMNMF:
 
         Returns
         -------
-        ev: float
+        ev : float
             the explained variance
         """
         y_train = self.eem_stack_train.reshape(-1)
@@ -452,7 +452,7 @@ class EEMNMF:
 
         Returns
         -------
-        sse: pandas.DataFrame
+        sse : pandas.DataFrame
             Table of RMSE
         """
         res = self.residual()
@@ -469,7 +469,7 @@ class EEMNMF:
 
         Returns
         -------
-        normalized_sse: pandas.DataFrame
+        normalized_sse : pandas.DataFrame
             Table of normalized RMSE
         """
         res = self.residual()
@@ -491,7 +491,7 @@ class EEMNMF:
             The EEM dataset to be predicted.
         fit_intercept : bool
             Whether to calculate the intercept.
-        fit_beta: bool
+        fit_beta : bool
             Whether to fit the beta parameter (the proportions between "top" and "bot" samples).
         idx_top : list, optional
             List of indices of samples serving as numerators in ratio calculation.

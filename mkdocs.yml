@@ -27,3 +27,4 @@ nav:
       - eem_processing: api/eem_processing.md
       - read_data: api/read_data.md
       - plot: api/plot.md
+      - solver: api/solver.md

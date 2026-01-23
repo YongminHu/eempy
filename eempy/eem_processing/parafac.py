@@ -46,113 +46,113 @@ class PARAFAC:
 
     Parameters
     ----------
-    n_components : int
+    n_components :  int
         Number of PARAFAC components (rank of the CP decomposition).
-    non_negativity : bool, default True
+    non_negativity :  bool, default True
         Whether to enforce non-negativity constraints on the factor matrices.
-    solver : {'mu', 'hals'}, default 'hals'
+    solver :  {'mu', 'hals'}, default 'hals'
         Optimization algorithm used when ``non_negativity=True``.
         - ``'mu'``: Multiplicative Updates solver (tensorly.decomposition.non_negative_parafac).
         - ``'hals'``: Hierarchical Alternating Least Squares solver with optional priors/regularization(
         eempy.solver.parafac_with_prior_hals).
         if ``non_negativity=False``, a standard alternating least squares solver is used anyway (
         tensorly.decomposition.parafac).
-    init : {'svd', 'random'} or tensorly.CPTensor, default 'svd'
+    init :  {'svd', 'random'} or tensorly.CPTensor, default 'svd'
         Initialization strategy for the factor matrices. If a ``tensorly.CPTensor`` is provided, it is used
         as the initialization.
-    custom_init : optional
+    custom_init :  optional
         Custom initialization passed to the HALS solver (when supported by the backend implementation).
-    fixed_components : optional
+    fixed_components :  optional
         Component(s) to keep fixed during fitting (backend-specific behavior).
-    tf_normalization : bool, default False
+    tf_normalization :  bool, default False
         Whether to normalize each EEM by its total fluorescence during model fitting.
-    loadings_normalization : {'sd', 'maximum', None}, default 'maximum'
+    loadings_normalization :  {'sd', 'maximum', None}, default 'maximum'
         Post-fit normalization applied to excitation/emission loadings, with the sample scores scaled
         accordingly.
         - 'sd': normalize each loading vector to unit standard deviation.
         - 'maximum': normalize each loading vector to unit maximum.
         - None: no loading normalization.
-    sort_components_by_em : bool, default True
+    sort_components_by_em :  bool, default True
         Whether to sort components by the emission peak position (ascending). If ``False``, components are
         kept in the solver output order (which may correlate with variance contribution depending on the solver).
-    alpha_sample : float, default 0
+    alpha_sample :  float, default 0
         Regularization strength applied to the sample-mode factor matrix (backend-specific).
-    alpha_ex : float, default 0
+    alpha_ex :  float, default 0
         Regularization strength applied to the excitation-mode factor matrix (backend-specific).
-    alpha_em : float, default 0
+    alpha_em :  float, default 0
         Regularization strength applied to the emission-mode factor matrix (backend-specific).
-    l1_ratio : float, default 1
+    l1_ratio :  float, default 1
         Elastic-net mixing parameter used by the backend (``1`` corresponds to L1 only; ``0`` to L2 only).
-    prior_dict_sample : dict, optional
+    prior_dict_sample :  dict, optional
         Prior information for the sample-mode factor matrix (backend-specific).
-    prior_dict_ex : dict, optional
+    prior_dict_ex :  dict, optional
         Prior information for the excitation-mode factor matrix (backend-specific).
-    prior_dict_em : dict, optional
+    prior_dict_em :  dict, optional
         Prior information for the emission-mode factor matrix (backend-specific).
-    gamma_sample : float, default 0
+    gamma_sample :  float, default 0
         Additional prior/penalty strength for the sample-mode factor matrix (backend-specific).
-    gamma_ex : float, default 0
+    gamma_ex :  float, default 0
         Additional prior/penalty strength for the excitation-mode factor matrix (backend-specific).
-    gamma_em : float, default 0
+    gamma_em :  float, default 0
         Additional prior/penalty strength for the emission-mode factor matrix (backend-specific).
-    ref_components : optional
+    ref_components :  optional
         Reference component definitions used by the backend prior/regularization logic (backend-specific).
-    kw_top : str, optional
+    kw_top :  str, optional
         Keyword used to identify "top" EEM from ``eem_dataset.index`` during fitting. "Top" and "bot"
         EEMs are assumed to be paired one-to-one and aligned by selection order (first "top" ↔ first "bot", etc.).
         A recommended naming convention is "a_sharing_sample_name" + "kw_top" or "kw_bot" for the quenched and
         unquenched EEM derived from the same original sample, so the pair differs only by ``kw_top``/``kw_bot`` and
         alignment is preserved when selecting by keywords. An alternative approach is to provide ``idx_top`` and
         ``idx_bot`` to directly specify "top" and "bot" EEMs by positions.
-    kw_bot : str, optional
+    kw_bot :  str, optional
         Keyword used to identify "bot" EEM from ``eem_dataset.index`` during fitting.
-    idx_top : list of int, optional
+    idx_top :  list of int, optional
         0-based integer positions of samples in eem_dataset used as the numerator ("top") group (e.g., [0, 1,
         2]).
-    idx_bot : list of int, optional
+    idx_bot :  list of int, optional
         0-based integer positions of samples in eem_dataset used as the denominator ("bot") group (e.g., [3, 4,
         5]).
-    lam : float, default 0
+    lam :  float, default 0
         Strength of ratio-based regularization between "top" and "bot" samples (backend-specific).
-    max_iter_als : int, default 100
+    max_iter_als :  int, default 100
         Maximum number of outer ALS iterations.
-    tol : float, default 1e-6
+    tol :  float, default 1e-6
         Convergence tolerance for the ALS loop.
-    max_iter_nnls : int, default 500
+    max_iter_nnls :  int, default 500
         Maximum number of iterations for NNLS subproblems (when used by the backend).
-    random_state : int or numpy.random.RandomState, optional
+    random_state :  int or numpy.random.RandomState, optional
         Random seed or RNG used for reproducible initialization (when supported).
-    mask : array-like, optional
+    mask :  array-like, optional
         A ideally sparse mask array for missing values (backend-specific). When provided, masked entries are ignored in
         fitting.
 
     Attributes
     ----------
-    score : pandas.DataFrame or None
+    score :  pandas.DataFrame or None
         Sample scores (sample loadings).
-    ex_loadings : pandas.DataFrame or None
+    ex_loadings :  pandas.DataFrame or None
         Excitation-mode loadings for each component.
-    em_loadings : pandas.DataFrame or None
+    em_loadings :  pandas.DataFrame or None
         Emission-mode loadings for each component.
-    fmax : pandas.DataFrame or None
+    fmax :  pandas.DataFrame or None
         The maximum fluorescence intensity of components. Fmax is calculated by multiplying the maximum excitation
         loading and maximum emission loading for each component by its score.
-    nnls_fmax : pandas.DataFrame or None
+    nnls_fmax :  pandas.DataFrame or None
         Fmax estimated from refitting PARAFAC components to the original EEMs using NNLS. It may be slightly
         different from ``fmax`` due to the non-exact fit.
-    components : numpy.ndarray or None
+    components :  numpy.ndarray or None
         Component EEMs with shape ``(n_components, n_ex, n_em)`` constructed from excitation/emission loadings.
-    cptensors : tensorly.cp_tensor.CPTensor or None
+    cptensors :  tensorly.cp_tensor.CPTensor or None
         Fitted CP/PARAFAC tensor representation returned by the underlying solver.
-    eem_stack_train : numpy.ndarray or None
+    eem_stack_train :  numpy.ndarray or None
         EEM stack used for model fitting, with shape ``(n_samples, n_ex, n_em)``.
-    eem_stack_reconstructed : numpy.ndarray or None
+    eem_stack_reconstructed :  numpy.ndarray or None
         Reconstructed EEM stack from the fitted model, with shape ``(n_samples, n_ex, n_em)``.
-    ex_range : numpy.ndarray or None
+    ex_range :  numpy.ndarray or None
         Excitation wavelength grid corresponding to ``ex_loadings`` and ``components``.
-    em_range : numpy.ndarray or None
+    em_range :  numpy.ndarray or None
         Emission wavelength grid corresponding to ``em_loadings`` and ``components``.
-    beta : numpy.ndarray or None
+    beta :  numpy.ndarray or None
         Component-wise ratio parameters used when ratio regularization / beta fitting is enabled.
 
     References
@@ -564,7 +564,7 @@ class PARAFAC:
         ----------
         filepath : str
             Location of the saved text file. Please specify the ".csv" extension.
-        info_dict: dict
+        info_dict : dict
             A dictionary containing the model information. Possible keys include: name, creator
             date, email, doi, reference, unit, toolbox, fluorometer, nSample, decomposition_method, validation,
             dataset_calibration, preprocess, sources, description
