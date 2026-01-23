@@ -14,6 +14,8 @@ If you wish to do the analysis with an app without coding yourself, you are welc
 
 ## Get Started
 
+(English documentation: https://yongminhu.github.io/eempy/)
+
 ### Installation
 ```sh
 pip install eem-python
