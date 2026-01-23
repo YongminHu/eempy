@@ -1,0 +1,4 @@
+# solver
+
+::: eempy.solver.core
+
