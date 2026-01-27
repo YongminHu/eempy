@@ -69,9 +69,9 @@ def read_eem(
     -------
     intensity : np.ndarray
         EEM matrix with shape (n_ex, n_em). Rows correspond to excitation wavelengths, columns to emission
-        wavelengths. The smallest excitation & emission wavelengths correspond to intensity[-1, 0],
-        with excitation wavelength increases from bottom to top and emission wavelength increases from left to
-        right.
+        wavelengths. Rows correspond to excitation wavelengths in ascending order, columns to emission
+        wavelengths in ascending order. The smallest excitation & emission wavelengths correspond to
+        intensity[0, 0].
     ex_range : np.ndarray
         Sorted excitation wavelengths (ascending).
     em_range : np.ndarray
@@ -191,9 +191,6 @@ def read_eem(
     # Transpose to (ex rows, em cols)
     intensity = data_em_ex_sorted.T  # (n_ex, n_em)
 
-    # ---- enforce "matrix has origin at lower-left" in array indexing ----
-    intensity = intensity[:-1, :]
-
     return intensity, ex_range, em_range, index
 
 
@@ -258,9 +255,9 @@ def read_eem_dataset(folder_path: str, mandatory_keywords=None, optional_keyword
     -------
     eem_stack : np.ndarray
         EEM stack with shape (n_sample, n_ex, n_em). For each EEM with shape (n_ex, n_em), rows correspond to
-        excitation wavelengths, columns to emission wavelengths. The smallest excitation & emission wavelengths
-        correspond to intensity[-1, 0], with excitation wavelength increases from bottom to top and emission
-        wavelength increases from left to right.
+        excitation wavelengths, columns to emission wavelengths. Rows correspond to excitation wavelengths in
+        ascending order, columns to emission wavelengths in ascending order. The smallest excitation & emission
+        wavelengths correspond to intensity[0, 0].
     ex_range : np.ndarray
         Sorted excitation wavelengths (ascending).
     em_range : np.ndarray
@@ -673,7 +670,7 @@ def get_filelist(folderpath, mandatory_keywords, optional_keywords):
     return filelist_all_filtered
 
 
-def read_parafac_model(filepath):
+def read_parafac_model_from_openfluor(filepath):
     """
     Import PARAFAC model from a text file written in the format suggested by OpenFluor (
     https : //openfluor.lablicate.com/). Note that the models downloaded from OpenFluor normally don't have scores.
@@ -776,7 +773,7 @@ def read_parafac_models(datdir, kw):
     list of dict
         A list of dicts with keys: ``info``, ``ex``, ``em``, ``score``.
     """
-    datlist = get_filelist(datdir, kw)
+    datlist = get_filelist(datdir, mandatory_keywords=kw, optional_keywords=[])
     parafac_results = []
     for f in datlist:
         filepath = datdir + '/' + f

@@ -1,7 +1,7 @@
 """
 Functions for plotting EEM-related data
 Author: Yongmin Hu (yongminhu@outlook.com)
-Last update: 2024-07-03
+Last update: 2026-01
 """
 
 import matplotlib.pyplot as plt
@@ -121,15 +121,15 @@ def plot_eem(intensity: np.ndarray,
         ax.tick_params(labelsize=axis_ticks_font_size)
         if not auto_intensity_range:
             if scale_type == 'log':
-                im = ax.imshow(intensity if not rotate else np.flipud(np.fliplr(intensity.T)), cmap=cmap,
+                im = ax.imshow(intensity if not rotate else intensity.T, cmap=cmap,
                                interpolation='none', extent=extent, origin='upper',
                                aspect=1 if fix_aspect_ratio else None, norm=c_norm)
             else:
-                im = ax.imshow(intensity if not rotate else np.flipud(np.fliplr(intensity.T)), cmap=cmap,
+                im = ax.imshow(intensity if not rotate else intensity.T, cmap=cmap,
                                interpolation='none', extent=extent, vmin=vmin, vmax=vmax,
                                origin='upper', aspect=1 if fix_aspect_ratio else None, norm=c_norm)
         else:
-            im = ax.imshow(intensity if not rotate else np.flipud(np.fliplr(intensity.T)), cmap=cmap,
+            im = ax.imshow(intensity if not rotate else intensity.T, cmap=cmap,
                            interpolation='none', extent=extent, origin='upper',
                            aspect=1 if fix_aspect_ratio else None)
         if cbar:
@@ -152,9 +152,9 @@ def plot_eem(intensity: np.ndarray,
             vmin = np.min(intensity) if (not auto_intensity_range and vmax is None) else vmin
             vmax = np.max(intensity) if (not auto_intensity_range and vmin is None) else vmax
             t_cbar = np.logspace(math.log(vmin), math.log(vmax), n_cbar_ticks)
-            trace = go.Heatmap(z=np.log10(intensity) if not rotate else np.flipud(np.fliplr(np.log10(intensity).T)),
+            trace = go.Heatmap(z=np.log10(intensity) if not rotate else np.log10(intensity).T,
                                x=em_range if not rotate else ex_range,
-                               y=ex_range[:-1] if not rotate else em_range[:-1],
+                               y=ex_range if not rotate else em_range,
                                colorscale=cmap,
                                zmin=vmin if not auto_intensity_range else None,
                                zmax=vmax if not auto_intensity_range else None,
@@ -164,9 +164,9 @@ def plot_eem(intensity: np.ndarray,
 
         elif scale_type == 'linear':
             trace = go.Heatmap(
-                z=intensity if not rotate else np.flipud(np.fliplr(intensity.T)),
+                z=intensity if not rotate else intensity.T,
                 x=em_range if not rotate else ex_range,
-                y=ex_range[:-1] if not rotate else em_range[:-1],
+                y=ex_range if not rotate else em_range,
                 colorscale=cmap,
                 zmin=vmin if not auto_intensity_range else None,
                 zmax=vmax if not auto_intensity_range else None,
@@ -208,16 +208,18 @@ def plot_eem(intensity: np.ndarray,
         raise ValueError("plot_tool must be 'matplotlib' or 'plotly'.")
 
 
+from typing import Optional
+
 def plot_eem_stack(
     eem_stack : np.ndarray,
     ex_range : np.ndarray,
     em_range : np.ndarray,
-    titles : list = None,
+    titles : Optional[list] = None,
     n_cols : int = 2,
     auto_intensity_range : bool = True,
     scale_type : str = 'linear',  # 'linear' or 'log'
-    vmin : float = None,
-    vmax : float = None,
+    vmin : Optional[float] = None,
+    vmax : Optional[float] = None,
     cmap : str = 'jet',
     figure_size : tuple = (12, 12),
     axis_label_font_size : int = 12,
@@ -226,7 +228,7 @@ def plot_eem_stack(
     cbar_fraction : float = 0.02,
     fix_aspect_ratio : bool = True,
     rotate : bool = False,
-    suptitle : str = None,
+    suptitle : Optional[str] = None,
     suptitle_font_size : int = 16,
     plot_x_axis_label : bool = True,
     plot_y_axis_label : bool = True,
@@ -346,7 +348,7 @@ def plot_eem_stack(
     if suptitle:
         fig.suptitle(suptitle, fontsize=suptitle_font_size)
 
-    plt.tight_layout(rect=[0, 0, 1, 0.96] if suptitle else None)
+    plt.tight_layout(rect=(0, 0, 1, 0.96) if suptitle else None)
     plt.show()
 
     return fig, axes, ims
@@ -695,7 +697,7 @@ def plot_fmax(table, component_labels=None, display=True, yaxis_title='Fmax', la
         for j, l in enumerate(unique_labels):
             table_l = table.iloc[labels == l]
             table_l['index'] = [table.index[i] for i, val in enumerate(labels) if val == l]
-            table_l = pd.melt(table_l, id_vars='index')
+            table_l = pd.melt(table_l, id_vars=['index'])
             fig.add_trace(go.Scatter(
                 x=table_l['index'],
                 y=table_l['value'],
@@ -818,7 +820,7 @@ def plot_reconstruction_error(table, bar_col_name, display=True, yaxis_scatter_t
         table_l = table.iloc[labels == l]
         table_l.drop(columns=[bar_col_name], inplace=True)
         table_l['index'] = [table.index[i] for i, val in enumerate(labels) if val == l]
-        table_l = pd.melt(table_l, id_vars='index')
+        table_l = pd.melt(table_l, id_vars=['index'])
         fig.add_trace(go.Scatter(
             x=table_l['index'],
             y=table_l['value'],
@@ -849,7 +851,7 @@ def plot_reconstruction_error(table, bar_col_name, display=True, yaxis_scatter_t
     return fig
 
 
-def plot_dendrogram(linkage_matrix, threshold, index: list = None):
+def plot_dendrogram(linkage_matrix, threshold, index: Optional[list] = None):
     """
     Plot a dendrogram from a linkage matrix.
 

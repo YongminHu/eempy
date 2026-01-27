@@ -607,7 +607,8 @@ class EEMDataset:
             eem_dataset_new.eem_stack = eem_stack_normalized
             return eem_dataset_new, weights
 
-    def raman_scattering_removal(self, width=5, interpolation_method='linear', interpolation_dimension='2d',
+    def raman_scattering_removal(self, width=5, interpolation_method='linear', 
+                                 interpolation_dimension='2d',
                                  inplace=True, recover_original_nan=True):
         """
         Remove the first-order Raman scattering band and fill the masked region.

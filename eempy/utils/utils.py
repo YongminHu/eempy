@@ -4,8 +4,6 @@ Useful functions for EEM processing
 
 
 import numpy as np
-import tensorly as tl
-from tensorly.base import unfold
 from scipy.spatial.distance import euclidean
 
 
@@ -66,7 +64,7 @@ def str_string_to_list(input_string):
         str_list = [item.strip() for item in input_string.split(",")]
         return str_list
     except ValueError:
-        return None
+        raise ValueError("Invalid input string format.")
 
 
 def num_string_to_list(input_string):
@@ -75,8 +73,7 @@ def num_string_to_list(input_string):
         num_list = [int(num.strip()) for num in input_string.split(',')]
         return num_list
     except ValueError:
-        # Handle invalid input (e.g., non-numeric characters)
-        return None
+        raise ValueError("Invalid input string format.")
 
 
 def random_split_columns(arr, splits_dict, random_state=42):

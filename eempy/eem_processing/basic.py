@@ -145,7 +145,7 @@ def eem_region_masking(intensity, ex_range, em_range, ex_min=230, ex_max=500, em
     ex_min_idx = dichotomy_search(ex_range, ex_min)
     ex_max_idx = dichotomy_search(ex_range, ex_max)
     mask = np.ones(intensity.shape)
-    mask[ex_range.shape[0] - ex_max_idx - 1:ex_range.shape[0] - ex_min_idx, em_min_idx:em_max_idx + 1] = 0
+    mask[ex_min_idx:ex_max_idx + 1, em_min_idx:em_max_idx + 1] = 0
     if fill == 'nan':
         intensity_masked[mask == 0] = np.nan
     elif fill == 'zero':
@@ -235,10 +235,7 @@ def eem_cutting(intensity, ex_range_old, em_range_old, ex_min_new, ex_max_new, e
     em_max_idx = dichotomy_search(em_range_old, em_max_new)
     ex_min_idx = dichotomy_search(ex_range_old, ex_min_new)
     ex_max_idx = dichotomy_search(ex_range_old, ex_max_new)
-    intensity_cut = intensity[
-                    ex_range_old.shape[0] - ex_max_idx - 1:ex_range_old.shape[0] - ex_min_idx,
-                    em_min_idx : em_max_idx + 1
-                    ]
+    intensity_cut = intensity[ex_min_idx:ex_max_idx + 1, em_min_idx:em_max_idx + 1]
     em_range_cut = em_range_old[em_min_idx:em_max_idx + 1]
     ex_range_cut = ex_range_old[ex_min_idx:ex_max_idx + 1]
     return intensity_cut, ex_range_cut, em_range_cut
@@ -272,7 +269,7 @@ def eem_nan_imputing(intensity, ex_range, em_range, method: str = 'linear', fill
     intensity_imputed : np.ndarray
         The imputed EEM with NaN values filled.
     """
-    x, y = np.meshgrid(em_range, ex_range[:-1])
+    x, y = np.meshgrid(em_range, ex_range)
     xx = x[~np.isnan(intensity)].flatten()
     yy = y[~np.isnan(intensity)].flatten()
     zz = intensity[~np.isnan(intensity)].flatten()
@@ -350,7 +347,8 @@ def eem_raman_normalization(intensity, blank=None, ex_range_blank=None, em_range
     return intensity_normalized, rsu_final
 
 
-def eem_raman_scattering_removal(intensity, ex_range, em_range, width=5, interpolation_method='linear',
+def eem_raman_scattering_removal(intensity, ex_range, em_range, width=5, 
+                                 interpolation_method='linear',
                                  interpolation_dimension='2d', recover_original_nan=True):
     """
     Remove and interpolate the first-order Raman scattering peak of water.
@@ -385,6 +383,12 @@ def eem_raman_scattering_removal(intensity, ex_range, em_range, width=5, interpo
         A mask indicating the Raman scattering region.
         0: masked pixel; 1: unmasked pixel.
     """
+    allowed_methods = {"linear", "cubic", "nan", "zero"}
+    if interpolation_method not in allowed_methods:
+        raise ValueError(
+            f"interpolation_method must be one of {sorted(allowed_methods)}; "
+            f"got {interpolation_method!r}"
+        )
     intensity_filled = np.array(intensity)
     lambda_em = -ex_range / (0.00036 * ex_range - 1)
     half_width = width / 2
@@ -393,9 +397,8 @@ def eem_raman_scattering_removal(intensity, ex_range, em_range, width=5, interpo
     distance_from_peak = np.abs(em_range[np.newaxis, :] - lambda_em[:, np.newaxis])
     # Create a boolean mask where the distance is within the half-width
     raman_mask_bool = distance_from_peak <= half_width
-    # The intensity matrix has a reversed excitation axis, so we flip the mask
-    # and convert it to a float mask (True->0.0, False->1.0).
-    raman_mask = (~np.flipud(raman_mask_bool)).astype(float)
+    # Convert to float mask (True->0.0, False->1.0).
+    raman_mask = (~raman_mask_bool).astype(float)
     original_nan = np.isnan(intensity)
     if interpolation_method == 'nan':
         intensity_filled[raman_mask == 0] = np.nan
@@ -475,24 +478,33 @@ def eem_rayleigh_scattering_removal(intensity, ex_range, em_range, width_o1=20, 
         A mask indicating the 2nd order Rayleigh scattering region.
         0: masked pixel; 1: unmasked pixel.
     """
+    allowed_methods = {"linear", "cubic", "nan", "zero", "none"}
+    if interpolation_method_o1 not in allowed_methods:
+        raise ValueError(
+            f"interpolation_method_o1 must be one of {sorted(allowed_methods)}; "
+            f"got {interpolation_method_o1!r}"
+        )
+    if interpolation_method_o2 not in allowed_methods:
+        raise ValueError(
+            f"interpolation_method_o2 must be one of {sorted(allowed_methods)}; "
+            f"got {interpolation_method_o2!r}"
+        )
     intensity_masked = np.array(intensity)
     # --- Step 1: Zero out the physically meaningless region (Em <= Ex) ---
     # Create a 2D boolean mask where the condition Em <= Ex is true
     invalid_region_mask = em_range[np.newaxis, :] <= ex_range[:, np.newaxis]
-    # The intensity matrix has a reversed excitation axis
-    invalid_region_mask_flipped = np.flipud(invalid_region_mask)
     # Apply the mask to zero out the invalid region
-    intensity_masked[invalid_region_mask_flipped] = 0
+    intensity_masked[invalid_region_mask] = 0
     # --- Step 2: Vectorized Mask Creation for 1st Order Rayleigh Scattering ---
     half_width_o1 = width_o1 / 2
     dist_o1 = np.abs(em_range[np.newaxis, :] - ex_range[:, np.newaxis])
     mask_bool_o1 = dist_o1 <= half_width_o1
-    rayleigh_mask_o1 = (~np.flipud(mask_bool_o1)).astype(float)
+    rayleigh_mask_o1 = (~mask_bool_o1).astype(float)
     # --- Step 3: Vectorized Mask Creation for 2nd Order Rayleigh Scattering ---
     half_width_o2 = width_o2 / 2
     dist_o2 = np.abs(em_range[np.newaxis, :] - (ex_range * 2)[:, np.newaxis])
     mask_bool_o2 = dist_o2 <= half_width_o2
-    rayleigh_mask_o2 = (~np.flipud(mask_bool_o2)).astype(float)
+    rayleigh_mask_o2 = (~mask_bool_o2).astype(float)
     # --- Step 4: Interpolation Loop ---
     for axis, itp, mask in zip([interpolation_dimension_o1, interpolation_dimension_o2],
                                [interpolation_method_o1, interpolation_method_o2],
@@ -619,7 +631,7 @@ def eem_interpolation(intensity, ex_range_old, em_range_old, ex_range_new, em_ra
     """
     Interpolate an EEM onto a new grid of excitation and emission wavelengths.
     This function is typically used to standardize the axes of multiple EEMs.
-    It assumes the rows of the intensity matrix correspond to descending excitation
+    It assumes the rows of the intensity matrix correspond to ascending excitation
     wavelengths. It may not be able to interpolate an EEM containing NaN
     values. For NaN value imputation, please consider eem_nan_imputing().
 
@@ -643,9 +655,14 @@ def eem_interpolation(intensity, ex_range_old, em_range_old, ex_range_new, em_ra
     intensity_interpolated : np.ndarray
         The interpolated EEM on the new wavelength grid.
     """
-    interp = RegularGridInterpolator((ex_range_old[:-1], em_range_old), intensity, method=method, bounds_error=False)
-    x, y = np.meshgrid(ex_range_new[:-1], em_range_new, indexing='ij')
-    intensity_interpolated = interp((x, y)).reshape(ex_range_new.shape[0], em_range_new.shape[0])
+    interp = RegularGridInterpolator(
+        (ex_range_old[:-1], em_range_old),
+        intensity,
+        method=method,
+        bounds_error=False,
+    )
+    x, y = np.meshgrid(ex_range_new, em_range_new, indexing='ij')
+    intensity_interpolated = interp((x, y))
     return intensity_interpolated
 
 
