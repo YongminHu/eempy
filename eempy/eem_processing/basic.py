@@ -410,10 +410,10 @@ def eem_raman_scattering_removal(intensity, ex_range, em_range, width=5,
                 col_mask = raman_mask[:, j]
                 if np.all(col_mask == 0) or np.all(col_mask == 1): 
                     continue
-                known_x = np.flipud(ex_range)[col_mask == 1]
+                known_x = ex_range[col_mask == 1]
                 known_y = intensity_filled[:, j][col_mask == 1]
                 f1 = interp1d(known_x, known_y, kind=interpolation_method, fill_value='extrapolate')
-                intensity_filled[:, j] = f1(np.flipud(ex_range))
+                intensity_filled[:, j] = f1(ex_range)
         elif interpolation_dimension == '1d-em':
             for i in range(intensity.shape[0]):
                 row_mask = raman_mask[i, :]
@@ -522,10 +522,10 @@ def eem_rayleigh_scattering_removal(intensity, ex_range, em_range, width_o1=20, 
                     col_mask = mask[:, j]
                     if np.all(col_mask == 0) or np.all(col_mask == 1): 
                         continue
-                    x = np.flipud(ex_range)[col_mask == 1]
+                    x = ex_range[col_mask == 1]
                     y = intensity_masked[:, j][col_mask == 1]
                     f1 = interp1d(x, y, kind=itp, fill_value='extrapolate')
-                    intensity_masked[:, j] = f1(np.flipud(ex_range))
+                    intensity_masked[:, j] = f1(ex_range)
             elif axis == '1d-em':
                 for i in range(intensity.shape[0]):
                     row_mask = mask[i, :]
@@ -567,7 +567,7 @@ def eem_ife_correction(intensity, ex_range_eem, em_range_eem, absorbance, ex_ran
         The IFE-corrected EEM.
     """
     f1 = interp1d(ex_range_abs, absorbance, kind='linear', bounds_error=False, fill_value='extrapolate')
-    absorbance_ex = np.fliplr(np.array([f1(ex_range_eem)]))
+    absorbance_ex = np.array([f1(ex_range_eem)])
     absorbance_em = np.array([f1(em_range_eem)])
     ife_factors = 10 ** ((absorbance_ex.T.dot(np.ones(absorbance_em.shape)) +
                           np.ones(absorbance_ex.shape).T.dot(absorbance_em)) / 2)
@@ -617,7 +617,7 @@ def eem_regional_integration(intensity, ex_range, em_range, ex_min, ex_max, em_m
     elif intensity_cut.shape[1] == 1:
         integration = np.trapz(intensity_cut, ex_range_cut, axis=0)
     else:
-        result_x = np.trapz(intensity_cut, np.flip(ex_range_cut), axis=0)
+        result_x = np.trapz(intensity_cut, ex_range_cut, axis=0)
         integration = np.absolute(np.trapz(result_x, em_range_cut, axis=0))
     integration_area = (ex_max - ex_min) * (em_max - em_min)
     if integration_area > 0:

@@ -174,7 +174,7 @@ class EEMDataset:
         """
         em_idx = dichotomy_search(self.em_range, em)
         ex_idx = dichotomy_search(self.ex_range, ex)
-        fi = self.eem_stack[:, - ex_idx - 1, em_idx]
+        fi = self.eem_stack[:, ex_idx, em_idx]
         ex_actual = self.ex_range[ex_idx]
         em_actual = self.em_range[em_idx]
         fi_name = f'Intensity (ex={ex_actual} nm, em={em_actual} nm)'

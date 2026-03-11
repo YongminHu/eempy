@@ -122,15 +122,15 @@ def plot_eem(intensity: np.ndarray,
         if not auto_intensity_range:
             if scale_type == 'log':
                 im = ax.imshow(intensity if not rotate else intensity.T, cmap=cmap,
-                               interpolation='none', extent=extent, origin='upper',
+                               interpolation='none', extent=extent, origin='lower',
                                aspect=1 if fix_aspect_ratio else None, norm=c_norm)
             else:
                 im = ax.imshow(intensity if not rotate else intensity.T, cmap=cmap,
                                interpolation='none', extent=extent, vmin=vmin, vmax=vmax,
-                               origin='upper', aspect=1 if fix_aspect_ratio else None, norm=c_norm)
+                               origin='lower', aspect=1 if fix_aspect_ratio else None, norm=c_norm)
         else:
             im = ax.imshow(intensity if not rotate else intensity.T, cmap=cmap,
-                           interpolation='none', extent=extent, origin='upper',
+                           interpolation='none', extent=extent, origin='lower',
                            aspect=1 if fix_aspect_ratio else None)
         if cbar:
             cbar = fig.colorbar(im, ax=ax, ticks=t_cbar, fraction=cbar_fraction, pad=0.06)
@@ -314,15 +314,15 @@ def plot_eem_stack(
             plot_data = intensity
             extent = (em_range.min(), em_range.max(), ex_range.min(), ex_range.max())
         else:
-            # rotate: x=ex, y=em with flip so matches orientation
-            plot_data = np.flipud(np.fliplr(intensity.T))
+            # rotate: x=ex, y=em
+            plot_data = intensity.T
             extent = (ex_range.min(), ex_range.max(), em_range.min(), em_range.max())
 
         im = ax.imshow(
             plot_data,
             cmap=cmap,
             extent=extent,
-            origin='upper',
+            origin='lower',
             vmin=None if auto_intensity_range else vmin,
             vmax=None if auto_intensity_range else vmax,
             norm=norm,

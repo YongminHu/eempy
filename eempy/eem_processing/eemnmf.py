@@ -413,7 +413,7 @@ class EEMNMF:
         max_exem = []
         for r in range(self.n_components):
             max_index = np.unravel_index(np.argmax(self.components[r, :, :]), self.components[r, :, :].shape)
-            max_exem.append((self.ex_range[-(max_index[0] + 1)], self.em_range[max_index[1]]))
+            max_exem.append((self.ex_range[max_index[0]], self.em_range[max_index[1]]))
         return max_exem
 
 

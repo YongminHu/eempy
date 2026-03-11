@@ -166,7 +166,5 @@ def test_region_masking_geometry(sample_dataset):
     em_max_idx = dichotomy_search(ds.em_range, em_max)
     ex_min_idx = dichotomy_search(ds.ex_range, ex_min)
     ex_max_idx = dichotomy_search(ds.ex_range, ex_max)
-    row_start = ds.ex_range.shape[0] - ex_max_idx - 1
-    row_end = ds.ex_range.shape[0] - ex_min_idx
-    masked_region = masked.eem_stack[:, row_start:row_end, em_min_idx:em_max_idx + 1]
+    masked_region = masked.eem_stack[:, ex_min_idx:ex_max_idx + 1, em_min_idx:em_max_idx + 1]
     assert np.all(masked_region == 0)
