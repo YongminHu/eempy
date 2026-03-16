@@ -236,13 +236,15 @@ class PARAFAC:
             assert eem_dataset.index is not None
             self.idx_top = [i for i in range(len(eem_dataset.index)) if self.kw_top in eem_dataset.index[i]]
             self.idx_bot = [i for i in range(len(eem_dataset.index)) if self.kw_bot in eem_dataset.index[i]]
+        eem_stack_original = eem_dataset.eem_stack.copy()
         if self.tf_normalization:
             if self.lam>0 and self.idx_bot is not None and self.idx_top is not None:
                 Warning("Applying tf_normalization together with ratio regularization (lam>0) will lead to unreasonable results")
-            eem_dataset_tf, tf_weights = eem_dataset.tf_normalization(inplace=True)
+            eem_dataset_tf, tf_weights = eem_dataset.tf_normalization(inplace=False)
             eem_stack_tf = eem_dataset_tf.eem_stack
         else:
-            eem_stack_tf = eem_dataset.eem_stack.copy()
+            tf_weights = np.ones(eem_stack_original.shape[0])
+            eem_stack_tf = eem_stack_original.copy()
         try:
             if not self.non_negativity:
                 if np.isnan(eem_stack_tf).any():
@@ -319,16 +321,18 @@ class PARAFAC:
                 a[:, r] = a[:, r] * maxb * maxc
             component = np.array([b[:, r]]).T.dot(np.array([c[:, r]]))
             components[r, :, :] = component
+        sample_mode_factors = a * tf_weights[:, np.newaxis]
         if self.tf_normalization:
-            fmax = pd.DataFrame(a * tf_weights[:, np.newaxis])
+            fmax = pd.DataFrame(sample_mode_factors)
             self.beta = update_beta_in_hals(fmax.to_numpy(), self.idx_top, self.idx_bot) if self.beta is not None else None
         else:
-            fmax = pd.DataFrame(a)
-        a, _, _ = eems_fit_components(eem_dataset.eem_stack, components, fit_intercept=False, positive=True)
+            fmax = pd.DataFrame(sample_mode_factors)
+        a, _, _ = eems_fit_components(eem_stack_original, components, fit_intercept=False, positive=True)
         score = pd.DataFrame(a)
         nnls_fmax = a * components.max(axis=(1, 2))
         ex_loadings = pd.DataFrame(b, index=eem_dataset.ex_range)
         em_loadings = pd.DataFrame(c, index=eem_dataset.em_range)
+        cptensors = tl.cp_tensor.CPTensor((np.ones(self.n_components), [sample_mode_factors.copy(), b.copy(), c.copy()]))
         if self.sort_components_by_em:
             em_peaks = [c for c in em_loadings.idxmax()]
             peak_rank = list(enumerate(stats.rankdata(em_peaks)))
@@ -370,7 +374,7 @@ class PARAFAC:
         self.nnls_fmax = nnls_fmax
         self.components = components
         self.cptensors = cptensors
-        self.eem_stack_train = eem_dataset.eem_stack
+        self.eem_stack_train = eem_stack_original
         self.ex_range = eem_dataset.ex_range
         self.em_range = eem_dataset.em_range
         self.eem_stack_reconstructed = eem_stack_reconstructed
