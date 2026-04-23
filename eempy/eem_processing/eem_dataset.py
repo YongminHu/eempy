@@ -260,7 +260,9 @@ class EEMDataset:
         ex_range_abs : np.ndarray
             excitation wavelengths of absorbance spectra
         target_ex : float or None
-            excitation wavelength for AQY. If None is passed, all excitation wavelengths will be returned.
+            Excitation wavelength for AQY. If provided, AQY at the closest
+            available excitation wavelength will be returned. If None is
+            passed, AQY for all excitation wavelengths will be returned.
 
         Returns
         -------
@@ -273,12 +275,14 @@ class EEMDataset:
             abs = abs_stack[i]
             f1 = interp1d(ex_range_abs, abs, kind='linear', bounds_error=False, fill_value='extrapolate')
             abs_interpolated = f1(self.ex_range)
-            aqy.append(np.sum(intensity, axis=1)[:-1] / abs_interpolated)
+            aqy.append(np.sum(intensity, axis=1) / abs_interpolated)
         aqy = pd.DataFrame(aqy, index=self.index, columns=[f'AQY (ex = {wavelength} nm)' for wavelength in list(self.ex_range)])
         if target_ex is None:
             return aqy
         else:
-            return aqy[f'AQY (ex = {target_ex} nm)']
+            target_ex_idx = dichotomy_search(self.ex_range, target_ex)
+            target_ex_actual = self.ex_range[target_ex_idx]
+            return aqy[f'AQY (ex = {target_ex_actual} nm)']
 
     def correlation(self, variables, fit_intercept=True):
         """
